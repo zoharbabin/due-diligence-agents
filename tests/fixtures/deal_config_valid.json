@@ -1,0 +1,202 @@
+{
+  "config_version": "1.0.0",
+  "buyer": {
+    "name": "Meridian Capital Partners",
+    "ticker": "MCP",
+    "exchange": "NYSE",
+    "notes": "Strategic acquirer focused on B2B SaaS platforms"
+  },
+  "target": {
+    "name": "NovaBridge Software",
+    "subsidiaries": [
+      "NovaBridge Analytics Ltd",
+      "NovaBridge Cloud Services GmbH"
+    ],
+    "previous_names": [
+      {
+        "name": "BridgePoint Solutions",
+        "period": "2015-2020",
+        "notes": "Rebranded after Series C funding round"
+      }
+    ],
+    "acquired_entities": [
+      {
+        "name": "DataLoom Inc",
+        "acquisition_date": "2022-06-15",
+        "deal_type": "acquisition",
+        "notes": "Acqui-hire for ML engineering team"
+      },
+      {
+        "name": "CloudMetrix Systems",
+        "acquisition_date": "2023-03-01",
+        "deal_type": "acquisition",
+        "notes": "Product tuck-in for monitoring capabilities"
+      }
+    ],
+    "entity_name_variants_for_contract_matching": [
+      "NovaBridge",
+      "Nova Bridge",
+      "NovaBridge Software Inc",
+      "NovaBridge Software, Inc.",
+      "BridgePoint Solutions"
+    ],
+    "notes": "Founded 2015 in Austin TX. ~280 employees. ARR ~$45M."
+  },
+  "entity_aliases": {
+    "canonical_to_variants": {
+      "NovaBridge Software": [
+        "NovaBridge",
+        "Nova Bridge",
+        "NovaBridge Software Inc",
+        "NovaBridge Software, Inc.",
+        "NBSW"
+      ],
+      "BridgePoint Solutions": [
+        "BridgePoint",
+        "Bridge Point Solutions"
+      ],
+      "DataLoom Inc": [
+        "DataLoom",
+        "Data Loom"
+      ],
+      "CloudMetrix Systems": [
+        "CloudMetrix",
+        "Cloud Metrix"
+      ]
+    },
+    "short_name_guard": [
+      "NB",
+      "BP",
+      "DL",
+      "CM"
+    ],
+    "exclusions": [
+      "N/A",
+      "TBD",
+      "Various",
+      "Unknown",
+      "None",
+      "Test Account",
+      "Demo Customer"
+    ],
+    "parent_child": {
+      "NovaBridge Software": [
+        "NovaBridge Analytics Ltd",
+        "NovaBridge Cloud Services GmbH",
+        "DataLoom Inc",
+        "CloudMetrix Systems"
+      ]
+    }
+  },
+  "source_of_truth": {
+    "customer_database": {
+      "file": "Global_References/Customer_Database_2025.xlsx",
+      "sheet": "Active Subscriptions",
+      "header_row": 1,
+      "columns": {
+        "customer_name": 1,
+        "parent_account": 2,
+        "entity": 3,
+        "platform": 4,
+        "contract_start": 5,
+        "contract_end": 6,
+        "arr": 7
+      },
+      "active_filter": {
+        "arr_column": 7,
+        "arr_condition": "> 0",
+        "end_date_condition": ">= today"
+      }
+    }
+  },
+  "key_executives": [
+    {
+      "name": "Sarah Chen",
+      "title": "CEO",
+      "company": "NovaBridge Software",
+      "notes": "Co-founder, former VP Engineering at Salesforce"
+    },
+    {
+      "name": "Marcus Reeves",
+      "title": "CFO",
+      "company": "NovaBridge Software",
+      "notes": "Joined 2021 from Twilio"
+    },
+    {
+      "name": "Elena Vasquez",
+      "title": "CTO",
+      "company": "NovaBridge Software",
+      "notes": "Co-founder, leads product and engineering"
+    },
+    {
+      "name": "James Thornton",
+      "title": "VP Sales",
+      "company": "NovaBridge Software",
+      "notes": "Manages enterprise sales team of 35"
+    }
+  ],
+  "deal": {
+    "type": "acquisition",
+    "focus_areas": [
+      "change_of_control_clauses",
+      "ip_ownership",
+      "revenue_recognition",
+      "customer_concentration",
+      "auto_renewal_terms",
+      "data_privacy_compliance",
+      "non_compete_agreements",
+      "liability_caps"
+    ],
+    "notes": "100% acquisition. Expected close Q2 2026. Enterprise value ~$180M."
+  },
+  "judge": {
+    "enabled": true,
+    "max_iteration_rounds": 2,
+    "score_threshold": 70,
+    "sampling_rates": {
+      "p0": 1.0,
+      "p1": 0.20,
+      "p2": 0.10,
+      "p3": 0.0
+    },
+    "ocr_completeness_check": true,
+    "cross_agent_contradiction_check": true
+  },
+  "execution": {
+    "execution_mode": "full",
+    "staleness_threshold": 3,
+    "force_full_on_config_change": true
+  },
+  "reporting": {
+    "report_schema_override": null,
+    "include_diff_sheet": true,
+    "include_metadata_sheet": true
+  },
+  "forensic_dd": {
+    "enabled": true,
+    "domains": {
+      "disabled": [],
+      "custom": [
+        {
+          "id": "data_privacy",
+          "name": "Data Privacy & GDPR",
+          "description": "Review GDPR compliance, DPA agreements, data processing records, and cross-border transfer mechanisms.",
+          "agent_assignment": "legal",
+          "expected_finding_categories": [
+            "dpa_missing",
+            "gdpr_non_compliance",
+            "cross_border_transfer_risk"
+          ],
+          "key_terms": [
+            "GDPR",
+            "DPA",
+            "data processing agreement",
+            "standard contractual clauses",
+            "data protection"
+          ],
+          "weight": 2
+        }
+      ]
+    }
+  }
+}

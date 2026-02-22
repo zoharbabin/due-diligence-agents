@@ -1,0 +1,131 @@
+# Due Diligence Agent SDK — Claude Code Instructions
+
+## Project Overview
+
+Python application for forensic M&A due diligence. 6 AI agents analyze contract data rooms under a 35-step pipeline with 5 blocking gates, producing a 14-sheet Excel report. Python orchestrates; agents are workers.
+
+**Package**: `dd_agents` under `src/dd_agents/`
+**SDK**: `claude-agent-sdk` v0.1.39+ (Python 3.12+)
+**Spec**: 22 plan docs in `docs/plan/`. Start with `docs/plan/PLAN.md`.
+
+## Commands
+
+```bash
+# Install
+pip install -e ".[dev]"
+
+# Test (run after EVERY change)
+pytest tests/unit/ -x -q                    # Unit tests (fast, no API)
+pytest tests/integration/ -x -q             # Integration tests (mock agents)
+pytest tests/e2e/ -x -q                     # E2E tests (requires API, expensive)
+
+# Type check
+mypy src/ --strict
+
+# Lint
+ruff check src/ tests/
+ruff format src/ tests/ --check
+
+# All quality gates at once
+pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/
+
+# Run the pipeline
+dd-agents run path/to/deal-config.json
+```
+
+## Architecture
+
+- **Orchestrator** (`orchestrator/engine.py`): 35 async steps as methods on `PipelineEngine`. State machine with checkpoint/resume.
+- **Agents** (`agents/`): 4 specialists (Legal, Finance, Commercial, ProductTech) + optional Judge + Reporting Lead. Spawned via `claude-agent-sdk`.
+- **Persistence**: Three tiers — PERMANENT (never wiped), VERSIONED (archived per run), FRESH (rebuilt each run).
+- **Hooks** (`hooks/`): Flat return format `{"decision": "block"|"allow", "reason": "..."}` for ALL hook types. Never nest under `hookSpecificOutput`.
+- **Models** (`models/`): Pydantic v2 for all schemas. `model_json_schema()` for structured outputs.
+- **Validation** (`validation/`): 5-layer numerical audit, 30 DoD checks. Fail-closed — validation failures block the pipeline.
+
+## Code Style
+
+- Python 3.12+, strict mypy, ruff for lint/format
+- Line length: 120 characters
+- Pydantic v2 models with Field descriptions for every field
+- Async functions for pipeline steps
+- All JSON schemas validated via Pydantic `model_validate()`
+- `customer_safe_name`: lowercase, strip legal suffixes (Inc/Corp/LLC/Ltd), replace special chars with `_`, collapse underscores. Example: "Smith & Partners, Inc." → `smith_partners`
+- Batch naming is 1-based: `batch_1`, `batch_2` (never `batch_0`)
+
+## Implementation Process
+
+IMPORTANT: Follow these steps for every module:
+
+1. **Read the spec first** — Find the relevant doc in `docs/plan/` for the module you're building. Read it completely.
+2. **Write tests first** — Create test file in `tests/unit/` before implementing. Tests define the contract.
+3. **Implement minimally** — Write the minimum code to make tests pass.
+4. **Run quality gates** — `pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/`
+5. **Commit** — Small, focused commits with clear messages.
+
+## Implementation Plan
+
+Follow `IMPLEMENTATION_PLAN.md` in the project root. Execute ONE phase at a time. Each phase has:
+- Specific files to create
+- Spec docs to read for each file
+- Test files to write
+- Acceptance criteria to verify
+- Status tracking
+
+Update the phase status in IMPLEMENTATION_PLAN.md after completing each phase.
+
+## Key Spec References
+
+| Module | Primary Spec Doc |
+|--------|-----------------|
+| `models/*` | `docs/plan/04-data-models.md` |
+| `entity_resolution/*` | `docs/plan/09-entity-resolution.md` |
+| `extraction/*` | `docs/plan/08-extraction.md` + `docs/plan/22-llm-robustness.md §7` |
+| `persistence/*` | `docs/plan/02-system-architecture.md §3` |
+| `inventory/*` | `docs/plan/08-extraction.md §2-3` |
+| `hooks/*` | `docs/plan/07-tools-and-hooks.md` |
+| `tools/*` | `docs/plan/07-tools-and-hooks.md` |
+| `orchestrator/*` | `docs/plan/05-orchestrator.md` |
+| `agents/*` | `docs/plan/06-agents.md` |
+| `reporting/*` | `docs/plan/10-reporting.md` |
+| `validation/*` | `docs/plan/11-qa-validation.md` |
+| `reasoning/*` | `docs/plan/21-ontology-and-reasoning.md` |
+| `vector_store/*` | `docs/plan/14-vector-store.md` |
+| `errors.py` | `docs/plan/12-error-recovery.md` |
+| `cli.py` | `docs/plan/03-project-structure.md` |
+
+## Don't Do This
+
+- Don't implement a module without reading its spec doc first
+- Don't skip tests — write tests BEFORE implementation
+- Don't create aggregate files (e.g., `summary.json`, `all_findings.json`) — findings are always per-customer
+- Don't use `hookSpecificOutput` wrapper — all hooks return flat `{"decision": ..., "reason": ...}`
+- Don't use 0-based batch naming — batches start at 1
+- Don't modify PERMANENT tier files during runs (only extraction creates them)
+- Don't skip type annotations — `mypy --strict` must pass
+- Don't add unnecessary dependencies — check `pyproject.toml` for approved deps
+- Don't disable or skip tests — fix them instead
+
+## When Stuck (After 3 Attempts)
+
+1. Document what failed (what you tried, specific errors, why it failed)
+2. Check if there's a simpler approach that still satisfies the spec
+3. Check `docs/plan/12-error-recovery.md` for error handling patterns
+4. If the issue is in a dependency (claude-agent-sdk, openpyxl, etc.), check their docs
+5. Create a minimal reproducer and isolate the problem
+
+## Dependencies
+
+All open-source, permissive licenses. No commercial dependencies.
+
+```
+claude-agent-sdk>=0.1.39   # Agent spawning, hooks, tools
+pydantic>=2.0              # Data models, schema validation
+openpyxl>=3.1              # Excel report generation
+networkx>=3.0              # Governance graph (cycle detection, topological sort)
+rapidfuzz>=3.0             # Entity resolution fuzzy matching
+markitdown>=0.1            # PDF/Office document extraction
+click>=8.0                 # CLI interface
+rich>=13.0                 # Terminal output formatting
+```
+
+Optional: `chromadb>=0.4` (vector search), `pytesseract>=0.3` (OCR)

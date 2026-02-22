@@ -1,0 +1,486 @@
+{
+  "schema_version": "1.0.0",
+  "description": "14-sheet Excel report schema for forensic M&A due diligence. Loaded by build_report.py at runtime -- never hardcode sheet definitions.",
+  "global_formatting": {
+    "header_bold": true,
+    "header_bg_color": "#4472C4",
+    "header_font_color": "#FFFFFF",
+    "header_font_size": 11,
+    "body_font_size": 10,
+    "freeze_panes": true,
+    "freeze_row": 1,
+    "auto_filter": true,
+    "auto_fit_widths": true,
+    "max_column_width": 80,
+    "severity_colors": {
+      "P0": { "bg": "#FF0000", "font": "#FFFFFF" },
+      "P1": { "bg": "#FFA500", "font": "#000000" },
+      "P2": { "bg": "#FFFF00", "font": "#000000" },
+      "P3": { "bg": "#FFFFFF", "font": "#000000" }
+    },
+    "status_colors": {
+      "Active": { "bg": "#C6EFCE", "font": "#006100" },
+      "Expired": { "bg": "#FFC7CE", "font": "#9C0006" },
+      "Needs Confirmation": { "bg": "#FFEB9C", "font": "#9C5700" }
+    }
+  },
+  "sheets": [
+    {
+      "name": "Summary",
+      "required": true,
+      "activation_condition": "always",
+      "description": "Aggregated risk overview per customer across all agents.",
+      "source": "merged/*.json + merged/gaps/*.json + counts.json",
+      "_source_note": "One row per customer. Counts from merged findings and gaps.",
+      "row_rule": "one_row_per_customer",
+      "columns": [
+        { "name": "Customer", "key": "customer", "type": "string", "width": 30 },
+        { "name": "Overall Risk Rating", "key": "overall_risk_rating", "type": "string", "width": 20, "_algorithm": "Critical if any P0, High if any P1, Medium if any P2, Low if P3 only, Clean if none" },
+        { "name": "P0 Count", "key": "p0_count", "type": "integer", "width": 10 },
+        { "name": "P1 Count", "key": "p1_count", "type": "integer", "width": 10 },
+        { "name": "P2 Count", "key": "p2_count", "type": "integer", "width": 10 },
+        { "name": "P3 Count", "key": "p3_count", "type": "integer", "width": 10 },
+        { "name": "Total Findings", "key": "total_findings", "type": "integer", "width": 14 },
+        { "name": "Gap Count", "key": "gap_count", "type": "integer", "width": 12 },
+        { "name": "Files Analyzed", "key": "files_analyzed", "type": "integer", "width": 14 },
+        { "name": "Governance Resolved %", "key": "governance_resolved_pct", "type": "percentage", "width": 20, "format": "0.0%" },
+        { "name": "Legal Score", "key": "legal_score", "type": "integer", "width": 12, "activation_condition": "judge.enabled" },
+        { "name": "Finance Score", "key": "finance_score", "type": "integer", "width": 14, "activation_condition": "judge.enabled" },
+        { "name": "Commercial Score", "key": "commercial_score", "type": "integer", "width": 16, "activation_condition": "judge.enabled" },
+        { "name": "ProductTech Score", "key": "producttech_score", "type": "integer", "width": 16, "activation_condition": "judge.enabled" }
+      ],
+      "sort_order": [
+        { "column": "overall_risk_rating", "direction": "asc" },
+        { "column": "customer", "direction": "asc" }
+      ],
+      "conditional_formatting": [
+        { "column": "overall_risk_rating", "rule": "== Critical", "format": { "bg": "#FF0000", "font": "#FFFFFF" } },
+        { "column": "overall_risk_rating", "rule": "== High", "format": { "bg": "#FFA500", "font": "#000000" } },
+        { "column": "overall_risk_rating", "rule": "== Medium", "format": { "bg": "#FFFF00", "font": "#000000" } },
+        { "column": "overall_risk_rating", "rule": "== Clean", "format": { "bg": "#C6EFCE", "font": "#006100" } }
+      ],
+      "summary_formulas": {
+        "bottom": [
+          { "column": "customer", "value": "TOTAL" },
+          { "column": "p0_count", "formula": "SUM(p0_count)" },
+          { "column": "p1_count", "formula": "SUM(p1_count)" },
+          { "column": "p2_count", "formula": "SUM(p2_count)" },
+          { "column": "p3_count", "formula": "SUM(p3_count)" },
+          { "column": "total_findings", "formula": "SUM(total_findings)" },
+          { "column": "gap_count", "formula": "SUM(gap_count)" },
+          { "column": "files_analyzed", "formula": "SUM(files_analyzed)" }
+        ]
+      }
+    },
+    {
+      "name": "Wolf_Pack",
+      "required": true,
+      "activation_condition": "always",
+      "description": "All P0 and P1 findings from every agent -- the deal-critical issues.",
+      "source": "merged/*.json",
+      "_source_note": "Filter: finding.severity in ['P0', 'P1'] from all agents.",
+      "row_rule": "one_row_per_finding where severity in [P0, P1]",
+      "columns": [
+        { "name": "Customer", "key": "analysis_unit", "type": "string", "width": 25 },
+        { "name": "Severity", "key": "severity", "type": "string", "width": 10 },
+        { "name": "Agent", "key": "agent", "type": "string", "width": 14 },
+        { "name": "Category", "key": "category", "type": "string", "width": 25 },
+        { "name": "Title", "key": "title", "type": "string", "width": 40 },
+        { "name": "Description", "key": "description", "type": "string", "width": 60 },
+        { "name": "Source File", "key": "citation_source_path", "type": "string", "width": 35 },
+        { "name": "Location", "key": "citation_location", "type": "string", "width": 20 },
+        { "name": "Exact Quote", "key": "citation_exact_quote", "type": "string", "width": 50 },
+        { "name": "Confidence", "key": "confidence", "type": "string", "width": 12 },
+        { "name": "Finding ID", "key": "id", "type": "string", "width": 30 }
+      ],
+      "sort_order": [
+        { "column": "severity", "direction": "asc" },
+        { "column": "customer", "direction": "asc" }
+      ],
+      "conditional_formatting": [
+        { "column": "severity", "rule": "== P0", "format": { "bg": "#FF0000", "font": "#FFFFFF" } },
+        { "column": "severity", "rule": "== P1", "format": { "bg": "#FFA500", "font": "#000000" } }
+      ],
+      "summary_formulas": {
+        "bottom": [
+          { "column": "analysis_unit", "value": "TOTAL" },
+          { "column": "severity", "formula": "COUNTIF(severity, P0)" }
+        ]
+      }
+    },
+    {
+      "name": "Legal_Risks",
+      "required": true,
+      "activation_condition": "always",
+      "description": "All findings from the Legal agent.",
+      "source": "merged/*.json",
+      "_source_note": "Filter: finding.agent == 'legal'.",
+      "row_rule": "one_row_per_finding where agent == legal",
+      "columns": [
+        { "name": "Customer", "key": "analysis_unit", "type": "string", "width": 25 },
+        { "name": "Severity", "key": "severity", "type": "string", "width": 10 },
+        { "name": "Category", "key": "category", "type": "string", "width": 25 },
+        { "name": "Title", "key": "title", "type": "string", "width": 40 },
+        { "name": "Description", "key": "description", "type": "string", "width": 60 },
+        { "name": "Source File", "key": "citation_source_path", "type": "string", "width": 35 },
+        { "name": "Location", "key": "citation_location", "type": "string", "width": 20 },
+        { "name": "Exact Quote", "key": "citation_exact_quote", "type": "string", "width": 50 },
+        { "name": "Confidence", "key": "confidence", "type": "string", "width": 12 },
+        { "name": "Finding ID", "key": "id", "type": "string", "width": 30 }
+      ],
+      "sort_order": [
+        { "column": "severity", "direction": "asc" },
+        { "column": "customer", "direction": "asc" }
+      ],
+      "conditional_formatting": [
+        { "column": "severity", "rule": "== P0", "format": { "bg": "#FF0000", "font": "#FFFFFF" } },
+        { "column": "severity", "rule": "== P1", "format": { "bg": "#FFA500", "font": "#000000" } },
+        { "column": "severity", "rule": "== P2", "format": { "bg": "#FFFF00", "font": "#000000" } }
+      ],
+      "summary_formulas": {}
+    },
+    {
+      "name": "Commercial_Data",
+      "required": true,
+      "activation_condition": "always",
+      "description": "All findings from the Commercial agent.",
+      "source": "merged/*.json",
+      "_source_note": "Filter: finding.agent == 'commercial'.",
+      "row_rule": "one_row_per_finding where agent == commercial",
+      "columns": [
+        { "name": "Customer", "key": "analysis_unit", "type": "string", "width": 25 },
+        { "name": "Severity", "key": "severity", "type": "string", "width": 10 },
+        { "name": "Category", "key": "category", "type": "string", "width": 25 },
+        { "name": "Title", "key": "title", "type": "string", "width": 40 },
+        { "name": "Description", "key": "description", "type": "string", "width": 60 },
+        { "name": "Source File", "key": "citation_source_path", "type": "string", "width": 35 },
+        { "name": "Location", "key": "citation_location", "type": "string", "width": 20 },
+        { "name": "Exact Quote", "key": "citation_exact_quote", "type": "string", "width": 50 },
+        { "name": "Confidence", "key": "confidence", "type": "string", "width": 12 },
+        { "name": "Finding ID", "key": "id", "type": "string", "width": 30 }
+      ],
+      "sort_order": [
+        { "column": "severity", "direction": "asc" },
+        { "column": "customer", "direction": "asc" }
+      ],
+      "conditional_formatting": [
+        { "column": "severity", "rule": "== P0", "format": { "bg": "#FF0000", "font": "#FFFFFF" } },
+        { "column": "severity", "rule": "== P1", "format": { "bg": "#FFA500", "font": "#000000" } },
+        { "column": "severity", "rule": "== P2", "format": { "bg": "#FFFF00", "font": "#000000" } }
+      ],
+      "summary_formulas": {}
+    },
+    {
+      "name": "Financials",
+      "required": true,
+      "activation_condition": "always",
+      "description": "All findings from the Finance agent.",
+      "source": "merged/*.json",
+      "_source_note": "Filter: finding.agent == 'finance'.",
+      "row_rule": "one_row_per_finding where agent == finance",
+      "columns": [
+        { "name": "Customer", "key": "analysis_unit", "type": "string", "width": 25 },
+        { "name": "Severity", "key": "severity", "type": "string", "width": 10 },
+        { "name": "Category", "key": "category", "type": "string", "width": 25 },
+        { "name": "Title", "key": "title", "type": "string", "width": 40 },
+        { "name": "Description", "key": "description", "type": "string", "width": 60 },
+        { "name": "Source File", "key": "citation_source_path", "type": "string", "width": 35 },
+        { "name": "Location", "key": "citation_location", "type": "string", "width": 20 },
+        { "name": "Exact Quote", "key": "citation_exact_quote", "type": "string", "width": 50 },
+        { "name": "Confidence", "key": "confidence", "type": "string", "width": 12 },
+        { "name": "Finding ID", "key": "id", "type": "string", "width": 30 }
+      ],
+      "sort_order": [
+        { "column": "severity", "direction": "asc" },
+        { "column": "customer", "direction": "asc" }
+      ],
+      "conditional_formatting": [
+        { "column": "severity", "rule": "== P0", "format": { "bg": "#FF0000", "font": "#FFFFFF" } },
+        { "column": "severity", "rule": "== P1", "format": { "bg": "#FFA500", "font": "#000000" } },
+        { "column": "severity", "rule": "== P2", "format": { "bg": "#FFFF00", "font": "#000000" } }
+      ],
+      "summary_formulas": {}
+    },
+    {
+      "name": "Product_Scope",
+      "required": true,
+      "activation_condition": "always",
+      "description": "All findings from the ProductTech agent.",
+      "source": "merged/*.json",
+      "_source_note": "Filter: finding.agent == 'producttech'.",
+      "row_rule": "one_row_per_finding where agent == producttech",
+      "columns": [
+        { "name": "Customer", "key": "analysis_unit", "type": "string", "width": 25 },
+        { "name": "Severity", "key": "severity", "type": "string", "width": 10 },
+        { "name": "Category", "key": "category", "type": "string", "width": 25 },
+        { "name": "Title", "key": "title", "type": "string", "width": 40 },
+        { "name": "Description", "key": "description", "type": "string", "width": 60 },
+        { "name": "Source File", "key": "citation_source_path", "type": "string", "width": 35 },
+        { "name": "Location", "key": "citation_location", "type": "string", "width": 20 },
+        { "name": "Exact Quote", "key": "citation_exact_quote", "type": "string", "width": 50 },
+        { "name": "Confidence", "key": "confidence", "type": "string", "width": 12 },
+        { "name": "Finding ID", "key": "id", "type": "string", "width": 30 }
+      ],
+      "sort_order": [
+        { "column": "severity", "direction": "asc" },
+        { "column": "customer", "direction": "asc" }
+      ],
+      "conditional_formatting": [
+        { "column": "severity", "rule": "== P0", "format": { "bg": "#FF0000", "font": "#FFFFFF" } },
+        { "column": "severity", "rule": "== P1", "format": { "bg": "#FFA500", "font": "#000000" } },
+        { "column": "severity", "rule": "== P2", "format": { "bg": "#FFFF00", "font": "#000000" } }
+      ],
+      "summary_formulas": {}
+    },
+    {
+      "name": "Data_Reconciliation",
+      "required": true,
+      "activation_condition": "always",
+      "description": "Cross-reference data comparing contract values against reference files.",
+      "source": "merged/*.json cross_references",
+      "_source_note": "Rows from cross_references[] array in each merged customer file.",
+      "row_rule": "one_row_per_cross_reference",
+      "columns": [
+        { "name": "Customer", "key": "customer", "type": "string", "width": 25 },
+        { "name": "Data Type", "key": "data_type", "type": "string", "width": 15 },
+        { "name": "Data Point", "key": "data_point", "type": "string", "width": 20 },
+        { "name": "Contract Value", "key": "contract_value", "type": "string", "width": 20 },
+        { "name": "Contract Source", "key": "contract_source_file", "type": "string", "width": 30 },
+        { "name": "Reference Value", "key": "reference_value", "type": "string", "width": 20 },
+        { "name": "Reference Source", "key": "reference_source_file", "type": "string", "width": 30 },
+        { "name": "Match Status", "key": "match_status", "type": "string", "width": 14 },
+        { "name": "Variance", "key": "variance", "type": "string", "width": 12 },
+        { "name": "Severity", "key": "severity", "type": "string", "width": 10 },
+        { "name": "Interpretation", "key": "interpretation", "type": "string", "width": 40 }
+      ],
+      "sort_order": [
+        { "column": "match_status", "direction": "desc" },
+        { "column": "customer", "direction": "asc" }
+      ],
+      "conditional_formatting": [
+        { "column": "match_status", "rule": "== mismatch", "format": { "bg": "#FFC7CE", "font": "#9C0006" } },
+        { "column": "match_status", "rule": "== match", "format": { "bg": "#C6EFCE", "font": "#006100" } }
+      ],
+      "summary_formulas": {
+        "bottom": [
+          { "column": "customer", "value": "TOTAL" },
+          { "column": "data_point", "formula": "COUNTA(data_point)" },
+          { "column": "match_status", "formula": "COUNTIF(match_status, mismatch)" }
+        ]
+      }
+    },
+    {
+      "name": "Missing_Docs_Gaps",
+      "required": true,
+      "activation_condition": "always",
+      "description": "All gaps (missing documents, missing data, contradictions) from every agent.",
+      "source": "merged/gaps/*.json",
+      "_source_note": "Union of gap files from all agents, deduplicated by missing_item.",
+      "row_rule": "one_row_per_gap",
+      "columns": [
+        { "name": "Customer", "key": "customer", "type": "string", "width": 25 },
+        { "name": "Priority", "key": "priority", "type": "string", "width": 10 },
+        { "name": "Gap Type", "key": "gap_type", "type": "string", "width": 18 },
+        { "name": "Missing Item", "key": "missing_item", "type": "string", "width": 35 },
+        { "name": "Why Needed", "key": "why_needed", "type": "string", "width": 40 },
+        { "name": "Risk If Missing", "key": "risk_if_missing", "type": "string", "width": 40 },
+        { "name": "Request to Company", "key": "request_to_company", "type": "string", "width": 40 },
+        { "name": "Evidence", "key": "evidence", "type": "string", "width": 35 },
+        { "name": "Detection Method", "key": "detection_method", "type": "string", "width": 20 },
+        { "name": "Agent", "key": "agent", "type": "string", "width": 14 },
+        { "name": "Source File", "key": "source_file", "type": "string", "width": 30 }
+      ],
+      "sort_order": [
+        { "column": "priority", "direction": "asc" },
+        { "column": "customer", "direction": "asc" }
+      ],
+      "conditional_formatting": [
+        { "column": "priority", "rule": "== P0", "format": { "bg": "#FF0000", "font": "#FFFFFF" } },
+        { "column": "priority", "rule": "== P1", "format": { "bg": "#FFA500", "font": "#000000" } },
+        { "column": "priority", "rule": "== P2", "format": { "bg": "#FFFF00", "font": "#000000" } }
+      ],
+      "summary_formulas": {
+        "bottom": [
+          { "column": "customer", "value": "TOTAL" },
+          { "column": "missing_item", "formula": "COUNTA(missing_item)" }
+        ]
+      }
+    },
+    {
+      "name": "Contract_Date_Reconciliation",
+      "required": false,
+      "activation_condition": "source_of_truth.customer_database exists in deal-config.json",
+      "description": "Reconciliation of database contract end dates against data room evidence.",
+      "source": "contract_date_reconciliation.json",
+      "_source_note": "Only generated when source_of_truth.customer_database is configured.",
+      "row_rule": "one_row_per_reconciliation_entry",
+      "columns": [
+        { "name": "Customer", "key": "customer", "type": "string", "width": 25 },
+        { "name": "Database End Date", "key": "database_end_date", "type": "date", "width": 18, "format": "YYYY-MM-DD" },
+        { "name": "Actual End Date", "key": "actual_end_date", "type": "date", "width": 18, "format": "YYYY-MM-DD" },
+        { "name": "ARR", "key": "arr", "type": "currency", "width": 15, "format": "#,##0.00" },
+        { "name": "Status", "key": "status", "type": "string", "width": 28 },
+        { "name": "Evidence", "key": "evidence", "type": "string", "width": 45 },
+        { "name": "Evidence File", "key": "evidence_file", "type": "string", "width": 35 }
+      ],
+      "sort_order": [
+        { "column": "status", "direction": "asc" },
+        { "column": "customer", "direction": "asc" }
+      ],
+      "conditional_formatting": [
+        { "column": "status", "rule": "contains active", "format": { "bg": "#C6EFCE", "font": "#006100" } },
+        { "column": "status", "rule": "contains expired", "format": { "bg": "#FFC7CE", "font": "#9C0006" } },
+        { "column": "status", "rule": "contains confirmation", "format": { "bg": "#FFEB9C", "font": "#9C5700" } }
+      ],
+      "summary_formulas": {
+        "bottom": [
+          { "column": "customer", "value": "TOTAL" },
+          { "column": "arr", "formula": "SUM(arr)" },
+          { "column": "status", "formula": "COUNTA_UNIQUE(status)" }
+        ]
+      }
+    },
+    {
+      "name": "Reference_Files_Index",
+      "required": true,
+      "activation_condition": "always",
+      "description": "Index of all global reference files and their agent assignments.",
+      "source": "reference_files.json",
+      "_source_note": "From inventory/reference_files.json.",
+      "row_rule": "one_row_per_reference_file",
+      "columns": [
+        { "name": "File Path", "key": "file_path", "type": "string", "width": 40 },
+        { "name": "Category", "key": "category", "type": "string", "width": 18 },
+        { "name": "Subcategory", "key": "subcategory", "type": "string", "width": 20 },
+        { "name": "Description", "key": "description", "type": "string", "width": 45 },
+        { "name": "Customers Mentioned", "key": "customers_mentioned_count", "type": "integer", "width": 20 },
+        { "name": "Data Points", "key": "data_points_extractable", "type": "string", "width": 35 },
+        { "name": "Assigned To", "key": "assigned_to_agents", "type": "string", "width": 25 }
+      ],
+      "sort_order": [
+        { "column": "category", "direction": "asc" },
+        { "column": "file_path", "direction": "asc" }
+      ],
+      "conditional_formatting": [],
+      "summary_formulas": {
+        "bottom": [
+          { "column": "file_path", "value": "TOTAL" },
+          { "column": "customers_mentioned_count", "formula": "SUM(customers_mentioned_count)" }
+        ]
+      }
+    },
+    {
+      "name": "Entity_Resolution_Log",
+      "required": true,
+      "activation_condition": "always",
+      "description": "Entity resolution match log showing how names were resolved.",
+      "source": "entity_matches.json",
+      "_source_note": "From inventory/entity_matches.json.",
+      "row_rule": "one_row_per_entity_match",
+      "columns": [
+        { "name": "Source Name", "key": "source_name", "type": "string", "width": 30 },
+        { "name": "Source", "key": "source", "type": "string", "width": 15 },
+        { "name": "Matched Name", "key": "matched_name", "type": "string", "width": 30 },
+        { "name": "Target", "key": "target", "type": "string", "width": 15 },
+        { "name": "Match Pass", "key": "match_pass", "type": "integer", "width": 12 },
+        { "name": "Match Method", "key": "match_method", "type": "string", "width": 18 },
+        { "name": "Confidence", "key": "confidence", "type": "percentage", "width": 12, "format": "0.0%" },
+        { "name": "Canonical Name", "key": "canonical_name", "type": "string", "width": 30 }
+      ],
+      "sort_order": [
+        { "column": "match_pass", "direction": "asc" },
+        { "column": "source_name", "direction": "asc" }
+      ],
+      "conditional_formatting": [
+        { "column": "confidence", "rule": "< 0.8", "format": { "bg": "#FFEB9C", "font": "#9C5700" } }
+      ],
+      "summary_formulas": {
+        "bottom": [
+          { "column": "source_name", "value": "TOTAL" },
+          { "column": "matched_name", "formula": "COUNTA(matched_name)" }
+        ]
+      }
+    },
+    {
+      "name": "Quality_Audit",
+      "required": false,
+      "activation_condition": "judge.enabled in deal-config.json",
+      "description": "Judge quality scores and spot-check results per agent.",
+      "source": "quality_scores.json",
+      "_source_note": "Single file containing agent_scores, spot_checks, and contradictions inline.",
+      "row_rule": "one_row_per_spot_check",
+      "columns": [
+        { "name": "Finding ID", "key": "finding_id", "type": "string", "width": 30 },
+        { "name": "Agent", "key": "agent", "type": "string", "width": 14 },
+        { "name": "Customer", "key": "analysis_unit", "type": "string", "width": 25 },
+        { "name": "Severity", "key": "severity", "type": "string", "width": 10 },
+        { "name": "Dimension", "key": "dimension", "type": "string", "width": 25 },
+        { "name": "Result", "key": "result", "type": "string", "width": 10 },
+        { "name": "Notes", "key": "notes", "type": "string", "width": 45 }
+      ],
+      "sort_order": [
+        { "column": "result", "direction": "desc" },
+        { "column": "agent", "direction": "asc" }
+      ],
+      "conditional_formatting": [
+        { "column": "result", "rule": "== FAIL", "format": { "bg": "#FFC7CE", "font": "#9C0006" } },
+        { "column": "result", "rule": "== PARTIAL", "format": { "bg": "#FFEB9C", "font": "#9C5700" } },
+        { "column": "result", "rule": "== PASS", "format": { "bg": "#C6EFCE", "font": "#006100" } }
+      ],
+      "summary_formulas": {
+        "bottom": [
+          { "column": "finding_id", "value": "TOTAL" },
+          { "column": "result", "formula": "COUNTIF(result, PASS)" }
+        ]
+      }
+    },
+    {
+      "name": "Run_Diff",
+      "required": false,
+      "activation_condition": "prior run exists AND reporting.include_diff_sheet is true",
+      "description": "Changes between current and prior run (new/resolved findings, severity changes).",
+      "source": "report_diff.json",
+      "_source_note": "Omit sheet if no prior run exists.",
+      "row_rule": "one_row_per_change",
+      "columns": [
+        { "name": "Change Type", "key": "change_type", "type": "string", "width": 20 },
+        { "name": "Customer", "key": "customer", "type": "string", "width": 25 },
+        { "name": "Finding Summary", "key": "finding_summary", "type": "string", "width": 45 },
+        { "name": "Prior Severity", "key": "prior_severity", "type": "string", "width": 14 },
+        { "name": "Current Severity", "key": "current_severity", "type": "string", "width": 16 },
+        { "name": "Details", "key": "details", "type": "string", "width": 40 }
+      ],
+      "sort_order": [
+        { "column": "change_type", "direction": "asc" },
+        { "column": "customer", "direction": "asc" }
+      ],
+      "conditional_formatting": [
+        { "column": "change_type", "rule": "== new_finding", "format": { "bg": "#FFC7CE", "font": "#9C0006" } },
+        { "column": "change_type", "rule": "== resolved_finding", "format": { "bg": "#C6EFCE", "font": "#006100" } },
+        { "column": "change_type", "rule": "== changed_severity", "format": { "bg": "#FFEB9C", "font": "#9C5700" } }
+      ],
+      "summary_formulas": {
+        "bottom": [
+          { "column": "change_type", "formula": "COUNTA(change_type)" },
+          { "column": "customer", "formula": "COUNTA_UNIQUE(customer)" }
+        ]
+      }
+    },
+    {
+      "name": "_Metadata",
+      "required": false,
+      "activation_condition": "reporting.include_metadata_sheet is true",
+      "description": "Run metadata: buyer, target, execution mode, timestamps, config hash.",
+      "source": "deal-config.json + metadata.json + numerical_manifest.json",
+      "_source_note": "Key-value pairs from deal config and run metadata.",
+      "row_rule": "one_row_per_metadata_key",
+      "columns": [
+        { "name": "Property", "key": "property", "type": "string", "width": 35 },
+        { "name": "Value", "key": "value", "type": "string", "width": 60 }
+      ],
+      "sort_order": [],
+      "conditional_formatting": [],
+      "summary_formulas": {}
+    }
+  ]
+}

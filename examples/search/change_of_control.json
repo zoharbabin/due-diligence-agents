@@ -1,0 +1,22 @@
+{
+  "name": "Change of Control Analysis",
+  "description": "Identify consent and notice requirements triggered by change of control or change in ownership events.",
+  "columns": [
+    {
+      "name": "Consent Required (Change of Control)",
+      "prompt": "Does this agreement require consent, approval, or waiver from the customer specifically upon a change of control or change in ownership of the service provider? Answer YES, NO, or NOT_ADDRESSED. Provide the section reference and page number."
+    },
+    {
+      "name": "Consent Clause Summary",
+      "prompt": "If this agreement requires consent upon a change of control, summarize the relevant clause in 1-3 sentences. Include the exact section reference and page number. If no consent clause exists, state NOT_ADDRESSED."
+    },
+    {
+      "name": "Notice Required (Change of Control)",
+      "prompt": "Does this agreement require the service provider to notify the customer upon a change of control or change in ownership? Answer YES, NO, or NOT_ADDRESSED. Provide the section reference and page number."
+    },
+    {
+      "name": "Notice Clause Summary",
+      "prompt": "If this agreement requires notice upon a change of control, summarize the relevant clause in 1-3 sentences. Include the exact section reference and page number. If no notice clause exists, state NOT_ADDRESSED."
+    }
+  ]
+}
