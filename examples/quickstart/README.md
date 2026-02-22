@@ -32,9 +32,42 @@ Verify the CLI is available:
 dd-agents version
 ```
 
-## Step 2: Copy the Example Config
+## Step 2: Generate Config with Auto-Config (Recommended)
 
-Copy the pre-filled example configuration to your working directory:
+The fastest way to get started is `auto-config`. It scans your data room and uses Claude to produce a complete `deal-config.json` — resolving legal entity names, subsidiaries, historical names, entity variants, and focus areas automatically.
+
+```bash
+dd-agents auto-config "Meridian Holdings" "NovaBridge Solutions" \
+  --data-room examples/quickstart/sample_data_room
+```
+
+This will:
+
+1. Scan the data room directory structure and catalog every file.
+2. Send the directory tree, file metadata, and company names to Claude.
+3. Generate a `deal-config.json` with buyer/target details, entity aliases, focus areas, and data room mapping.
+
+Use `--dry-run` to preview the output without writing a file:
+
+```bash
+dd-agents auto-config "Meridian Holdings" "NovaBridge Solutions" \
+  --data-room examples/quickstart/sample_data_room --dry-run
+```
+
+### Auto-Config Options
+
+| Flag | Description |
+|------|-------------|
+| `--data-room PATH` | Path to the data room folder (required) |
+| `--deal-type TYPE` | Override inferred deal type (e.g., `merger`, `divestiture`) |
+| `--output PATH` | Where to save the config (default: `deal-config.json`) |
+| `--dry-run` | Print the config without writing to disk |
+| `--force` | Overwrite output file if it already exists |
+| `--model MODEL` | Claude model to use (default: `claude-sonnet-4-20250514`) |
+
+### Alternative: Use the Example Config
+
+If you prefer to skip auto-config and use a pre-filled config directly:
 
 ```bash
 cp examples/quickstart/deal-config.json .
@@ -44,7 +77,7 @@ This config defines a fictional deal where **Meridian Holdings** is acquiring **
 
 ## Step 3: Validate the Config
 
-Check that the config is well-formed and all referenced paths exist:
+Whether you generated or copied the config, validate it:
 
 ```bash
 dd-agents validate deal-config.json
@@ -87,7 +120,7 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 dd-agents run deal-config.json
 ```
 
-This will execute all 35 orchestrator steps. Expect 3-10 minutes depending on data room size and model latency.
+This will execute all 35 orchestrator steps.
 
 ## What to Expect
 

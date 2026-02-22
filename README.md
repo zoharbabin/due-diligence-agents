@@ -1,6 +1,6 @@
 # Due Diligence Agent SDK
 
-> **Status**: Implemented. Full pipeline and contract search command operational with 627 passing tests.
+> **Status**: Implemented. Full pipeline, contract search, and auto-config commands operational with 661 passing tests.
 
 Standalone Python application for forensic M&A due diligence. Migrates a Claude Code Skill (3,100+ lines across 9 files) to a programmatic pipeline using `claude-agent-sdk` v0.1.39+. Six agents (4 specialists + optional Judge + Reporting Lead) analyze contract data rooms, extract clauses, build governance graphs, detect gaps, and produce a 14-sheet Excel report — all under deterministic Python orchestration with hook-enforced quality gates.
 
@@ -27,6 +27,7 @@ due-diligence-agents/
 │       ├── tools/               # Custom MCP tools (validate_finding, etc.)
 │       └── vector_store/        # Optional ChromaDB integration
 ├── examples/
+│   ├── quickstart/              # Quickstart guide with sample data room
 │   └── search/                  # Ready-to-use prompt templates
 ├── tests/
 │   ├── fixtures/                # Test data rooms, sample configs
@@ -45,12 +46,50 @@ due-diligence-agents/
 # Install in development mode
 pip install -e ".[dev]"
 
-# Run the full 35-step pipeline against a deal
-dd-agents run path/to/deal-config.json
+# Auto-generate deal-config.json by scanning a data room with AI
+dd-agents auto-config "Buyer Corp" "Target Inc" --data-room ./data_room
+
+# Run the full 35-step pipeline against the generated config
+dd-agents run deal-config.json
 
 # Run with incremental mode
-dd-agents run path/to/deal-config.json --mode incremental
+dd-agents run deal-config.json --mode incremental
 ```
+
+## Auto-Config
+
+The `auto-config` command replaces manual configuration. Point it at a data room folder, provide the buyer and target company names, and Claude analyzes the directory structure, file names, and metadata to produce a complete `deal-config.json` — including resolved legal entity names, subsidiaries, historical names, entity variants for contract matching, and recommended focus areas.
+
+```bash
+# Basic usage (writes deal-config.json to current directory)
+dd-agents auto-config "Buyer Corp" "Target Inc" --data-room ./data_room
+
+# Preview what would be generated without writing a file
+dd-agents auto-config "Buyer Corp" "Target Inc" --data-room ./data_room --dry-run
+
+# Override the inferred deal type
+dd-agents auto-config "Buyer Corp" "Target Inc" --data-room ./data_room --deal-type merger
+
+# Save to a specific path and overwrite if it exists
+dd-agents auto-config "Buyer Corp" "Target Inc" --data-room ./data_room \
+  --output configs/my-deal.json --force
+```
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `BUYER` | Name of the acquiring company (positional, required) |
+| `TARGET` | Name of the company being acquired/evaluated (positional, required) |
+| `--data-room PATH` | Path to the data room folder (required) |
+| `--deal-type TYPE` | Override inferred deal type (`acquisition`, `merger`, `divestiture`, `investment`, `joint_venture`, `other`) |
+| `--output PATH` | Where to save the config (default: `deal-config.json`) |
+| `--dry-run` | Print the generated config without writing to disk |
+| `--force` | Overwrite output file if it already exists |
+| `--model MODEL` | Claude model to use (default: `claude-sonnet-4-20250514`) |
+| `--verbose` / `-v` | Enable debug logging |
+
+The generated config includes everything needed to run the full pipeline: buyer/target details, entity aliases, focus areas, and data room mapping. You can review and edit it before running `dd-agents run`.
 
 ## Contract Search
 
