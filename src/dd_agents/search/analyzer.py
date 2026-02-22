@@ -34,6 +34,13 @@ _CHARS_PER_TOKEN = 4
 _INPUT_COST_PER_MTOK = 3.0  # Claude Sonnet 4 pricing (USD per 1M tokens)
 _OUTPUT_COST_PER_MTOK = 15.0
 
+# Conservative prompt size limit (~150K tokens → 600K chars).  Leaves
+# headroom for the system prompt and output tokens.
+_MAX_PROMPT_CHARS = 600_000
+
+# Error messages that indicate non-transient failures (don't retry).
+_NON_TRANSIENT_ERRORS = ("Prompt is too long", "context length", "too many tokens")
+
 
 class SearchAnalyzer:
     """Analyse customer contracts against custom prompts via the Claude Agent SDK.
@@ -220,24 +227,26 @@ class SearchAnalyzer:
                 return result
 
             except Exception as exc:
+                error_str = str(exc)
+                is_non_transient = any(msg in error_str for msg in _NON_TRANSIENT_ERRORS)
                 logger.warning(
-                    "Attempt %d/%d failed for %s: %s",
+                    "Attempt %d/%d failed for %s: %s%s",
                     attempt,
                     self._max_retries,
                     customer.name,
                     exc,
+                    " (non-transient, skipping retries)" if is_non_transient else "",
                 )
-                if attempt < self._max_retries:
-                    await asyncio.sleep(2**attempt)
-                else:
+                if is_non_transient or attempt >= self._max_retries:
                     return SearchCustomerResult(
                         customer_name=customer.name,
                         group=customer.group,
                         files_analyzed=files_with_text,
                         total_files=customer.file_count,
                         skipped_files=skipped_files,
-                        error=f"API error after {self._max_retries} retries: {exc}",
+                        error=f"API error: {exc}",
                     )
+                await asyncio.sleep(2**attempt)
 
         # Unreachable, but satisfies type checker.
         return SearchCustomerResult(  # pragma: no cover
@@ -349,6 +358,10 @@ class SearchAnalyzer:
     def _build_customer_prompt(self, customer: CustomerEntry) -> tuple[str, int, list[str]]:
         """Build the user prompt containing all extracted document texts.
 
+        Documents are included in order until the cumulative size
+        approaches :data:`_MAX_PROMPT_CHARS`.  Any remaining files are
+        reported as skipped so they still appear in the report metadata.
+
         Returns
         -------
         tuple[str, int, list[str]]
@@ -356,7 +369,9 @@ class SearchAnalyzer:
             of files that actually had extractable text, and a list of
             file paths that were skipped (missing or empty extraction).
         """
-        parts: list[str] = [f"# Customer: {customer.name} (Group: {customer.group})\n"]
+        header = f"# Customer: {customer.name} (Group: {customer.group})\n"
+        parts: list[str] = [header]
+        current_chars = len(header)
         files_found = 0
         skipped_files: list[str] = []
 
@@ -373,7 +388,19 @@ class SearchAnalyzer:
                 skipped_files.append(file_path)
                 continue
 
-            parts.append(f"\n---\n## Document: {file_path}\n---\n{text}\n")
+            doc_block = f"\n---\n## Document: {file_path}\n---\n{text}\n"
+            if current_chars + len(doc_block) > _MAX_PROMPT_CHARS and files_found > 0:
+                logger.warning(
+                    "SKIPPED (prompt size limit): %s (%d chars would exceed %d limit)",
+                    file_path,
+                    current_chars + len(doc_block),
+                    _MAX_PROMPT_CHARS,
+                )
+                skipped_files.append(file_path)
+                continue
+
+            parts.append(doc_block)
+            current_chars += len(doc_block)
             files_found += 1
 
         if skipped_files:
