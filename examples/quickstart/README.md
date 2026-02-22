@@ -63,7 +63,6 @@ dd-agents auto-config "Meridian Holdings" "NovaBridge Solutions" \
 | `--output PATH` | Where to save the config (default: `deal-config.json`) |
 | `--dry-run` | Print the config without writing to disk |
 | `--force` | Overwrite output file if it already exists |
-| `--model MODEL` | Claude model to use (default: `claude-sonnet-4-20250514`) |
 
 ### Alternative: Use the Example Config
 

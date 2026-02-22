@@ -138,10 +138,8 @@ class DataRoomAnalyzer:
     def __init__(
         self,
         data_room_path: Path,
-        model: str = "claude-sonnet-4-20250514",
     ) -> None:
         self._data_room_path = data_room_path
-        self._model = model
 
     async def analyze(
         self,
@@ -302,7 +300,6 @@ class DataRoomAnalyzer:
 
         options = ClaudeAgentOptions(
             system_prompt=system_prompt,
-            model=self._model,
             max_turns=1,
             permission_mode="bypassPermissions",
         )

@@ -517,12 +517,6 @@ def init(
     help="Overwrite output file if it already exists.",
 )
 @click.option(
-    "--model",
-    default="claude-sonnet-4-20250514",
-    show_default=True,
-    help="Claude model to use for analysis.",
-)
-@click.option(
     "--verbose",
     "-v",
     is_flag=True,
@@ -537,7 +531,6 @@ def auto_config(
     output_path: Path | None,
     dry_run: bool,
     force: bool,
-    model: str,
     verbose: bool,
 ) -> None:
     """Auto-generate deal-config.json by analyzing a data room with AI.
@@ -579,7 +572,7 @@ def auto_config(
     reference_files = build_reference_file_summary(data_room)
 
     # 4. Analyze with Claude
-    analyzer = DataRoomAnalyzer(data_room_path=data_room, model=model)
+    analyzer = DataRoomAnalyzer(data_room_path=data_room)
 
     with console.status("[bold cyan]Analyzing data room with Claude...[/bold cyan]"):
         try:

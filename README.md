@@ -86,7 +86,6 @@ dd-agents auto-config "Buyer Corp" "Target Inc" --data-room ./data_room \
 | `--output PATH` | Where to save the config (default: `deal-config.json`) |
 | `--dry-run` | Print the generated config without writing to disk |
 | `--force` | Overwrite output file if it already exists |
-| `--model MODEL` | Claude model to use (default: `claude-sonnet-4-20250514`) |
 | `--verbose` / `-v` | Enable debug logging |
 
 The generated config includes everything needed to run the full pipeline: buyer/target details, entity aliases, focus areas, and data room mapping. You can review and edit it before running `dd-agents run`.

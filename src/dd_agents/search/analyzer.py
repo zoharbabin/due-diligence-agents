@@ -270,7 +270,6 @@ class SearchAnalyzer:
 
         options = ClaudeAgentOptions(
             system_prompt=system_prompt,
-            model="claude-sonnet-4-20250514",
             max_turns=1,
             permission_mode="bypassPermissions",
         )
