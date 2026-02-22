@@ -388,11 +388,25 @@ class ExtractionPipeline:
         """Convert a source file path to a safe extracted-text filename.
 
         Convention: strip leading ``./``, replace ``/`` with ``__``,
-        append ``.md``.
+        append ``.md``.  If the resulting name exceeds 200 characters
+        it is truncated and a short hash suffix is appended to
+        guarantee uniqueness (macOS enforces a 255-byte filename limit).
         """
+        import hashlib
+
         name = source_path.lstrip("./")
         name = name.replace("/", "__")
-        return f"{name}.md"
+        full = f"{name}.md"
+
+        # macOS HFS+/APFS limit is 255 bytes; keep well under.
+        max_len = 200
+        if len(full.encode("utf-8")) <= max_len:
+            return full
+
+        digest = hashlib.sha256(source_path.encode()).hexdigest()[:12]
+        # Truncate the name portion, keep .md suffix
+        truncated = name.encode("utf-8")[: max_len - len(digest) - 4].decode("utf-8", errors="ignore")
+        return f"{truncated}_{digest}.md"
 
     @staticmethod
     def _run_pdftotext(filepath: Path) -> str:
