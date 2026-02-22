@@ -516,7 +516,12 @@ class SearchAnalyzer:
     def _get_text_path(self, source_path: str) -> Path:
         """Convert original file path to extracted text path.
 
-        Convention matches :func:`dd_agents.tools.verify_citation._get_text_path`.
+        Resolves the relative *source_path* against the data room root
+        so the safe filename matches what the extraction pipeline wrote
+        (which receives absolute paths).
         """
-        safe_name = source_path.lstrip("./").replace("/", "__")
-        return self._text_dir / f"{safe_name}.md"
+        from dd_agents.extraction.pipeline import ExtractionPipeline
+
+        absolute = str(self._data_room / source_path)
+        safe_name = ExtractionPipeline._safe_text_name(absolute)
+        return self._text_dir / safe_name

@@ -50,10 +50,15 @@ def _make_analyzer(tmp_path: Path, prompts: SearchPrompts | None = None) -> Sear
 
 
 def _write_text_file(tmp_path: Path, rel_path: str, content: str) -> None:
-    """Write a fake extracted text file using the safe_name convention."""
+    """Write a fake extracted text file using the same naming as the pipeline."""
+    from dd_agents.extraction.pipeline import ExtractionPipeline
+
     text_dir = tmp_path / "data_room" / "_dd" / "forensic-dd" / "index" / "text"
-    safe_name = rel_path.lstrip("./").replace("/", "__")
-    (text_dir / f"{safe_name}.md").write_text(content)
+    data_room = tmp_path / "data_room"
+    # The analyzer resolves relative paths against data_room_path, so mirror that.
+    absolute = str(data_room / rel_path)
+    safe_name = ExtractionPipeline._safe_text_name(absolute)
+    (text_dir / safe_name).write_text(content)
 
 
 class TestCostEstimate:

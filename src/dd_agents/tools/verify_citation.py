@@ -22,10 +22,13 @@ def _normalize(text: str) -> str:
 def _get_text_path(source_path: str, text_dir: str | Path) -> Path:
     """Convert original file path to extracted text path.
 
-    Convention: replace ``/`` with ``__``, strip leading ``./``, append ``.md``.
+    Uses the extraction pipeline's ``_safe_text_name`` helper so that
+    long filenames are truncated with a hash suffix consistently.
     """
-    safe_name = source_path.lstrip("./").replace("/", "__")
-    return Path(text_dir) / f"{safe_name}.md"
+    from dd_agents.extraction.pipeline import ExtractionPipeline
+
+    safe_name = ExtractionPipeline._safe_text_name(source_path)
+    return Path(text_dir) / safe_name
 
 
 def verify_citation(
