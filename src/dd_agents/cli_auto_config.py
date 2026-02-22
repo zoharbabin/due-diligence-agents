@@ -223,7 +223,10 @@ class DataRoomAnalyzer:
             "  }\n"
             "}\n\n"
             "IMPORTANT: Every field above is required. entity_name_variants_for_contract_matching "
-            "must contain at least the target name. focus_areas must have at least one entry."
+            "must contain at least the target name. focus_areas must have at least one entry.\n\n"
+            "Do NOT use any tools. Do NOT attempt to read files or browse the filesystem. "
+            "All the information you need is provided in the user message below. "
+            "Respond with ONLY the JSON object."
         )
 
     def _build_user_prompt(
@@ -298,22 +301,43 @@ class DataRoomAnalyzer:
             query,
         )
 
+        logger.debug(
+            "Calling Claude: system_prompt=%d chars, user_prompt=%d chars",
+            len(system_prompt),
+            len(user_prompt),
+        )
+
         options = ClaudeAgentOptions(
             system_prompt=system_prompt,
             max_turns=1,
             permission_mode="bypassPermissions",
+            # Disable all tools — we provide all data in the prompt and
+            # only need a text (JSON) response.  Without this, the agent
+            # uses Read/Glob/Bash to explore the data room itself, which
+            # is slow and never produces the JSON we need.
+            disallowed_tools=["Read", "Edit", "Write", "Bash", "Glob", "Grep", "WebFetch", "Task", "NotebookEdit"],
         )
 
         text_parts: list[str] = []
         async for message in query(prompt=user_prompt, options=options):
+            logger.debug("SDK message: %s", type(message).__name__)
             if isinstance(message, AssistantMessage):
                 for block in message.content:
+                    logger.debug("  block: %s", type(block).__name__)
                     if isinstance(block, TextBlock):
                         text_parts.append(block.text)
-            elif isinstance(message, ResultMessage) and message.is_error:
-                raise RuntimeError(f"Claude returned error: {message.result}")
+            elif isinstance(message, ResultMessage):
+                logger.debug(
+                    "  ResultMessage: is_error=%s, result=%s",
+                    message.is_error,
+                    getattr(message, "result", "N/A"),
+                )
+                if message.is_error:
+                    raise RuntimeError(f"Claude returned error: {message.result}")
 
-        return "\n".join(text_parts)
+        result = "\n".join(text_parts)
+        logger.debug("Claude response: %d chars", len(result))
+        return result
 
     # ------------------------------------------------------------------
     # Response parsing

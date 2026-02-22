@@ -616,17 +616,6 @@ def auto_config(
 
     console.print()
     print_auto_config_summary(console, config, scan_result)
-    console.print(
-        Panel(
-            f"[bold green]Config written to {output_path}[/bold green]\n\n"
-            "Next steps:\n"
-            f"  1. Review: {output_path}\n"
-            f"  2. dd-agents run {output_path} --dry-run\n"
-            f"  3. dd-agents run {output_path}",
-            title="Success",
-            border_style="green",
-        )
-    )
 
 
 # ---------------------------------------------------------------------------
