@@ -18,10 +18,16 @@ log = logging.getLogger("dd_agents.inventory.customers")
 class CustomerRegistryBuilder:
     """Parses the data room directory hierarchy to identify customer folders.
 
-    Assumes the convention ``data_room/group/customer/files``:
-      - Top-level directories are *groups* (business units, portfolios, etc.).
-      - Second-level directories are *customer folders*.
-      - Files directly in the root or in a group dir are reference files.
+    Supports two layouts:
+
+    1. **Three-level** (``data_room/group/customer/files``):
+       Top-level dirs are *groups*, second-level dirs are *customer folders*.
+
+    2. **Two-level** (``data_room/customer/files``):
+       Top-level dirs are *customers*.  Files directly under a top-level
+       dir are assigned to that dir as both group and customer.
+
+    Files in the data room root are always treated as reference files.
     """
 
     def build(
@@ -52,6 +58,14 @@ class CustomerRegistryBuilder:
         group_file_counts: dict[str, int] = defaultdict(int)
         group_customer_names: dict[str, set[str]] = defaultdict(set)
 
+        # First pass: identify which top-level dirs contain files directly
+        # (two-level layout) to distinguish from pure three-level dirs.
+        dirs_with_direct_files: set[str] = set()
+        for entry in files:
+            parts = PurePosixPath(entry.path).parts
+            if len(parts) == 2:
+                dirs_with_direct_files.add(parts[0])
+
         for entry in files:
             parts = PurePosixPath(entry.path).parts
 
@@ -60,18 +74,31 @@ class CustomerRegistryBuilder:
             if suffix:
                 ext_counts[suffix] = ext_counts.get(suffix, 0) + 1
 
-            if len(parts) >= 3:
-                # group/customer/... pattern
+            if len(parts) < 2:
+                # Root-level file => reference
+                reference_file_paths.append(entry.path)
+                continue
+
+            top_dir = parts[0]
+
+            if top_dir in dirs_with_direct_files:
+                # Two-level layout: the top-level dir IS the customer.
+                # All files (direct and in subfolders) belong to it.
+                customer_files[(top_dir, top_dir)].append(entry.path)
+                group_file_counts[top_dir] += 1
+                group_customer_names[top_dir].add(top_dir)
+            elif len(parts) >= 3:
+                # Pure three-level layout: group/customer/files
                 group = parts[0]
                 customer = parts[1]
                 customer_files[(group, customer)].append(entry.path)
                 group_file_counts[group] += 1
                 group_customer_names[group].add(customer)
             else:
-                # Root-level or group-level file => reference
+                # File in a group dir that has no direct files but the
+                # path is only 2 parts — treat as reference.
                 reference_file_paths.append(entry.path)
-                if len(parts) >= 2:
-                    group_file_counts[parts[0]] += 1
+                group_file_counts[top_dir] += 1
 
         # Build CustomerEntry list
         customers: list[CustomerEntry] = []
