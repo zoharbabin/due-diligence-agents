@@ -272,6 +272,7 @@ class SearchAnalyzer:
             system_prompt=system_prompt,
             max_turns=1,
             permission_mode="bypassPermissions",
+            disallowed_tools=["Read", "Edit", "Write", "Bash", "Glob", "Grep", "WebFetch", "Task", "NotebookEdit"],
         )
 
         text_parts: list[str] = []
