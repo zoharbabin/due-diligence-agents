@@ -31,6 +31,8 @@ class SearchRunner:
         Root of the data room.
     output_path:
         Destination for the Excel report.
+    group_filter:
+        Comma-separated group names to include (case-insensitive partial match).
     customer_filter:
         Comma-separated customer names to include (case-insensitive partial match).
     concurrency:
@@ -46,6 +48,7 @@ class SearchRunner:
         prompts_path: Path,
         data_room_path: Path,
         output_path: Path | None = None,
+        group_filter: str | None = None,
         customer_filter: str | None = None,
         concurrency: int = 5,
         auto_confirm: bool = False,
@@ -53,6 +56,7 @@ class SearchRunner:
     ) -> None:
         self._prompts_path = prompts_path
         self._data_room = data_room_path.resolve()
+        self._group_filter = group_filter
         self._customer_filter = customer_filter
         self._concurrency = concurrency
         self._auto_confirm = auto_confirm
@@ -116,7 +120,20 @@ class SearchRunner:
             )
             raise SystemExit(1)
 
-        # 3. Apply customer filter.
+        # 3. Apply group filter, then customer filter.
+        if self._group_filter:
+            gfilters = [g.strip().lower() for g in self._group_filter.split(",") if g.strip()]
+            customers = [c for c in customers if any(g in c.group.lower() for g in gfilters)]
+            if not customers:
+                self._err_console.print(
+                    Panel(
+                        f"[bold red]No customers matched group filter:[/bold red] {self._group_filter}",
+                        title="Error",
+                        border_style="red",
+                    )
+                )
+                raise SystemExit(1)
+
         if self._customer_filter:
             filters = [f.strip().lower() for f in self._customer_filter.split(",") if f.strip()]
             customers = [c for c in customers if any(f in c.name.lower() for f in filters)]
@@ -133,18 +150,20 @@ class SearchRunner:
         filtered_files = sum(c.file_count for c in customers)
         self._console.print(f"\nCustomers: {len(customers)} | Files: {filtered_files}")
 
-        # 4. Ensure text extraction is complete.
+        # 4. Ensure text extraction is complete for the filtered files.
         text_dir = self._data_room / TEXT_DIR
         cache_path = self._data_room / INDEX_DIR / "checksums.sha256"
 
-        if not text_dir.exists() or not any(text_dir.iterdir()):
+        # Only extract files belonging to filtered customers.
+        relevant_file_paths = [str(self._data_room / fp) for c in customers for fp in c.files]
+
+        if relevant_file_paths:
             self._console.print("\n[bold]Running text extraction...[/bold]")
             from dd_agents.extraction.pipeline import ExtractionPipeline
 
-            all_file_paths = [str(self._data_room / f.path) for f in files]
             pipeline = ExtractionPipeline()
             pipeline.extract_all(
-                files=all_file_paths,
+                files=relevant_file_paths,
                 output_dir=text_dir,
                 cache_path=cache_path,
             )

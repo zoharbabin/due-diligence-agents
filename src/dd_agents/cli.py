@@ -643,6 +643,11 @@ def auto_config(
     help="Excel output path (default: auto-named from prompts file).",
 )
 @click.option(
+    "--groups",
+    default=None,
+    help="Comma-separated group names to include (case-insensitive partial match). E.g. --groups Commercial",
+)
+@click.option(
     "--customers",
     default=None,
     help="Comma-separated customer names to filter (case-insensitive partial match).",
@@ -672,6 +677,7 @@ def search(
     prompts_path: Path,
     data_room: Path,
     output_path: Path | None,
+    groups: str | None,
     customers: str | None,
     concurrency: int,
     yes: bool,
@@ -685,6 +691,7 @@ def search(
     \b
     Example:
         dd-agents search prompts.json --data-room ./data_room
+        dd-agents search prompts.json --data-room ./data_room --groups Commercial
         dd-agents search prompts.json --data-room ./data_room --customers "Acme,Beta" -y
     """
     if verbose:
@@ -696,6 +703,7 @@ def search(
         prompts_path=prompts_path,
         data_room_path=data_room,
         output_path=output_path,
+        group_filter=groups,
         customer_filter=customers,
         concurrency=concurrency,
         auto_confirm=yes,
