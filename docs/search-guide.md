@@ -174,12 +174,16 @@ customer's combined document text exceeds the model's optimal context size
 1. **Splits** large documents at page boundaries (`--- Page N ---` markers)
    with 15% overlap between chunks to preserve cross-page context
 2. **Packs** smaller documents together into analysis chunks
-3. **Analyzes** each chunk independently (Phase 1: Map)
-4. **Merges** results using answer priority YES > NO > NOT_ADDRESSED (Phase 2)
+3. **Analyzes** each chunk concurrently (Phase 1: Map)
+4. **Merges** results using answer priority YES > NO > NOT_ADDRESSED,
+   with semantic conflict detection (free-text answers starting with
+   YES/NO are recognized) and best-of confidence selection (Phase 2)
 5. **Resolves** conflicts where chunks disagree via a lightweight synthesis
-   pass with all findings as structured JSON (Phase 3: Synthesis)
+   pass with all findings as structured JSON, using dynamic quote budgeting
+   to preserve full citation evidence (Phase 3: Synthesis)
 6. **Validates** any remaining NOT_ADDRESSED answers with a targeted
-   follow-up query (Phase 4: Validation)
+   follow-up query using document-order file selection and page-aware
+   splitting (Phase 4: Validation)
 
 This is fully transparent in the Excel report — the `chunks_analyzed` count
 shows how many analysis passes were needed per customer. Single-chunk

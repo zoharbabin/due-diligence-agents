@@ -23,7 +23,7 @@ from dd_agents.models.search import (
     SearchCustomerResult,
     SearchPrompts,
 )
-from dd_agents.search.analyzer import SearchAnalyzer
+from dd_agents.search.analyzer import SearchAnalyzer, _extract_yes_no, _max_confidence
 from dd_agents.search.chunker import (
     AnalysisChunk,
     FileSegment,
@@ -664,6 +664,59 @@ class TestBuildChunkPrompt:
 
 
 # ===================================================================
+# TestParallelChunkAnalysis
+# ===================================================================
+
+
+class TestParallelChunkAnalysis:
+    """Tests for concurrent chunk processing in _analyze_customer (Issue #21)."""
+
+    @pytest.mark.asyncio
+    async def test_multi_chunk_runs_concurrently(self, tmp_path: Path) -> None:
+        """Multiple chunks should be dispatched via asyncio.gather, not sequentially."""
+        analyzer = _make_analyzer(tmp_path)
+
+        # Write a large text file that will be split into multiple chunks.
+        text_parts = []
+        for i in range(1, 100):
+            text_parts.append(f"\n--- Page {i} ---\n")
+            text_parts.append(f"Page {i} legal content. " * 500)
+        big_text = "".join(text_parts)
+        _write_text_file(tmp_path, "GroupA/Acme Corp/msa.pdf", big_text)
+
+        customer = CustomerEntry(
+            group="GroupA",
+            name="Acme Corp",
+            safe_name="acme",
+            path="GroupA/Acme Corp",
+            file_count=1,
+            files=["GroupA/Acme Corp/msa.pdf"],
+        )
+
+        call_count = 0
+
+        async def mock_call(system: str, user: str) -> str:
+            nonlocal call_count
+            call_count += 1
+            return json.dumps(
+                {
+                    "Consent Required": {"answer": "NOT_ADDRESSED", "confidence": "HIGH", "citations": []},
+                    "Notice Required": {"answer": "NOT_ADDRESSED", "confidence": "HIGH", "citations": []},
+                }
+            )
+
+        with patch.object(analyzer, "_call_claude", side_effect=mock_call):
+            result = await analyzer._analyze_customer(customer)
+
+        # Should have called Claude for multiple chunks (Phase 1) + validation (Phase 4).
+        assert call_count >= 2
+        # All calls succeeded without error.
+        assert result.error is None or result.error == ""
+        # Chunks were analyzed.
+        assert result.chunks_analyzed >= 2
+
+
+# ===================================================================
 # TestMergeChunkResults
 # ===================================================================
 
@@ -864,7 +917,7 @@ class TestMergeChunkResults:
             file_path="GroupA/Acme Corp/msa.pdf ",  # trailing space
             page="5 ",  # trailing space
             section_ref="Section 12",
-            exact_quote="consent is required",  # different quote, same location
+            exact_quote="consent required ",  # same quote with trailing space
         )
 
         chunk1 = _make_customer_result(
@@ -884,6 +937,185 @@ class TestMergeChunkResults:
 
         # Whitespace-only difference in keys should be deduplicated.
         assert len(merged.columns["Consent Required"].citations) == 1
+
+    def test_citation_dedup_preserves_distinct_quotes(self, tmp_path: Path) -> None:
+        """Different quotes from the same page/section must NOT be deduplicated.  Issue #17."""
+        analyzer = _make_analyzer(tmp_path)
+        customer = _make_customer()
+
+        cit_a = SearchCitation(
+            file_path="GroupA/Acme Corp/msa.pdf",
+            page="5",
+            section_ref="Section 12",
+            exact_quote="consent of the other party is required",
+        )
+        cit_b = SearchCitation(
+            file_path="GroupA/Acme Corp/msa.pdf",
+            page="5",
+            section_ref="Section 12",
+            exact_quote="prior written notice shall be provided",
+        )
+
+        chunk1 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="YES", citations=[cit_a]),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
+        chunk2 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="YES", citations=[cit_b]),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
+
+        merged, _ = analyzer._merge_chunk_results([chunk1, chunk2], customer, 1, [])
+
+        # Both citations must survive — they have different exact_quote values.
+        citations = merged.columns["Consent Required"].citations
+        assert len(citations) == 2
+        quotes = {c.exact_quote for c in citations}
+        assert "consent of the other party is required" in quotes
+        assert "prior written notice shall be provided" in quotes
+
+    def test_confidence_takes_max_when_answers_agree(self, tmp_path: Path) -> None:
+        """When two chunks agree at the same priority, the higher confidence wins.  Issue #22."""
+        analyzer = _make_analyzer(tmp_path)
+        customer = _make_customer()
+
+        # Both chunks return literal YES (priority 3), but different confidences.
+        # Chunk 1 is processed first, so its answer/confidence become the initial best.
+        # Chunk 2 has the same priority and same answer length, so is_better is False.
+        # The _max_confidence fix should still promote the confidence to HIGH.
+        chunk1 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="YES", confidence="MEDIUM"),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
+        chunk2 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="YES", confidence="HIGH"),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
+
+        merged, _ = analyzer._merge_chunk_results([chunk1, chunk2], customer, 1, [])
+
+        assert merged.columns["Consent Required"].answer == "YES"
+        assert merged.columns["Consent Required"].confidence == "HIGH"
+
+    def test_confidence_takes_max_for_free_text(self, tmp_path: Path) -> None:
+        """When a longer free-text answer wins, a shorter answer's higher confidence is kept."""
+        analyzer = _make_analyzer(tmp_path)
+        customer = _make_customer()
+
+        # Chunk 1: longer free-text with MEDIUM confidence.
+        chunk1 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(
+                    answer="Section 12.1 requires prior written consent for any change of control.",
+                    confidence="MEDIUM",
+                ),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
+        # Chunk 2: shorter free-text with HIGH confidence.
+        chunk2 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(
+                    answer="Consent is required.",
+                    confidence="HIGH",
+                ),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
+
+        merged, _ = analyzer._merge_chunk_results([chunk1, chunk2], customer, 1, [])
+
+        # Chunk 1's longer answer wins, but chunk 2's HIGH confidence should be kept.
+        assert "Section 12.1" in merged.columns["Consent Required"].answer
+        assert merged.columns["Consent Required"].confidence == "HIGH"
+
+    def test_free_text_no_triggers_conflict_with_yes(self, tmp_path: Path) -> None:
+        """Free-text starting with 'NO' should conflict with literal 'YES'.  Issue #18."""
+        analyzer = _make_analyzer(tmp_path)
+        customer = _make_customer()
+
+        chunk1 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="YES", confidence="HIGH"),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
+        chunk2 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(
+                    answer="NO - the amendment removed the consent requirement.",
+                    confidence="MEDIUM",
+                ),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
+
+        merged, conflicted = analyzer._merge_chunk_results([chunk1, chunk2], customer, 1, [])
+
+        # The free-text "NO - ..." should trigger a conflict with "YES".
+        assert "Consent Required" in conflicted
+
+    def test_free_text_yes_triggers_conflict_with_no(self, tmp_path: Path) -> None:
+        """Free-text starting with 'YES' should conflict with literal 'NO'.  Issue #18."""
+        analyzer = _make_analyzer(tmp_path)
+        customer = _make_customer()
+
+        chunk1 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="NO", confidence="HIGH"),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
+        chunk2 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(
+                    answer="YES, consent is required per Section 12.",
+                    confidence="MEDIUM",
+                ),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
+
+        merged, conflicted = analyzer._merge_chunk_results([chunk1, chunk2], customer, 1, [])
+
+        assert "Consent Required" in conflicted
+
+    def test_free_text_without_yes_no_no_conflict(self, tmp_path: Path) -> None:
+        """Free-text that doesn't start with YES/NO should not trigger false conflicts."""
+        analyzer = _make_analyzer(tmp_path)
+        customer = _make_customer()
+
+        chunk1 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(
+                    answer="Section 12 requires consent from both parties.",
+                    confidence="HIGH",
+                ),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
+        chunk2 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(
+                    answer="The agreement stipulates mutual consent is needed.",
+                    confidence="MEDIUM",
+                ),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
+
+        merged, conflicted = analyzer._merge_chunk_results([chunk1, chunk2], customer, 1, [])
+
+        # Neither answer starts with YES or NO, so no conflict should be detected.
+        assert "Consent Required" not in conflicted
 
 
 # ===================================================================
@@ -1037,6 +1269,69 @@ class TestSynthesisPass:
         assert result.columns["Notice Required"].answer == "NO"
         assert result.columns["Notice Required"].confidence == "HIGH"
 
+    @pytest.mark.asyncio
+    async def test_synthesis_preserves_long_quotes(self, tmp_path: Path) -> None:
+        """Synthesis prompt should include quotes longer than 200 chars.  Issue #20."""
+        analyzer = _make_analyzer(tmp_path)
+        customer = _make_customer()
+
+        long_quote = "A" * 500  # 500-char quote
+
+        merged = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="YES", confidence="MEDIUM"),
+                "Notice Required": _make_column_result(answer="YES", confidence="HIGH"),
+            }
+        )
+
+        chunk_results = [
+            _make_customer_result(
+                columns={
+                    "Consent Required": _make_column_result(
+                        answer="YES",
+                        citations=[
+                            SearchCitation(
+                                file_path="GroupA/Acme Corp/msa.pdf",
+                                page="5",
+                                section_ref="Section 12",
+                                exact_quote=long_quote,
+                            )
+                        ],
+                    ),
+                    "Notice Required": _make_column_result(answer="YES"),
+                }
+            ),
+            _make_customer_result(
+                columns={
+                    "Consent Required": _make_column_result(answer="NO"),
+                    "Notice Required": _make_column_result(answer="YES"),
+                }
+            ),
+        ]
+
+        synthesis_response = json.dumps(
+            {
+                "Consent Required": {
+                    "answer": "YES",
+                    "confidence": "HIGH",
+                    "citations": [],
+                },
+            }
+        )
+
+        captured_prompt: list[str] = []
+
+        async def mock_call(system: str, user: str) -> str:
+            captured_prompt.append(user)
+            return synthesis_response
+
+        with patch.object(analyzer, "_call_claude", side_effect=mock_call):
+            await analyzer._synthesis_pass(merged, chunk_results, ["Consent Required"], customer)
+
+        # The 500-char quote should be included (budget allows up to 1000 for few citations).
+        prompt = captured_prompt[0]
+        assert long_quote in prompt
+
 
 # ===================================================================
 # TestValidationPass
@@ -1137,6 +1432,97 @@ class TestValidationPass:
         assert updated.columns["Consent Required"].answer == "YES"
         assert updated.columns["Notice Required"].answer == "NO"
 
+    @pytest.mark.asyncio
+    async def test_validation_uses_document_order(self, tmp_path: Path) -> None:
+        """Validation pass should include files in document order, not sorted by size.  Issue #19."""
+        analyzer = _make_analyzer(tmp_path)
+        customer = _make_customer()
+
+        result = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="NOT_ADDRESSED"),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
+
+        # MSA is larger, SOW is smaller.  Both fit within TARGET_CHUNK_CHARS.
+        msa_text = "MSA content " * 100  # ~1200 chars
+        sow_text = "SOW content " * 10  # ~120 chars
+        file_texts = [
+            _make_file_text(file_path="GroupA/Acme Corp/msa.pdf", text=msa_text),
+            _make_file_text(file_path="GroupA/Acme Corp/sow.docx", text=sow_text),
+        ]
+
+        validation_response = json.dumps(
+            {
+                "Consent Required": {"answer": "NOT_ADDRESSED", "confidence": "HIGH", "citations": []},
+                "Notice Required": {"answer": "NOT_ADDRESSED", "confidence": "HIGH", "citations": []},
+            }
+        )
+
+        captured_prompt: list[str] = []
+
+        async def mock_call(system: str, user: str) -> str:
+            captured_prompt.append(user)
+            return validation_response
+
+        with patch.object(analyzer, "_call_claude", side_effect=mock_call):
+            await analyzer._validation_pass(result, file_texts, customer)
+
+        # The MSA (first in document order, despite being larger) should appear
+        # before the SOW in the prompt sent to Claude.
+        prompt = captured_prompt[0]
+        msa_pos = prompt.find("msa.pdf")
+        sow_pos = prompt.find("sow.docx")
+        assert msa_pos < sow_pos, "MSA should appear before SOW (document order, not size order)"
+
+    @pytest.mark.asyncio
+    async def test_validation_splits_oversized_file(self, tmp_path: Path) -> None:
+        """When a file exceeds budget, take the leading segment at natural boundaries.  Issue #19."""
+        from dd_agents.search.chunker import TARGET_CHUNK_CHARS
+
+        analyzer = _make_analyzer(tmp_path)
+        customer = _make_customer()
+
+        result = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="NOT_ADDRESSED"),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
+
+        # Create a file that exceeds TARGET_CHUNK_CHARS with page markers.
+        pages = []
+        for i in range(1, 200):
+            pages.append(f"\n--- Page {i} ---\n")
+            pages.append(f"Page {i} content with legal clauses. " * 100)
+        big_text = "".join(pages)
+        assert len(big_text) > TARGET_CHUNK_CHARS
+
+        file_texts = [_make_file_text(file_path="GroupA/Acme Corp/msa.pdf", text=big_text, has_page_markers=True)]
+
+        validation_response = json.dumps(
+            {
+                "Consent Required": {"answer": "NOT_ADDRESSED", "confidence": "HIGH", "citations": []},
+                "Notice Required": {"answer": "NOT_ADDRESSED", "confidence": "HIGH", "citations": []},
+            }
+        )
+
+        captured_prompt: list[str] = []
+
+        async def mock_call(system: str, user: str) -> str:
+            captured_prompt.append(user)
+            return validation_response
+
+        with patch.object(analyzer, "_call_claude", side_effect=mock_call):
+            await analyzer._validation_pass(result, file_texts, customer)
+
+        # The prompt should contain the file but NOT all of it (it was split).
+        prompt = captured_prompt[0]
+        assert "msa.pdf (partial)" in prompt
+        # The prompt should be roughly within the target size (not the full file).
+        assert len(prompt) < len(big_text)
+
 
 # ===================================================================
 # TestInferDocType
@@ -1194,3 +1580,107 @@ class TestExtractJsonText:
     def test_no_braces(self) -> None:
         raw = "No JSON here at all"
         assert SearchAnalyzer._extract_json_text(raw) == raw
+
+    def test_fallback_validates_json(self) -> None:
+        """rfind fallback must validate result with json.loads().  Issue #23.
+
+        When raw_decode fails and rfind('}') produces invalid JSON, the method
+        should return the original cleaned text rather than the malformed substring.
+        """
+        # Construct input where raw_decode fails (truncated JSON) and rfind('}')
+        # would return an invalid substring: the brace is inside a string value.
+        raw = '{"col": {"answer": "YES, see section 12.3} for details"'
+        result = SearchAnalyzer._extract_json_text(raw)
+        # The rfind fallback would return '{"col": {"answer": "YES, see section 12.3}'
+        # which is invalid JSON.  With the fix, it falls through to return cleaned.
+        # The result should NOT be the invalid substring.
+        import contextlib
+
+        with contextlib.suppress(json.JSONDecodeError):
+            json.loads(result)
+        # The key assertion: the result should NOT be the truncated rfind output.
+        assert result != '{"col": {"answer": "YES, see section 12.3}'
+
+    def test_fallback_returns_valid_json_when_possible(self) -> None:
+        """rfind fallback returns result when it IS valid JSON.  Issue #23."""
+        # Truncated JSON where rfind('}') happens to produce valid JSON.
+        valid_obj = '{"col": {"answer": "YES"}}'
+        raw = valid_obj + " some trailing garbage without braces"
+        result = SearchAnalyzer._extract_json_text(raw)
+        # raw_decode should handle this case (primary path), but if it were to
+        # fall through, the rfind result is valid and should be returned.
+        parsed = json.loads(result)
+        assert parsed["col"]["answer"] == "YES"
+
+
+# ===================================================================
+# TestExtractYesNo
+# ===================================================================
+
+
+class TestExtractYesNo:
+    """Tests for _extract_yes_no helper (Issue #18)."""
+
+    def test_literal_yes(self) -> None:
+        assert _extract_yes_no("YES") == "YES"
+
+    def test_literal_no(self) -> None:
+        assert _extract_yes_no("NO") == "NO"
+
+    def test_yes_with_comma(self) -> None:
+        assert _extract_yes_no("YES, CONSENT IS REQUIRED PER SECTION 12.") == "YES"
+
+    def test_no_with_dash(self) -> None:
+        assert _extract_yes_no("NO - THE AMENDMENT REMOVED THIS REQUIREMENT.") == "NO"
+
+    def test_yes_with_period(self) -> None:
+        assert _extract_yes_no("YES. THE AGREEMENT REQUIRES CONSENT.") == "YES"
+
+    def test_no_with_space(self) -> None:
+        assert _extract_yes_no("NO THE CONTRACT DOES NOT REQUIRE CONSENT") == "NO"
+
+    def test_free_text_no_prefix(self) -> None:
+        """Free-text that doesn't start with YES/NO should be returned as-is."""
+        text = "THE AGREEMENT REQUIRES MUTUAL CONSENT"
+        assert _extract_yes_no(text) == text
+
+    def test_not_addressed(self) -> None:
+        """NOT_ADDRESSED should be returned as-is (not confused with NO)."""
+        assert _extract_yes_no("NOT_ADDRESSED") == "NOT_ADDRESSED"
+
+    def test_notice_not_confused_with_no(self) -> None:
+        """'NOTICE' starts with 'NO' but the next char is alphanumeric — should NOT match."""
+        assert _extract_yes_no("NOTICE IS REQUIRED") == "NOTICE IS REQUIRED"
+
+    def test_yesterday_not_confused_with_yes(self) -> None:
+        """'YESTERDAY' starts with 'YES' but the next char is alphanumeric."""
+        assert _extract_yes_no("YESTERDAY WAS THE DEADLINE") == "YESTERDAY WAS THE DEADLINE"
+
+
+# ===================================================================
+# TestMaxConfidence
+# ===================================================================
+
+
+class TestMaxConfidence:
+    """Tests for _max_confidence helper (Issue #22)."""
+
+    def test_high_beats_medium(self) -> None:
+        assert _max_confidence("HIGH", "MEDIUM") == "HIGH"
+
+    def test_medium_beats_low(self) -> None:
+        assert _max_confidence("LOW", "MEDIUM") == "MEDIUM"
+
+    def test_high_beats_low(self) -> None:
+        assert _max_confidence("HIGH", "LOW") == "HIGH"
+
+    def test_equal_returns_first(self) -> None:
+        assert _max_confidence("HIGH", "HIGH") == "HIGH"
+
+    def test_empty_loses(self) -> None:
+        assert _max_confidence("", "LOW") == "LOW"
+        assert _max_confidence("MEDIUM", "") == "MEDIUM"
+
+    def test_both_empty(self) -> None:
+        result = _max_confidence("", "")
+        assert result == ""
