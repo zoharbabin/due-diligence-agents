@@ -162,6 +162,8 @@ One row per citation with the full evidence trail:
 | Page | Page number (if identifiable) |
 | Section | Section reference (e.g. "Section 12.3") |
 | Exact Quote | Verbatim text from the document |
+| Quote Verified | YES (green) if quote found in source, NO (orange) if not, blank if not verified |
+| Match Score | Fuzzy match percentage (0-100) from citation verification |
 
 ## Large File Handling
 
@@ -182,6 +184,38 @@ customer's combined document text exceeds the model's optimal context size
 This is fully transparent in the Excel report — the `chunks_analyzed` count
 shows how many analysis passes were needed per customer. Single-chunk
 customers (the majority) see no change in behavior.
+
+## External Reference Download
+
+Contracts frequently incorporate external Terms & Conditions by URL
+reference (e.g. `https://vendor.com/general-terms-and-conditions/`).
+After text extraction, the pipeline automatically:
+
+1. **Scans** all extracted text for URLs matching T&C-like patterns
+   (terms, conditions, policy, SLA, EULA, privacy, etc.)
+2. **Downloads** referenced documents via HTTP
+3. **Extracts** text content using markitdown
+4. **Caches** results in the text index with an `__external__` prefix
+
+This step is non-blocking: download failures are logged as warnings
+but never halt the pipeline. Downloaded references are included in
+subsequent analysis alongside the original data room files.
+
+## Citation Verification
+
+After analysis, all citations are verified against the extracted
+source text using fuzzy matching (rapidfuzz). This catches
+hallucinated quotes and wrong page references without requiring
+additional API calls.
+
+- **80% match threshold** — tolerates OCR character errors while
+  flagging fabricated quotes
+- **Page-scoped search** — when a page number is cited, verification
+  searches within that page's text
+- **Section verification** — checks that the cited section reference
+  actually appears in the source document
+- Results appear in the Excel Details sheet (Quote Verified / Match
+  Score columns) and in the CLI summary output
 
 ## Data Completeness Guarantees
 

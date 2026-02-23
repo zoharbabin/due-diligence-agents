@@ -425,6 +425,26 @@ overlapping chunks both cite it.
 3. **Synthesis truncation** — the synthesis pass truncates `exact_quote` to
    200 chars for compactness in the conflict resolution prompt
 
+### 6.7 Citation Verification (Issue #5)
+
+After analysis, all citations are verified against extracted source text
+using `rapidfuzz.fuzz.partial_ratio`:
+
+- **80% threshold** — quotes scoring >= 80 are marked as verified.
+  This tolerates OCR character-level errors while catching fabricated text.
+- **Page-scoped search** — when a page number is cited, verification
+  searches within the cited page's text rather than the full document.
+- **Section verification** — substring check for `section_ref` in the
+  full document text.
+- **Non-blocking** — verification failures populate metadata fields but
+  never block the pipeline.
+
+New fields on `SearchCitation`:
+- `quote_verified: bool | None` — True if found, False if not, None if
+  nothing to verify (empty quote)
+- `quote_match_score: float` — fuzzy match score (0-100)
+- `section_verified: bool | None` — True if section_ref found in source
+
 ---
 
 ## 7. Completeness Enforcement
@@ -489,6 +509,21 @@ if failure_rate > 0.50:
 
 This is a hard stop — something is fundamentally wrong (missing
 dependencies, corrupted data room, permission issues).
+
+### 7.5 External Reference Completeness (Issue #15)
+
+Contracts that incorporate external T&Cs by URL are a known accuracy gap.
+The pipeline now includes a post-extraction step that:
+
+1. Scans all `.md` files in `text_dir` for URL patterns
+2. Filters to T&C-like URLs using path keyword heuristics
+   (terms, conditions, policy, SLA, EULA, privacy, legal, etc.)
+3. Downloads via `urllib.request` (stdlib, no new deps)
+4. Extracts text via `markitdown` (existing dep)
+5. Caches to `text_dir` with `__external__<slug>.md` naming
+
+This step is **non-blocking**: download failures are logged as warnings
+but never halt the pipeline. On re-runs, cached files are skipped.
 
 ---
 
