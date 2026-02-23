@@ -26,6 +26,11 @@ logger = logging.getLogger(__name__)
 # Minimum characters for an extraction to be considered "successful".
 _MIN_TEXT_LEN = 20
 
+# Minimum ratio of printable characters for text to be considered readable
+# (not binary garbage).  Scanned-PDF markitdown output is raw PDF binary
+# (%PDF-1.x headers, stream objects, etc.) which has < 50 % printable chars.
+_MIN_PRINTABLE_RATIO = 0.85
+
 # Scanned-PDF detection threshold (per spec section 1).
 _SCANNED_PDF_THRESHOLD = 100
 
@@ -156,6 +161,7 @@ class ExtractionPipeline:
                 cache.is_cached(filepath_str, current_hash)
                 and out_file.exists()
                 and out_file.stat().st_size >= _SCANNED_PDF_THRESHOLD
+                and self._is_cached_output_readable(out_file)
             ):
                 # Cache hit -- keep existing quality entry.
                 cache.update(filepath_str, current_hash)
@@ -291,9 +297,11 @@ class ExtractionPipeline:
             )
 
         # 3. markitdown (no page markers, but may handle edge cases).
+        #    Readability check rejects raw PDF binary that markitdown
+        #    dumps for image-only scanned PDFs (Bug G).
         chain.append("markitdown")
         text, conf = self._markitdown.extract(filepath)
-        if text and len(text.strip()) >= _SCANNED_PDF_THRESHOLD:
+        if text and len(text.strip()) >= _SCANNED_PDF_THRESHOLD and self._is_readable_text(text):
             out_file.write_text(text, encoding="utf-8")
             return ExtractionQualityEntry(
                 file_path=str(filepath),
@@ -504,6 +512,40 @@ class ExtractionPipeline:
 
         markers = re.findall(r"\n--- Page \d+ ---\n", text)
         return len(markers) if markers else 1
+
+    @staticmethod
+    def _is_cached_output_readable(out_file: Path) -> bool:
+        """Check if a cached ``.md`` output file contains readable text.
+
+        Reads a small sample from disk to avoid loading multi-MB binary
+        garbage into memory.  Returns *False* for binary PDF dumps so
+        they get re-extracted through the improved fallback chain.
+        """
+        try:
+            sample = out_file.read_bytes()[:10_000].decode("utf-8", errors="replace")
+            printable = sum(1 for ch in sample if ch.isprintable() or ch in "\n\r\t")
+            return printable / max(len(sample), 1) >= _MIN_PRINTABLE_RATIO
+        except OSError:
+            return False
+
+    @staticmethod
+    def _is_readable_text(text: str, *, sample_size: int = 10_000) -> bool:
+        """Return *True* if *text* looks like human-readable content.
+
+        Checks the ratio of printable characters (letters, digits,
+        punctuation, whitespace) in a sample of the text.  Raw PDF
+        binary dumped by markitdown has a very low printable ratio
+        (< 50 %) because it contains stream objects, binary image
+        data, and compressed content.
+
+        A threshold of 85 % catches all observed binary-garbage cases
+        while passing normal extracted text (typically > 95 % printable).
+        """
+        if not text:
+            return False
+        sample = text[:sample_size]
+        printable = sum(1 for ch in sample if ch.isprintable() or ch in "\n\r\t")
+        return printable / len(sample) >= _MIN_PRINTABLE_RATIO
 
     @staticmethod
     def _read_text(filepath: Path) -> tuple[str, float]:

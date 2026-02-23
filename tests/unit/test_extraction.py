@@ -599,6 +599,81 @@ class TestExtractionPipeline:
         assert entry.method == "fallback_ocr"
         assert entry.confidence == 0.7
 
+    def test_markitdown_binary_garbage_rejected(self, tmp_path: Path) -> None:
+        """Markitdown returning raw PDF binary should fall through to OCR."""
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        src = tmp_path / "scanned_oem.pdf"
+        src.write_bytes(b"%PDF-1.4 fake")
+
+        # Simulate markitdown dumping raw PDF binary (< 85% printable).
+        binary_garbage = "%PDF-1.3\n%\x80\x81\x82\x83\n140 0 obj\n" + "\x00\x01\x02\x03" * 500
+        ocr_text = "OCR extracted OEM agreement content with real clauses. " * 30
+
+        pipeline = ExtractionPipeline()
+
+        with (
+            patch.object(pipeline, "_run_pymupdf", return_value=""),
+            patch.object(pipeline, "_run_pdftotext", return_value=""),
+            patch.object(pipeline._markitdown, "extract", return_value=(binary_garbage, 0.5)),
+            patch.object(pipeline._ocr, "extract", return_value=(ocr_text, 0.7)),
+        ):
+            entry = pipeline.extract_single(src, output_dir)
+
+        # Binary garbage should be rejected; should fall through to OCR.
+        assert entry.method == "fallback_ocr"
+        assert entry.confidence == 0.7
+        assert "markitdown" in entry.fallback_chain
+
+    def test_is_readable_text_accepts_normal_text(self) -> None:
+        """Normal extracted text (> 85% printable) should pass readability check."""
+        text = "This is a normal contract clause with dates 2024-01-15 and amounts $50,000.\n" * 10
+        assert ExtractionPipeline._is_readable_text(text) is True
+
+    def test_is_readable_text_rejects_binary(self) -> None:
+        """Binary PDF data (< 85% printable) should fail readability check."""
+        binary = "%PDF-1.3\n" + "\x00\x01\x02\x03\x80\x81\x82\x83" * 500
+        assert ExtractionPipeline._is_readable_text(binary) is False
+
+    def test_is_readable_text_empty(self) -> None:
+        """Empty string should fail readability check."""
+        assert ExtractionPipeline._is_readable_text("") is False
+
+    def test_cache_reextracts_binary_garbage(self, tmp_path: Path) -> None:
+        """Cached output containing binary garbage should trigger re-extraction."""
+        src = tmp_path / "sources"
+        src.mkdir()
+        f = src / "contract.txt"
+        f.write_text(
+            "This is a substantial contract with enough text to pass the threshold.\n" * 5,
+            encoding="utf-8",
+        )
+
+        output_dir = tmp_path / "output"
+        cache_path = tmp_path / "cache" / "checksums.sha256"
+
+        pipeline = ExtractionPipeline()
+
+        # First run: extract normally.
+        pipeline.extract_all([str(f)], output_dir, cache_path)
+
+        # Find the output .md file and overwrite with binary garbage.
+        md_files = [p for p in output_dir.glob("*.md") if p.name != "extraction_quality.json"]
+        assert len(md_files) == 1
+        md_file = md_files[0]
+
+        # Write binary-like content (simulates markitdown PDF dump).
+        md_file.write_bytes(b"%PDF-1.3\n" + b"\x00\x01\x02\x03" * 500)
+        assert md_file.stat().st_size >= 100  # Passes size gate...
+
+        # Second run: cache gate should reject unreadable output and re-extract.
+        pipeline.extract_all([str(f)], output_dir, cache_path)
+
+        # Should have re-extracted with real text content.
+        content = md_file.read_text(encoding="utf-8")
+        assert "substantial contract" in content
+
     def test_count_pages_in_text(self) -> None:
         """_count_pages_in_text correctly counts page markers."""
         text_3_pages = (
