@@ -244,23 +244,23 @@ class ExtractionPipeline:
         return self._failed_entry(filepath, chain)
 
     def _extract_pdf(self, filepath: Path, out_file: Path) -> ExtractionQualityEntry:
-        """PDF fallback chain: markitdown -> pdftotext -> OCR -> read."""
+        """PDF fallback chain: pymupdf (page-aware) -> pdftotext -> markitdown -> OCR -> read."""
         chain: list[str] = []
 
-        # 1. markitdown
-        chain.append("markitdown")
-        text, conf = self._markitdown.extract(filepath)
+        # 1. pymupdf — per-page extraction with explicit page markers.
+        chain.append("pymupdf")
+        text = self._run_pymupdf(filepath)
         if text and len(text.strip()) >= _SCANNED_PDF_THRESHOLD:
             out_file.write_text(text, encoding="utf-8")
             return ExtractionQualityEntry(
                 file_path=str(filepath),
                 method="primary",
                 bytes_extracted=len(text.encode("utf-8")),
-                confidence=conf,
+                confidence=0.9,
                 fallback_chain=chain,
             )
 
-        # 2. pdftotext (poppler CLI)
+        # 2. pdftotext (poppler CLI) — convert form-feeds to page markers.
         chain.append("pdftotext")
         text = self._run_pdftotext(filepath)
         if text and len(text.strip()) >= _MIN_TEXT_LEN:
@@ -273,7 +273,20 @@ class ExtractionPipeline:
                 fallback_chain=chain,
             )
 
-        # 3. pytesseract OCR
+        # 3. markitdown (no page markers, but may handle edge cases).
+        chain.append("markitdown")
+        text, conf = self._markitdown.extract(filepath)
+        if text and len(text.strip()) >= _SCANNED_PDF_THRESHOLD:
+            out_file.write_text(text, encoding="utf-8")
+            return ExtractionQualityEntry(
+                file_path=str(filepath),
+                method="fallback_markitdown",
+                bytes_extracted=len(text.encode("utf-8")),
+                confidence=conf,
+                fallback_chain=chain,
+            )
+
+        # 4. pytesseract OCR
         chain.append("ocr")
         text, conf = self._ocr.extract(filepath)
         if text and len(text.strip()) >= _MIN_TEXT_LEN:
@@ -286,7 +299,7 @@ class ExtractionPipeline:
                 fallback_chain=chain,
             )
 
-        # 4. Raw read (last resort)
+        # 5. Raw read (last resort)
         chain.append("direct_read")
         text, conf = self._read_text(filepath)
         if text and len(text.strip()) >= _MIN_TEXT_LEN:
@@ -409,8 +422,45 @@ class ExtractionPipeline:
         return f"{truncated}_{digest}.md"
 
     @staticmethod
+    def _run_pymupdf(filepath: Path) -> str:
+        """Extract text page-by-page using ``pymupdf`` with explicit page markers.
+
+        Injects ``--- Page N ---`` headers so that downstream LLM analysis
+        can cite page numbers accurately.
+
+        Returns empty string if pymupdf is not installed or extraction fails.
+        """
+        try:
+            import fitz  # pymupdf
+        except ImportError:
+            return ""
+
+        try:
+            doc = fitz.open(str(filepath))
+        except Exception as exc:
+            logger.debug("pymupdf failed to open %s: %s", filepath, exc)
+            return ""
+
+        parts: list[str] = []
+        try:
+            for page_num, page in enumerate(doc, start=1):
+                page_text = page.get_text()
+                if page_text and page_text.strip():
+                    parts.append(f"\n--- Page {page_num} ---\n\n{page_text}")
+        except Exception as exc:
+            logger.debug("pymupdf extraction error for %s: %s", filepath, exc)
+        finally:
+            doc.close()
+
+        return "\n".join(parts)
+
+    @staticmethod
     def _run_pdftotext(filepath: Path) -> str:
-        """Run ``pdftotext`` (poppler) on a PDF, returning extracted text."""
+        """Run ``pdftotext`` (poppler) on a PDF, returning extracted text.
+
+        Converts form-feed characters (``\\f``) to ``--- Page N ---``
+        markers for citation accuracy.
+        """
         try:
             result = subprocess.run(
                 ["pdftotext", "-layout", str(filepath), "-"],
@@ -418,7 +468,14 @@ class ExtractionPipeline:
                 timeout=120,
             )
             if result.returncode == 0:
-                return result.stdout.decode("utf-8", errors="replace")
+                raw = result.stdout.decode("utf-8", errors="replace")
+                # Convert form-feed page separators to explicit markers.
+                pages = raw.split("\f")
+                parts: list[str] = []
+                for i, page_text in enumerate(pages, start=1):
+                    if page_text.strip():
+                        parts.append(f"\n--- Page {i} ---\n\n{page_text}")
+                return "\n".join(parts)
         except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
             pass
         return ""
