@@ -25,6 +25,7 @@ _BLUE_FILL = PatternFill(start_color="BDD7EE", end_color="BDD7EE", fill_type="so
 _YELLOW_FILL = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")  # NOT_ADDRESSED
 _RED_FILL = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")  # Error
 _ORANGE_FILL = PatternFill(start_color="F4B084", end_color="F4B084", fill_type="solid")  # INCOMPLETE
+_CHUNKS_FILL = PatternFill(start_color="D6E4F0", end_color="D6E4F0", fill_type="solid")  # Multi-chunk highlight
 _HEADER_FILL = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
 _HEADER_FONT = Font(bold=True, color="FFFFFF", size=11)
 _BODY_FONT = Font(size=10)
@@ -71,7 +72,7 @@ class SearchExcelWriter:
         ws: Worksheet = wb.create_sheet(title="Summary")
 
         # Build header row.
-        headers = ["Customer", "Group", "Files Analyzed", "Files Skipped"]
+        headers = ["Customer", "Group", "Files Analyzed", "Chunks", "Files Skipped"]
         headers.extend(col.name for col in prompts.columns)
         headers.append("Error")
 
@@ -93,14 +94,19 @@ class SearchExcelWriter:
             if result.skipped_files:
                 files_cell.fill = _ORANGE_FILL
 
+            chunks_cell = ws.cell(row=row_idx, column=4, value=result.chunks_analyzed)
+            chunks_cell.font = _BODY_FONT
+            if result.chunks_analyzed > 1:
+                chunks_cell.fill = _CHUNKS_FILL
+
             skipped_val = ", ".join(result.skipped_files) if result.skipped_files else ""
-            skipped_cell = ws.cell(row=row_idx, column=4, value=skipped_val)
+            skipped_cell = ws.cell(row=row_idx, column=5, value=skipped_val)
             skipped_cell.font = _BODY_FONT
             if result.skipped_files:
                 skipped_cell.fill = _ORANGE_FILL
 
             for col_offset, search_col in enumerate(prompts.columns):
-                col_idx = 5 + col_offset
+                col_idx = 6 + col_offset
                 col_result = result.columns.get(search_col.name)
                 if col_result is None:
                     # Column completely missing (no result at all).
@@ -118,7 +124,7 @@ class SearchExcelWriter:
                     cell.font = _BODY_FONT
                     self._apply_answer_fill(cell, answer)
 
-            error_col = 5 + len(prompts.columns)
+            error_col = 6 + len(prompts.columns)
             error_cell = ws.cell(row=row_idx, column=error_col, value=result.error or "")
             error_cell.font = _BODY_FONT
             if result.error:
@@ -134,10 +140,11 @@ class SearchExcelWriter:
         ws.column_dimensions["A"].width = 30
         ws.column_dimensions["B"].width = 15
         ws.column_dimensions["C"].width = 16
-        ws.column_dimensions["D"].width = 40
+        ws.column_dimensions["D"].width = 10
+        ws.column_dimensions["E"].width = 40
         for i in range(len(prompts.columns)):
-            ws.column_dimensions[get_column_letter(5 + i)].width = 40
-        ws.column_dimensions[get_column_letter(5 + len(prompts.columns))].width = 40
+            ws.column_dimensions[get_column_letter(6 + i)].width = 40
+        ws.column_dimensions[get_column_letter(6 + len(prompts.columns))].width = 40
 
     # ------------------------------------------------------------------
     # Details sheet

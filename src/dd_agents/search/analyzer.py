@@ -666,7 +666,7 @@ class SearchAnalyzer:
                 if is_better:
                     best_priority = priority
                     best_answer = col_result.answer
-                    best_confidence = col_result.confidence
+                    best_confidence = col_result.confidence.upper()
 
                 all_citations.extend(col_result.citations)
 
@@ -1025,7 +1025,7 @@ class SearchAnalyzer:
 
             columns[col.name] = SearchColumnResult(
                 answer=col_data.get("answer", ""),
-                confidence=col_data.get("confidence", ""),
+                confidence=col_data.get("confidence", "").upper(),
                 citations=citations,
             )
 

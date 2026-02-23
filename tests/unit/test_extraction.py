@@ -5,12 +5,15 @@ Covers:
     - ExtractionQualityTracker: record, save/load, get_stats
     - MarkitdownExtractor: extract on plain text files (no external deps)
     - ExtractionPipeline: extract_single with a simple text file, cache hit behaviour
+    - Cache re-extraction on near-empty output
+    - Scanned-PDF density check
 """
 
 from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 import pytest
 
@@ -504,3 +507,81 @@ class TestExtractionPipeline:
         assert str(src) in data
         assert data[str(src)]["method"] == "direct_read"
         assert "timestamp" in data[str(src)]
+
+    def test_cache_reextracts_near_empty_output(self, tmp_path: Path) -> None:
+        """A cached file with near-empty output (< 100 bytes) should be re-extracted."""
+        src = tmp_path / "sources"
+        src.mkdir()
+        f = src / "contract.txt"
+        f.write_text(
+            "This is a substantial contract with enough text to pass the threshold.\n" * 5,
+            encoding="utf-8",
+        )
+
+        output_dir = tmp_path / "output"
+        cache_path = tmp_path / "cache" / "checksums.sha256"
+
+        pipeline = ExtractionPipeline()
+
+        # First run: extract normally.
+        pipeline.extract_all([str(f)], output_dir, cache_path)
+
+        # Find the output .md file and overwrite with near-empty content.
+        md_files = [p for p in output_dir.glob("*.md") if p.name != "extraction_quality.json"]
+        assert len(md_files) == 1
+        md_file = md_files[0]
+        original_size = md_file.stat().st_size
+        assert original_size > 100
+
+        # Overwrite with a single newline (1 byte — simulates Bug A).
+        md_file.write_text("\n", encoding="utf-8")
+        assert md_file.stat().st_size < 100
+
+        # Second run: cache gate should reject the near-empty output and re-extract.
+        pipeline.extract_all([str(f)], output_dir, cache_path)
+
+        assert md_file.stat().st_size >= 100
+
+    def test_scanned_pdf_density_check(self, tmp_path: Path) -> None:
+        """Pymupdf text with low chars/page density should fall through to OCR."""
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        src = tmp_path / "scanned.pdf"
+        src.write_bytes(b"%PDF-1.4 fake")  # Placeholder — we mock extraction
+
+        # Simulate pymupdf returning sparse text across 32 pages (12.5 chars/page).
+        sparse_pages = []
+        for i in range(1, 33):
+            sparse_pages.append(f"\n--- Page {i} ---\n\nSig.")
+        sparse_text = "\n".join(sparse_pages)
+
+        # Simulate OCR returning substantial text.
+        ocr_text = "OCR extracted content. " * 50
+
+        pipeline = ExtractionPipeline()
+
+        with (
+            patch.object(pipeline, "_run_pymupdf", return_value=sparse_text),
+            patch.object(pipeline, "_run_pdftotext", return_value=""),
+            patch.object(pipeline._markitdown, "extract", return_value=("", 0.0)),
+            patch.object(pipeline._ocr, "extract", return_value=(ocr_text, 0.7)),
+        ):
+            entry = pipeline.extract_single(src, output_dir)
+
+        # Should have fallen through to OCR due to low density.
+        assert entry.method == "fallback_ocr"
+        assert entry.confidence == 0.7
+
+    def test_count_pages_in_text(self) -> None:
+        """_count_pages_in_text correctly counts page markers."""
+        text_3_pages = (
+            "\n--- Page 1 ---\n\nContent page 1.\n--- Page 2 ---\n\nContent page 2.\n--- Page 3 ---\n\nContent page 3."
+        )
+        assert ExtractionPipeline._count_pages_in_text(text_3_pages) == 3
+
+        # No markers → defaults to 1.
+        assert ExtractionPipeline._count_pages_in_text("Just plain text.") == 1
+
+        # Empty string → defaults to 1.
+        assert ExtractionPipeline._count_pages_in_text("") == 1

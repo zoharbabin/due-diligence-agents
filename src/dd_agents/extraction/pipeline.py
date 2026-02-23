@@ -29,6 +29,9 @@ _MIN_TEXT_LEN = 20
 # Scanned-PDF detection threshold (per spec section 1).
 _SCANNED_PDF_THRESHOLD = 100
 
+# Minimum chars per page for a PDF to be considered text-based (not scanned).
+_MIN_CHARS_PER_PAGE = 50
+
 # Extensions read directly without extraction.
 _PLAINTEXT_EXTENSIONS: frozenset[str] = frozenset(
     {
@@ -149,7 +152,11 @@ class ExtractionPipeline:
             current_hash = ExtractionCache.compute_checksum(filepath)
             out_file = output_dir / self._safe_text_name(filepath_str)
 
-            if cache.is_cached(filepath_str, current_hash) and out_file.exists() and out_file.stat().st_size > 0:
+            if (
+                cache.is_cached(filepath_str, current_hash)
+                and out_file.exists()
+                and out_file.stat().st_size >= _SCANNED_PDF_THRESHOLD
+            ):
                 # Cache hit -- keep existing quality entry.
                 cache.update(filepath_str, current_hash)
                 continue
@@ -250,7 +257,12 @@ class ExtractionPipeline:
         # 1. pymupdf — per-page extraction with explicit page markers.
         chain.append("pymupdf")
         text = self._run_pymupdf(filepath)
-        if text and len(text.strip()) >= _SCANNED_PDF_THRESHOLD:
+        text_len = len(text.strip()) if text else 0
+        page_count = self._count_pages_in_text(text) if text else 1
+        is_dense_enough = text_len >= _SCANNED_PDF_THRESHOLD and (
+            page_count <= 1 or text_len / page_count >= _MIN_CHARS_PER_PAGE
+        )
+        if text and is_dense_enough:
             out_file.write_text(text, encoding="utf-8")
             return ExtractionQualityEntry(
                 file_path=str(filepath),
@@ -263,7 +275,7 @@ class ExtractionPipeline:
         # 2. pdftotext (poppler CLI) — convert form-feeds to page markers.
         chain.append("pdftotext")
         text = self._run_pdftotext(filepath)
-        if text and len(text.strip()) >= _MIN_TEXT_LEN:
+        if text and len(text.strip()) >= _SCANNED_PDF_THRESHOLD:
             out_file.write_text(text, encoding="utf-8")
             return ExtractionQualityEntry(
                 file_path=str(filepath),
@@ -479,6 +491,14 @@ class ExtractionPipeline:
         except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
             pass
         return ""
+
+    @staticmethod
+    def _count_pages_in_text(text: str) -> int:
+        """Count ``--- Page N ---`` markers in extracted text."""
+        import re
+
+        markers = re.findall(r"\n--- Page \d+ ---\n", text)
+        return len(markers) if markers else 1
 
     @staticmethod
     def _read_text(filepath: Path) -> tuple[str, float]:

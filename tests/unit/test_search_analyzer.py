@@ -125,6 +125,66 @@ def _make_customer_result(
 
 
 # ===================================================================
+# TestConfidenceNormalization
+# ===================================================================
+
+
+class TestConfidenceNormalization:
+    """Tests for confidence casing normalization (Issue 1)."""
+
+    @pytest.mark.asyncio
+    async def test_confidence_normalized_to_uppercase(self, tmp_path: Path) -> None:
+        """LLM returns mixed-case confidence — parser must normalize to uppercase."""
+        analyzer = _make_analyzer(tmp_path)
+        customer = _make_customer()
+        _write_text_file(tmp_path, "GroupA/Acme Corp/msa.pdf", "Agreement with consent clause.")
+
+        mock_response_data = {
+            "Consent Required": {
+                "answer": "YES",
+                "confidence": "High",  # Mixed case
+                "citations": [],
+            },
+            "Notice Required": {
+                "answer": "NO",
+                "confidence": "low",  # Lowercase
+                "citations": [],
+            },
+        }
+
+        mock_call = AsyncMock(return_value=json.dumps(mock_response_data))
+
+        with patch.object(analyzer, "_call_claude", mock_call):
+            results = await analyzer.analyze_all([customer])
+
+        assert results[0].columns["Consent Required"].confidence == "HIGH"
+        assert results[0].columns["Notice Required"].confidence == "LOW"
+
+    def test_confidence_normalized_on_merge(self, tmp_path: Path) -> None:
+        """Merge phase normalizes confidence to uppercase."""
+        analyzer = _make_analyzer(tmp_path)
+        customer = _make_customer()
+
+        chunk1 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="YES", confidence="High"),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED", confidence="medium"),
+            }
+        )
+        chunk2 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="NOT_ADDRESSED", confidence="low"),
+                "Notice Required": _make_column_result(answer="NO", confidence="Medium"),
+            }
+        )
+
+        merged, _ = analyzer._merge_chunk_results([chunk1, chunk2], customer, 1, [])
+
+        assert merged.columns["Consent Required"].confidence == "HIGH"
+        assert merged.columns["Notice Required"].confidence == "MEDIUM"
+
+
+# ===================================================================
 # TestCostEstimate
 # ===================================================================
 
