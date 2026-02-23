@@ -135,6 +135,7 @@ One row per customer with:
 | Customer | Customer name |
 | Group | Group folder name |
 | Files Analyzed | How many files were sent to the AI (e.g. "3/5") |
+| Chunks | Number of analysis chunks (light-blue highlight when >1) |
 | Files Skipped | List of files that couldn't be analyzed |
 | *Your questions* | One column per question with the answer |
 | Error | Any error that occurred |

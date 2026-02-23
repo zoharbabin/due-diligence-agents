@@ -2,8 +2,8 @@
 
 > Lessons learned, requirements, edge cases, and best practices from building
 > and operating the `dd-agents` forensic due-diligence pipeline against
-> real-world M&A data rooms (PathFactory: 431 files / 183 customers;
-> BlueRush: 995 files / 37 customers).
+> real-world M&A data rooms (Data Room A: 431 files / 183 customers;
+> Data Room B: 995 files / 37 customers).
 
 ---
 
@@ -221,13 +221,13 @@ Text extractors (pymupdf, pdftotext) return near-empty output.
 
 | Customer | File | Source Size | pymupdf Chars | Root Cause |
 |----------|------|-------------|---------------|------------|
-| GE Grid | PO | 567 KB | 0 | Pure image scan |
-| NOKIA | PO | 1.2 MB | 0 | Pure image scan |
-| Ericsson | MSA + 3 POs | 0.9–18.7 MB | 0 | Pure image scan |
-| DFS Financial | 2 MSSAs | 1.5 MB ea | 401 | Sparse headers across 32 pages |
-| DCX | Signed PO | 240 KB | 68 | Signature fragment only |
-| Broadridge | Asset Purchase | 357 KB | 42 | Signature fragment only |
-| Navy Federal | NDA | 1.9 MB | 49 | Signature fragment only |
+| Customer G | PO | 567 KB | 0 | Pure image scan |
+| Customer N | PO | 1.2 MB | 0 | Pure image scan |
+| Customer E | MSA + 3 POs | 0.9–18.7 MB | 0 | Pure image scan |
+| Customer D1 | 2 MSSAs | 1.5 MB ea | 401 | Sparse headers across 32 pages |
+| Customer D2 | Signed PO | 240 KB | 68 | Signature fragment only |
+| Customer B | Asset Purchase | 357 KB | 42 | Signature fragment only |
+| Customer NF | NDA | 1.9 MB | 49 | Signature fragment only |
 
 ### 4.2 Detection Strategy: Two-Level Check
 
@@ -242,7 +242,7 @@ Any extraction returning < 100 characters is rejected immediately.
 _MIN_CHARS_PER_PAGE = 50  # chars per page
 ```
 A multi-page PDF might extract > 100 chars total but still be scanned.
-Example: DFS Financial extracted 401 chars across 32 pages = 12.5
+Example: Customer D1 extracted 401 chars across 32 pages = 12.5
 chars/page (scattered headers/footers). The density check catches this:
 
 ```python
@@ -256,7 +256,7 @@ is_dense_enough = (
 
 Initially, the density check was only applied to pymupdf output. But
 pdftotext can also return sparse text from scanned PDFs (signature
-fragments, header/footer text). The DCX Signed PO returned 151 chars via
+fragments, header/footer text). Customer D2's Signed PO returned 151 chars via
 pdftotext — above the 100-char threshold but clearly not a real
 extraction. **Both pymupdf and pdftotext now apply the density check.**
 
@@ -287,8 +287,8 @@ When OCR is triggered:
 
 ### 5.1 Why Chunking Is Necessary
 
-A single customer may have an 18.7 MB MSA (Ericsson) or 38 files totaling
-millions of characters (Navy Federal with 38 chunks). LLM context windows
+A single customer may have an 18.7 MB MSA or 38 files totaling
+millions of characters (38 chunks). LLM context windows
 (~200K tokens for Claude) cannot fit everything at once.
 
 ### 5.2 Constants
@@ -503,7 +503,7 @@ return "High", "high", "HIGH", "Medium", etc. unpredictably.
 not just at the initial parse. We initially added `.upper()` at parse time
 (Phase 1) and merge time (Phase 2), but missed the synthesis pass (Phase 3)
 and validation pass (Phase 4). This caused 53% of confidence values in the
-BlueRush retest to remain mixed-case.
+a production retest to remain mixed-case.
 
 **Rule:** Every `col_data.get("confidence", "")` must end with `.upper()`.
 
@@ -641,7 +641,7 @@ tracker.get_stats() → {
 }
 ```
 
-### 10.4 Real-World Extraction Profile (BlueRush, 995 files)
+### 10.4 Real-World Extraction Profile (Data Room B, 995 files)
 
 ```
 primary (pymupdf/markitdown):  990 files (99.5%)  conf 0.9
@@ -661,7 +661,7 @@ Extraction time: ~33 seconds for 995 files (33 ms/file average).
 
 | | |
 |---|---|
-| **Symptom** | 21 PathFactory files with 0-89 bytes extracted across runs |
+| **Symptom** | 21 files in Data Room A with 0-89 bytes extracted across runs |
 | **Root cause** | Cache gate `st_size > 0` accepts 1-byte newline |
 | **Fix** | `st_size >= _SCANNED_PDF_THRESHOLD` (100 bytes) |
 | **Lesson** | Cache quality gates must match extraction quality thresholds |
@@ -679,7 +679,7 @@ Extraction time: ~33 seconds for 995 files (33 ms/file average).
 
 | | |
 |---|---|
-| **Symptom** | DFS Financial: 401 chars across 32 pages (12.5 chars/page) accepted as valid |
+| **Symptom** | Customer D1: 401 chars across 32 pages (12.5 chars/page) accepted as valid |
 | **Root cause** | Only total char count checked, not per-page density |
 | **Fix** | Added `_MIN_CHARS_PER_PAGE = 50` density check |
 | **Lesson** | Multi-page scanned PDFs can have > 100 total chars from headers/footers |
@@ -688,7 +688,7 @@ Extraction time: ~33 seconds for 995 files (33 ms/file average).
 
 | | |
 |---|---|
-| **Symptom** | 53% of confidence values mixed-case in BlueRush Details sheet |
+| **Symptom** | 53% of confidence values mixed-case in Data Room B Details sheet |
 | **Root cause** | `.upper()` added at Phase 1 (parse) and Phase 2 (merge) but missed Phase 3 (synthesis) and Phase 4 (validation) |
 | **Fix** | Added `.upper()` to all 4 code paths that read `confidence` from LLM JSON |
 | **Lesson** | Normalize external data at EVERY ingestion point, not just the "main" one |
@@ -697,7 +697,7 @@ Extraction time: ~33 seconds for 995 files (33 ms/file average).
 
 | | |
 |---|---|
-| **Symptom** | DCX Signed PO: 151 chars via pdftotext accepted (signature fragment) |
+| **Symptom** | Customer D2 Signed PO: 151 chars via pdftotext accepted (signature fragment) |
 | **Root cause** | Density check applied to pymupdf but not pdftotext |
 | **Fix** | Same density check (chars/page >= 50) applied to pdftotext output |
 | **Lesson** | Every extraction method that returns text needs the same quality gate |
@@ -715,7 +715,7 @@ Extraction time: ~33 seconds for 995 files (33 ms/file average).
 
 | | |
 |---|---|
-| **Symptom** | 3 BlueRush files (Broadridge OEM 5.4 MB, Cooperators CFSL-001 1.6 MB, Navy Federal SOW 8.0 MB) contained raw PDF binary (`%PDF-1.3`, stream objects, binary image data) as "extracted text" |
+| **Symptom** | 3 files in Data Room B (Customer B1 OEM 5.4 MB, Customer C1 1.6 MB, Customer NF SOW 8.0 MB) contained raw PDF binary (`%PDF-1.3`, stream objects, binary image data) as "extracted text" |
 | **Root cause** | Markitdown on image-only scanned PDFs dumps the raw PDF binary as text. The binary passes `len(text.strip()) >= 100` because binary bytes count as characters |
 | **Fix** | Added `_is_readable_text()` that checks >= 85% printable character ratio. Applied at markitdown step in PDF chain and in cache gate (`_is_cached_output_readable`) |
 | **Lesson** | Length thresholds alone cannot distinguish binary from text. A printable-character ratio check is essential for any extraction method that might return raw file content |
@@ -724,7 +724,7 @@ Extraction time: ~33 seconds for 995 files (33 ms/file average).
 
 | | |
 |---|---|
-| **Symptom** | DCX Signed PO (151 bytes) persisted through cache despite new pdftotext density check being deployed |
+| **Symptom** | Customer D2 Signed PO (151 bytes) persisted through cache despite new pdftotext density check being deployed |
 | **Root cause** | Cache gate only checked `st_size >= 100` and hash match — 151 bytes passes. New extraction logic never ran because cache hit returned first |
 | **Fix** | Added `_is_cached_output_readable()` to cache gate; also deleted stale `.md` output files to force immediate re-extraction |
 | **Lesson** | Cache gates must be upgraded alongside extraction logic. When deploying new quality checks, delete stale outputs for affected files |
@@ -977,7 +977,7 @@ has proven reliable for text-native PDFs but has structural weaknesses:
 | No formula extraction | Mathematical formulas in contracts rendered as garbled text | No LaTeX/MathML support |
 | markitdown binary dumps on scans | Required Bug G fix (readability gate) | markitdown not designed for scanned PDFs |
 | No reading order detection | Multi-column layouts extracted column-interleaved | pymupdf follows PDF object order, not visual flow |
-| Single-language OCR | Korean (LG), Japanese, Chinese contracts → garbled | pytesseract hardcoded to `lang="eng"` |
+| Single-language OCR | Korean, Japanese, Chinese contracts → garbled | pytesseract hardcoded to `lang="eng"` |
 | No layout analysis | Cannot distinguish headers, footers, sidebars from body | Extraction is purely text-based |
 
 ### 16.2 Library Comparison Matrix
@@ -1502,9 +1502,9 @@ deployed as an isolated service.
 ### 20.1 Known Limitations to Address
 
 1. **Non-English OCR** — pytesseract is hardcoded to `lang="eng"`. Korean
-   MSAs (e.g., LG), Japanese contracts need language detection + multi-
-   language OCR. → **Addressed in §19.1 (P0):** PaddleOCR supports 109
-   languages. See §16.4 (MinerU) and §16.5 (PP-StructureV3).
+   MSAs, Japanese contracts need language detection + multi-language OCR.
+   → **Addressed in §19.1 (P0):** PaddleOCR supports 109 languages. See
+   §16.4 (MinerU) and §16.5 (PP-StructureV3).
 
 2. **markitdown lacks page markers** — When PDFs fall through to
    markitdown, page numbers are lost. → **Partially addressed:** Layout-
@@ -1568,7 +1568,7 @@ deployed as an isolated service.
 - How much does Phase 4 (validation) actually improve coverage? Measure
   the NOT_ADDRESSED → answered conversion rate across data rooms.
 
-- At what chunk count does answer quality degrade? Navy Federal had 38
+- At what chunk count does answer quality degrade? One customer had 38
   chunks. Is there a point where more chunks hurt more than they help?
 
 - **PP-StructureV3 vs MinerU on our data rooms:** Both score well on
