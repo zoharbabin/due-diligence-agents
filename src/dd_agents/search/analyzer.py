@@ -13,7 +13,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import re
 from typing import TYPE_CHECKING, Any
 
 from dd_agents.models.search import (
@@ -717,21 +716,23 @@ class SearchAnalyzer:
                 col_result = cr.columns.get(col_name)
                 if col_result is None:
                     continue
-                findings.setdefault(col_name, []).append({
-                    "chunk": i + 1,
-                    "answer": col_result.answer,
-                    "confidence": col_result.confidence,
-                    "citations": [
-                        {
-                            "file_path": c.file_path,
-                            "page": c.page,
-                            "section_ref": c.section_ref,
-                            "exact_quote": c.exact_quote[:200],  # Truncate for compactness
-                            "doc_type": self._infer_doc_type(c.file_path),
-                        }
-                        for c in col_result.citations
-                    ],
-                })
+                findings.setdefault(col_name, []).append(
+                    {
+                        "chunk": i + 1,
+                        "answer": col_result.answer,
+                        "confidence": col_result.confidence,
+                        "citations": [
+                            {
+                                "file_path": c.file_path,
+                                "page": c.page,
+                                "section_ref": c.section_ref,
+                                "exact_quote": c.exact_quote[:200],  # Truncate for compactness
+                                "doc_type": self._infer_doc_type(c.file_path),
+                            }
+                            for c in col_result.citations
+                        ],
+                    }
+                )
 
         column_names_list = ", ".join(f'"{c}"' for c in conflicted_columns)
 
@@ -1034,6 +1035,7 @@ class SearchAnalyzer:
         - Raw JSON (``{ ... }``)
         - Markdown fenced blocks (````json ... ``` ``)
         - Preamble text before the opening ``{``
+        - Multiple JSON objects concatenated (extracts the first complete one)
         """
         cleaned = raw.strip()
 
@@ -1046,15 +1048,22 @@ class SearchAnalyzer:
             cleaned = cleaned[: cleaned.rfind("```")]
         cleaned = cleaned.strip()
 
-        # Already looks like JSON.
-        if cleaned.startswith("{"):
+        # Find the first { in the text.
+        brace_pos = cleaned.find("{")
+        if brace_pos == -1:
             return cleaned
 
-        # Try to find a top-level JSON object embedded in the text.
-        match = re.search(r"\{", cleaned)
-        if match:
-            candidate = cleaned[match.start() :]
-            # Quick sanity check: must end with }
+        candidate = cleaned[brace_pos:]
+
+        # Use raw_decode to extract exactly the first complete JSON object.
+        # This handles the case where the model returns two JSON objects
+        # back-to-back (e.g. it started answering, then restarted).
+        try:
+            decoder = json.JSONDecoder()
+            _, end_idx = decoder.raw_decode(candidate)
+            return candidate[:end_idx]
+        except json.JSONDecodeError:
+            # raw_decode failed — fall back to last-brace heuristic.
             last_brace = candidate.rfind("}")
             if last_brace != -1:
                 return candidate[: last_brace + 1]

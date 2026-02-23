@@ -543,18 +543,20 @@ class TestMergeChunkResults:
         analyzer = _make_analyzer(tmp_path)
         customer = _make_customer()
 
-        chunk1 = _make_customer_result(columns={
-            "Consent Required": _make_column_result(answer="YES", confidence="HIGH"),
-            "Notice Required": _make_column_result(answer="NOT_ADDRESSED", confidence="HIGH"),
-        })
-        chunk2 = _make_customer_result(columns={
-            "Consent Required": _make_column_result(answer="NOT_ADDRESSED", confidence="HIGH"),
-            "Notice Required": _make_column_result(answer="NOT_ADDRESSED", confidence="HIGH"),
-        })
-
-        merged, conflicted = analyzer._merge_chunk_results(
-            [chunk1, chunk2], customer, 1, ["GroupA/Acme Corp/sow.docx"]
+        chunk1 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="YES", confidence="HIGH"),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED", confidence="HIGH"),
+            }
         )
+        chunk2 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="NOT_ADDRESSED", confidence="HIGH"),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED", confidence="HIGH"),
+            }
+        )
+
+        merged, conflicted = analyzer._merge_chunk_results([chunk1, chunk2], customer, 1, ["GroupA/Acme Corp/sow.docx"])
 
         assert merged.columns["Consent Required"].answer == "YES"
         assert merged.columns["Notice Required"].answer == "NOT_ADDRESSED"
@@ -565,18 +567,20 @@ class TestMergeChunkResults:
         analyzer = _make_analyzer(tmp_path)
         customer = _make_customer()
 
-        chunk1 = _make_customer_result(columns={
-            "Consent Required": _make_column_result(answer="YES", confidence="HIGH"),
-            "Notice Required": _make_column_result(answer="YES", confidence="HIGH"),
-        })
-        chunk2 = _make_customer_result(columns={
-            "Consent Required": _make_column_result(answer="NO", confidence="MEDIUM"),
-            "Notice Required": _make_column_result(answer="YES", confidence="HIGH"),
-        })
-
-        merged, conflicted = analyzer._merge_chunk_results(
-            [chunk1, chunk2], customer, 1, []
+        chunk1 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="YES", confidence="HIGH"),
+                "Notice Required": _make_column_result(answer="YES", confidence="HIGH"),
+            }
         )
+        chunk2 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="NO", confidence="MEDIUM"),
+                "Notice Required": _make_column_result(answer="YES", confidence="HIGH"),
+            }
+        )
+
+        merged, conflicted = analyzer._merge_chunk_results([chunk1, chunk2], customer, 1, [])
 
         # YES has higher priority than NO, so merged answer is YES.
         assert merged.columns["Consent Required"].answer == "YES"
@@ -603,18 +607,20 @@ class TestMergeChunkResults:
             exact_quote="additional clause",
         )
 
-        chunk1 = _make_customer_result(columns={
-            "Consent Required": _make_column_result(answer="YES", citations=[shared_citation]),
-            "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
-        })
-        chunk2 = _make_customer_result(columns={
-            "Consent Required": _make_column_result(answer="YES", citations=[shared_citation, unique_citation]),
-            "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
-        })
-
-        merged, _ = analyzer._merge_chunk_results(
-            [chunk1, chunk2], customer, 1, []
+        chunk1 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="YES", citations=[shared_citation]),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
         )
+        chunk2 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="YES", citations=[shared_citation, unique_citation]),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
+
+        merged, _ = analyzer._merge_chunk_results([chunk1, chunk2], customer, 1, [])
 
         # shared_citation appears in both chunks but should be deduplicated.
         citations = merged.columns["Consent Required"].citations
@@ -625,18 +631,20 @@ class TestMergeChunkResults:
         analyzer = _make_analyzer(tmp_path)
         customer = _make_customer()
 
-        chunk1 = _make_customer_result(columns={
-            "Consent Required": _make_column_result(answer="NOT_ADDRESSED"),
-            "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
-        })
-        chunk2 = _make_customer_result(columns={
-            "Consent Required": _make_column_result(answer="NOT_ADDRESSED"),
-            "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
-        })
-
-        merged, conflicted = analyzer._merge_chunk_results(
-            [chunk1, chunk2], customer, 1, []
+        chunk1 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="NOT_ADDRESSED"),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
         )
+        chunk2 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="NOT_ADDRESSED"),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
+
+        merged, conflicted = analyzer._merge_chunk_results([chunk1, chunk2], customer, 1, [])
 
         assert merged.columns["Consent Required"].answer == "NOT_ADDRESSED"
         assert merged.columns["Notice Required"].answer == "NOT_ADDRESSED"
@@ -658,43 +666,49 @@ class TestSynthesisPass:
         customer = _make_customer()
 
         # Merged result has conflicted "Consent Required".
-        merged = _make_customer_result(columns={
-            "Consent Required": _make_column_result(answer="YES", confidence="MEDIUM"),
-            "Notice Required": _make_column_result(answer="YES", confidence="HIGH"),
-        })
+        merged = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="YES", confidence="MEDIUM"),
+                "Notice Required": _make_column_result(answer="YES", confidence="HIGH"),
+            }
+        )
 
         chunk_results = [
-            _make_customer_result(columns={
-                "Consent Required": _make_column_result(answer="YES"),
-                "Notice Required": _make_column_result(answer="YES"),
-            }),
-            _make_customer_result(columns={
-                "Consent Required": _make_column_result(answer="NO"),
-                "Notice Required": _make_column_result(answer="YES"),
-            }),
+            _make_customer_result(
+                columns={
+                    "Consent Required": _make_column_result(answer="YES"),
+                    "Notice Required": _make_column_result(answer="YES"),
+                }
+            ),
+            _make_customer_result(
+                columns={
+                    "Consent Required": _make_column_result(answer="NO"),
+                    "Notice Required": _make_column_result(answer="YES"),
+                }
+            ),
         ]
 
-        synthesis_response = json.dumps({
-            "Consent Required": {
-                "answer": "NO",
-                "confidence": "HIGH",
-                "citations": [
-                    {
-                        "file_path": "GroupA/Acme Corp/msa.pdf",
-                        "page": "10",
-                        "section_ref": "Section 15",
-                        "exact_quote": "amendment overrides consent",
-                    }
-                ],
-            },
-        })
+        synthesis_response = json.dumps(
+            {
+                "Consent Required": {
+                    "answer": "NO",
+                    "confidence": "HIGH",
+                    "citations": [
+                        {
+                            "file_path": "GroupA/Acme Corp/msa.pdf",
+                            "page": "10",
+                            "section_ref": "Section 15",
+                            "exact_quote": "amendment overrides consent",
+                        }
+                    ],
+                },
+            }
+        )
 
         mock_call = AsyncMock(return_value=synthesis_response)
 
         with patch.object(analyzer, "_call_claude", mock_call):
-            result = await analyzer._synthesis_pass(
-                merged, chunk_results, ["Consent Required"], customer
-            )
+            result = await analyzer._synthesis_pass(merged, chunk_results, ["Consent Required"], customer)
 
         # Conflicted column should be updated to synthesis result.
         assert result.columns["Consent Required"].answer == "NO"
@@ -709,28 +723,32 @@ class TestSynthesisPass:
         analyzer = _make_analyzer(tmp_path)
         customer = _make_customer()
 
-        merged = _make_customer_result(columns={
-            "Consent Required": _make_column_result(answer="YES", confidence="MEDIUM"),
-            "Notice Required": _make_column_result(answer="YES", confidence="HIGH"),
-        })
+        merged = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="YES", confidence="MEDIUM"),
+                "Notice Required": _make_column_result(answer="YES", confidence="HIGH"),
+            }
+        )
 
         chunk_results = [
-            _make_customer_result(columns={
-                "Consent Required": _make_column_result(answer="YES"),
-                "Notice Required": _make_column_result(answer="YES"),
-            }),
-            _make_customer_result(columns={
-                "Consent Required": _make_column_result(answer="NO"),
-                "Notice Required": _make_column_result(answer="YES"),
-            }),
+            _make_customer_result(
+                columns={
+                    "Consent Required": _make_column_result(answer="YES"),
+                    "Notice Required": _make_column_result(answer="YES"),
+                }
+            ),
+            _make_customer_result(
+                columns={
+                    "Consent Required": _make_column_result(answer="NO"),
+                    "Notice Required": _make_column_result(answer="YES"),
+                }
+            ),
         ]
 
         mock_call = AsyncMock(side_effect=RuntimeError("Synthesis API down"))
 
         with patch.object(analyzer, "_call_claude", mock_call):
-            result = await analyzer._synthesis_pass(
-                merged, chunk_results, ["Consent Required"], customer
-            )
+            result = await analyzer._synthesis_pass(merged, chunk_results, ["Consent Required"], customer)
 
         # On failure, original merged result is returned unchanged.
         assert result.columns["Consent Required"].answer == "YES"
@@ -742,37 +760,43 @@ class TestSynthesisPass:
         analyzer = _make_analyzer(tmp_path)
         customer = _make_customer()
 
-        merged = _make_customer_result(columns={
-            "Consent Required": _make_column_result(answer="YES", confidence="MEDIUM"),
-            "Notice Required": _make_column_result(answer="NO", confidence="HIGH"),
-        })
+        merged = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="YES", confidence="MEDIUM"),
+                "Notice Required": _make_column_result(answer="NO", confidence="HIGH"),
+            }
+        )
 
         chunk_results = [
-            _make_customer_result(columns={
-                "Consent Required": _make_column_result(answer="YES"),
-                "Notice Required": _make_column_result(answer="NO"),
-            }),
-            _make_customer_result(columns={
-                "Consent Required": _make_column_result(answer="NO"),
-                "Notice Required": _make_column_result(answer="NO"),
-            }),
+            _make_customer_result(
+                columns={
+                    "Consent Required": _make_column_result(answer="YES"),
+                    "Notice Required": _make_column_result(answer="NO"),
+                }
+            ),
+            _make_customer_result(
+                columns={
+                    "Consent Required": _make_column_result(answer="NO"),
+                    "Notice Required": _make_column_result(answer="NO"),
+                }
+            ),
         ]
 
         # Synthesis returns only the conflicted column.
-        synthesis_response = json.dumps({
-            "Consent Required": {
-                "answer": "NO",
-                "confidence": "HIGH",
-                "citations": [],
-            },
-        })
+        synthesis_response = json.dumps(
+            {
+                "Consent Required": {
+                    "answer": "NO",
+                    "confidence": "HIGH",
+                    "citations": [],
+                },
+            }
+        )
 
         mock_call = AsyncMock(return_value=synthesis_response)
 
         with patch.object(analyzer, "_call_claude", mock_call):
-            result = await analyzer._synthesis_pass(
-                merged, chunk_results, ["Consent Required"], customer
-            )
+            result = await analyzer._synthesis_pass(merged, chunk_results, ["Consent Required"], customer)
 
         # Non-conflicted column must remain exactly as it was.
         assert result.columns["Notice Required"].answer == "NO"
@@ -793,27 +817,31 @@ class TestValidationPass:
         analyzer = _make_analyzer(tmp_path)
         customer = _make_customer()
 
-        result = _make_customer_result(columns={
-            "Consent Required": _make_column_result(answer="YES", confidence="HIGH"),
-            "Notice Required": _make_column_result(answer="NOT_ADDRESSED", confidence="HIGH"),
-        })
+        result = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="YES", confidence="HIGH"),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED", confidence="HIGH"),
+            }
+        )
 
         file_texts = [_make_file_text(text="Some contract text with notice clauses.")]
 
-        validation_response = json.dumps({
-            "Notice Required": {
-                "answer": "YES",
-                "confidence": "MEDIUM",
-                "citations": [
-                    {
-                        "file_path": "GroupA/Acme Corp/msa.pdf",
-                        "page": "7",
-                        "section_ref": "Section 5",
-                        "exact_quote": "notice shall be given",
-                    }
-                ],
-            },
-        })
+        validation_response = json.dumps(
+            {
+                "Notice Required": {
+                    "answer": "YES",
+                    "confidence": "MEDIUM",
+                    "citations": [
+                        {
+                            "file_path": "GroupA/Acme Corp/msa.pdf",
+                            "page": "7",
+                            "section_ref": "Section 5",
+                            "exact_quote": "notice shall be given",
+                        }
+                    ],
+                },
+            }
+        )
 
         mock_call = AsyncMock(return_value=validation_response)
 
@@ -831,10 +859,12 @@ class TestValidationPass:
         analyzer = _make_analyzer(tmp_path)
         customer = _make_customer()
 
-        result = _make_customer_result(columns={
-            "Consent Required": _make_column_result(answer="YES"),
-            "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
-        })
+        result = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="YES"),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
 
         file_texts = [_make_file_text(text="Some text.")]
 
@@ -852,10 +882,12 @@ class TestValidationPass:
         analyzer = _make_analyzer(tmp_path)
         customer = _make_customer()
 
-        result = _make_customer_result(columns={
-            "Consent Required": _make_column_result(answer="YES"),
-            "Notice Required": _make_column_result(answer="NO"),
-        })
+        result = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="YES"),
+                "Notice Required": _make_column_result(answer="NO"),
+            }
+        )
 
         file_texts = [_make_file_text(text="Some text.")]
 
@@ -891,5 +923,41 @@ class TestInferDocType:
     def test_defaults_to_contract(self) -> None:
         """Unknown filename defaults to 'Contract'."""
         assert SearchAnalyzer._infer_doc_type("GroupA/Acme Corp/random.pdf") == "Contract"
+
+
+# ===================================================================
+# TestExtractJsonText
+# ===================================================================
+
+
+class TestExtractJsonText:
+    """Tests for _extract_json_text — JSON extraction from raw model output."""
+
+    def test_plain_json(self) -> None:
+        raw = '{"col": {"answer": "YES"}}'
+        assert SearchAnalyzer._extract_json_text(raw) == raw
+
+    def test_markdown_fenced(self) -> None:
+        raw = '```json\n{"col": {"answer": "YES"}}\n```'
+        result = SearchAnalyzer._extract_json_text(raw)
+        assert json.loads(result) == {"col": {"answer": "YES"}}
+
+    def test_preamble_text(self) -> None:
+        raw = 'Here is the analysis:\n{"col": {"answer": "NO"}}'
+        result = SearchAnalyzer._extract_json_text(raw)
+        assert json.loads(result) == {"col": {"answer": "NO"}}
+
+    def test_double_json_extracts_first(self) -> None:
+        """When the model returns two JSON objects, extract only the first."""
+        obj1 = '{"col": {"answer": "NOT_ADDRESSED", "confidence": "MEDIUM", "citations": []}}'
+        obj2 = '{"col": {"answer": "YES", "confidence": "HIGH", "citations": []}}'
+        raw = obj1 + "\n" + obj2
+        result = SearchAnalyzer._extract_json_text(raw)
+        parsed = json.loads(result)
+        assert parsed["col"]["answer"] == "NOT_ADDRESSED"
+
+    def test_no_braces(self) -> None:
+        raw = "No JSON here at all"
+        assert SearchAnalyzer._extract_json_text(raw) == raw
         assert SearchAnalyzer._infer_doc_type("something_else.docx") == "Contract"
         assert SearchAnalyzer._infer_doc_type("") == "Contract"
