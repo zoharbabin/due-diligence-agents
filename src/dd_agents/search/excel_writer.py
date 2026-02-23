@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from openpyxl.cell.cell import Cell
     from openpyxl.worksheet.worksheet import Worksheet
 
-    from dd_agents.models.search import SearchCustomerResult, SearchPrompts
+    from dd_agents.models.search import SearchCitation, SearchCustomerResult, SearchPrompts
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +168,8 @@ class SearchExcelWriter:
             "Page",
             "Section",
             "Exact Quote",
+            "Quote Verified",
+            "Match Score",
         ]
         for col_idx, header in enumerate(headers, start=1):
             cell = ws.cell(row=1, column=col_idx, value=header)
@@ -223,6 +225,8 @@ class SearchExcelWriter:
                         quote_cell = ws.cell(row=row_idx, column=9, value=cit.exact_quote)
                         quote_cell.font = _BODY_FONT
                         quote_cell.alignment = quote_cell.alignment.copy(wrapText=True)  # type: ignore[no-untyped-call]
+                        # Citation verification columns (Issue #5).
+                        self._write_verification_cells(ws, row_idx, cit)
                         row_idx += 1
 
         # Formatting.
@@ -231,13 +235,33 @@ class SearchExcelWriter:
             last_col = get_column_letter(ws.max_column)
             ws.auto_filter.ref = f"A1:{last_col}{ws.max_row}"
 
-        widths = [25, 15, 30, 40, 12, 40, 8, 15, 60]
+        widths = [25, 15, 30, 40, 12, 40, 8, 15, 60, 14, 12]
         for i, w in enumerate(widths):
             ws.column_dimensions[get_column_letter(i + 1)].width = w
 
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _write_verification_cells(ws: Worksheet, row_idx: int, cit: SearchCitation) -> None:
+        """Write citation verification columns (Issue #5)."""
+        if cit.quote_verified is None:
+            # Not verified (no verification data available).
+            ws.cell(row=row_idx, column=10, value="").font = _BODY_FONT
+            ws.cell(row=row_idx, column=11, value="").font = _BODY_FONT
+        elif cit.quote_verified:
+            verified_cell = ws.cell(row=row_idx, column=10, value="YES")
+            verified_cell.font = _BODY_FONT
+            verified_cell.fill = _GREEN_FILL
+            score_cell = ws.cell(row=row_idx, column=11, value=round(cit.quote_match_score))
+            score_cell.font = _BODY_FONT
+        else:
+            verified_cell = ws.cell(row=row_idx, column=10, value="NO")
+            verified_cell.font = _WARNING_FONT
+            verified_cell.fill = _ORANGE_FILL
+            score_cell = ws.cell(row=row_idx, column=11, value=round(cit.quote_match_score))
+            score_cell.font = _WARNING_FONT
 
     @staticmethod
     def _apply_answer_fill(cell: Cell, answer: str) -> None:
