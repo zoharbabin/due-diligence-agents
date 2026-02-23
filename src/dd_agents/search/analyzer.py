@@ -619,8 +619,6 @@ class SearchAnalyzer:
         conflicted_columns: list[str] = []
         merged_incomplete: list[str] = []
 
-        _answer_priority = {"YES": 3, "NO": 2, "NOT_ADDRESSED": 1}
-
         for col in self._prompts.columns:
             answers: list[str] = []
             all_citations: list[SearchCitation] = []
@@ -634,15 +632,38 @@ class SearchAnalyzer:
                     continue
 
                 answer_upper = col_result.answer.upper().strip()
-                answers.append(answer_upper)
 
-                # Determine priority for this answer.
-                priority = _answer_priority.get(answer_upper, 2)  # Free-text treated as NO-level
-                if answer_upper not in _answer_priority:
-                    # Free-text answer: treat as substantive (higher than NOT_ADDRESSED).
+                # Classify the answer.  Answers that START with
+                # "NOT_ADDRESSED" (e.g. "NOT_ADDRESSED. The portions...")
+                # are still NOT_ADDRESSED — don't promote them to free-text.
+                if answer_upper == "YES":
+                    priority = 3
+                elif answer_upper == "NO":
+                    priority = 2
+                elif answer_upper.startswith("NOT_ADDRESSED") or answer_upper.startswith("NOT ADDRESSED"):
+                    priority = 1
+                else:
+                    # Substantive free-text (higher than NOT_ADDRESSED).
                     priority = 2
 
-                if priority > best_priority:
+                # For the canonical YES/NO answer we track for conflict
+                # detection, normalise to the short form.
+                if priority == 1:
+                    answers.append("NOT_ADDRESSED")
+                elif answer_upper in ("YES", "NO"):
+                    answers.append(answer_upper)
+                else:
+                    answers.append(answer_upper)
+
+                # When tied at the same priority, prefer the longer
+                # substantive text (plan spec: "longest substantive
+                # answer").  This ensures a real summary beats a terse
+                # placeholder at the same priority level.
+                is_better = priority > best_priority or (
+                    priority == best_priority and len(col_result.answer) > len(best_answer)
+                )
+
+                if is_better:
                     best_priority = priority
                     best_answer = col_result.answer
                     best_confidence = col_result.confidence

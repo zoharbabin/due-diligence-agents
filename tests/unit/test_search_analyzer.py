@@ -650,6 +650,72 @@ class TestMergeChunkResults:
         assert merged.columns["Notice Required"].answer == "NOT_ADDRESSED"
         assert conflicted == []
 
+    def test_verbose_not_addressed_treated_as_not_addressed(self, tmp_path: Path) -> None:
+        """NOT_ADDRESSED with explanation text must NOT beat a real free-text summary.
+
+        Regression test: the model sometimes returns
+        'NOT_ADDRESSED. The portions of the agreement reviewed (Part 1 of 4)...'
+        which must be treated as NOT_ADDRESSED (priority 1), not as
+        substantive free-text (priority 2).
+        """
+        analyzer = _make_analyzer(tmp_path)
+        customer = _make_customer()
+
+        # Chunk 1: verbose NOT_ADDRESSED explanation (the early partial review).
+        chunk1 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(
+                    answer=(
+                        "NOT_ADDRESSED. The portions of the agreement "
+                        "reviewed (Part 1 of 4) do not contain an explicit "
+                        "obligation on the Supplier to obtain consent."
+                    ),
+                ),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
+        # Chunk 2: actual substantive summary from the later chunk.
+        chunk2 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(
+                    answer="Section 12.1 requires prior written consent for any change of control.",
+                    confidence="HIGH",
+                ),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
+
+        merged, _ = analyzer._merge_chunk_results([chunk1, chunk2], customer, 1, [])
+
+        # The substantive summary (priority 2) must win over the verbose
+        # NOT_ADDRESSED (priority 1), regardless of ordering.
+        assert "Section 12.1" in merged.columns["Consent Required"].answer
+        assert "NOT_ADDRESSED" not in merged.columns["Consent Required"].answer.upper()
+
+    def test_longer_free_text_preferred(self, tmp_path: Path) -> None:
+        """When two chunks provide free-text at the same priority, the longer one wins."""
+        analyzer = _make_analyzer(tmp_path)
+        customer = _make_customer()
+
+        chunk1 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="Short answer."),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
+        chunk2 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(
+                    answer="A much longer and more detailed answer with specific section references."
+                ),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
+
+        merged, _ = analyzer._merge_chunk_results([chunk1, chunk2], customer, 1, [])
+
+        assert "much longer" in merged.columns["Consent Required"].answer
+
 
 # ===================================================================
 # TestSynthesisPass
