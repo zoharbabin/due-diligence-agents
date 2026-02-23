@@ -85,10 +85,8 @@ def run(
 ) -> None:
     """Run the due diligence pipeline with a deal-config.json file."""
     if verbose:
-        logging.basicConfig(
-            level=logging.DEBUG,
-            format="%(name)s: %(message)s",
-        )
+        logging.basicConfig(level=logging.WARNING, format="%(name)s: %(message)s")
+        logging.getLogger("dd_agents").setLevel(logging.DEBUG)
 
     # --- Load and validate config ---
     try:
@@ -544,7 +542,8 @@ def auto_config(
         dd-agents auto-config "Apex Holdings" "WidgetCo" --data-room ./data_room --dry-run
     """
     if verbose:
-        logging.basicConfig(level=logging.DEBUG, format="%(name)s: %(message)s")
+        logging.basicConfig(level=logging.WARNING, format="%(name)s: %(message)s")
+        logging.getLogger("dd_agents").setLevel(logging.DEBUG)
 
     from dd_agents.cli_auto_config import (
         DataRoomAnalyzer,
@@ -695,7 +694,8 @@ def search(
         dd-agents search prompts.json --data-room ./data_room --customers "Acme,Beta" -y
     """
     if verbose:
-        logging.basicConfig(level=logging.DEBUG, format="%(name)s: %(message)s")
+        logging.basicConfig(level=logging.WARNING, format="%(name)s: %(message)s")
+        logging.getLogger("dd_agents").setLevel(logging.DEBUG)
 
     from dd_agents.search.runner import SearchRunner
 
