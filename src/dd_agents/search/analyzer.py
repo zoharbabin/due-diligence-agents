@@ -35,9 +35,11 @@ _CHARS_PER_TOKEN = 4
 _INPUT_COST_PER_MTOK = 3.0  # Claude Sonnet 4 pricing (USD per 1M tokens)
 _OUTPUT_COST_PER_MTOK = 15.0
 
-# Conservative prompt size limit (~150K tokens → 600K chars).  Leaves
-# headroom for the system prompt and output tokens.
-_MAX_PROMPT_CHARS = 600_000
+# Conservative prompt size limit.  Legal text tokenizes at ~3 chars/token
+# (short words, punctuation, numbered clauses) so 400K chars ≈ 130K tokens.
+# Leaves headroom for the system prompt (~3K tokens) and output (~2K tokens)
+# within the model's 200K token context window.
+_MAX_PROMPT_CHARS = 400_000
 
 # Error messages that indicate non-transient failures (don't retry).
 _NON_TRANSIENT_ERRORS = ("Prompt is too long", "context length", "too many tokens")
@@ -153,6 +155,25 @@ class SearchAnalyzer:
         -------
         list[SearchCustomerResult]
         """
+        # Suppress the SDK's cancel-scope RuntimeError that leaks from
+        # internal background tasks.  Without this, asyncio's default
+        # handler prints an ugly traceback we cannot catch with try/except.
+        loop = asyncio.get_running_loop()
+        _orig_handler = loop.get_exception_handler()
+
+        def _quiet_handler(event_loop: asyncio.AbstractEventLoop, context: dict) -> None:  # type: ignore[type-arg]
+            exc = context.get("exception")
+            if isinstance(exc, RuntimeError) and "cancel scope" in str(exc).lower():
+                logger.debug("Suppressed SDK cancel-scope error (background task)")
+                return
+            # Delegate everything else to the original handler or default.
+            if _orig_handler is not None:
+                _orig_handler(event_loop, context)
+            else:
+                event_loop.default_exception_handler(context)
+
+        loop.set_exception_handler(_quiet_handler)
+
         semaphore = asyncio.Semaphore(self._concurrency)
 
         async def _bounded(customer: CustomerEntry) -> SearchCustomerResult:
@@ -198,6 +219,9 @@ class SearchAnalyzer:
                 len(customers),
                 len(final),
             )
+
+        # Restore original exception handler.
+        loop.set_exception_handler(_orig_handler)
 
         return final
 
