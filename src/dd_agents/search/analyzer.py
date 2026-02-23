@@ -193,7 +193,7 @@ class SearchAnalyzer:
         loop = asyncio.get_running_loop()
         _orig_handler = loop.get_exception_handler()
 
-        def _quiet_handler(event_loop: asyncio.AbstractEventLoop, context: dict) -> None:  # type: ignore[type-arg]
+        def _quiet_handler(event_loop: asyncio.AbstractEventLoop, context: dict[str, Any]) -> None:
             exc = context.get("exception")
             if isinstance(exc, RuntimeError) and "cancel scope" in str(exc).lower():
                 logger.debug("Suppressed SDK cancel-scope error (background task)")
@@ -807,7 +807,7 @@ class SearchAnalyzer:
 
             merged.columns[col_name] = SearchColumnResult(
                 answer=col_data.get("answer", merged.columns[col_name].answer),
-                confidence=col_data.get("confidence", merged.columns[col_name].confidence).upper(),
+                confidence=(col_data.get("confidence") or merged.columns[col_name].confidence).upper(),
                 citations=citations or merged.columns[col_name].citations,
             )
 
@@ -900,7 +900,7 @@ class SearchAnalyzer:
 
             result.columns[col_name] = SearchColumnResult(
                 answer=answer,
-                confidence=col_data.get("confidence", "").upper(),
+                confidence=(col_data.get("confidence") or "").upper(),
                 citations=citations,
             )
 
@@ -1025,7 +1025,7 @@ class SearchAnalyzer:
 
             columns[col.name] = SearchColumnResult(
                 answer=col_data.get("answer", ""),
-                confidence=col_data.get("confidence", "").upper(),
+                confidence=(col_data.get("confidence") or "").upper(),
                 citations=citations,
             )
 

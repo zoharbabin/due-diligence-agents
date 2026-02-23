@@ -24,7 +24,11 @@
 13. [Prompt Engineering for Contract Analysis](#13-prompt-engineering-for-contract-analysis)
 14. [Constants and Thresholds Reference](#14-constants-and-thresholds-reference)
 15. [Architecture Decisions](#15-architecture-decisions)
-16. [Future Research Areas](#16-future-research-areas)
+16. [Alternative Extraction Libraries Evaluation](#16-alternative-extraction-libraries-evaluation)
+17. [Visual Grounding and Source Attribution](#17-visual-grounding-and-source-attribution)
+18. [Structured LLM Output Techniques](#18-structured-llm-output-techniques)
+19. [Pipeline Improvement Roadmap](#19-pipeline-improvement-roadmap)
+20. [Future Research Areas](#20-future-research-areas)
 
 ---
 
@@ -956,26 +960,565 @@ derived from the source path. This means:
 
 ---
 
-## 16. Future Research Areas
+## 16. Alternative Extraction Libraries Evaluation
 
-### 16.1 Known Limitations to Address
+> Research conducted February 2026. Evaluated against our non-negotiable
+> requirements: 100% coverage, structural fidelity, citation-grade page
+> references, and deterministic reproducibility.
+
+### 16.1 Current Stack Weaknesses
+
+Our current PDF chain (pymupdf → pdftotext → markitdown → pytesseract)
+has proven reliable for text-native PDFs but has structural weaknesses:
+
+| Weakness | Impact | Root Cause |
+|----------|--------|------------|
+| No table structure preservation | LLM sees flattened text, loses row/column context | pymupdf `get_text()` returns plain text |
+| No formula extraction | Mathematical formulas in contracts rendered as garbled text | No LaTeX/MathML support |
+| markitdown binary dumps on scans | Required Bug G fix (readability gate) | markitdown not designed for scanned PDFs |
+| No reading order detection | Multi-column layouts extracted column-interleaved | pymupdf follows PDF object order, not visual flow |
+| Single-language OCR | Korean (LG), Japanese, Chinese contracts → garbled | pytesseract hardcoded to `lang="eng"` |
+| No layout analysis | Cannot distinguish headers, footers, sidebars from body | Extraction is purely text-based |
+
+### 16.2 Library Comparison Matrix
+
+Six libraries evaluated as potential replacements or supplements to
+markitdown in our fallback chain:
+
+| Criteria | markitdown (current) | Docling (IBM) | MinerU (OpenDataLab) | PP-StructureV3 (PaddlePaddle) | LangExtract (Google) | Unstructured |
+|----------|---------------------|---------------|---------------------|-------------------------------|---------------------|--------------|
+| **PDF text extraction** | Basic | Layout-aware | Layout-aware | Layout-aware | LLM-driven | Layout-aware |
+| **Table → structured** | No | HTML/CSV | HTML/Markdown | HTML | JSON | HTML |
+| **Formula → LaTeX** | No | Yes | Yes | Yes | No | No |
+| **Reading order** | No | Yes | Yes | Yes | N/A | Yes |
+| **OCR languages** | English only | Multi-language | 109 languages | Multi-language | N/A (LLM) | Multi-language |
+| **Page markers** | No | Yes (page-level) | Yes (page-level) | Yes | N/A | Yes (element-level) |
+| **Scanned PDF** | Binary dump (Bug G) | DocTR/EasyOCR | PaddleOCR/Tesseract | PaddleOCR | Vision LLM | Tesseract/paddle |
+| **Formats beyond PDF** | DOCX, XLSX, PPTX, RTF | DOCX, PPTX, XLSX, HTML, images, AsciiDoc | PDF only | PDF/images only | Any (LLM) | All major formats |
+| **Lossless output** | Markdown only | JSON (DoclingDocument) | Markdown + JSON | Markdown | JSON | JSON elements |
+| **License** | MIT | MIT | AGPL-3.0 | Apache 2.0 | Apache 2.0 | Apache 2.0 |
+| **Python install** | `pip install` | `pip install docling` | `pip install magic-pdf` | `pip install paddlepaddle paddleocr` | `pip install langextract` | `pip install unstructured` |
+| **GPU required** | No | Optional (faster) | Optional | Optional | No (API-based) | Optional |
+| **Benchmark (OmniDocBench)** | N/A | 0.589 EN edit distance | 0.238 EN edit distance | **0.145 EN edit distance** | N/A | N/A |
+
+### 16.3 Docling (IBM, Open Source)
+
+**Repository:** github.com/docling-project/docling (MIT license)
+
+**Architecture:** PDF → layout analysis (DocLayNet) → cell detection →
+table structure recognition → OCR (DocTR or EasyOCR) → DoclingDocument
+JSON → export to Markdown/HTML/DOCX.
+
+**Strengths:**
+- Lossless `DoclingDocument` JSON preserves full document structure
+  (headings, paragraphs, tables, figures, code blocks, formulas)
+- Built-in table structure recognition with HTML output
+- Formula recognition (experimental)
+- Native integration with LangChain (`DoclingLoader`) and LlamaIndex
+  (`DoclingReader`)
+- Multi-format support: PDF, DOCX, PPTX, XLSX, HTML, images, AsciiDoc,
+  Markdown
+- Page-level metadata on every element (enables exact page citations)
+- Chunking built-in: `HybridChunker` with configurable token limits and
+  overlap — could replace our custom chunking logic
+- Active IBM Research maintenance
+
+**Weaknesses:**
+- Worst OmniDocBench score among layout-aware libraries (0.589 EN edit
+  distance vs PP-StructureV3's 0.145 — 4x worse accuracy)
+- Slower than MinerU on large documents (layout model overhead)
+- Formula recognition still experimental
+- Custom model requires fine-tuning for specialized document layouts
+
+**Relevance to dd-agents:**
+- Could replace markitdown as the Office document extractor (DOCX, PPTX,
+  XLSX) while preserving table structure
+- Built-in chunker could simplify our chunking pipeline
+- But PDF extraction accuracy inferior to MinerU and PP-StructureV3
+
+### 16.4 MinerU (OpenDataLab)
+
+**Repository:** github.com/opendatalab/MinerU (AGPL-3.0 license)
+
+**Architecture:** Three backends:
+1. **Pipeline** (traditional): Layout detection → OCR → reading order →
+   formula recognition → table recognition → Markdown/JSON output.
+   Accuracy: 82+ on OmniDocBench.
+2. **Hybrid** (PDF.js + model): Faster, text-layer aware. 85+ accuracy.
+3. **VLM** (vision language model): Uses Qwen2.5-VL or similar for
+   end-to-end understanding. 90+ accuracy on complex documents.
+
+**Strengths:**
+- 109-language OCR via PaddleOCR — solves our Korean/Japanese limitation
+- Reading order detection — solves multi-column layout issues
+- Formula → LaTeX conversion
+- Table → HTML/Markdown with cell-level structure
+- Page-level output with coordinates (bounding boxes)
+- Three accuracy tiers: pipeline (fast), hybrid (balanced), VLM (best)
+- 0.238 EN edit distance on OmniDocBench (2.5x better than Docling)
+- Active development with frequent releases
+
+**Weaknesses:**
+- AGPL-3.0 license — requires open-sourcing derivative works or
+  purchasing commercial license. This is a **blocker for proprietary
+  deployment** unless used as a standalone service
+- PDF-only — does not handle DOCX, XLSX, PPTX (we still need
+  markitdown or Docling for Office formats)
+- Heavier dependencies (PaddleOCR, PyTorch models)
+- VLM backend requires GPU for reasonable speed
+
+**Relevance to dd-agents:**
+- Best candidate for replacing pymupdf + pytesseract in the PDF chain
+- 109-language OCR directly solves the Korean MSA problem
+- Reading order detection eliminates multi-column interleaving
+- AGPL license needs legal review before adoption
+
+### 16.5 PP-StructureV3 / PaddleOCR (PaddlePaddle)
+
+**Repository:** github.com/PaddlePaddle/PaddleOCR (Apache 2.0 license)
+
+**Architecture:** Layout detection (RT-DETR) → region classification →
+per-region processing: text OCR, table recognition (SLANeXt), formula
+recognition (UniMERNet), chart understanding → Markdown output.
+
+**Benchmark results (OmniDocBench, February 2025):**
+
+| Library | EN Edit Distance ↓ | EN BLEU ↑ | EN Meteor ↑ |
+|---------|-------------------|-----------|-------------|
+| **PP-StructureV3** | **0.145** | **0.694** | **0.781** |
+| MinerU (pipeline) | 0.238 | 0.574 | 0.685 |
+| Docling | 0.589 | 0.318 | 0.445 |
+| MinerU + VLM | — | — | — (90+ composite) |
+
+PP-StructureV3 achieves **4x lower edit distance** than Docling and 1.6x
+lower than MinerU's pipeline backend.
+
+**Strengths:**
+- Best-in-class accuracy on OmniDocBench across all document types
+- Apache 2.0 license — no commercial restrictions
+- Layout detection, table recognition, formula recognition, chart
+  understanding in one integrated pipeline
+- Markdown output with preserved structure
+- Multi-language OCR built in
+- Chart → structured data extraction (unique capability)
+- Active development, backed by Baidu
+
+**Weaknesses:**
+- PaddlePaddle framework dependency (not PyTorch) — separate ecosystem
+- PDF and image only — no DOCX/XLSX support
+- Larger model downloads (~1-2 GB)
+- Less mature Python API compared to Docling
+- Documentation primarily in Chinese (English docs improving)
+
+**Relevance to dd-agents:**
+- Strongest candidate purely on extraction accuracy
+- Apache 2.0 license is ideal
+- Table recognition would preserve pricing tables, payment schedules
+- Chart understanding could extract data from embedded diagrams
+- Requires PaddlePaddle, which adds a non-trivial dependency
+
+### 16.6 Head-to-Head Recommendation
+
+For the dd-agents pipeline, the evaluation suggests a **hybrid approach**
+rather than a single library replacement:
+
+| Role | Current | Recommended | Rationale |
+|------|---------|-------------|-----------|
+| PDF text extraction (primary) | pymupdf | **MinerU hybrid** or **PP-StructureV3** | Layout-aware, reading order, 2-4x better accuracy |
+| PDF OCR (scanned docs) | pytesseract | **MinerU** (109-lang OCR) or **PaddleOCR** | Multi-language, integrated with layout analysis |
+| PDF tables | None (flattened) | **PP-StructureV3** (SLANeXt) or **Docling** | Preserves row/column structure for pricing analysis |
+| Office documents (DOCX/XLSX/PPTX) | markitdown | **Docling** | Table structure, multi-format, LangChain integration |
+| Formulas | None | **MinerU** or **PP-StructureV3** | LaTeX output for mathematical terms in contracts |
+| Citation grounding | Page markers | **LangExtract** pattern (see §17) | Bounding-box-level source attribution |
+
+**License consideration:** MinerU's AGPL-3.0 may require running it as
+an isolated microservice to avoid copyleft obligations. PP-StructureV3
+(Apache 2.0) and Docling (MIT) have no such constraints.
+
+**Migration path:** The safest approach is to add new libraries as
+additional steps in the fallback chain rather than replacing existing
+ones immediately. This preserves backward compatibility while gaining
+accuracy on previously-failing documents.
+
+---
+
+## 17. Visual Grounding and Source Attribution
+
+### 17.1 The Citation Accuracy Gap
+
+Our current citation model (`file_path`, `page`, `section_ref`,
+`exact_quote`) relies on text matching — the LLM reads `--- Page N ---`
+markers and reports the page number. This has known failure modes:
+
+1. **markitdown extractions lack page markers** — no page numbers possible
+2. **OCR text errors** — `exact_quote` may not match the original document
+3. **No sub-page precision** — we know the page but not the position on
+   the page (paragraph, table cell, footnote)
+4. **No verification** — we cannot programmatically confirm the cited text
+   actually exists at the cited location
+
+### 17.2 Visual Grounding (LandingAI Concept)
+
+LandingAI's "Agentic Document Extraction" introduces **visual grounding**:
+every extracted data point is linked to a bounding box in the original
+document (x, y, width, height coordinates on a specific page).
+
+**How it works:**
+1. Document → page images (high-DPI render)
+2. Vision LLM or layout model identifies text regions with coordinates
+3. Extraction output includes `bounding_box` per datum
+4. Verification: overlay bounding boxes on original pages to visually
+   confirm extraction accuracy
+
+**What this would enable for dd-agents:**
+- **Pixel-precise citations** — "Section 12.3, Page 15, top-right
+  quadrant" instead of just "Page 15"
+- **Automated citation verification** — crop bounding box, OCR it,
+  compare to `exact_quote`
+- **Visual diff for amendments** — overlay bounding boxes from MSA and
+  amendment to show what changed
+- **Reviewer confidence** — human reviewers see exactly where the LLM
+  found each answer
+
+### 17.3 LangExtract Source Grounding Pattern
+
+**Repository:** github.com/google/langextract (Apache 2.0, 33.6K stars)
+
+LangExtract (Google) implements a different but complementary approach:
+**source grounding via text spans**. Every extracted field includes a
+reference to the exact source text that produced it.
+
+**Key design patterns applicable to dd-agents:**
+
+1. **Multi-pass extraction for recall:** First pass extracts obvious
+   answers, second pass specifically targets fields that came back empty.
+   This mirrors our Phase 4 (validation) but is more targeted — the
+   second pass gets explicit hints about what to look for based on what
+   was found in the first pass.
+
+2. **Parallel chunk processing:** For documents exceeding context limits,
+   LangExtract chunks the document and processes chunks in parallel,
+   then merges results with conflict resolution. Similar to our Phase 1-2
+   but with parallelism (we process chunks sequentially).
+
+3. **Interactive HTML visualization:** Extracted data rendered as an
+   interactive HTML report where clicking any field highlights the source
+   text in the original document. This is the text-based equivalent of
+   visual grounding — achievable without bounding boxes.
+
+4. **Source span tracking:** Each extracted value carries a pointer to the
+   exact character range in the source document. This enables automated
+   verification: compare `exact_quote` to `source_text[start:end]`.
+
+### 17.4 Applicability to dd-agents
+
+**Short-term (no architecture change):**
+- Add source span tracking to citations: store `char_start` and `char_end`
+  offsets into the extracted `.md` file alongside `page` and `section_ref`
+- Implement citation verification: check that `exact_quote` appears within
+  the cited page's text (±50 chars for OCR tolerance)
+- Generate interactive HTML review pages where clicking a finding
+  highlights the source passage
+
+**Medium-term (with library upgrade):**
+- If adopting MinerU or PP-StructureV3, their bounding box output enables
+  visual grounding without additional work
+- Docling's `DoclingDocument` JSON includes element-level page and
+  coordinate metadata
+- Could generate "evidence pages" — original PDF pages with highlighted
+  regions for each finding
+
+**Long-term (visual LLM approach):**
+- Feed page images directly to a vision LLM (Claude, Qwen2.5-VL) for
+  extraction, getting both text and coordinates
+- This eliminates the text extraction step entirely for some use cases
+- Trade-off: higher API cost, non-deterministic, but potentially higher
+  accuracy for complex layouts
+
+---
+
+## 18. Structured LLM Output Techniques
+
+### 18.1 Current Approach and Its Limitations
+
+Our pipeline instructs the LLM to return JSON via prompt engineering:
+
+```
+Return a JSON object with exactly these keys: {column_names}
+Each value must have: answer, confidence, citations, ...
+```
+
+The LLM usually complies, but failure modes exist:
+- Malformed JSON (missing closing braces, trailing commas)
+- Extra keys or missing keys
+- Wrong types (string instead of array for citations)
+- Markdown fence wrapping requiring strip logic
+- Empty `{}` responses requiring retry
+
+### 18.2 Approaches Evaluated
+
+Based on the structured output landscape (2024-2025):
+
+| Approach | Library | How It Works | Guarantees |
+|----------|---------|-------------|------------|
+| **Prompting** | None | System prompt instructs JSON format | None — LLM may not comply |
+| **Function calling** | `instructor` | Pydantic model → tool schema → validated response | Schema-valid, retries on failure |
+| **Constrained generation** | `outlines` | Token-level masking forces valid JSON | Guaranteed valid output |
+| **Grammar-guided** | `guidance` | Handlebars-style template with type constraints | Guaranteed valid output |
+| **API-native** | Anthropic `tool_use` | First-class structured output in API | Schema-valid per provider |
+
+### 18.3 Recommended Approach: `instructor` with Pydantic
+
+**Why `instructor`:**
+- Works with Claude's `tool_use` API natively
+- Pydantic models define the exact schema — type checking, required
+  fields, enum constraints (e.g., confidence must be HIGH/MEDIUM/LOW)
+- Automatic retry with validation error feedback to the LLM
+- No change to model weights or sampling — works with any API provider
+- Active maintenance, large community (6K+ GitHub stars)
+
+**What this would replace:**
+```python
+# Current: manual JSON parsing with fallbacks
+text = response.content[0].text
+text = strip_markdown_fences(text)
+data = json.JSONDecoder().raw_decode(text)
+# ... manual field extraction with get() defaults
+
+# With instructor:
+class ColumnResult(BaseModel):
+    answer: str
+    confidence: Literal["HIGH", "MEDIUM", "LOW"]
+    citations: list[Citation]
+    explanation: str = ""
+
+class AnalysisResponse(BaseModel):
+    columns: dict[str, ColumnResult]
+
+result = client.chat.completions.create(
+    response_model=AnalysisResponse,
+    ...
+)
+# result is guaranteed to be a valid AnalysisResponse
+```
+
+**Benefits for dd-agents:**
+- Eliminates all JSON parsing bugs (Bug D confidence casing solved at
+  schema level: `Literal["HIGH", "MEDIUM", "LOW"]`)
+- Eliminates empty `{}` responses (Pydantic rejects them)
+- Eliminates missing column detection (schema requires all columns)
+- Eliminates verbose NOT_ADDRESSED parsing (could use enum or validator)
+- Automatic retries with the validation error as context for the LLM
+
+### 18.4 Constrained Generation: `outlines`
+
+**For local model scenarios (not our current use case but worth noting):**
+
+`outlines` constrains the token sampling process itself, guaranteeing
+that every generated token is part of a valid JSON structure. This is
+impossible with API-based models (we don't control token sampling) but
+is relevant if we ever switch to local models for cost optimization.
+
+### 18.5 Integration Complexity
+
+| Approach | Lines of Code Change | Risk | Benefit |
+|----------|---------------------|------|---------|
+| `instructor` + Pydantic | ~200 LOC across analyzer.py | Medium (changes core analysis loop) | Eliminates entire class of parsing bugs |
+| Anthropic `tool_use` native | ~150 LOC | Low (already using Anthropic SDK) | Schema validation without new dependency |
+| Keep current + add validation | ~50 LOC | Lowest | Catches errors but doesn't prevent them |
+
+The pragmatic path: first add Pydantic validation as a post-parse check
+(50 LOC, catches errors), then migrate to `instructor` for guaranteed
+output (200 LOC, prevents errors).
+
+---
+
+## 19. Pipeline Improvement Roadmap
+
+### 19.1 Priority Matrix
+
+Ranked by impact on the three 100% goals (completeness, accuracy,
+citation fidelity):
+
+| Priority | Improvement | Effort | Impact on Completeness | Impact on Accuracy | Impact on Citations |
+|----------|-------------|--------|----------------------|-------------------|-------------------|
+| **P0** | Replace pytesseract with PaddleOCR (109 languages) | Medium | High — solves Korean/Japanese/Chinese | Medium | None |
+| **P0** | Add layout-aware PDF extraction (MinerU or PP-StructureV3) | High | Low (most PDFs already work) | **High** — tables, reading order, formulas | Medium — page coordinates |
+| **P1** | Adopt `instructor` for structured LLM output | Medium | Medium — eliminates empty/malformed responses | Medium — schema-enforced confidence | Low |
+| **P1** | Add citation verification (quote ∈ source text) | Medium | None | None | **High** — catches hallucinated quotes |
+| **P1** | Replace markitdown for Office docs with Docling | Medium | Low | **High** — preserves table structure in XLSX/DOCX | Medium — element-level page refs |
+| **P2** | Add visual grounding (bounding boxes) | High | None | Low | **High** — pixel-precise citations |
+| **P2** | Parallel chunk analysis | Low | None | None | None — but 3-5x faster |
+| **P2** | Interactive HTML review pages | Medium | None | None | **High** — reviewer experience |
+| **P3** | VLM-based extraction (vision LLM) | High | Medium — handles any visual layout | High — understands context | High — visual coordinates |
+| **P3** | Cross-document entity resolution | Medium | None | Medium — consistent naming | Low |
+
+### 19.2 Proposed New Fallback Chain (Post-Upgrade)
+
+```
+PDF Extraction Chain v2:
+Step 1: MinerU hybrid or PP-StructureV3 (layout-aware, tables, reading order)
+  ↓ fails density check?
+Step 2: pymupdf (fast fallback, page markers)
+  ↓ fails density check?
+Step 3: pdftotext (poppler, form-heavy PDFs)
+  ↓ fails density + readability check?
+Step 4: PaddleOCR (109-language OCR, layout-aware)
+  ↓ fails threshold?
+Step 5: Direct text read (last resort)
+  ↓ fails threshold?
+FAILED — confidence 0.0
+
+Office Document Chain v2:
+Step 1: Docling (table structure, multi-format)
+  ↓ fails threshold?
+Step 2: markitdown (current, known fallback)
+  ↓ fails threshold?
+Step 3: macOS textutil (Darwin only)
+  ↓ fails threshold?
+Step 4: Direct text read
+  ↓ fails threshold?
+FAILED
+```
+
+**Key changes from current chain:**
+1. Layout-aware extraction becomes Step 1 (MinerU/PP-StructureV3)
+2. pymupdf demoted to Step 2 (still fast and reliable for simple PDFs)
+3. pytesseract replaced by PaddleOCR (multi-language, layout-aware)
+4. markitdown demoted from Step 3 to Step 2 in Office chain
+5. Docling becomes primary Office extractor
+
+### 19.3 Confidence Score Revision
+
+With layout-aware extractors, the confidence scale should be recalibrated:
+
+| Score | Current Meaning | Proposed Meaning |
+|-------|----------------|-----------------|
+| 0.95 | — | Layout-aware extraction with table/formula preservation |
+| 0.9 | pymupdf primary | pymupdf text extraction (no layout) |
+| 0.7 | pdftotext | pdftotext fallback |
+| 0.6 | pytesseract OCR | PaddleOCR (layout-aware OCR) |
+| 0.5 | markitdown / direct | markitdown / direct read |
+| 0.3 | Diagram placeholder | Diagram placeholder |
+| 0.0 | Failed | Failed |
+
+### 19.4 Table Extraction Deep Dive
+
+Tables in M&A contracts carry critical structured data:
+- Pricing schedules (unit prices, volume tiers, discounts)
+- Payment terms (milestones, dates, amounts)
+- SLA metrics (uptime %, response times, penalties)
+- License counts and entitlements
+
+**Current state:** pymupdf flattens tables to whitespace-separated text.
+The LLM must infer row/column relationships from alignment, which fails
+for complex tables with merged cells or multi-line cell content.
+
+**With PP-StructureV3 (SLANeXt table recognition):**
+```markdown
+| Tier | Monthly Volume | Unit Price | Discount |
+|------|---------------|------------|----------|
+| Standard | 0 - 1,000 | $0.05 | 0% |
+| Growth | 1,001 - 10,000 | $0.04 | 20% |
+| Enterprise | 10,001+ | $0.03 | 40% |
+```
+
+This structured output enables the LLM to reason precisely about pricing
+terms rather than guessing from misaligned text.
+
+### 19.5 Reading Order Impact
+
+Multi-column PDFs (common in legal contracts with side-by-side
+English/Korean or English/French text) currently extract as interleaved
+columns:
+
+```
+Current pymupdf output (wrong):
+"The Supplier shall     Le Fournisseur doit
+ provide services       fournir des services
+ as described in        tels que décrits dans"
+
+With MinerU/PP-StructureV3 reading order (correct):
+"The Supplier shall provide services as described in..."
+[column break]
+"Le Fournisseur doit fournir des services tels que décrits dans..."
+```
+
+Reading order detection is particularly important for:
+- Bilingual contracts (Korean MSAs, French Canadian SOWs)
+- Side-by-side comparison sections (original vs amended terms)
+- Multi-column SOW appendices
+- Legal exhibits with parallel text
+
+### 19.6 Implementation Strategy
+
+**Phase 1 — Add, don't replace (lowest risk):**
+1. Install PP-StructureV3 or MinerU as optional dependency
+2. Add as Step 0 in the PDF chain (before pymupdf)
+3. If Step 0 fails or is unavailable, existing chain is unchanged
+4. Measure accuracy improvement on both data rooms
+5. Install PaddleOCR alongside pytesseract for multi-language OCR
+
+**Phase 2 — Validate and promote:**
+1. Run both old and new chains on all 1,426 files (431 + 995)
+2. Compare extraction quality: character count, table preservation,
+   page marker accuracy, citation correctness
+3. If new chain is equal or better on all files, promote to primary
+4. Demote old chain to fallback
+
+**Phase 3 — Structured output migration:**
+1. Add Pydantic models for all LLM response schemas
+2. Add post-parse validation (catches errors, no behavior change)
+3. Migrate to `instructor` (prevents errors, behavior change)
+4. Remove manual JSON parsing code
+
+**Phase 4 — Citation enhancement:**
+1. Add source span tracking (`char_start`, `char_end` in extracted text)
+2. Implement citation verification (quote lookup in source)
+3. Add bounding box output from layout-aware extractors
+4. Build interactive HTML review pages
+
+### 19.7 Dependencies and License Summary
+
+| Library | License | Commercial Use | Notes |
+|---------|---------|---------------|-------|
+| PP-StructureV3 | Apache 2.0 | Yes, unrestricted | Recommended for layout + tables |
+| PaddleOCR | Apache 2.0 | Yes, unrestricted | 109-language OCR |
+| Docling | MIT | Yes, unrestricted | Office document extraction |
+| instructor | MIT | Yes, unrestricted | Structured LLM output |
+| MinerU | AGPL-3.0 | **Requires open-sourcing or commercial license** | Best accuracy but license risk |
+| LangExtract | Apache 2.0 | Yes, unrestricted | Source grounding patterns |
+| outlines | Apache 2.0 | Yes, unrestricted | Only for local models |
+
+**Recommendation:** Use PP-StructureV3 + PaddleOCR (both Apache 2.0) for
+PDF extraction, Docling (MIT) for Office documents, and instructor (MIT)
+for structured output. Avoid MinerU's AGPL unless legal approves or it's
+deployed as an isolated service.
+
+---
+
+## 20. Future Research Areas
+
+### 20.1 Known Limitations to Address
 
 1. **Non-English OCR** — pytesseract is hardcoded to `lang="eng"`. Korean
    MSAs (e.g., LG), Japanese contracts need language detection + multi-
-   language OCR.
+   language OCR. → **Addressed in §19.1 (P0):** PaddleOCR supports 109
+   languages. See §16.4 (MinerU) and §16.5 (PP-StructureV3).
 
 2. **markitdown lacks page markers** — When PDFs fall through to
-   markitdown, page numbers are lost. Investigate hybrid approach:
-   use pymupdf for page structure + markitdown for text content.
+   markitdown, page numbers are lost. → **Partially addressed:** Layout-
+   aware extractors (§16) provide page-level metadata. Markitdown remains
+   as a fallback in the proposed chain (§19.2) but is no longer primary.
 
 3. **Smart Excel extraction** — Current markitdown extraction of `.xlsx`
-   files loses cell structure. The spec includes an openpyxl-based
-   approach that preserves sheet names, handles merged cells, converts
-   formulas, and formats dates/currency.
+   files loses cell structure. → **Addressed in §16.3:** Docling preserves
+   table structure for XLSX/DOCX/PPTX with HTML output. See §19.1 (P1).
 
 4. **Diagram/image indexing** — Images in contracts (org charts, network
-   diagrams, floor plans) are stored as placeholders. Multimodal LLM
-   analysis could extract structured data from these.
+   diagrams, floor plans) are stored as placeholders. → **Partially
+   addressed:** PP-StructureV3 includes chart understanding (§16.5).
+   Full VLM-based image analysis remains P3 (§19.1).
 
 5. **LLM response caching** — Each run calls the API fresh. Caching
    responses per (customer, prompt, document_hash) tuple would reduce
@@ -983,33 +1526,37 @@ derived from the source path. This means:
 
 6. **Parallel extraction** — Current extraction is serial. PDF extraction
    and OCR are CPU/IO-bound and could benefit from multiprocessing.
+   LangExtract demonstrates parallel chunk processing (§17.3).
 
 7. **Synthesis retry** — Phase 3 (synthesis) has no retry logic. If the
    synthesis call fails, merged results are kept as-is. Adding retries
-   would improve conflict resolution reliability.
+   would improve conflict resolution reliability. → `instructor` (§18.3)
+   provides built-in retry with validation error feedback.
 
-### 16.2 Potential Quality Improvements
+### 20.2 Potential Quality Improvements
 
 1. **Cross-document entity resolution** — Detect when "ABC Corp" in one
    document is "ABC Corporation" in another and merge their analysis.
 
 2. **Extraction confidence recalibration** — Current confidence scores are
-   static (0.9 for pymupdf, 0.7 for pdftotext). Calibrate against
-   actual extraction quality (compare to OCR ground truth).
+   static (0.9 for pymupdf, 0.7 for pdftotext). → **Proposed revision
+   in §19.3** adds 0.95 tier for layout-aware extraction.
 
 3. **Chunk boundary optimization** — Current chunking splits at page
    boundaries. Semantic chunking (split at section boundaries, not page
-   boundaries) could improve answer quality.
+   boundaries) could improve answer quality. → Docling's
+   `HybridChunker` (§16.3) supports semantic-aware splitting.
 
 4. **Citation verification** — Post-hoc check that `exact_quote` actually
    appears in the cited `file_path` at the cited `page`. Flag
-   hallucinated citations.
+   hallucinated citations. → **Addressed in §17.3-17.4:** Source span
+   tracking and automated verification. See §19.1 (P1).
 
 5. **Incremental search** — Re-analyze only customers whose documents
    changed, carrying forward unchanged results. Currently the full
    search is re-run even when only extraction changed.
 
-### 16.3 Research Questions
+### 20.3 Research Questions
 
 - What is the optimal chars/page density threshold for scanned PDF
   detection? Current value (50) was set empirically from two data rooms.
@@ -1023,6 +1570,23 @@ derived from the source path. This means:
 
 - At what chunk count does answer quality degrade? Navy Federal had 38
   chunks. Is there a point where more chunks hurt more than they help?
+
+- **PP-StructureV3 vs MinerU on our data rooms:** Both score well on
+  OmniDocBench, but how do they perform specifically on M&A contracts
+  (dense legal text, pricing tables, signature pages)? Run both on the
+  1,426 files and compare.
+
+- **Docling vs markitdown on Office documents:** Measure table structure
+  preservation, page marker accuracy, and extraction completeness for
+  DOCX/XLSX files in both data rooms.
+
+- **instructor adoption cost/benefit:** Measure how many of the 8 known
+  bugs (A-H) would have been prevented by schema-enforced output. Track
+  JSON parse failures and malformed responses in production logs.
+
+- **VLM extraction accuracy vs cost:** Compare Claude vision, Qwen2.5-VL,
+  and traditional OCR on the 26 scanned PDFs in our data rooms. What is
+  the accuracy uplift per dollar of additional API cost?
 
 ---
 
@@ -1073,3 +1637,16 @@ These are automatically excluded from file discovery:
 __MACOSX, .DS_Store, Thumbs.db, desktop.ini,
 .git, .svn, ~$* (Office temp files), ~lock.*
 ```
+
+## Appendix D: Research Sources (February 2026)
+
+| # | Source | Key Contribution |
+|---|--------|-----------------|
+| 1 | [LLM Document Extraction Overview](https://substack.com/@danielvanstrien) | Survey of traditional vs LLM extraction approaches; visual grounding concept |
+| 2 | [LandingAI Agentic Document Extraction](https://landing.ai) | Visual grounding with bounding boxes; spatial context preservation |
+| 3 | [Docling Documentation](https://docling-project.github.io/docling/) | Layout analysis, lossless DoclingDocument JSON, multi-format, LangChain/LlamaIndex integration |
+| 4 | [MinerU GitHub](https://github.com/opendatalab/MinerU) | 109-language OCR, reading order detection, pipeline/hybrid/VLM backends |
+| 5 | [PP-StructureV3 / PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) | Best OmniDocBench scores (0.145 EN edit distance), layout+table+formula+chart |
+| 6 | [LangExtract (Google)](https://github.com/google/langextract) | Multi-pass extraction, source grounding, parallel processing, interactive HTML visualization |
+| 7 | [Structured Output Comparison](https://simmering.dev/blog/structured_output/) | 10 libraries compared; instructor for function calling, outlines for constrained generation |
+| 8 | [HuggingFace Document Processing Discussion](https://huggingface.co/blog) | LayoutLM, BERT, VLMs (Qwen, GraniteDocling) for document classification and understanding |

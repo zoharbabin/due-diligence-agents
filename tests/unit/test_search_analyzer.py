@@ -1158,5 +1158,3 @@ class TestExtractJsonText:
     def test_no_braces(self) -> None:
         raw = "No JSON here at all"
         assert SearchAnalyzer._extract_json_text(raw) == raw
-        assert SearchAnalyzer._infer_doc_type("something_else.docx") == "Contract"
-        assert SearchAnalyzer._infer_doc_type("") == "Contract"

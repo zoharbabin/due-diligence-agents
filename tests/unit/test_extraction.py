@@ -401,9 +401,7 @@ class TestExtractionPipeline:
 
         # Verify .md output files exist.
         md_files = list(output_dir.glob("*.md"))
-        # At least 2 .md files + the quality json
-        extracted_mds = [f for f in md_files if f.name != "extraction_quality.json"]
-        assert len(extracted_mds) == 2
+        assert len(md_files) == 2
 
         # Second run: files unchanged -- should hit cache.
         pipeline.extract_all(
@@ -527,7 +525,7 @@ class TestExtractionPipeline:
         pipeline.extract_all([str(f)], output_dir, cache_path)
 
         # Find the output .md file and overwrite with near-empty content.
-        md_files = [p for p in output_dir.glob("*.md") if p.name != "extraction_quality.json"]
+        md_files = list(output_dir.glob("*.md"))
         assert len(md_files) == 1
         md_file = md_files[0]
         original_size = md_file.stat().st_size
@@ -659,7 +657,7 @@ class TestExtractionPipeline:
         pipeline.extract_all([str(f)], output_dir, cache_path)
 
         # Find the output .md file and overwrite with binary garbage.
-        md_files = [p for p in output_dir.glob("*.md") if p.name != "extraction_quality.json"]
+        md_files = list(output_dir.glob("*.md"))
         assert len(md_files) == 1
         md_file = md_files[0]
 

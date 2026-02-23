@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 # ---------------------------------------------------------------------------
 
 PAGE_MARKER_RE = re.compile(r"\n--- Page (\d+) ---\n")
-TARGET_CHUNK_CHARS = 150_000  # ~50K tokens -- well within 200K window
+TARGET_CHUNK_CHARS = 150_000  # ~37-50K tokens -- well within 200K window
 MAX_CHUNK_CHARS = 400_000  # Hard ceiling
 OVERLAP_RATIO = 0.15  # 15% overlap (AG report optimal)
 MAX_OVERLAP_CHARS = 60_000  # Cap overlap

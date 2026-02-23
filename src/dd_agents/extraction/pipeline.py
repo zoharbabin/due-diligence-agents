@@ -11,7 +11,9 @@ directory.  Unchanged files (SHA-256 match) are skipped.
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import re
 import subprocess
 from pathlib import Path
 
@@ -430,9 +432,7 @@ class ExtractionPipeline:
         it is truncated and a short hash suffix is appended to
         guarantee uniqueness (macOS enforces a 255-byte filename limit).
         """
-        import hashlib
-
-        name = source_path.lstrip("./")
+        name = source_path.removeprefix("./")
         name = name.replace("/", "__")
         full = f"{name}.md"
 
@@ -508,8 +508,6 @@ class ExtractionPipeline:
     @staticmethod
     def _count_pages_in_text(text: str) -> int:
         """Count ``--- Page N ---`` markers in extracted text."""
-        import re
-
         markers = re.findall(r"\n--- Page \d+ ---\n", text)
         return len(markers) if markers else 1
 
