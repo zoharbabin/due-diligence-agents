@@ -19,6 +19,8 @@ from dd_agents.models.search import (
     SearchCitation,
     SearchColumnResult,
     SearchCustomerResult,
+    parse_citations,
+    parse_column_result,
 )
 from dd_agents.search.chunker import (
     TARGET_CHUNK_CHARS,
@@ -793,22 +795,12 @@ class SearchAnalyzer:
             if not isinstance(col_data, dict):
                 continue
 
-            citations = []
-            for cit in col_data.get("citations", []):
-                if isinstance(cit, dict):
-                    citations.append(
-                        SearchCitation(
-                            file_path=cit.get("file_path", ""),
-                            page=str(cit.get("page", "")),
-                            section_ref=cit.get("section_ref", ""),
-                            exact_quote=cit.get("exact_quote", ""),
-                        )
-                    )
+            new_citations = parse_citations(col_data.get("citations", []))
 
             merged.columns[col_name] = SearchColumnResult(
                 answer=col_data.get("answer", merged.columns[col_name].answer),
                 confidence=col_data.get("confidence") or merged.columns[col_name].confidence,
-                citations=citations or merged.columns[col_name].citations,
+                citations=new_citations or merged.columns[col_name].citations,
             )
 
         return merged
@@ -886,22 +878,10 @@ class SearchAnalyzer:
             if not answer or answer.upper().strip() == "NOT_ADDRESSED":
                 continue  # Validation didn't help for this column.
 
-            citations = []
-            for cit in col_data.get("citations", []):
-                if isinstance(cit, dict):
-                    citations.append(
-                        SearchCitation(
-                            file_path=cit.get("file_path", ""),
-                            page=str(cit.get("page", "")),
-                            section_ref=cit.get("section_ref", ""),
-                            exact_quote=cit.get("exact_quote", ""),
-                        )
-                    )
-
             result.columns[col_name] = SearchColumnResult(
                 answer=answer,
                 confidence=col_data.get("confidence") or "",
-                citations=citations,
+                citations=parse_citations(col_data.get("citations", [])),
             )
 
         return result
@@ -987,6 +967,8 @@ class SearchAnalyzer:
             )
 
         # Parse columns and track which are missing.
+        # Uses centralized parse_column_result() to eliminate duplicated
+        # citation parsing logic (Issue #4 Phase B).
         columns: dict[str, SearchColumnResult] = {}
         incomplete_columns: list[str] = []
 
@@ -1011,23 +993,7 @@ class SearchAnalyzer:
             if not isinstance(col_data, dict):
                 col_data = {"answer": str(col_data)}
 
-            citations = []
-            for cit in col_data.get("citations", []):
-                if isinstance(cit, dict):
-                    citations.append(
-                        SearchCitation(
-                            file_path=cit.get("file_path", ""),
-                            page=str(cit.get("page", "")),
-                            section_ref=cit.get("section_ref", ""),
-                            exact_quote=cit.get("exact_quote", ""),
-                        )
-                    )
-
-            columns[col.name] = SearchColumnResult(
-                answer=col_data.get("answer", ""),
-                confidence=col_data.get("confidence") or "",
-                citations=citations,
-            )
+            columns[col.name] = parse_column_result(col_data)
 
         error_msg = None
         if incomplete_columns:
