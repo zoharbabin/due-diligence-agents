@@ -462,7 +462,7 @@ class SearchAnalyzer:
                 continue
 
             doc_block = f"\n---\n## Document: {file_path}\n---\n{text}\n"
-            if current_chars + len(doc_block) > _MAX_PROMPT_CHARS and files_found > 0:
+            if current_chars + len(doc_block) > _MAX_PROMPT_CHARS:
                 logger.warning(
                     "SKIPPED (prompt size limit): %s (%d chars would exceed %d limit)",
                     file_path,
