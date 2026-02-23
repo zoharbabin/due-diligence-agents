@@ -180,9 +180,13 @@ class SearchRunner:
         )
 
         estimate = analyzer.estimate_cost(customers)
+        api_calls_info = f"~{estimate['total_api_calls']} API calls"
+        if estimate.get("chunked_customers", 0) > 0:
+            api_calls_info += f" ({estimate['chunked_customers']} customers chunked)"
         cost_lines = [
             f"Customers to analyse: {estimate['total_customers']}",
             f"Files with extracted text: {estimate['files_with_text']}",
+            f"Estimated API calls: {api_calls_info}",
             f"Estimated API cost: [bold]${estimate['estimated_cost_usd']:.2f}[/bold]",
         ]
         if estimate["files_missing_text"] > 0:

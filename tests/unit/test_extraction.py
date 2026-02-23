@@ -5,12 +5,15 @@ Covers:
     - ExtractionQualityTracker: record, save/load, get_stats
     - MarkitdownExtractor: extract on plain text files (no external deps)
     - ExtractionPipeline: extract_single with a simple text file, cache hit behaviour
+    - Cache re-extraction on near-empty output
+    - Scanned-PDF density check
 """
 
 from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 import pytest
 
@@ -398,9 +401,7 @@ class TestExtractionPipeline:
 
         # Verify .md output files exist.
         md_files = list(output_dir.glob("*.md"))
-        # At least 2 .md files + the quality json
-        extracted_mds = [f for f in md_files if f.name != "extraction_quality.json"]
-        assert len(extracted_mds) == 2
+        assert len(md_files) == 2
 
         # Second run: files unchanged -- should hit cache.
         pipeline.extract_all(
@@ -504,3 +505,260 @@ class TestExtractionPipeline:
         assert str(src) in data
         assert data[str(src)]["method"] == "direct_read"
         assert "timestamp" in data[str(src)]
+
+    def test_cache_reextracts_near_empty_output(self, tmp_path: Path) -> None:
+        """A cached file with near-empty output (< 100 bytes) should be re-extracted."""
+        src = tmp_path / "sources"
+        src.mkdir()
+        f = src / "contract.txt"
+        f.write_text(
+            "This is a substantial contract with enough text to pass the threshold.\n" * 5,
+            encoding="utf-8",
+        )
+
+        output_dir = tmp_path / "output"
+        cache_path = tmp_path / "cache" / "checksums.sha256"
+
+        pipeline = ExtractionPipeline()
+
+        # First run: extract normally.
+        pipeline.extract_all([str(f)], output_dir, cache_path)
+
+        # Find the output .md file and overwrite with near-empty content.
+        md_files = list(output_dir.glob("*.md"))
+        assert len(md_files) == 1
+        md_file = md_files[0]
+        original_size = md_file.stat().st_size
+        assert original_size > 100
+
+        # Overwrite with a single newline (1 byte — simulates Bug A).
+        md_file.write_text("\n", encoding="utf-8")
+        assert md_file.stat().st_size < 100
+
+        # Second run: cache gate should reject the near-empty output and re-extract.
+        pipeline.extract_all([str(f)], output_dir, cache_path)
+
+        assert md_file.stat().st_size >= 100
+
+    def test_scanned_pdf_density_check(self, tmp_path: Path) -> None:
+        """Pymupdf text with low chars/page density should fall through to OCR."""
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        src = tmp_path / "scanned.pdf"
+        src.write_bytes(b"%PDF-1.4 fake")  # Placeholder — we mock extraction
+
+        # Simulate pymupdf returning sparse text across 32 pages (12.5 chars/page).
+        sparse_pages = []
+        for i in range(1, 33):
+            sparse_pages.append(f"\n--- Page {i} ---\n\nSig.")
+        sparse_text = "\n".join(sparse_pages)
+
+        # Simulate OCR returning substantial text.
+        ocr_text = "OCR extracted content. " * 50
+
+        pipeline = ExtractionPipeline()
+
+        with (
+            patch.object(pipeline, "_run_pymupdf", return_value=sparse_text),
+            patch.object(pipeline, "_run_pdftotext", return_value=""),
+            patch.object(pipeline._markitdown, "extract", return_value=("", 0.0)),
+            patch.object(pipeline._ocr, "extract", return_value=(ocr_text, 0.7)),
+        ):
+            entry = pipeline.extract_single(src, output_dir)
+
+        # Should have fallen through to OCR due to low density.
+        assert entry.method == "fallback_ocr"
+        assert entry.confidence == 0.7
+
+    def test_pdftotext_density_check(self, tmp_path: Path) -> None:
+        """Pdftotext with low chars/page density should fall through to OCR."""
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        src = tmp_path / "signed_po.pdf"
+        src.write_bytes(b"%PDF-1.4 fake")
+
+        # Simulate pdftotext returning a small signature fragment across pages.
+        sparse_pdftotext = "\n--- Page 1 ---\n\nJohn Smith\n--- Page 2 ---\n\n[signature]\n--- Page 3 ---\n\nDate: 2024"
+        ocr_text = "OCR extracted full purchase order content. " * 50
+
+        pipeline = ExtractionPipeline()
+
+        with (
+            patch.object(pipeline, "_run_pymupdf", return_value=""),
+            patch.object(pipeline, "_run_pdftotext", return_value=sparse_pdftotext),
+            patch.object(pipeline._markitdown, "extract", return_value=("", 0.0)),
+            patch.object(pipeline._ocr, "extract", return_value=(ocr_text, 0.7)),
+        ):
+            entry = pipeline.extract_single(src, output_dir)
+
+        # Should have fallen through to OCR due to low pdftotext density.
+        assert entry.method == "fallback_ocr"
+        assert entry.confidence == 0.7
+
+    def test_markitdown_binary_garbage_rejected(self, tmp_path: Path) -> None:
+        """Markitdown returning raw PDF binary should fall through to OCR."""
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        src = tmp_path / "scanned_oem.pdf"
+        src.write_bytes(b"%PDF-1.4 fake")
+
+        # Simulate markitdown dumping raw PDF binary (< 85% printable).
+        binary_garbage = "%PDF-1.3\n%\x80\x81\x82\x83\n140 0 obj\n" + "\x00\x01\x02\x03" * 500
+        ocr_text = "OCR extracted OEM agreement content with real clauses. " * 30
+
+        pipeline = ExtractionPipeline()
+
+        with (
+            patch.object(pipeline, "_run_pymupdf", return_value=""),
+            patch.object(pipeline, "_run_pdftotext", return_value=""),
+            patch.object(pipeline._markitdown, "extract", return_value=(binary_garbage, 0.5)),
+            patch.object(pipeline._ocr, "extract", return_value=(ocr_text, 0.7)),
+        ):
+            entry = pipeline.extract_single(src, output_dir)
+
+        # Binary garbage should be rejected; should fall through to OCR.
+        assert entry.method == "fallback_ocr"
+        assert entry.confidence == 0.7
+        assert "markitdown" in entry.fallback_chain
+
+    def test_is_readable_text_accepts_normal_text(self) -> None:
+        """Normal extracted text (> 85% printable) should pass readability check."""
+        text = "This is a normal contract clause with dates 2024-01-15 and amounts $50,000.\n" * 10
+        assert ExtractionPipeline._is_readable_text(text) is True
+
+    def test_is_readable_text_rejects_binary(self) -> None:
+        """Binary PDF data (< 85% printable) should fail readability check."""
+        binary = "%PDF-1.3\n" + "\x00\x01\x02\x03\x80\x81\x82\x83" * 500
+        assert ExtractionPipeline._is_readable_text(binary) is False
+
+    def test_is_readable_text_empty(self) -> None:
+        """Empty string should fail readability check."""
+        assert ExtractionPipeline._is_readable_text("") is False
+
+    def test_cache_reextracts_binary_garbage(self, tmp_path: Path) -> None:
+        """Cached output containing binary garbage should trigger re-extraction."""
+        src = tmp_path / "sources"
+        src.mkdir()
+        f = src / "contract.txt"
+        f.write_text(
+            "This is a substantial contract with enough text to pass the threshold.\n" * 5,
+            encoding="utf-8",
+        )
+
+        output_dir = tmp_path / "output"
+        cache_path = tmp_path / "cache" / "checksums.sha256"
+
+        pipeline = ExtractionPipeline()
+
+        # First run: extract normally.
+        pipeline.extract_all([str(f)], output_dir, cache_path)
+
+        # Find the output .md file and overwrite with binary garbage.
+        md_files = list(output_dir.glob("*.md"))
+        assert len(md_files) == 1
+        md_file = md_files[0]
+
+        # Write binary-like content (simulates markitdown PDF dump).
+        md_file.write_bytes(b"%PDF-1.3\n" + b"\x00\x01\x02\x03" * 500)
+        assert md_file.stat().st_size >= 100  # Passes size gate...
+
+        # Second run: cache gate should reject unreadable output and re-extract.
+        pipeline.extract_all([str(f)], output_dir, cache_path)
+
+        # Should have re-extracted with real text content.
+        content = md_file.read_text(encoding="utf-8")
+        assert "substantial contract" in content
+
+    def test_count_pages_in_text(self) -> None:
+        """_count_pages_in_text correctly counts page markers."""
+        text_3_pages = (
+            "\n--- Page 1 ---\n\nContent page 1.\n--- Page 2 ---\n\nContent page 2.\n--- Page 3 ---\n\nContent page 3."
+        )
+        assert ExtractionPipeline._count_pages_in_text(text_3_pages) == 3
+
+        # No markers → defaults to 1.
+        assert ExtractionPipeline._count_pages_in_text("Just plain text.") == 1
+
+        # Empty string → defaults to 1.
+        assert ExtractionPipeline._count_pages_in_text("") == 1
+
+    # Issue #12: PDF signature detection in readability checks.
+
+    def test_is_readable_text_rejects_pdf_signature(self) -> None:
+        """Text starting with %PDF- is raw PDF binary, even if mostly ASCII."""
+        # Linearized PDF headers are largely ASCII (object definitions, metadata)
+        # and can fool the 85% printable-ratio heuristic.
+        linearized_pdf = (
+            "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
+            "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n" * 100
+        )
+        assert ExtractionPipeline._is_readable_text(linearized_pdf) is False
+
+    def test_is_readable_text_rejects_pdf_with_leading_whitespace(self) -> None:
+        """PDF signature preceded by whitespace should still be rejected."""
+        text = "  \n%PDF-1.4\nsome object data\n" + "ASCII data " * 500
+        assert ExtractionPipeline._is_readable_text(text) is False
+
+    def test_is_cached_output_readable_rejects_pdf_signature(self, tmp_path: Path) -> None:
+        """Cached output with PDF magic bytes should be rejected."""
+        out_file = tmp_path / "output.md"
+        # Write a mostly-ASCII linearized PDF that would pass the printable ratio.
+        content = b"%PDF-1.7\n" + b"1 0 obj << /Type /Catalog >> endobj\n" * 300
+        out_file.write_bytes(content)
+
+        assert ExtractionPipeline._is_cached_output_readable(out_file) is False
+
+    # Issue #13: Minimum extraction threshold.
+
+    def test_near_empty_pymupdf_falls_through(self, tmp_path: Path) -> None:
+        """Pymupdf returning < 500 chars should fall through to next method."""
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        src = tmp_path / "signed_po.pdf"
+        src.write_bytes(b"%PDF-1.4 fake")
+
+        # Simulate pymupdf returning only 151 chars (like a signed PO).
+        short_text = "\n--- Page 1 ---\n\n" + "1/23/2025\n" * 10  # ~130 chars
+        ocr_text = "OCR extracted full content of the signed purchase order. " * 20
+
+        pipeline = ExtractionPipeline()
+
+        with (
+            patch.object(pipeline, "_run_pymupdf", return_value=short_text),
+            patch.object(pipeline, "_run_pdftotext", return_value=short_text),
+            patch.object(pipeline._markitdown, "extract", return_value=("", 0.0)),
+            patch.object(pipeline._ocr, "extract", return_value=(ocr_text, 0.7)),
+        ):
+            entry = pipeline.extract_single(src, output_dir)
+
+        # < 500 chars should have fallen through to OCR.
+        assert entry.method == "fallback_ocr"
+        assert entry.confidence == 0.7
+
+    def test_pymupdf_accepts_above_threshold(self, tmp_path: Path) -> None:
+        """Pymupdf returning >= 500 chars with good density should be accepted."""
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        src = tmp_path / "good_contract.pdf"
+        src.write_bytes(b"%PDF-1.4 fake")
+
+        # Simulate pymupdf returning ~600 chars across 2 pages.
+        good_text = (
+            "\n--- Page 1 ---\n\n"
+            + "This is a contract clause with substantive content. " * 5
+            + "\n--- Page 2 ---\n\n"
+            + "More contract text with additional provisions. " * 5
+        )
+
+        pipeline = ExtractionPipeline()
+
+        with patch.object(pipeline, "_run_pymupdf", return_value=good_text):
+            entry = pipeline.extract_single(src, output_dir)
+
+        assert entry.method == "primary"
+        assert entry.confidence == 0.9

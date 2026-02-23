@@ -11,7 +11,9 @@ directory.  Unchanged files (SHA-256 match) are skipped.
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import re
 import subprocess
 from pathlib import Path
 
@@ -26,8 +28,25 @@ logger = logging.getLogger(__name__)
 # Minimum characters for an extraction to be considered "successful".
 _MIN_TEXT_LEN = 20
 
+# Minimum ratio of printable characters for text to be considered readable
+# (not binary garbage).  Scanned-PDF markitdown output is raw PDF binary
+# (%PDF-1.x headers, stream objects, etc.) which has < 50 % printable chars.
+_MIN_PRINTABLE_RATIO = 0.85
+
 # Scanned-PDF detection threshold (per spec section 1).
 _SCANNED_PDF_THRESHOLD = 100
+
+# Minimum chars per page for a PDF to be considered text-based (not scanned).
+_MIN_CHARS_PER_PAGE = 50
+
+# Minimum characters for a "meaningful" extraction from primary methods
+# (pymupdf, pdftotext).  Below this threshold the extraction falls through
+# to the next method in the chain.  Addresses Bug H: near-empty PDFs
+# that pass the per-page density check but contain too little text.
+_MIN_EXTRACTION_CHARS = 500
+
+# PDF magic bytes — cached outputs starting with this are raw binary, not text.
+_PDF_MAGIC = b"%PDF-"
 
 # Extensions read directly without extraction.
 _PLAINTEXT_EXTENSIONS: frozenset[str] = frozenset(
@@ -149,7 +168,12 @@ class ExtractionPipeline:
             current_hash = ExtractionCache.compute_checksum(filepath)
             out_file = output_dir / self._safe_text_name(filepath_str)
 
-            if cache.is_cached(filepath_str, current_hash) and out_file.exists() and out_file.stat().st_size > 0:
+            if (
+                cache.is_cached(filepath_str, current_hash)
+                and out_file.exists()
+                and out_file.stat().st_size >= _SCANNED_PDF_THRESHOLD
+                and self._is_cached_output_readable(out_file)
+            ):
                 # Cache hit -- keep existing quality entry.
                 cache.update(filepath_str, current_hash)
                 continue
@@ -250,7 +274,12 @@ class ExtractionPipeline:
         # 1. pymupdf — per-page extraction with explicit page markers.
         chain.append("pymupdf")
         text = self._run_pymupdf(filepath)
-        if text and len(text.strip()) >= _SCANNED_PDF_THRESHOLD:
+        text_len = len(text.strip()) if text else 0
+        page_count = self._count_pages_in_text(text) if text else 1
+        is_dense_enough = text_len >= _MIN_EXTRACTION_CHARS and (
+            page_count <= 1 or text_len / page_count >= _MIN_CHARS_PER_PAGE
+        )
+        if text and is_dense_enough:
             out_file.write_text(text, encoding="utf-8")
             return ExtractionQualityEntry(
                 file_path=str(filepath),
@@ -263,7 +292,12 @@ class ExtractionPipeline:
         # 2. pdftotext (poppler CLI) — convert form-feeds to page markers.
         chain.append("pdftotext")
         text = self._run_pdftotext(filepath)
-        if text and len(text.strip()) >= _MIN_TEXT_LEN:
+        pdftotext_len = len(text.strip()) if text else 0
+        pdftotext_pages = self._count_pages_in_text(text) if text else 1
+        pdftotext_dense = pdftotext_len >= _MIN_EXTRACTION_CHARS and (
+            pdftotext_pages <= 1 or pdftotext_len / pdftotext_pages >= _MIN_CHARS_PER_PAGE
+        )
+        if text and pdftotext_dense:
             out_file.write_text(text, encoding="utf-8")
             return ExtractionQualityEntry(
                 file_path=str(filepath),
@@ -274,9 +308,11 @@ class ExtractionPipeline:
             )
 
         # 3. markitdown (no page markers, but may handle edge cases).
+        #    Readability check rejects raw PDF binary that markitdown
+        #    dumps for image-only scanned PDFs (Bug G).
         chain.append("markitdown")
         text, conf = self._markitdown.extract(filepath)
-        if text and len(text.strip()) >= _SCANNED_PDF_THRESHOLD:
+        if text and len(text.strip()) >= _SCANNED_PDF_THRESHOLD and self._is_readable_text(text):
             out_file.write_text(text, encoding="utf-8")
             return ExtractionQualityEntry(
                 file_path=str(filepath),
@@ -405,9 +441,7 @@ class ExtractionPipeline:
         it is truncated and a short hash suffix is appended to
         guarantee uniqueness (macOS enforces a 255-byte filename limit).
         """
-        import hashlib
-
-        name = source_path.lstrip("./")
+        name = source_path.removeprefix("./")
         name = name.replace("/", "__")
         full = f"{name}.md"
 
@@ -479,6 +513,52 @@ class ExtractionPipeline:
         except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
             pass
         return ""
+
+    @staticmethod
+    def _count_pages_in_text(text: str) -> int:
+        """Count ``--- Page N ---`` markers in extracted text."""
+        markers = re.findall(r"\n--- Page \d+ ---\n", text)
+        return len(markers) if markers else 1
+
+    @staticmethod
+    def _is_cached_output_readable(out_file: Path) -> bool:
+        """Check if a cached ``.md`` output file contains readable text.
+
+        Reads a small sample from disk to avoid loading multi-MB binary
+        garbage into memory.  Returns *False* for binary PDF dumps so
+        they get re-extracted through the improved fallback chain.
+
+        Two-layer check:
+        1. PDF signature — linearized PDFs have mostly-ASCII headers that
+           fool the printable-ratio heuristic.
+        2. Printable ratio — catches other binary garbage.
+        """
+        try:
+            raw = out_file.read_bytes()[:10_000]
+            if raw.lstrip()[:5] == _PDF_MAGIC:
+                return False
+            sample = raw.decode("utf-8", errors="replace")
+            printable = sum(1 for ch in sample if ch.isprintable() or ch in "\n\r\t")
+            return printable / max(len(sample), 1) >= _MIN_PRINTABLE_RATIO
+        except OSError:
+            return False
+
+    @staticmethod
+    def _is_readable_text(text: str, *, sample_size: int = 10_000) -> bool:
+        """Return *True* if *text* looks like human-readable content.
+
+        Two-layer check:
+        1. PDF signature — rejects raw PDF binary that some extractors
+           dump verbatim (linearized PDFs can fool the ratio check).
+        2. Printable ratio — catches other binary garbage (< 85 %).
+        """
+        if not text:
+            return False
+        if text.lstrip()[:5] == "%PDF-":
+            return False
+        sample = text[:sample_size]
+        printable = sum(1 for ch in sample if ch.isprintable() or ch in "\n\r\t")
+        return printable / len(sample) >= _MIN_PRINTABLE_RATIO
 
     @staticmethod
     def _read_text(filepath: Path) -> tuple[str, float]:

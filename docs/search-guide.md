@@ -135,6 +135,7 @@ One row per customer with:
 | Customer | Customer name |
 | Group | Group folder name |
 | Files Analyzed | How many files were sent to the AI (e.g. "3/5") |
+| Chunks | Number of analysis chunks (light-blue highlight when >1) |
 | Files Skipped | List of files that couldn't be analyzed |
 | *Your questions* | One column per question with the answer |
 | Error | Any error that occurred |
@@ -162,6 +163,26 @@ One row per citation with the full evidence trail:
 | Section | Section reference (e.g. "Section 12.3") |
 | Exact Quote | Verbatim text from the document |
 
+## Large File Handling
+
+Files of any size are analyzed — nothing is silently skipped. When a
+customer's combined document text exceeds the model's optimal context size
+(~150K characters), the system automatically:
+
+1. **Splits** large documents at page boundaries (`--- Page N ---` markers)
+   with 15% overlap between chunks to preserve cross-page context
+2. **Packs** smaller documents together into analysis chunks
+3. **Analyzes** each chunk independently (Phase 1: Map)
+4. **Merges** results using answer priority YES > NO > NOT_ADDRESSED (Phase 2)
+5. **Resolves** conflicts where chunks disagree via a lightweight synthesis
+   pass with all findings as structured JSON (Phase 3: Synthesis)
+6. **Validates** any remaining NOT_ADDRESSED answers with a targeted
+   follow-up query (Phase 4: Validation)
+
+This is fully transparent in the Excel report — the `chunks_analyzed` count
+shows how many analysis passes were needed per customer. Single-chunk
+customers (the majority) see no change in behavior.
+
 ## Data Completeness Guarantees
 
 The search command is designed for legal due diligence where missing data
@@ -171,6 +192,8 @@ is unacceptable:
   failed
 - **Every question** gets an answer for every customer — missing answers
   are flagged as "INCOMPLETE" in orange
+- **No size limit** — files of any size are analyzed via automatic chunking.
+  No documents are ever skipped due to size constraints
 - **Skipped files** (missing text extraction) are listed in the report so
   you know what wasn't analyzed
 - **Files Analyzed** shows "X/Y" format so you can see at a glance if any

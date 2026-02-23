@@ -90,6 +90,7 @@ Update the phase status in IMPLEMENTATION_PLAN.md after completing each phase.
 | `validation/*` | `docs/plan/11-qa-validation.md` |
 | `reasoning/*` | `docs/plan/21-ontology-and-reasoning.md` |
 | `vector_store/*` | `docs/plan/14-vector-store.md` |
+| `search/*` | `docs/plan/22-llm-robustness.md` + `docs/search-guide.md` |
 | `errors.py` | `docs/plan/12-error-recovery.md` |
 | `cli.py` | `docs/plan/03-project-structure.md` |
 
@@ -104,6 +105,32 @@ Update the phase status in IMPLEMENTATION_PLAN.md after completing each phase.
 - Don't skip type annotations — `mypy --strict` must pass
 - Don't add unnecessary dependencies — check `pyproject.toml` for approved deps
 - Don't disable or skip tests — fix them instead
+
+## LLM Call Policy
+
+- ALL LLM calls MUST go through `claude_agent_sdk` — never call other clients directly
+- Use `query()` with `ClaudeAgentOptions` for all inference
+- Single-turn extraction: `max_turns=1`, `disallowed_tools=[...]`
+- Multi-turn agents: `max_turns=150-300`, tools enabled per spec
+- Each `query()` call is stateless — no context accumulates between calls
+
+## Sensitive Data Policy
+
+- No real company names, people's names, financial data, or addresses in source code, tests, or documentation
+- Tests use generic placeholders (`"Customer A"`, `"file_1.pdf"`)
+- Example prompts use `"[CUSTOMER]"`, `"[DOCUMENT]"`
+- Commit messages must not reference real customer data
+- No data room content in source, tests, or commits
+
+## Search Module Guidelines
+
+- **Zero files skipped for size**: chunk oversized files, never skip them
+- **Page-aware chunking**: split at `--- Page N ---` markers with 15% overlap
+- **Target 150K chars per chunk** (aligned with AG-1 finding: smaller context = higher accuracy)
+- **4-phase analysis**: map (per chunk) → merge → synthesis (conflicts only) → validation (NOT_ADDRESSED)
+- **Citation accuracy**: every answer must include file_path, page, section_ref, exact_quote
+- **Cross-document precedence**: derived from contract clauses, not assumed hierarchy
+- Spec docs: `docs/plan/22-llm-robustness.md`, `docs/search-guide.md`
 
 ## When Stuck (After 3 Attempts)
 

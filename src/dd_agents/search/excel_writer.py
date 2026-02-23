@@ -25,6 +25,7 @@ _BLUE_FILL = PatternFill(start_color="BDD7EE", end_color="BDD7EE", fill_type="so
 _YELLOW_FILL = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")  # NOT_ADDRESSED
 _RED_FILL = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")  # Error
 _ORANGE_FILL = PatternFill(start_color="F4B084", end_color="F4B084", fill_type="solid")  # INCOMPLETE
+_CHUNKS_FILL = PatternFill(start_color="D6E4F0", end_color="D6E4F0", fill_type="solid")  # Multi-chunk highlight
 _HEADER_FILL = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
 _HEADER_FONT = Font(bold=True, color="FFFFFF", size=11)
 _BODY_FONT = Font(size=10)
@@ -71,7 +72,7 @@ class SearchExcelWriter:
         ws: Worksheet = wb.create_sheet(title="Summary")
 
         # Build header row.
-        headers = ["Customer", "Group", "Files Analyzed", "Files Skipped"]
+        headers = ["Customer", "Group", "Files Analyzed", "Chunks", "Files Skipped"]
         headers.extend(col.name for col in prompts.columns)
         headers.append("Error")
 
@@ -93,14 +94,19 @@ class SearchExcelWriter:
             if result.skipped_files:
                 files_cell.fill = _ORANGE_FILL
 
+            chunks_cell = ws.cell(row=row_idx, column=4, value=result.chunks_analyzed)
+            chunks_cell.font = _BODY_FONT
+            if result.chunks_analyzed > 1:
+                chunks_cell.fill = _CHUNKS_FILL
+
             skipped_val = ", ".join(result.skipped_files) if result.skipped_files else ""
-            skipped_cell = ws.cell(row=row_idx, column=4, value=skipped_val)
+            skipped_cell = ws.cell(row=row_idx, column=5, value=skipped_val)
             skipped_cell.font = _BODY_FONT
             if result.skipped_files:
                 skipped_cell.fill = _ORANGE_FILL
 
             for col_offset, search_col in enumerate(prompts.columns):
-                col_idx = 5 + col_offset
+                col_idx = 6 + col_offset
                 col_result = result.columns.get(search_col.name)
                 if col_result is None:
                     # Column completely missing (no result at all).
@@ -113,12 +119,12 @@ class SearchExcelWriter:
                     cell.font = _WARNING_FONT
                     cell.fill = _ORANGE_FILL
                 else:
-                    answer = col_result.answer
+                    answer = self._normalize_summary_answer(col_result.answer)
                     cell = ws.cell(row=row_idx, column=col_idx, value=answer)
                     cell.font = _BODY_FONT
                     self._apply_answer_fill(cell, answer)
 
-            error_col = 5 + len(prompts.columns)
+            error_col = 6 + len(prompts.columns)
             error_cell = ws.cell(row=row_idx, column=error_col, value=result.error or "")
             error_cell.font = _BODY_FONT
             if result.error:
@@ -134,10 +140,11 @@ class SearchExcelWriter:
         ws.column_dimensions["A"].width = 30
         ws.column_dimensions["B"].width = 15
         ws.column_dimensions["C"].width = 16
-        ws.column_dimensions["D"].width = 40
+        ws.column_dimensions["D"].width = 10
+        ws.column_dimensions["E"].width = 40
         for i in range(len(prompts.columns)):
-            ws.column_dimensions[get_column_letter(5 + i)].width = 40
-        ws.column_dimensions[get_column_letter(5 + len(prompts.columns))].width = 40
+            ws.column_dimensions[get_column_letter(6 + i)].width = 40
+        ws.column_dimensions[get_column_letter(6 + len(prompts.columns))].width = 40
 
     # ------------------------------------------------------------------
     # Details sheet
@@ -234,11 +241,36 @@ class SearchExcelWriter:
 
     @staticmethod
     def _apply_answer_fill(cell: Cell, answer: str) -> None:
-        """Apply conditional colour fill based on answer text."""
+        """Apply conditional colour fill based on answer text.
+
+        Uses starts-with matching so that verbose LLM answers like
+        ``"YES. Section 12 requires..."`` still receive correct fill.
+        NOT_ADDRESSED is checked first because it starts with "NO".
+        """
         upper = answer.strip().upper()
-        if upper == "YES":
-            cell.fill = _GREEN_FILL
-        elif upper == "NO":
-            cell.fill = _BLUE_FILL
-        elif upper == "NOT_ADDRESSED":
+        if upper.startswith("NOT_ADDRESSED") or upper.startswith("NOT ADDRESSED"):
             cell.fill = _YELLOW_FILL
+        elif upper.startswith("YES"):
+            cell.fill = _GREEN_FILL
+        elif upper.startswith("NO"):
+            cell.fill = _BLUE_FILL
+
+    @staticmethod
+    def _normalize_summary_answer(answer: str) -> str:
+        """Normalize verbose answers to canonical YES/NO/NOT_ADDRESSED for Summary.
+
+        LLMs often return ``"YES. Section 12 requires..."`` or multi-sentence
+        explanations.  The Summary sheet shows only the canonical verdict;
+        the full text is preserved in the Details sheet.
+        """
+        upper = answer.strip().upper()
+        if upper.startswith("NOT_ADDRESSED") or upper.startswith("NOT ADDRESSED"):
+            return "NOT_ADDRESSED"
+        if upper.startswith("YES"):
+            return "YES"
+        if upper.startswith("NO"):
+            return "NO"
+        # Free-text that doesn't start with a canonical keyword — truncate.
+        if len(answer) > 200:
+            return answer[:197] + "..."
+        return answer
