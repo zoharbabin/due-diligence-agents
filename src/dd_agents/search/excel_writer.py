@@ -119,7 +119,7 @@ class SearchExcelWriter:
                     cell.font = _WARNING_FONT
                     cell.fill = _ORANGE_FILL
                 else:
-                    answer = col_result.answer
+                    answer = self._normalize_summary_answer(col_result.answer)
                     cell = ws.cell(row=row_idx, column=col_idx, value=answer)
                     cell.font = _BODY_FONT
                     self._apply_answer_fill(cell, answer)
@@ -241,11 +241,36 @@ class SearchExcelWriter:
 
     @staticmethod
     def _apply_answer_fill(cell: Cell, answer: str) -> None:
-        """Apply conditional colour fill based on answer text."""
+        """Apply conditional colour fill based on answer text.
+
+        Uses starts-with matching so that verbose LLM answers like
+        ``"YES. Section 12 requires..."`` still receive correct fill.
+        NOT_ADDRESSED is checked first because it starts with "NO".
+        """
         upper = answer.strip().upper()
-        if upper == "YES":
-            cell.fill = _GREEN_FILL
-        elif upper == "NO":
-            cell.fill = _BLUE_FILL
-        elif upper == "NOT_ADDRESSED":
+        if upper.startswith("NOT_ADDRESSED") or upper.startswith("NOT ADDRESSED"):
             cell.fill = _YELLOW_FILL
+        elif upper.startswith("YES"):
+            cell.fill = _GREEN_FILL
+        elif upper.startswith("NO"):
+            cell.fill = _BLUE_FILL
+
+    @staticmethod
+    def _normalize_summary_answer(answer: str) -> str:
+        """Normalize verbose answers to canonical YES/NO/NOT_ADDRESSED for Summary.
+
+        LLMs often return ``"YES. Section 12 requires..."`` or multi-sentence
+        explanations.  The Summary sheet shows only the canonical verdict;
+        the full text is preserved in the Details sheet.
+        """
+        upper = answer.strip().upper()
+        if upper.startswith("NOT_ADDRESSED") or upper.startswith("NOT ADDRESSED"):
+            return "NOT_ADDRESSED"
+        if upper.startswith("YES"):
+            return "YES"
+        if upper.startswith("NO"):
+            return "NO"
+        # Free-text that doesn't start with a canonical keyword — truncate.
+        if len(answer) > 200:
+            return answer[:197] + "..."
+        return answer

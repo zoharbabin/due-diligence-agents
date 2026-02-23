@@ -119,3 +119,32 @@ class TestSearchResults:
         assert cit.page == ""
         assert cit.section_ref == ""
         assert cit.exact_quote == ""
+
+
+class TestConfidenceValidator:
+    """Tests for the Pydantic confidence normalization validator (Issue #4 Phase A)."""
+
+    def test_mixed_case_normalized(self) -> None:
+        """Mixed-case confidence is normalized to uppercase on construction."""
+        result = SearchColumnResult(answer="YES", confidence="High")
+        assert result.confidence == "HIGH"
+
+    def test_lowercase_normalized(self) -> None:
+        result = SearchColumnResult(answer="NO", confidence="low")
+        assert result.confidence == "LOW"
+
+    def test_uppercase_unchanged(self) -> None:
+        result = SearchColumnResult(answer="YES", confidence="HIGH")
+        assert result.confidence == "HIGH"
+
+    def test_empty_string_preserved(self) -> None:
+        result = SearchColumnResult(answer="YES", confidence="")
+        assert result.confidence == ""
+
+    def test_whitespace_stripped(self) -> None:
+        result = SearchColumnResult(answer="YES", confidence="  Medium  ")
+        assert result.confidence == "MEDIUM"
+
+    def test_default_empty(self) -> None:
+        result = SearchColumnResult(answer="YES")
+        assert result.confidence == ""

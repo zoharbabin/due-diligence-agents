@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
 from openpyxl import load_workbook
 
 from dd_agents.models.search import (
@@ -233,3 +234,111 @@ class TestSearchExcelWriter:
         # Acme Corp (row 2) has a skipped file.
         skipped_cell = ws_summary.cell(row=2, column=5)
         assert "missing.pdf" in str(skipped_cell.value)
+
+    def test_summary_answer_normalization(self, tmp_path: Path) -> None:
+        """Verbose LLM answers should be normalized to YES/NO/NOT_ADDRESSED in Summary."""
+        results = [
+            SearchCustomerResult(
+                customer_name="Verbose Corp",
+                group="GroupA",
+                files_analyzed=1,
+                total_files=1,
+                chunks_analyzed=1,
+                columns={
+                    "Q1": SearchColumnResult(
+                        answer="YES. Section 12.1 requires prior written consent for any change of control.",
+                        confidence="HIGH",
+                        citations=[],
+                    ),
+                    "Q2": SearchColumnResult(
+                        answer="NO. The agreement does not contain a notice provision.",
+                        confidence="HIGH",
+                        citations=[],
+                    ),
+                },
+            ),
+        ]
+
+        output = tmp_path / "report.xlsx"
+        writer = SearchExcelWriter()
+        writer.write(results, _make_prompts(), output)
+
+        wb = load_workbook(str(output))
+        ws = wb["Summary"]
+
+        # Summary should show canonical YES/NO, not the full paragraph.
+        assert ws.cell(row=2, column=6).value == "YES"
+        assert ws.cell(row=2, column=7).value == "NO"
+
+    def test_detail_preserves_full_answer(self, tmp_path: Path) -> None:
+        """Details sheet preserves the full verbose answer (not normalized)."""
+        verbose_answer = "YES. Section 12.1 requires prior written consent for any change of control."
+        results = [
+            SearchCustomerResult(
+                customer_name="Verbose Corp",
+                group="GroupA",
+                files_analyzed=1,
+                total_files=1,
+                chunks_analyzed=1,
+                columns={
+                    "Q1": SearchColumnResult(
+                        answer=verbose_answer,
+                        confidence="HIGH",
+                        citations=[],
+                    ),
+                    "Q2": SearchColumnResult(
+                        answer="NOT_ADDRESSED",
+                        confidence="HIGH",
+                        citations=[],
+                    ),
+                },
+            ),
+        ]
+
+        output = tmp_path / "report.xlsx"
+        writer = SearchExcelWriter()
+        writer.write(results, _make_prompts(), output)
+
+        wb = load_workbook(str(output))
+        ws = wb["Details"]
+
+        # Find the Q1 row — should have the FULL answer, not normalized.
+        for row in range(2, ws.max_row + 1):
+            if ws.cell(row=row, column=3).value == "Q1":
+                assert ws.cell(row=row, column=4).value == verbose_answer
+                break
+        else:
+            pytest.fail("Q1 row not found in Details sheet")
+
+    def test_summary_not_addressed_normalization(self, tmp_path: Path) -> None:
+        """Verbose NOT_ADDRESSED answers are normalized in Summary."""
+        results = [
+            SearchCustomerResult(
+                customer_name="Partial Corp",
+                group="GroupA",
+                files_analyzed=1,
+                total_files=1,
+                chunks_analyzed=1,
+                columns={
+                    "Q1": SearchColumnResult(
+                        answer="NOT_ADDRESSED. The reviewed portions do not contain relevant clauses.",
+                        confidence="HIGH",
+                        citations=[],
+                    ),
+                    "Q2": SearchColumnResult(
+                        answer="YES",
+                        confidence="HIGH",
+                        citations=[],
+                    ),
+                },
+            ),
+        ]
+
+        output = tmp_path / "report.xlsx"
+        writer = SearchExcelWriter()
+        writer.write(results, _make_prompts(), output)
+
+        wb = load_workbook(str(output))
+        ws = wb["Summary"]
+
+        assert ws.cell(row=2, column=6).value == "NOT_ADDRESSED"

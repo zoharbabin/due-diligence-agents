@@ -849,6 +849,42 @@ class TestMergeChunkResults:
 
         assert "much longer" in merged.columns["Consent Required"].answer
 
+    def test_citation_dedup_normalizes_whitespace(self, tmp_path: Path) -> None:
+        """Citations with trailing whitespace in keys should be deduplicated."""
+        analyzer = _make_analyzer(tmp_path)
+        customer = _make_customer()
+
+        cit_clean = SearchCitation(
+            file_path="GroupA/Acme Corp/msa.pdf",
+            page="5",
+            section_ref="Section 12",
+            exact_quote="consent required",
+        )
+        cit_whitespace = SearchCitation(
+            file_path="GroupA/Acme Corp/msa.pdf ",  # trailing space
+            page="5 ",  # trailing space
+            section_ref="Section 12",
+            exact_quote="consent is required",  # different quote, same location
+        )
+
+        chunk1 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="YES", citations=[cit_clean]),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
+        chunk2 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="YES", citations=[cit_whitespace]),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
+
+        merged, _ = analyzer._merge_chunk_results([chunk1, chunk2], customer, 1, [])
+
+        # Whitespace-only difference in keys should be deduplicated.
+        assert len(merged.columns["Consent Required"].citations) == 1
+
 
 # ===================================================================
 # TestSynthesisPass

@@ -5,7 +5,9 @@ Defines the prompts file schema, per-customer results, and citation records.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from typing import Any
+
+from pydantic import BaseModel, Field, field_validator
 
 
 class SearchColumn(BaseModel):
@@ -41,6 +43,18 @@ class SearchColumnResult(BaseModel):
     answer: str = ""
     citations: list[SearchCitation] = Field(default_factory=list)
     confidence: str = ""
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def _normalize_confidence(cls, v: Any) -> str:
+        """Normalize confidence to uppercase (HIGH/MEDIUM/LOW).
+
+        Centralizes the normalization that was previously scattered across
+        4 locations in the analyzer (parse, merge, synthesis, validation).
+        """
+        if isinstance(v, str) and v.strip():
+            return v.strip().upper()
+        return ""
 
 
 class SearchCustomerResult(BaseModel):

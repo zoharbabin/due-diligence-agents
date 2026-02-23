@@ -684,3 +684,81 @@ class TestExtractionPipeline:
 
         # Empty string → defaults to 1.
         assert ExtractionPipeline._count_pages_in_text("") == 1
+
+    # Issue #12: PDF signature detection in readability checks.
+
+    def test_is_readable_text_rejects_pdf_signature(self) -> None:
+        """Text starting with %PDF- is raw PDF binary, even if mostly ASCII."""
+        # Linearized PDF headers are largely ASCII (object definitions, metadata)
+        # and can fool the 85% printable-ratio heuristic.
+        linearized_pdf = (
+            "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
+            "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n" * 100
+        )
+        assert ExtractionPipeline._is_readable_text(linearized_pdf) is False
+
+    def test_is_readable_text_rejects_pdf_with_leading_whitespace(self) -> None:
+        """PDF signature preceded by whitespace should still be rejected."""
+        text = "  \n%PDF-1.4\nsome object data\n" + "ASCII data " * 500
+        assert ExtractionPipeline._is_readable_text(text) is False
+
+    def test_is_cached_output_readable_rejects_pdf_signature(self, tmp_path: Path) -> None:
+        """Cached output with PDF magic bytes should be rejected."""
+        out_file = tmp_path / "output.md"
+        # Write a mostly-ASCII linearized PDF that would pass the printable ratio.
+        content = b"%PDF-1.7\n" + b"1 0 obj << /Type /Catalog >> endobj\n" * 300
+        out_file.write_bytes(content)
+
+        assert ExtractionPipeline._is_cached_output_readable(out_file) is False
+
+    # Issue #13: Minimum extraction threshold.
+
+    def test_near_empty_pymupdf_falls_through(self, tmp_path: Path) -> None:
+        """Pymupdf returning < 500 chars should fall through to next method."""
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        src = tmp_path / "signed_po.pdf"
+        src.write_bytes(b"%PDF-1.4 fake")
+
+        # Simulate pymupdf returning only 151 chars (like a signed PO).
+        short_text = "\n--- Page 1 ---\n\n" + "1/23/2025\n" * 10  # ~130 chars
+        ocr_text = "OCR extracted full content of the signed purchase order. " * 20
+
+        pipeline = ExtractionPipeline()
+
+        with (
+            patch.object(pipeline, "_run_pymupdf", return_value=short_text),
+            patch.object(pipeline, "_run_pdftotext", return_value=short_text),
+            patch.object(pipeline._markitdown, "extract", return_value=("", 0.0)),
+            patch.object(pipeline._ocr, "extract", return_value=(ocr_text, 0.7)),
+        ):
+            entry = pipeline.extract_single(src, output_dir)
+
+        # < 500 chars should have fallen through to OCR.
+        assert entry.method == "fallback_ocr"
+        assert entry.confidence == 0.7
+
+    def test_pymupdf_accepts_above_threshold(self, tmp_path: Path) -> None:
+        """Pymupdf returning >= 500 chars with good density should be accepted."""
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        src = tmp_path / "good_contract.pdf"
+        src.write_bytes(b"%PDF-1.4 fake")
+
+        # Simulate pymupdf returning ~600 chars across 2 pages.
+        good_text = (
+            "\n--- Page 1 ---\n\n"
+            + "This is a contract clause with substantive content. " * 5
+            + "\n--- Page 2 ---\n\n"
+            + "More contract text with additional provisions. " * 5
+        )
+
+        pipeline = ExtractionPipeline()
+
+        with patch.object(pipeline, "_run_pymupdf", return_value=good_text):
+            entry = pipeline.extract_single(src, output_dir)
+
+        assert entry.method == "primary"
+        assert entry.confidence == 0.9

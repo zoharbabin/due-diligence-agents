@@ -666,7 +666,7 @@ class SearchAnalyzer:
                 if is_better:
                     best_priority = priority
                     best_answer = col_result.answer
-                    best_confidence = col_result.confidence.upper()
+                    best_confidence = col_result.confidence
 
                 all_citations.extend(col_result.citations)
 
@@ -675,11 +675,11 @@ class SearchAnalyzer:
             if answer_set == {"YES", "NO"}:
                 conflicted_columns.append(col.name)
 
-            # Deduplicate citations by (file_path, page, section_ref).
+            # Deduplicate citations by normalized (file_path, page, section_ref).
             seen_keys: set[tuple[str, str, str]] = set()
             deduped_citations: list[SearchCitation] = []
             for cit in all_citations:
-                key = (cit.file_path, cit.page, cit.section_ref)
+                key = (cit.file_path.strip(), cit.page.strip(), cit.section_ref.strip())
                 if key not in seen_keys:
                     seen_keys.add(key)
                     deduped_citations.append(cit)
@@ -807,7 +807,7 @@ class SearchAnalyzer:
 
             merged.columns[col_name] = SearchColumnResult(
                 answer=col_data.get("answer", merged.columns[col_name].answer),
-                confidence=(col_data.get("confidence") or merged.columns[col_name].confidence).upper(),
+                confidence=col_data.get("confidence") or merged.columns[col_name].confidence,
                 citations=citations or merged.columns[col_name].citations,
             )
 
@@ -900,7 +900,7 @@ class SearchAnalyzer:
 
             result.columns[col_name] = SearchColumnResult(
                 answer=answer,
-                confidence=(col_data.get("confidence") or "").upper(),
+                confidence=col_data.get("confidence") or "",
                 citations=citations,
             )
 
@@ -1025,7 +1025,7 @@ class SearchAnalyzer:
 
             columns[col.name] = SearchColumnResult(
                 answer=col_data.get("answer", ""),
-                confidence=(col_data.get("confidence") or "").upper(),
+                confidence=col_data.get("confidence") or "",
                 citations=citations,
             )
 
