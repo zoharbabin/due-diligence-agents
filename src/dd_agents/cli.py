@@ -87,6 +87,8 @@ def run(
     if verbose:
         logging.basicConfig(level=logging.WARNING, format="%(name)s: %(message)s")
         logging.getLogger("dd_agents").setLevel(logging.DEBUG)
+        logging.getLogger("claude_agent_sdk").setLevel(logging.WARNING)
+        logging.getLogger("asyncio").setLevel(logging.WARNING)
 
     # --- Load and validate config ---
     try:
@@ -544,6 +546,8 @@ def auto_config(
     if verbose:
         logging.basicConfig(level=logging.WARNING, format="%(name)s: %(message)s")
         logging.getLogger("dd_agents").setLevel(logging.DEBUG)
+        logging.getLogger("claude_agent_sdk").setLevel(logging.WARNING)
+        logging.getLogger("asyncio").setLevel(logging.WARNING)
 
     from dd_agents.cli_auto_config import (
         DataRoomAnalyzer,
@@ -696,6 +700,8 @@ def search(
     if verbose:
         logging.basicConfig(level=logging.WARNING, format="%(name)s: %(message)s")
         logging.getLogger("dd_agents").setLevel(logging.DEBUG)
+        logging.getLogger("claude_agent_sdk").setLevel(logging.WARNING)
+        logging.getLogger("asyncio").setLevel(logging.WARNING)
 
     from dd_agents.search.runner import SearchRunner
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from typing import TYPE_CHECKING, Any
 
 from dd_agents.models.search import (
@@ -219,13 +220,11 @@ class SearchAnalyzer:
             )
 
         system_prompt = self._build_system_prompt()
+        last_error: str = ""
 
         for attempt in range(1, self._max_retries + 1):
             try:
                 raw_text = await self._call_claude(system_prompt, user_prompt)
-                result = self._parse_response(raw_text, customer, files_with_text, skipped_files)
-                return result
-
             except Exception as exc:
                 error_str = str(exc)
                 is_non_transient = any(msg in error_str for msg in _NON_TRANSIENT_ERRORS)
@@ -247,13 +246,36 @@ class SearchAnalyzer:
                         error=f"API error: {exc}",
                     )
                 await asyncio.sleep(2**attempt)
+                continue
 
-        # Unreachable, but satisfies type checker.
-        return SearchCustomerResult(  # pragma: no cover
+            result = self._parse_response(raw_text, customer, files_with_text, skipped_files)
+
+            # Accept if we got at least some parsed columns, even if
+            # incomplete — partial data is better than retrying and
+            # getting the same thing.
+            if result.columns:
+                return result
+
+            # No columns at all (empty JSON, parse failure) — retry.
+            last_error = result.error or "Unknown parse error"
+            logger.warning(
+                "Attempt %d/%d: unusable response for %s: %s",
+                attempt,
+                self._max_retries,
+                customer.name,
+                last_error,
+            )
+            if attempt < self._max_retries:
+                await asyncio.sleep(2**attempt)
+
+        # All retries exhausted with parse errors.
+        return SearchCustomerResult(
             customer_name=customer.name,
             group=customer.group,
+            files_analyzed=files_with_text,
             total_files=customer.file_count,
-            error="Unexpected error",
+            skipped_files=skipped_files,
+            error=last_error,
         )
 
     # ------------------------------------------------------------------
@@ -268,6 +290,11 @@ class SearchAnalyzer:
         API keys need to be managed by this code.
 
         Isolated as a method for testability.
+
+        Raises
+        ------
+        RuntimeError
+            If the SDK returns an error or the response contains no text.
         """
         from claude_agent_sdk import (
             AssistantMessage,
@@ -285,15 +312,29 @@ class SearchAnalyzer:
         )
 
         text_parts: list[str] = []
-        async for message in query(prompt=user_prompt, options=options):
-            if isinstance(message, AssistantMessage):
-                for block in message.content:
-                    if isinstance(block, TextBlock):
-                        text_parts.append(block.text)
-            elif isinstance(message, ResultMessage) and message.is_error:
-                raise RuntimeError(f"Claude returned error: {message.result}")
+        try:
+            async for message in query(prompt=user_prompt, options=options):
+                if isinstance(message, AssistantMessage):
+                    for block in message.content:
+                        if isinstance(block, TextBlock):
+                            text_parts.append(block.text)
+                elif isinstance(message, ResultMessage) and message.is_error:
+                    raise RuntimeError(f"Claude returned error: {message.result}")
+        except RuntimeError as exc:
+            if "cancel scope" in str(exc).lower():
+                # Known SDK bug: cancel scope cleanup fails when the query
+                # errored out.  The text_parts collected so far (if any) are
+                # still usable, but if we have nothing, re-raise the original.
+                logger.debug("Suppressed cancel-scope RuntimeError from SDK")
+                if not text_parts:
+                    raise
+            else:
+                raise
 
-        return "\n".join(text_parts)
+        result = "\n".join(text_parts)
+        if not result.strip():
+            raise RuntimeError("Claude returned an empty response (no TextBlock content)")
+        return result
 
     # ------------------------------------------------------------------
     # Prompt building
@@ -438,17 +479,15 @@ class SearchAnalyzer:
         Validates completeness: every expected column must be present in
         the response, and empty ``{}`` responses are rejected.
         """
-        # Strip markdown code fences if present.
-        cleaned = raw_text.strip()
-        if cleaned.startswith("```"):
-            first_newline = cleaned.index("\n")
-            cleaned = cleaned[first_newline + 1 :]
-        if cleaned.endswith("```"):
-            cleaned = cleaned[: cleaned.rfind("```")]
-        cleaned = cleaned.strip()
+        cleaned = self._extract_json_text(raw_text)
 
         if not cleaned:
-            logger.error("Empty response from Claude for %s", customer.name)
+            logger.error(
+                "Empty response from Claude for %s (raw length: %d, preview: %.200s)",
+                customer.name,
+                len(raw_text),
+                raw_text[:200],
+            )
             return SearchCustomerResult(
                 customer_name=customer.name,
                 group=customer.group,
@@ -461,7 +500,12 @@ class SearchAnalyzer:
         try:
             data: dict[str, Any] = json.loads(cleaned)
         except json.JSONDecodeError as exc:
-            logger.error("JSON parse failed for %s: %s", customer.name, exc)
+            logger.error(
+                "JSON parse failed for %s: %s (preview: %.300s)",
+                customer.name,
+                exc,
+                cleaned[:300],
+            )
             return SearchCustomerResult(
                 customer_name=customer.name,
                 group=customer.group,
@@ -544,6 +588,41 @@ class SearchAnalyzer:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _extract_json_text(raw: str) -> str:
+        """Best-effort extraction of a JSON object from *raw*.
+
+        Handles:
+        - Raw JSON (``{ ... }``)
+        - Markdown fenced blocks (````json ... ``` ``)
+        - Preamble text before the opening ``{``
+        """
+        cleaned = raw.strip()
+
+        # Strip markdown code fences.
+        if cleaned.startswith("```"):
+            first_nl = cleaned.find("\n")
+            if first_nl != -1:
+                cleaned = cleaned[first_nl + 1 :]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[: cleaned.rfind("```")]
+        cleaned = cleaned.strip()
+
+        # Already looks like JSON.
+        if cleaned.startswith("{"):
+            return cleaned
+
+        # Try to find a top-level JSON object embedded in the text.
+        match = re.search(r"\{", cleaned)
+        if match:
+            candidate = cleaned[match.start() :]
+            # Quick sanity check: must end with }
+            last_brace = candidate.rfind("}")
+            if last_brace != -1:
+                return candidate[: last_brace + 1]
+
+        return cleaned
 
     def _get_text_path(self, source_path: str) -> Path:
         """Convert original file path to extracted text path.
