@@ -573,6 +573,32 @@ class TestExtractionPipeline:
         assert entry.method == "fallback_ocr"
         assert entry.confidence == 0.7
 
+    def test_pdftotext_density_check(self, tmp_path: Path) -> None:
+        """Pdftotext with low chars/page density should fall through to OCR."""
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        src = tmp_path / "signed_po.pdf"
+        src.write_bytes(b"%PDF-1.4 fake")
+
+        # Simulate pdftotext returning a small signature fragment across pages.
+        sparse_pdftotext = "\n--- Page 1 ---\n\nJohn Smith\n--- Page 2 ---\n\n[signature]\n--- Page 3 ---\n\nDate: 2024"
+        ocr_text = "OCR extracted full purchase order content. " * 50
+
+        pipeline = ExtractionPipeline()
+
+        with (
+            patch.object(pipeline, "_run_pymupdf", return_value=""),
+            patch.object(pipeline, "_run_pdftotext", return_value=sparse_pdftotext),
+            patch.object(pipeline._markitdown, "extract", return_value=("", 0.0)),
+            patch.object(pipeline._ocr, "extract", return_value=(ocr_text, 0.7)),
+        ):
+            entry = pipeline.extract_single(src, output_dir)
+
+        # Should have fallen through to OCR due to low pdftotext density.
+        assert entry.method == "fallback_ocr"
+        assert entry.confidence == 0.7
+
     def test_count_pages_in_text(self) -> None:
         """_count_pages_in_text correctly counts page markers."""
         text_3_pages = (

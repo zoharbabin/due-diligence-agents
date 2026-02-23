@@ -275,7 +275,12 @@ class ExtractionPipeline:
         # 2. pdftotext (poppler CLI) — convert form-feeds to page markers.
         chain.append("pdftotext")
         text = self._run_pdftotext(filepath)
-        if text and len(text.strip()) >= _SCANNED_PDF_THRESHOLD:
+        pdftotext_len = len(text.strip()) if text else 0
+        pdftotext_pages = self._count_pages_in_text(text) if text else 1
+        pdftotext_dense = pdftotext_len >= _SCANNED_PDF_THRESHOLD and (
+            pdftotext_pages <= 1 or pdftotext_len / pdftotext_pages >= _MIN_CHARS_PER_PAGE
+        )
+        if text and pdftotext_dense:
             out_file.write_text(text, encoding="utf-8")
             return ExtractionQualityEntry(
                 file_path=str(filepath),

@@ -807,7 +807,7 @@ class SearchAnalyzer:
 
             merged.columns[col_name] = SearchColumnResult(
                 answer=col_data.get("answer", merged.columns[col_name].answer),
-                confidence=col_data.get("confidence", merged.columns[col_name].confidence),
+                confidence=col_data.get("confidence", merged.columns[col_name].confidence).upper(),
                 citations=citations or merged.columns[col_name].citations,
             )
 
@@ -900,7 +900,7 @@ class SearchAnalyzer:
 
             result.columns[col_name] = SearchColumnResult(
                 answer=answer,
-                confidence=col_data.get("confidence", ""),
+                confidence=col_data.get("confidence", "").upper(),
                 citations=citations,
             )
 

@@ -183,6 +183,79 @@ class TestConfidenceNormalization:
         assert merged.columns["Consent Required"].confidence == "HIGH"
         assert merged.columns["Notice Required"].confidence == "MEDIUM"
 
+    @pytest.mark.asyncio
+    async def test_confidence_normalized_in_synthesis(self, tmp_path: Path) -> None:
+        """Synthesis pass (Phase 3) normalizes confidence to uppercase."""
+        analyzer = _make_analyzer(tmp_path)
+        customer = _make_customer()
+
+        merged = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="YES", confidence="MEDIUM"),
+                "Notice Required": _make_column_result(answer="YES", confidence="HIGH"),
+            }
+        )
+        chunk_results = [
+            _make_customer_result(
+                columns={
+                    "Consent Required": _make_column_result(answer="YES"),
+                    "Notice Required": _make_column_result(answer="YES"),
+                }
+            ),
+            _make_customer_result(
+                columns={
+                    "Consent Required": _make_column_result(answer="NO"),
+                    "Notice Required": _make_column_result(answer="YES"),
+                }
+            ),
+        ]
+
+        synthesis_response = json.dumps(
+            {
+                "Consent Required": {
+                    "answer": "NO",
+                    "confidence": "High",  # Mixed case from LLM
+                    "citations": [],
+                },
+            }
+        )
+
+        mock_call = AsyncMock(return_value=synthesis_response)
+        with patch.object(analyzer, "_call_claude", mock_call):
+            result = await analyzer._synthesis_pass(merged, chunk_results, ["Consent Required"], customer)
+
+        assert result.columns["Consent Required"].confidence == "HIGH"
+
+    @pytest.mark.asyncio
+    async def test_confidence_normalized_in_validation(self, tmp_path: Path) -> None:
+        """Validation pass (Phase 4) normalizes confidence to uppercase."""
+        analyzer = _make_analyzer(tmp_path)
+        customer = _make_customer()
+
+        result = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="YES", confidence="HIGH"),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED", confidence="HIGH"),
+            }
+        )
+        file_texts = [_make_file_text(text="Contract text with notice clauses.")]
+
+        validation_response = json.dumps(
+            {
+                "Notice Required": {
+                    "answer": "YES",
+                    "confidence": "medium",  # Lowercase from LLM
+                    "citations": [],
+                },
+            }
+        )
+
+        mock_call = AsyncMock(return_value=validation_response)
+        with patch.object(analyzer, "_call_claude", mock_call):
+            updated = await analyzer._validation_pass(result, file_texts, customer)
+
+        assert updated.columns["Notice Required"].confidence == "MEDIUM"
+
 
 # ===================================================================
 # TestCostEstimate
