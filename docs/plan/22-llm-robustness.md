@@ -176,6 +176,31 @@ def chunk_tabular(
 | `05-orchestrator.md` | Step 5 | Add optional step 5.5: chunk and index if ChromaDB enabled |
 | `17-file-manifest.md` | File list | Add `src/dd_agents/extraction/chunking.py` (~200 lines) |
 
+### 2.5 Search Analyzer Chunking
+
+The `dd-agents search` command uses a distinct chunking strategy optimized for comprehensive contract analysis rather than vector retrieval. While §2.2 describes chunking for the optional vector store (~3.5K chars), search chunking operates at a much larger scale (~150K chars) because search requires full-document analysis, not similarity-based retrieval.
+
+**Research mapping:**
+
+| Finding | Application to Search Chunking |
+|---------|-------------------------------|
+| AG-1 | Target 150K chars per chunk (~50K tokens) — well within 200K context, leaving room for system prompt and output. Smaller focused context outperforms full document dumps. |
+| AG-2 | Split at page boundaries (`--- Page N ---` markers) rather than fixed character counts. Page boundaries are natural structural breaks in legal documents. |
+| AG-3 | Chunks preserve original document order. File segments within each chunk maintain their position in the source document. |
+| AG-6 | Phase 4 (validation) implements follow-up prompting for NOT_ADDRESSED answers: "Pay special attention to schedules, exhibits, annexes, and definitions sections." |
+| AG-8 | Each chunk prompt includes explicit NOT_ADDRESSED option. Phase 2 merge treats NOT_ADDRESSED as lowest priority (YES > NO > NOT_ADDRESSED). |
+
+**Architecture:**
+
+```
+Phase 1 — MAP:    Each chunk analyzed independently (stateless SDK calls)
+Phase 2 — MERGE:  Mechanical combination (YES > NO > NOT_ADDRESSED, dedup citations)
+Phase 3 — SYNTH:  Lightweight LLM call with all findings as JSON (~5-20KB) for conflicts only
+Phase 4 — VALID:  Follow-up for remaining NOT_ADDRESSED answers
+```
+
+**Implementation:** `src/dd_agents/search/chunker.py` (pure logic), `src/dd_agents/search/analyzer.py` (4-phase orchestration).
+
 ---
 
 ## 3. Context Window Management

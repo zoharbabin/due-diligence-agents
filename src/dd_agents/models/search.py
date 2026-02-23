@@ -54,3 +54,4 @@ class SearchCustomerResult(BaseModel):
     columns: dict[str, SearchColumnResult] = Field(default_factory=dict)
     incomplete_columns: list[str] = Field(default_factory=list)
     error: str | None = None
+    chunks_analyzed: int = 0

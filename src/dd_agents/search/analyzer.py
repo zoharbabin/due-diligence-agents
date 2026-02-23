@@ -5,6 +5,7 @@ Implements lessons from the Addleshaw Goddard RAG Report (2024):
 - Follow-up validation in the prompt ("pay special attention", "do not miss")
 - Targeted system prompt that doesn't unduly increase context length
 - Full audit trail of all files processed, skipped, and every column answered
+- 4-phase analysis: map (per chunk) → merge → synthesis → validation
 """
 
 from __future__ import annotations
@@ -19,6 +20,14 @@ from dd_agents.models.search import (
     SearchCitation,
     SearchColumnResult,
     SearchCustomerResult,
+)
+from dd_agents.search.chunker import (
+    TARGET_CHUNK_CHARS,
+    AnalysisChunk,
+    FileText,
+    create_analysis_chunks,
+    detect_page_markers,
+    estimate_chunks,
 )
 
 if TYPE_CHECKING:
@@ -35,14 +44,23 @@ _CHARS_PER_TOKEN = 4
 _INPUT_COST_PER_MTOK = 3.0  # Claude Sonnet 4 pricing (USD per 1M tokens)
 _OUTPUT_COST_PER_MTOK = 15.0
 
-# Conservative prompt size limit.  Legal text tokenizes at ~3 chars/token
-# (short words, punctuation, numbered clauses) so 400K chars ≈ 130K tokens.
-# Leaves headroom for the system prompt (~3K tokens) and output (~2K tokens)
-# within the model's 200K token context window.
-_MAX_PROMPT_CHARS = 400_000
-
 # Error messages that indicate non-transient failures (don't retry).
 _NON_TRANSIENT_ERRORS = ("Prompt is too long", "context length", "too many tokens")
+
+# Document type inference from filename keywords.
+_DOC_TYPE_KEYWORDS: dict[str, str] = {
+    "msa": "MSA",
+    "master": "MSA",
+    "amendment": "Amendment",
+    "sow": "SOW",
+    "statement of work": "SOW",
+    "order": "Order Form",
+    "addendum": "Addendum",
+    "renewal": "Renewal",
+    "nda": "NDA",
+    "side letter": "Side Letter",
+    "exhibit": "Exhibit",
+}
 
 
 class SearchAnalyzer:
@@ -92,23 +110,36 @@ class SearchAnalyzer:
         dict
             Keys: ``total_customers``, ``total_files``, ``estimated_input_tokens``,
             ``estimated_output_tokens``, ``estimated_cost_usd``,
-            ``files_with_text``, ``files_missing_text``.
+            ``files_with_text``, ``files_missing_text``,
+            ``total_api_calls``, ``chunked_customers``.
         """
         total_chars = 0
         files_with_text = 0
         files_missing_text = 0
+        total_api_calls = 0
+        chunked_customers = 0
         system_chars = len(self._build_system_prompt())
 
         for customer in customers:
             customer_chars = system_chars
+            file_sizes: list[int] = []
             for file_path in customer.files:
                 text_path = self._get_text_path(file_path)
                 if text_path.exists():
-                    customer_chars += text_path.stat().st_size
+                    size = text_path.stat().st_size
+                    customer_chars += size
+                    file_sizes.append(size)
                     files_with_text += 1
                 else:
                     files_missing_text += 1
             total_chars += customer_chars
+
+            chunk_count = estimate_chunks(file_sizes, TARGET_CHUNK_CHARS)
+            total_api_calls += chunk_count  # Phase 1: map calls
+            if chunk_count > 1:
+                chunked_customers += 1
+                total_api_calls += 1  # Phase 3: synthesis pass
+            total_api_calls += 1  # Phase 4: potential validation pass (worst case)
 
         estimated_input_tokens = total_chars // _CHARS_PER_TOKEN
         # Rough output estimate: ~500 tokens per column per customer.
@@ -127,6 +158,8 @@ class SearchAnalyzer:
             "estimated_input_tokens": estimated_input_tokens,
             "estimated_output_tokens": estimated_output_tokens,
             "estimated_cost_usd": round(estimated_cost, 2),
+            "total_api_calls": total_api_calls,
+            "chunked_customers": chunked_customers,
         }
 
     # ------------------------------------------------------------------
@@ -226,14 +259,23 @@ class SearchAnalyzer:
         return final
 
     # ------------------------------------------------------------------
-    # Per-customer analysis
+    # Per-customer analysis (4-phase flow)
     # ------------------------------------------------------------------
 
     async def _analyze_customer(self, customer: CustomerEntry) -> SearchCustomerResult:
-        """Call the Claude Agent SDK for a single customer."""
-        user_prompt, files_with_text, skipped_files = self._build_customer_prompt(customer)
+        """Analyse a single customer using the 4-phase chunked flow.
 
-        if not user_prompt:
+        Phase 1 — MAP:   Analyse each chunk independently.
+        Phase 2 — MERGE: Mechanically combine chunk results.
+        Phase 3 — SYNTH: Resolve conflicts via lightweight LLM call.
+        Phase 4 — VALID: Re-query for remaining NOT_ADDRESSED answers.
+
+        Single-chunk customers (the majority) skip Phases 2-3.
+        """
+        # I/O boundary: read extracted text files.
+        file_texts, skipped_files = self._gather_file_texts(customer)
+
+        if not file_texts:
             return SearchCustomerResult(
                 customer_name=customer.name,
                 group=customer.group,
@@ -243,6 +285,49 @@ class SearchAnalyzer:
                 error="No extracted text found for this customer's files",
             )
 
+        files_with_text = len(file_texts)
+
+        # Create chunks (pure logic).
+        chunks = create_analysis_chunks(file_texts, TARGET_CHUNK_CHARS)
+
+        # PHASE 1: Map — analyse each chunk independently.
+        chunk_results: list[SearchCustomerResult] = []
+        for chunk in chunks:
+            result = await self._analyze_single(chunk, customer, files_with_text, skipped_files)
+            chunk_results.append(result)
+
+        # PHASE 2: Merge.
+        if len(chunk_results) == 1:
+            merged = chunk_results[0]
+            conflicted_columns: list[str] = []
+        else:
+            merged, conflicted_columns = self._merge_chunk_results(
+                chunk_results, customer, files_with_text, skipped_files
+            )
+
+        # PHASE 3: Synthesis (multi-chunk with conflicts only).
+        if conflicted_columns:
+            merged = await self._synthesis_pass(merged, chunk_results, conflicted_columns, customer)
+
+        # PHASE 4: Validation (NOT_ADDRESSED remaining).
+        not_addressed = [
+            col_name for col_name, col_result in merged.columns.items() if col_result.answer == "NOT_ADDRESSED"
+        ]
+        if not_addressed and file_texts:
+            merged = await self._validation_pass(merged, file_texts, customer)
+
+        merged.chunks_analyzed = len(chunks)
+        return merged
+
+    async def _analyze_single(
+        self,
+        chunk: AnalysisChunk,
+        customer: CustomerEntry,
+        files_with_text: int,
+        skipped_files: list[str],
+    ) -> SearchCustomerResult:
+        """Run the retry loop for a single chunk. Returns a parsed result."""
+        user_prompt = self._build_chunk_prompt(chunk, customer)
         system_prompt = self._build_system_prompt()
         last_error: str = ""
 
@@ -253,10 +338,12 @@ class SearchAnalyzer:
                 error_str = str(exc)
                 is_non_transient = any(msg in error_str for msg in _NON_TRANSIENT_ERRORS)
                 logger.warning(
-                    "Attempt %d/%d failed for %s: %s%s",
+                    "Attempt %d/%d failed for %s (chunk %d/%d): %s%s",
                     attempt,
                     self._max_retries,
                     customer.name,
+                    chunk.chunk_index + 1,
+                    chunk.total_chunks,
                     exc,
                     " (non-transient, skipping retries)" if is_non_transient else "",
                 )
@@ -275,24 +362,23 @@ class SearchAnalyzer:
             result = self._parse_response(raw_text, customer, files_with_text, skipped_files)
 
             # Accept if we got at least some parsed columns, even if
-            # incomplete — partial data is better than retrying and
-            # getting the same thing.
+            # incomplete — partial data is better than retrying.
             if result.columns:
                 return result
 
-            # No columns at all (empty JSON, parse failure) — retry.
             last_error = result.error or "Unknown parse error"
             logger.warning(
-                "Attempt %d/%d: unusable response for %s: %s",
+                "Attempt %d/%d: unusable response for %s (chunk %d/%d): %s",
                 attempt,
                 self._max_retries,
                 customer.name,
+                chunk.chunk_index + 1,
+                chunk.total_chunks,
                 last_error,
             )
             if attempt < self._max_retries:
                 await asyncio.sleep(2**attempt)
 
-        # All retries exhausted with parse errors.
         return SearchCustomerResult(
             customer_name=customer.name,
             group=customer.group,
@@ -428,24 +514,18 @@ class SearchAnalyzer:
             "}\n"
         )
 
-    def _build_customer_prompt(self, customer: CustomerEntry) -> tuple[str, int, list[str]]:
-        """Build the user prompt containing all extracted document texts.
+    def _gather_file_texts(self, customer: CustomerEntry) -> tuple[list[FileText], list[str]]:
+        """Read extracted ``.md`` files and return :class:`FileText` objects.
 
-        Documents are included in order until the cumulative size
-        approaches :data:`_MAX_PROMPT_CHARS`.  Any remaining files are
-        reported as skipped so they still appear in the report metadata.
+        This is the ONLY I/O point — everything downstream is pure logic.
+        Files are skipped only for missing or empty extractions, NEVER for size.
 
         Returns
         -------
-        tuple[str, int, list[str]]
-            The prompt text (empty string if no files found), the count
-            of files that actually had extractable text, and a list of
-            file paths that were skipped (missing or empty extraction).
+        tuple[list[FileText], list[str]]
+            The file texts and a list of skipped file paths.
         """
-        header = f"# Customer: {customer.name} (Group: {customer.group})\n"
-        parts: list[str] = [header]
-        current_chars = len(header)
-        files_found = 0
+        file_texts: list[FileText] = []
         skipped_files: list[str] = []
 
         for file_path in customer.files:
@@ -461,34 +541,364 @@ class SearchAnalyzer:
                 skipped_files.append(file_path)
                 continue
 
-            doc_block = f"\n---\n## Document: {file_path}\n---\n{text}\n"
-            if current_chars + len(doc_block) > _MAX_PROMPT_CHARS:
-                logger.warning(
-                    "SKIPPED (prompt size limit): %s (%d chars would exceed %d limit)",
-                    file_path,
-                    current_chars + len(doc_block),
-                    _MAX_PROMPT_CHARS,
+            file_texts.append(
+                FileText(
+                    file_path=file_path,
+                    text=text,
+                    has_page_markers=detect_page_markers(text),
                 )
-                skipped_files.append(file_path)
-                continue
-
-            parts.append(doc_block)
-            current_chars += len(doc_block)
-            files_found += 1
+            )
 
         if skipped_files:
             logger.warning(
-                "Customer %s: %d of %d files skipped: %s",
+                "Customer %s: %d of %d files skipped (missing/empty extraction): %s",
                 customer.name,
                 len(skipped_files),
                 customer.file_count,
                 ", ".join(skipped_files),
             )
 
-        if files_found == 0:
-            return "", 0, skipped_files
+        return file_texts, skipped_files
 
-        return "\n".join(parts), files_found, skipped_files
+    def _build_chunk_prompt(self, chunk: AnalysisChunk, customer: CustomerEntry) -> str:
+        """Build the user prompt from an :class:`AnalysisChunk`.
+
+        Single-chunk customers get the same format as the old
+        ``_build_customer_prompt``.  Multi-chunk customers get a
+        "Part X of Y" header instructing the LLM to answer NOT_ADDRESSED
+        if the relevant information is not in this part.
+        """
+        header = f"# Customer: {customer.name} (Group: {customer.group})\n"
+        parts: list[str] = [header]
+
+        if chunk.total_chunks > 1:
+            parts.append(
+                f"\n**Analysis Part {chunk.chunk_index + 1} of {chunk.total_chunks}**\n"
+                "You are reviewing a SUBSET of this customer's documents. "
+                "If a question cannot be answered from the documents below, "
+                'answer "NOT_ADDRESSED" — another chunk may contain the answer.\n'
+            )
+
+        for seg in chunk.file_segments:
+            page_info = ""
+            if seg.is_partial and seg.start_page is not None:
+                page_info = (
+                    f" (Pages {seg.start_page}-{seg.end_page}"
+                    f" of {seg.total_pages},"
+                    f" Part {seg.part_number} of {seg.total_parts})"
+                )
+            elif seg.is_partial:
+                page_info = f" (Part {seg.part_number} of {seg.total_parts})"
+
+            doc_block = f"\n---\n## Document: {seg.file_path}{page_info}\n---\n{seg.text}\n"
+            parts.append(doc_block)
+
+        return "\n".join(parts)
+
+    # ------------------------------------------------------------------
+    # Phase 2: Merge chunk results
+    # ------------------------------------------------------------------
+
+    def _merge_chunk_results(
+        self,
+        chunk_results: list[SearchCustomerResult],
+        customer: CustomerEntry,
+        files_with_text: int,
+        skipped_files: list[str],
+    ) -> tuple[SearchCustomerResult, list[str]]:
+        """Mechanically merge results from multiple chunks.
+
+        Per column: answer priority YES > NO > NOT_ADDRESSED.
+        Detects conflicts where chunks DISAGREE (both YES and NO).
+
+        Returns
+        -------
+        tuple[SearchCustomerResult, list[str]]
+            The merged result and a list of conflicted column names.
+        """
+        merged_columns: dict[str, SearchColumnResult] = {}
+        conflicted_columns: list[str] = []
+        merged_incomplete: list[str] = []
+
+        _answer_priority = {"YES": 3, "NO": 2, "NOT_ADDRESSED": 1}
+
+        for col in self._prompts.columns:
+            answers: list[str] = []
+            all_citations: list[SearchCitation] = []
+            best_confidence = ""
+            best_answer = "NOT_ADDRESSED"
+            best_priority = 0
+
+            for cr in chunk_results:
+                col_result = cr.columns.get(col.name)
+                if col_result is None:
+                    continue
+
+                answer_upper = col_result.answer.upper().strip()
+                answers.append(answer_upper)
+
+                # Determine priority for this answer.
+                priority = _answer_priority.get(answer_upper, 2)  # Free-text treated as NO-level
+                if answer_upper not in _answer_priority:
+                    # Free-text answer: treat as substantive (higher than NOT_ADDRESSED).
+                    priority = 2
+
+                if priority > best_priority:
+                    best_priority = priority
+                    best_answer = col_result.answer
+                    best_confidence = col_result.confidence
+
+                all_citations.extend(col_result.citations)
+
+            # Conflict detection: both YES and NO present.
+            answer_set = {a for a in answers if a in ("YES", "NO")}
+            if answer_set == {"YES", "NO"}:
+                conflicted_columns.append(col.name)
+
+            # Deduplicate citations by (file_path, page, section_ref).
+            seen_keys: set[tuple[str, str, str]] = set()
+            deduped_citations: list[SearchCitation] = []
+            for cit in all_citations:
+                key = (cit.file_path, cit.page, cit.section_ref)
+                if key not in seen_keys:
+                    seen_keys.add(key)
+                    deduped_citations.append(cit)
+
+            merged_columns[col.name] = SearchColumnResult(
+                answer=best_answer,
+                confidence=best_confidence,
+                citations=deduped_citations,
+            )
+
+        # Collect incomplete columns from any chunk.
+        for cr in chunk_results:
+            for ic in cr.incomplete_columns:
+                if ic not in merged_incomplete:
+                    merged_incomplete.append(ic)
+
+        error_msg = None
+        if merged_incomplete:
+            error_msg = f"Incomplete response — missing columns: {', '.join(merged_incomplete)}"
+
+        merged = SearchCustomerResult(
+            customer_name=customer.name,
+            group=customer.group,
+            files_analyzed=files_with_text,
+            total_files=customer.file_count,
+            skipped_files=skipped_files,
+            columns=merged_columns,
+            incomplete_columns=merged_incomplete,
+            error=error_msg,
+        )
+
+        return merged, conflicted_columns
+
+    # ------------------------------------------------------------------
+    # Phase 3: Synthesis (conflict resolution)
+    # ------------------------------------------------------------------
+
+    async def _synthesis_pass(
+        self,
+        merged: SearchCustomerResult,
+        chunk_results: list[SearchCustomerResult],
+        conflicted_columns: list[str],
+        customer: CustomerEntry,
+    ) -> SearchCustomerResult:
+        """Resolve conflicts using a lightweight LLM call with all findings as JSON.
+
+        Only called when chunks DISAGREE on YES vs NO for some columns.
+        The synthesis prompt includes document type metadata to help the
+        model reason about contractual precedence.
+        """
+        # Build compact findings JSON for the synthesis prompt.
+        findings: dict[str, list[dict[str, Any]]] = {}
+        for i, cr in enumerate(chunk_results):
+            for col_name in conflicted_columns:
+                col_result = cr.columns.get(col_name)
+                if col_result is None:
+                    continue
+                findings.setdefault(col_name, []).append({
+                    "chunk": i + 1,
+                    "answer": col_result.answer,
+                    "confidence": col_result.confidence,
+                    "citations": [
+                        {
+                            "file_path": c.file_path,
+                            "page": c.page,
+                            "section_ref": c.section_ref,
+                            "exact_quote": c.exact_quote[:200],  # Truncate for compactness
+                            "doc_type": self._infer_doc_type(c.file_path),
+                        }
+                        for c in col_result.citations
+                    ],
+                })
+
+        column_names_list = ", ".join(f'"{c}"' for c in conflicted_columns)
+
+        synthesis_system = (
+            "You are a meticulous legal due-diligence analyst resolving conflicting "
+            "findings from a chunked document analysis.\n\n"
+            "## Rules\n"
+            "- Amendments and addenda override base agreements they modify\n"
+            "- More recent documents generally take precedence over older ones\n"
+            "- Look at the doc_type and citation evidence to determine which answer is correct\n"
+            "- Combine partial information from multiple chunks into a unified answer\n"
+            "- Preserve ALL relevant citations from chunks that support the winning answer\n\n"
+            "## Output Format\n"
+            "Return ONLY raw JSON with these keys: " + column_names_list + "\n"
+            "Use the same structure as the original analysis:\n"
+            '  {"<column>": {"answer": "...", "confidence": "...", "citations": [...]}}\n'
+        )
+
+        synthesis_user = (
+            f"# Customer: {customer.name}\n\n"
+            "The following columns had CONFLICTING answers across document chunks.\n"
+            "Review the evidence and determine the correct answer for each.\n\n"
+            f"## Conflicting Findings\n\n```json\n{json.dumps(findings, indent=2)}\n```\n"
+        )
+
+        try:
+            raw_text = await self._call_claude(synthesis_system, synthesis_user)
+            cleaned = self._extract_json_text(raw_text)
+            data: dict[str, Any] = json.loads(cleaned) if cleaned else {}
+        except Exception as exc:
+            logger.warning("Synthesis pass failed for %s: %s — keeping merged results", customer.name, exc)
+            return merged
+
+        # Update only the conflicted columns with synthesis results.
+        for col_name in conflicted_columns:
+            col_data = data.get(col_name)
+            if not isinstance(col_data, dict):
+                continue
+
+            citations = []
+            for cit in col_data.get("citations", []):
+                if isinstance(cit, dict):
+                    citations.append(
+                        SearchCitation(
+                            file_path=cit.get("file_path", ""),
+                            page=str(cit.get("page", "")),
+                            section_ref=cit.get("section_ref", ""),
+                            exact_quote=cit.get("exact_quote", ""),
+                        )
+                    )
+
+            merged.columns[col_name] = SearchColumnResult(
+                answer=col_data.get("answer", merged.columns[col_name].answer),
+                confidence=col_data.get("confidence", merged.columns[col_name].confidence),
+                citations=citations or merged.columns[col_name].citations,
+            )
+
+        return merged
+
+    # ------------------------------------------------------------------
+    # Phase 4: Validation (NOT_ADDRESSED follow-up)
+    # ------------------------------------------------------------------
+
+    async def _validation_pass(
+        self,
+        result: SearchCustomerResult,
+        file_texts: list[FileText],
+        customer: CustomerEntry,
+    ) -> SearchCustomerResult:
+        """Re-query with targeted follow-up for remaining NOT_ADDRESSED answers.
+
+        Uses AG-style follow-up prompting: "Pay special attention to schedules,
+        exhibits, annexes, and definitions sections."  Maximum 1 pass.
+        """
+        not_addressed = [
+            col_name for col_name, col_result in result.columns.items() if col_result.answer == "NOT_ADDRESSED"
+        ]
+        if not not_addressed:
+            return result
+
+        # Build focused document content: prioritise smaller files that fit together
+        # (these likely contain MSA/main agreements with key provisions).
+        sorted_texts = sorted(file_texts, key=lambda ft: len(ft.text))
+        doc_parts: list[str] = []
+        total_chars = 0
+        for ft in sorted_texts:
+            if total_chars + len(ft.text) > TARGET_CHUNK_CHARS:
+                break
+            doc_parts.append(f"\n---\n## Document: {ft.file_path}\n---\n{ft.text}\n")
+            total_chars += len(ft.text)
+
+        if not doc_parts:
+            # Even the smallest file is too large; take what we can.
+            ft = sorted_texts[0]
+            doc_parts.append(f"\n---\n## Document: {ft.file_path}\n---\n{ft.text[:TARGET_CHUNK_CHARS]}\n")
+
+        column_descriptions = "\n".join(
+            f"- **{col.name}**: {col.prompt}" for col in self._prompts.columns if col.name in not_addressed
+        )
+        column_names_list = ", ".join(f'"{c}"' for c in not_addressed)
+
+        validation_system = (
+            "You are a meticulous legal due-diligence analyst performing a follow-up review.\n\n"
+            "Previous analysis could NOT find answers to the questions below.\n"
+            "Pay special attention to schedules, exhibits, annexes, and definitions sections.\n"
+            "Previous analysis did not find answers to these questions — re-examine carefully.\n\n"
+            f"## Questions to Answer\n\n{column_descriptions}\n\n"
+            "## Output Format\n\n"
+            "Return ONLY raw JSON with these keys: " + column_names_list + "\n"
+            "Use the same structure as the original analysis:\n"
+            '  {"<column>": {"answer": "...", "confidence": "...", "citations": [...]}}\n'
+        )
+
+        validation_user = f"# Customer: {customer.name}\n\n" + "\n".join(doc_parts)
+
+        try:
+            raw_text = await self._call_claude(validation_system, validation_user)
+            cleaned = self._extract_json_text(raw_text)
+            data: dict[str, Any] = json.loads(cleaned) if cleaned else {}
+        except Exception as exc:
+            logger.warning("Validation pass failed for %s: %s — keeping current results", customer.name, exc)
+            return result
+
+        # Update only the NOT_ADDRESSED columns with validation results.
+        for col_name in not_addressed:
+            col_data = data.get(col_name)
+            if not isinstance(col_data, dict):
+                continue
+            answer = col_data.get("answer", "")
+            if not answer or answer.upper().strip() == "NOT_ADDRESSED":
+                continue  # Validation didn't help for this column.
+
+            citations = []
+            for cit in col_data.get("citations", []):
+                if isinstance(cit, dict):
+                    citations.append(
+                        SearchCitation(
+                            file_path=cit.get("file_path", ""),
+                            page=str(cit.get("page", "")),
+                            section_ref=cit.get("section_ref", ""),
+                            exact_quote=cit.get("exact_quote", ""),
+                        )
+                    )
+
+            result.columns[col_name] = SearchColumnResult(
+                answer=answer,
+                confidence=col_data.get("confidence", ""),
+                citations=citations,
+            )
+
+        return result
+
+    # ------------------------------------------------------------------
+    # Document type inference
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _infer_doc_type(file_path: str) -> str:
+        """Infer document type from filename keywords.
+
+        Returns "MSA", "Amendment", "SOW", etc. or "Contract" as default.
+        """
+        lower_path = file_path.lower()
+        for keyword, doc_type in _DOC_TYPE_KEYWORDS.items():
+            if keyword in lower_path:
+                return doc_type
+        return "Contract"
 
     # ------------------------------------------------------------------
     # Response parsing
