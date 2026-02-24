@@ -1099,7 +1099,7 @@ markitdown in our fallback chain:
 | **Formats beyond PDF** | DOCX, XLSX, PPTX, RTF | DOCX, PPTX, XLSX, HTML, images, AsciiDoc | PDF only | PDF/images only | Any (LLM) | All major formats | PDF, TIFF, PNG, JPEG only | PDF, PNG, JPG only |
 | **Lossless output** | Markdown only | JSON (DoclingDocument) | Markdown + JSON | Markdown | JSON | JSON elements | JSON (blocks/tables/forms) | Markdown + JSON |
 | **License** | MIT | MIT | AGPL-3.0 | Apache 2.0 | Apache 2.0 | Apache 2.0 | Proprietary (pay-per-page) | MIT (model) + Apache 2.0 (code) |
-| **Python install** | `pip install` | `pip install docling` | `pip install magic-pdf` | `pip install paddlepaddle paddleocr` | `pip install langextract` | `pip install unstructured` | `pip install boto3` | `ollama pull glm-ocr` |
+| **Python install** | `pip install` | `pip install docling` | `pip install magic-pdf` | `pip install paddlepaddle paddleocr` | `pip install langextract` | `pip install unstructured` | `pip install boto3` | `pip install mlx-vlm pypdfium2` (Mac) / `ollama pull glm-ocr` (cross-platform) |
 | **GPU required** | No | Optional (faster) | Optional | Optional | No (API-based) | Optional | No (cloud-managed) | No (0.9B runs on CPU; GPU faster) |
 | **Benchmark (OmniDocBench)** | N/A | 0.589 EN edit distance | 0.238 EN edit distance | **0.145 EN edit distance** | N/A | N/A | N/A (proprietary) | **94.62 OmniDocBench V1.5** (#1) |
 
@@ -1309,7 +1309,8 @@ Additional APIs: `AnalyzeExpense` (invoices/receipts, $0.01/page),
 
 **Repository:** github.com/zai-org/GLM-OCR (MIT model + Apache 2.0 code)
 **Ollama:** `ollama pull glm-ocr` (2.2 GB default, 1.6 GB q8_0)
-**Hugging Face:** zai-org/GLM-OCR
+**Hugging Face:** zai-org/GLM-OCR (original), mlx-community/GLM-OCR-* (Apple MLX variants)
+**Local deployment (Mac):** `pip install mlx-vlm pypdfium2` — 5 lines of code via `mlx_vlm.load()` + `mlx_vlm.generate()`
 
 **Architecture:** A 0.9B-parameter multimodal vision-language model with
 a two-stage pipeline:
@@ -1355,14 +1356,48 @@ released February 2026).
 
 **System requirements:**
 
-| Variant | Download size | Min RAM | GPU |
-|---------|--------------|---------|-----|
-| `glm-ocr:latest` (bf16) | 2.2 GB | ~4 GB | Optional |
-| `glm-ocr:q8_0` (quantized) | 1.6 GB | ~3 GB | Optional |
+| Variant | HuggingFace ID | Download size | Min RAM | GPU |
+|---------|---------------|--------------|---------|-----|
+| bf16 (full precision) | `mlx-community/GLM-OCR-bf16` | 2.21 GB | ~4 GB | Optional (Metal) |
+| 4-bit quantized | `mlx-community/GLM-OCR-4bit` | 1.25 GB | ~2.5 GB | Optional (Metal) |
+| 8-bit quantized | `mlx-community/GLM-OCR-8bit` | 1.58 GB | ~3 GB | **Crashes on macOS Metal** |
+| Ollama default (bf16) | `glm-ocr:latest` | 2.2 GB | ~4 GB | Optional |
+| Ollama quantized (q8) | `glm-ocr:q8_0` | 1.6 GB | ~3 GB | Optional |
 
-Throughput: ~1.86 pages/sec (PDF), ~0.67 images/sec (single instance).
-Runs on CPU (including Apple Silicon via MLX-VLM). GPU accelerates but
-is not required.
+**Note:** The 8-bit MLX variant crashes with a Metal assertion error
+(`MTLCommandBuffer addCompletedHandler:1011: failed assertion`). Use
+the 4-bit variant instead — it is both smaller and faster.
+
+Throughput (measured on Apple M3 Max, 36 GB, macOS 15.3):
+
+| Config | Pages/sec | 16-page doc | Notes |
+|--------|----------|-------------|-------|
+| 4bit / 720px / 150 DPI | **0.30** | **53s** | Optimal config — 4/4 quality |
+| 4bit / 1000px / 150 DPI | 0.23 | 70s | Slightly slower, same quality |
+| bf16 / 1000px / 150 DPI | 0.12 | 135s | Full precision, no quality gain |
+| bf16 / 1200px / 150 DPI | 0.11 | 150s | — |
+| bf16 / 1600px / 150 DPI | 0.08 | 189s | Default — too slow |
+| bf16 / 1600px / 300 DPI | 0.01 | >1600s | Hallucination, unusable |
+
+Key performance findings from dd-agents testing (BLUERUSH data room,
+Broadridge OEM Agreement — 16-page scanned contract, hardest PDF in
+the data room):
+- **Image tokens are the bottleneck:** 300 DPI = ~6,064 tokens/page
+  (17s prefill). 150 DPI + 720px cap = ~1,000 tokens (1s prefill)
+- **4-bit quantization = 2x faster than bf16** with zero quality loss
+  on contract text. The 4-bit model (1.25 GB) is the clear winner
+- **max_tokens=2048 prevents hallucination:** At max_tokens=8192,
+  pages 3-4 produced 37K-44K garbage chars (repetition loops). Capping
+  at 2048 eliminated this completely
+- **Threading crashes (Metal not thread-safe):** Even 2 concurrent
+  `generate()` calls segfault. MLX's Metal GPU backend cannot be shared
+  across threads
+- **Multi-process = marginal gain:** 2 separate processes (each loading
+  own model) = 49s vs 53s sequential. GPU contention limits parallelism
+- **torchvision fast image processor:** No measurable impact (52.8s vs
+  53.5s). The bottleneck is Metal inference, not image preprocessing
+- **temperature=0.0 (greedy decode):** Required for deterministic OCR.
+  Any temperature > 0 introduces variation in text recognition output
 
 **Strengths:**
 - #1 on OmniDocBench V1.5 with only 0.9B parameters — remarkable
@@ -1377,11 +1412,14 @@ is not required.
 - Fully local, air-gapped capable — ideal for confidential M&A data
   rooms where data cannot leave the network
 - MIT + Apache 2.0 license — no commercial restrictions
-- Tiny footprint (2.2 GB) — can run alongside the rest of the pipeline
-  on a standard laptop
-- Ollama integration — simple localhost API, same pattern as our
-  existing claude-agent-sdk calls
+- Tiny footprint (1.25 GB at 4-bit) — can run alongside the rest of
+  the pipeline on a standard laptop
+- Multiple deployment options — mlx-vlm (Apple Silicon, simplest),
+  Ollama (cross-platform), vLLM/SGLang (Linux GPU servers)
 - Fine-tunable via LLaMA-Factory for domain-specific document layouts
+- **Tested against hardest BLUERUSH PDF:** Won 5/6 artifact checks vs
+  pytesseract (0 losses), found all 12 key legal terms, 50.7K chars
+  extracted vs pytesseract's 46.7K for the same 16-page scanned contract
 
 **Weaknesses:**
 - **Image-based processing only** — PDFs are rendered to images before
@@ -1398,20 +1436,36 @@ is not required.
   as a separate stage; layout errors propagate to OCR quality
 - **No embedded text extraction** — cannot use PDF text layer, always
   does visual recognition. Slower than `pdftotext` for text-native PDFs
-- **Throughput** — 1.86 pages/sec is adequate for our deal sizes
-  (~10,000 pages) but would need ~90 minutes for a full deal on a single
-  instance (pytesseract is comparable)
+- **Throughput** — 0.30 pages/sec at optimal config (4bit/720px on
+  Apple M3 Max). A 10,000-page deal would need ~9.3 hours on a single
+  instance. However, GLM-OCR only runs on scanned PDFs that failed
+  text-layer extraction — typically 5-20% of a data room (500-2,000
+  pages = 28-111 minutes). pytesseract is comparable speed
+- **Not thread-safe on macOS** — MLX Metal backend crashes with
+  concurrent `generate()` calls. Multi-process provides marginal gain
+  due to GPU contention. True parallelism requires separate GPU hardware
+  or Linux multi-GPU with vLLM
 - **Precision claims unverified** — "99.9% precision" in PRECISION_MODE
   lacks metric definitions or public test results
+- **Hallucination risk at high token limits** — Must cap max_tokens at
+  2048 per page. At 8192, repetition loops produce 37K-44K garbage chars
+  on dense pages. This is a known VLM failure mode, not specific to
+  GLM-OCR
 
-**Cost comparison (10,000-page deal):**
+**Cost comparison (10,000-page deal, scanned PDF subset):**
 
-| Method | Cost | Hardware | Speed |
-|--------|------|----------|-------|
-| pytesseract (current) | $0 | CPU | ~1-2 pages/sec |
-| GLM-OCR via Ollama | $0 | CPU (GPU optional) | ~1.86 pages/sec |
-| AWS Textract (tables) | $150 | Cloud | ~5-10 pages/sec |
-| PP-StructureV3 | $0 | CPU (GPU optional) | Varies |
+| Method | Cost | Hardware | Speed (measured) | 16-page contract |
+|--------|------|----------|-----------------|-----------------|
+| pytesseract (current) | $0 | CPU | ~1-2 pages/sec | ~10-16s |
+| GLM-OCR 4bit/mlx-vlm | $0 | Apple Silicon | 0.30 pages/sec | **53s** |
+| GLM-OCR bf16/mlx-vlm | $0 | Apple Silicon | 0.08-0.12 pages/sec | 135-189s |
+| GLM-OCR via Ollama | $0 | CPU (GPU optional) | ~0.2-0.3 pages/sec (est.) | ~60-80s (est.) |
+| AWS Textract (tables) | $150 | Cloud | ~5-10 pages/sec | ~2-3s |
+| PP-StructureV3 | $0 | CPU (GPU optional) | Varies | — |
+
+GLM-OCR is 3-6x slower than pytesseract per page, but produces
+significantly higher quality output. The trade-off is worthwhile for
+scanned/degraded documents where pytesseract produces garbled text.
 
 **Relevance to dd-agents:**
 - **Strongest candidate for replacing pytesseract** as Step 4 in the
@@ -1421,11 +1475,44 @@ is not required.
 - Unlike PP-StructureV3: simpler deployment via Ollama (no PaddlePaddle
   framework), smaller model, MIT-licensed
 - Unlike MinerU: no AGPL license concerns
-- **Integration point:** Replace pytesseract as Step 4, or add as
-  Step 3b (between markitdown and pytesseract). The Ollama API makes
-  integration straightforward:
+- **Integration point:** Replace pytesseract as Step 4 in the PDF
+  fallback chain. New `GlmOcrExtractor` class implementing the same
+  `extract(filepath) -> (text, confidence)` interface as `OCRExtractor`.
+  Tested integration via mlx-vlm (Apple Silicon) and Ollama (cross-platform):
   ```python
-  # Conceptual integration
+  # Tested mlx-vlm integration (Apple Silicon — optimal)
+  from mlx_vlm import load, generate
+  from mlx_vlm.prompt_utils import apply_chat_template
+  import pypdfium2 as pdfium
+
+  MODEL_ID = "mlx-community/GLM-OCR-4bit"  # 1.25 GB
+  model, processor = load(MODEL_ID)
+
+  # Render PDF page to image
+  pdf = pdfium.PdfDocument(str(filepath))
+  page = pdf[page_idx]
+  bitmap = page.render(scale=150 / 72)  # 150 DPI
+  img = bitmap.to_pil()
+  w, h = img.size
+  if max(w, h) > 720:  # Cap at 720px
+      ratio = 720 / max(w, h)
+      img = img.resize((int(w * ratio), int(h * ratio)))
+  img.save(str(tmp_path), optimize=True)
+
+  # Run OCR
+  formatted = apply_chat_template(
+      processor, model.config, "Text Recognition:", num_images=1
+  )
+  text = generate(
+      model, processor, formatted,
+      image=[str(tmp_path)],
+      max_tokens=2048,       # Prevents hallucination
+      temperature=0.0,       # Greedy decode for deterministic OCR
+      verbose=False,
+  )
+  ```
+  ```python
+  # Ollama integration (cross-platform fallback)
   import ollama
   response = ollama.chat(
       model="glm-ocr",
@@ -1439,6 +1526,13 @@ is not required.
   )
   text = response.message.content  # Structured Markdown
   ```
+- **Optimal configuration (tested):**
+  - Model: `mlx-community/GLM-OCR-4bit` (1.25 GB)
+  - DPI: 150 (4x fewer pixels than 300, no quality loss)
+  - Max image dimension: 720px (sweet spot for speed/quality)
+  - max_tokens: 2048 (prevents hallucination/repetition)
+  - temperature: 0.0 (greedy decode for deterministic output)
+  - Sequential processing only (threading crashes on Metal)
 - **Add when these triggers occur:**
   1. Scanned PDFs are a significant portion of the data room (>20%)
   2. Table structure matters for analysis accuracy (pricing schedules,
@@ -1446,10 +1540,17 @@ is not required.
   3. Non-English documents appear (Korean, Japanese, Chinese contracts)
   4. pytesseract output quality is insufficient (low density, garbled
      text from complex layouts)
-- **Wait for:** Independent benchmarks confirming OmniDocBench V1.5
-  results, technical report publication, and ecosystem maturation
-  (currently <30 commits). Run a pilot on one deal's scanned PDFs
-  before committing to pipeline integration
+- **Quality results (tested):** Against the hardest scanned PDF in the
+  BLUERUSH data room (Broadridge OEM Agreement, 16 pages):
+  - pytesseract artifacts fixed: "THISAGREEMENT" → "THIS AGREEMENT",
+    "White4labeled" → "White-labeled", "= Definitions" → "1. Definitions",
+    "#TAQMND" garbage eliminated, "# computer program" → "a computer
+    program". Score: GLM-OCR 5, pytesseract 0, ties 1
+  - All 12 key legal terms found (Effective Date, Channel Partner,
+    BlueRush, Broadridge, IndiVideo, Territory, Confidential Information,
+    Intellectual Property, Termination, Governing Law, indemnif,
+    limitation of liability)
+  - Total chars: GLM-OCR 50.7K vs pytesseract 46.7K (more complete)
 
 ### 16.8 Head-to-Head Recommendation
 
@@ -1827,16 +1928,18 @@ Reading order detection is particularly important for:
 | LangExtract | Apache 2.0 | Yes, unrestricted | Source grounding patterns |
 | outlines | Apache 2.0 | Yes, unrestricted | Only for local models |
 | AWS Textract | Proprietary (pay-per-page) | Yes, unrestricted | $0.0015–$0.065/page; requires AWS account + S3 for async |
-| GLM-OCR | MIT (model) + Apache 2.0 (code) | Yes, unrestricted | 0.9B VLM via Ollama; #1 OmniDocBench V1.5; 100+ langs; new ecosystem (Feb 2026) |
+| GLM-OCR | MIT (model) + Apache 2.0 (code) | Yes, unrestricted | 0.9B VLM; #1 OmniDocBench V1.5; 100+ langs; tested at 0.30 pg/sec (4bit/720px, M3 Max); deploy via mlx-vlm (Mac) or Ollama (cross-platform) |
 
 **Recommendation:** Use PP-StructureV3 + PaddleOCR (both Apache 2.0) for
 PDF extraction, Docling (MIT) for Office documents, and instructor (MIT)
 for structured output. For scanned PDF OCR, **GLM-OCR** (MIT) is the
-most promising pytesseract replacement — #1 on OmniDocBench V1.5 with
-only 0.9B parameters, 100+ language support, structured Markdown output,
-and simple Ollama deployment with no cloud dependency. Pending:
-independent benchmark validation and ecosystem maturation. Avoid MinerU's
-AGPL unless legal approves or it's deployed as an isolated service. AWS
+recommended pytesseract replacement — tested against the hardest scanned
+PDF in the BLUERUSH data room and won 5/6 artifact checks vs pytesseract.
+Optimal config: 4-bit quantized model (1.25 GB) at 720px/150 DPI via
+mlx-vlm on Apple Silicon (0.30 pages/sec on M3 Max). 3-6x slower per
+page than pytesseract but significantly higher quality on degraded scans.
+Deploy via mlx-vlm (Mac) or Ollama (cross-platform). Avoid MinerU's AGPL
+unless legal approves or it's deployed as an isolated service. AWS
 Textract is a viable managed alternative when deploying on AWS, but adds
 cost and does not support CJK languages.
 
