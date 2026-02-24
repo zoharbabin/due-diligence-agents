@@ -87,11 +87,11 @@ attempted is recorded in the `fallback_chain` array for auditability.
 
 ```
 Step 1: pymupdf (page-aware, injects --- Page N --- markers)
-  ↓ fails density check? (<100 chars total, or <50 chars/page)
+  ↓ fails density check? (<500 chars total, or <50 chars/page)
 Step 2: pdftotext (poppler CLI, converts \f to page markers)
-  ↓ fails density check? (<100 chars total, or <50 chars/page)
+  ↓ fails density check? (<500 chars total, or <50 chars/page)
 Step 3: markitdown (handles edge-case PDFs, no page markers)
-  ↓ fails threshold? (<100 chars)
+  ↓ fails threshold? (<100 chars) OR fails readability gate? (<85% printable)
 Step 4: pytesseract OCR (page-by-page image OCR, injects markers)
   ↓ fails threshold? (<20 chars)
 Step 5: Direct text read (UTF-8 → latin-1, last resort)
@@ -247,7 +247,7 @@ chars/page (scattered headers/footers). The density check catches this:
 
 ```python
 is_dense_enough = (
-    text_len >= _SCANNED_PDF_THRESHOLD
+    text_len >= _MIN_EXTRACTION_CHARS  # 500 chars (Bug H fix)
     and (page_count <= 1 or text_len / page_count >= _MIN_CHARS_PER_PAGE)
 )
 ```
@@ -361,7 +361,7 @@ Phase 4 — VALID:  If any NOT_ADDRESSED remains, re-query with targeted follow-
 - Answer priority: YES (3) > substantive free-text (2) = NO (2) > NOT_ADDRESSED (1)
 - When tied at same priority: prefer the longer, more substantive answer
 - Conflict detection: if both YES and NO present → trigger Phase 3
-- Citation deduplication: key = `(file_path, page, section_ref)`
+- Citation deduplication: key = `(file_path, page, section_ref, exact_quote)`
 
 ---
 
@@ -407,14 +407,24 @@ enables human reviewers to:
 
 ### 6.5 Citation Deduplication
 
-When merging multi-chunk results, identical citations are deduplicated:
+Citations are deduplicated at two levels using a 4-tuple key:
 
 ```python
-key = (citation.file_path, citation.page, citation.section_ref)
+key = (citation.file_path, citation.page, citation.section_ref, citation.exact_quote)
 ```
 
-This prevents the same clause from appearing multiple times when
-overlapping chunks both cite it.
+This preserves distinct quotes from the same page/section (e.g., two
+different clauses on the same page) while eliminating true duplicates.
+
+Dedup is applied via the shared `dedup_citations()` function at:
+
+1. **Parse time** — inside `parse_column_result()`, so every LLM
+   response (map, synthesis, validation) gets deduped immediately
+2. **Merge time** — in `_merge_chunk_results()`, deduping citations
+   collected across multiple chunks
+
+This two-level approach ensures consistent dedup for both single-chunk
+customers (parse-time only) and multi-chunk customers (parse + merge).
 
 ### 6.6 Known Citation Limitations
 
@@ -428,18 +438,40 @@ overlapping chunks both cite it.
 ### 6.7 Citation Verification (Issue #5)
 
 After analysis, all citations are verified against extracted source text
-using `rapidfuzz.fuzz.partial_ratio`:
+using `rapidfuzz.fuzz.partial_ratio`. This runs locally — no API calls.
 
+**Core configuration:**
 - **80% threshold** — quotes scoring >= 80 are marked as verified.
   This tolerates OCR character-level errors while catching fabricated text.
-- **Page-scoped search** — when a page number is cited, verification
-  searches within the cited page's text rather than the full document.
+- **Whitespace normalization** — all whitespace (newlines, tabs, multiple
+  spaces) is collapsed to single spaces before comparison, handling line
+  breaks from PDF column layout, OCR, and markitdown reformatting.
 - **Section verification** — substring check for `section_ref` in the
-  full document text.
+  full document text (any file in the customer's set).
 - **Non-blocking** — verification failures populate metadata fields but
   never block the pipeline.
 
-New fields on `SearchCitation`:
+**Progressive search scope (Issue #24):**
+
+Quote verification uses a 4-level progressive search to maximize recall
+while keeping attribution accurate:
+
+1. **Page-scoped** — search within the cited page only (fastest, most
+   precise attribution).
+2. **Adjacent pages (+-1)** — expand to neighboring pages. Catches
+   cross-page quotes and off-by-one page citations from the LLM.
+3. **Full document** — search the entire source file. Catches quotes
+   where the page number is wrong but the file is correct.
+4. **Cross-file** — search ALL files in the customer's text set. Catches
+   file misattributions from the LLM merge phase. When found, the
+   citation's `file_path` and `page` are automatically corrected.
+
+**Production results (Data Room B, 37 customers):**
+- 244 citations verified (99.6%)
+- 1 citation unverified (OCR artifact, score 71)
+- 136 citations unverifiable (no exact_quote provided — expected)
+
+Fields on `SearchCitation`:
 - `quote_verified: bool | None` — True if found, False if not, None if
   nothing to verify (empty quote)
 - `quote_match_score: float` — fuzzy match score (0-100)
@@ -540,17 +572,45 @@ not just at the initial parse. We initially added `.upper()` at parse time
 and validation pass (Phase 4). This caused 53% of confidence values in the
 a production retest to remain mixed-case.
 
-**Rule:** Every `col_data.get("confidence", "")` must end with `.upper()`.
+**Fix (final):** Confidence normalization is now centralized in the Pydantic
+`field_validator` on `SearchColumnResult.confidence`. All four phases (map,
+merge, synthesis, validation) route through `parse_column_result()` which
+triggers the validator automatically. No manual `.upper()` needed.
 
-### 8.2 Answer Normalization
+### 8.2 Answer Normalization (Issue #24)
 
-Answers are compared case-insensitively:
+LLMs sometimes return free-text answers instead of the requested
+YES/NO/NOT_ADDRESSED format. The `_normalize_answer()` function in
+`models/search.py` detects 10 non-standard prefixes and maps them to
+NOT_ADDRESSED:
+
 ```python
-answer_upper = col_result.answer.upper().strip()
+_NOT_ADDRESSED_PREFIXES = (
+    "UNABLE TO DETERMINE",
+    "CANNOT DETERMINE",
+    "CANNOT BE DETERMINED",
+    "UNABLE TO ASSESS",
+    "INSUFFICIENT INFORMATION",
+    "NOT ENOUGH INFORMATION",
+    "COULD NOT DETERMINE",
+    "COULD NOT BE DETERMINED",
+    "NOT DETERMINABLE",
+    "INDETERMINATE",
+)
 ```
 
-But the original casing is preserved for display (free-text summaries
-should not be uppercased).
+**Normalization rules:**
+- Standard answers (YES, NO, NOT_ADDRESSED) are returned as-is
+  (preserving original casing for free-text that starts with YES/NO)
+- Any answer starting with a recognized prefix is replaced with
+  NOT_ADDRESSED
+- All other answers are whitespace-stripped but otherwise preserved
+
+**Applied at every entry point:** Normalization runs inside
+`parse_column_result()` which is called by all four pipeline phases.
+This was critical — the initial implementation only normalized in the
+map phase, but the validation phase re-queries Claude which returns
+the same non-standard text again, bypassing the normalization.
 
 ### 8.3 Verbose NOT_ADDRESSED Detection
 
@@ -559,12 +619,17 @@ The LLM sometimes returns:
 > do not contain an explicit obligation..."
 
 This must be treated as NOT_ADDRESSED (priority 1), not as substantive
-free-text (priority 2). Detection:
+free-text (priority 2). Detection in the merge phase:
 
 ```python
 if answer_upper.startswith("NOT_ADDRESSED") or answer_upper.startswith("NOT ADDRESSED"):
     priority = 1  # Not substantive
 ```
+
+This is separate from the `_normalize_answer()` normalization above —
+the merge phase needs to detect verbose NOT_ADDRESSED for priority
+ranking, while `_normalize_answer()` handles non-standard phrasings
+that don't start with "NOT_ADDRESSED" at all.
 
 ### 8.4 JSON Extraction from LLM Output
 
@@ -899,9 +964,11 @@ Single-chunk customers get a standard prompt. Multi-chunk customers get:
 | Constant | Value | Purpose |
 |----------|-------|---------|
 | `_MIN_TEXT_LEN` | 20 chars | Minimum for any extraction to be "non-empty" |
-| `_SCANNED_PDF_THRESHOLD` | 100 chars | Minimum for PDF extraction to be accepted |
+| `_SCANNED_PDF_THRESHOLD` | 100 chars | Cache gate minimum; markitdown fallback threshold |
+| `_MIN_EXTRACTION_CHARS` | 500 chars | Density check hard minimum for pymupdf/pdftotext (Bug H fix) |
 | `_MIN_CHARS_PER_PAGE` | 50 chars/page | Density check for scanned PDF detection |
 | `_MIN_PRINTABLE_RATIO` | 0.85 (85%) | Readability gate — rejects binary garbage from markitdown |
+| `QUOTE_MATCH_THRESHOLD` | 80 (0-100) | Citation verification fuzzy match minimum |
 | `OCR_PAGE_TIMEOUT` | 30 seconds | Per-page timeout for pytesseract |
 | `OCR_LAST_PAGE_CAP` | 50 pages | Maximum pages for OCR processing |
 | Systemic failure gate | 50% | Pipeline halts if > 50% non-plaintext files fail |
@@ -1250,8 +1317,10 @@ reference to the exact source text that produced it.
 **Short-term (no architecture change):**
 - Add source span tracking to citations: store `char_start` and `char_end`
   offsets into the extracted `.md` file alongside `page` and `section_ref`
-- Implement citation verification: check that `exact_quote` appears within
-  the cited page's text (±50 chars for OCR tolerance)
+- ~~Implement citation verification~~ — **DONE** (Issue #5, Issue #24):
+  `CitationVerifier` with progressive 4-scope search, whitespace
+  normalization, and cross-file correction. 99.6% verification rate
+  in production (Data Room B).
 - Generate interactive HTML review pages where clicking a finding
   highlights the source passage
 
@@ -1380,10 +1449,10 @@ citation fidelity):
 | **P0** | Replace pytesseract with PaddleOCR (109 languages) | Medium | High — solves Korean/Japanese/Chinese | Medium | None |
 | **P0** | Add layout-aware PDF extraction (MinerU or PP-StructureV3) | High | Low (most PDFs already work) | **High** — tables, reading order, formulas | Medium — page coordinates |
 | **P1** | Adopt `instructor` for structured LLM output | Medium | Medium — eliminates empty/malformed responses | Medium — schema-enforced confidence | Low |
-| **P1** | Add citation verification (quote ∈ source text) | Medium | None | None | **High** — catches hallucinated quotes |
+| ~~P1~~ | ~~Add citation verification~~ | ~~Medium~~ | — | — | **DONE** — Issue #5, progressive 4-scope search, 99.6% verification rate |
 | **P1** | Replace markitdown for Office docs with Docling | Medium | Low | **High** — preserves table structure in XLSX/DOCX | Medium — element-level page refs |
 | **P2** | Add visual grounding (bounding boxes) | High | None | Low | **High** — pixel-precise citations |
-| **P2** | Parallel chunk analysis | Low | None | None | None — but 3-5x faster |
+| ~~P2~~ | ~~Parallel chunk analysis~~ | ~~Low~~ | — | — | **DONE** — Issue #21, `asyncio.gather` concurrent chunks |
 | **P2** | Interactive HTML review pages | Medium | None | None | **High** — reviewer experience |
 | **P3** | VLM-based extraction (vision LLM) | High | Medium — handles any visual layout | High — understands context | High — visual coordinates |
 | **P3** | Cross-document entity resolution | Medium | None | Medium — consistent naming | Low |
@@ -1582,10 +1651,10 @@ deployed as an isolated service.
    boundaries) could improve answer quality. → Docling's
    `HybridChunker` (§16.3) supports semantic-aware splitting.
 
-4. **Citation verification** — Post-hoc check that `exact_quote` actually
-   appears in the cited `file_path` at the cited `page`. Flag
-   hallucinated citations. → **Addressed in §17.3-17.4:** Source span
-   tracking and automated verification. See §19.1 (P1).
+4. ~~**Citation verification**~~ — **DONE** (Issue #5, Issue #24).
+   `CitationVerifier` with progressive 4-scope search (page → adjacent
+   ±1 → full doc → cross-file), whitespace normalization, and automatic
+   cross-file correction. See §6.7 for details.
 
 5. **Incremental search** — Re-analyze only customers whose documents
    changed, carrying forward unchanged results. Currently the full
