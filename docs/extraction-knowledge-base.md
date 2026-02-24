@@ -1457,7 +1457,8 @@ the data room):
 | Method | Cost | Hardware | Speed (measured) | 16-page contract |
 |--------|------|----------|-----------------|-----------------|
 | pytesseract (current) | $0 | CPU | ~1-2 pages/sec | ~10-16s |
-| GLM-OCR 4bit/mlx-vlm | $0 | Apple Silicon | 0.30 pages/sec | **53s** |
+| GLM-OCR 8bit/mlx-vlm (1024px) | $0 | Apple Silicon | 0.21 pages/sec | **~75s** |
+| GLM-OCR 4bit/mlx-vlm (720px) | $0 | Apple Silicon | 0.30 pages/sec | ~53s |
 | GLM-OCR bf16/mlx-vlm | $0 | Apple Silicon | 0.08-0.12 pages/sec | 135-189s |
 | GLM-OCR via Ollama | $0 | CPU (GPU optional) | ~0.2-0.3 pages/sec (est.) | ~60-80s (est.) |
 | AWS Textract (tables) | $150 | Cloud | ~5-10 pages/sec | ~2-3s |
@@ -1466,6 +1467,13 @@ the data room):
 GLM-OCR is 3-6x slower than pytesseract per page, but produces
 significantly higher quality output. The trade-off is worthwhile for
 scanned/degraded documents where pytesseract produces garbled text.
+
+**Resolution vs quantization findings (A/B tested, Feb 2024):**
+Resolution is the dominant quality lever. Increasing max image dimension
+from 720px to 1024px (at 200 DPI) fixed all 4 tested word-level errors
+while adding only ~2s/page. Quantization (4-bit → 8-bit → bf16) had
+minimal accuracy impact — 8-bit is the recommended balance of quality,
+speed (9.4s/2pp), and VRAM (1.5 GB).
 
 **Relevance to dd-agents:**
 - **Strongest candidate for replacing pytesseract** as Step 4 in the
@@ -1485,17 +1493,17 @@ scanned/degraded documents where pytesseract produces garbled text.
   from mlx_vlm.prompt_utils import apply_chat_template
   import pypdfium2 as pdfium
 
-  MODEL_ID = "mlx-community/GLM-OCR-4bit"  # 1.25 GB
+  MODEL_ID = "mlx-community/GLM-OCR-8bit"  # 1.5 GB
   model, processor = load(MODEL_ID)
 
   # Render PDF page to image
   pdf = pdfium.PdfDocument(str(filepath))
   page = pdf[page_idx]
-  bitmap = page.render(scale=150 / 72)  # 150 DPI
+  bitmap = page.render(scale=200 / 72)  # 200 DPI
   img = bitmap.to_pil()
   w, h = img.size
-  if max(w, h) > 720:  # Cap at 720px
-      ratio = 720 / max(w, h)
+  if max(w, h) > 1024:  # Cap at 1024px
+      ratio = 1024 / max(w, h)
       img = img.resize((int(w * ratio), int(h * ratio)))
   img.save(str(tmp_path), optimize=True)
 
@@ -1526,13 +1534,15 @@ scanned/degraded documents where pytesseract produces garbled text.
   )
   text = response.message.content  # Structured Markdown
   ```
-- **Optimal configuration (tested):**
-  - Model: `mlx-community/GLM-OCR-4bit` (1.25 GB)
-  - DPI: 150 (4x fewer pixels than 300, no quality loss)
-  - Max image dimension: 720px (sweet spot for speed/quality)
+- **Optimal configuration (tested, updated Feb 2024):**
+  - Model: `mlx-community/GLM-OCR-8bit` (1.5 GB)
+  - DPI: 200 (higher than 150 for better small-text accuracy)
+  - Max image dimension: 1024px (fixes word-level errors vs 720px)
   - max_tokens: 2048 (prevents hallucination/repetition)
   - temperature: 0.0 (greedy decode for deterministic output)
   - Sequential processing only (threading crashes on Metal)
+  - Resolution is the dominant accuracy lever (quantization has
+    minimal impact: 4-bit and bf16 produce nearly identical errors)
 - **Add when these triggers occur:**
   1. Scanned PDFs are a significant portion of the data room (>20%)
   2. Table structure matters for analysis accuracy (pricing schedules,
@@ -1551,6 +1561,20 @@ scanned/degraded documents where pytesseract produces garbled text.
     Intellectual Property, Termination, Governing Law, indemnif,
     limitation of liability)
   - Total chars: GLM-OCR 50.7K vs pytesseract 46.7K (more complete)
+- **Resolution vs quantization A/B test** (Broadridge Amendment, 2 pages):
+
+  | Config | Errors (4 checked) | Speed | Image size |
+  |--------|-------------------|-------|-----------|
+  | 4-bit, 150 DPI, 720px | 4/4 errors | 5.3s | 508x720 |
+  | 8-bit, 150 DPI, 720px | 3/4 errors | 7.3s | 508x720 |
+  | bf16, 150 DPI, 720px | 3/4 errors | 11.4s | 508x720 |
+  | **8-bit, 200 DPI, 1024px** | **0/4 errors** | **9.4s** | **723x1024** |
+  | 8-bit, 300 DPI, 1440px | 0/4 errors | 13.1s | 1017x1440 |
+  | 8-bit, 300 DPI, 2048px | 0/4 errors | 35.8s | 1447x2048 |
+
+  Checked words: "Notwithstanding", "retitling", "solely", "claims".
+  The 1024px/200DPI config is the sweet spot — all errors fixed with
+  minimal speed increase over 720px.
 
 ### 16.8 Head-to-Head Recommendation
 

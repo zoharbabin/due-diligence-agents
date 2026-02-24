@@ -3,7 +3,7 @@
 The pipeline converts every data-room file to a single canonical
 markdown representation.  The fallback chain is:
 
-    markitdown -> pdftotext (CLI) -> pytesseract -> direct text read
+    markitdown -> pdftotext (CLI) -> GLM-OCR (optional) -> pytesseract -> direct text read
 
 Extracted files are written as ``<safe_name>.md`` into the output
 directory.  Unchanged files (SHA-256 match) are skipped.
@@ -16,12 +16,16 @@ import logging
 import re
 import subprocess
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from dd_agents.extraction.cache import ExtractionCache
 from dd_agents.extraction.markitdown import MarkitdownExtractor
 from dd_agents.extraction.ocr import OCRExtractor
 from dd_agents.extraction.quality import ExtractionQualityTracker
 from dd_agents.models.inventory import ExtractionQualityEntry
+
+if TYPE_CHECKING:
+    from dd_agents.extraction.glm_ocr import GlmOcrExtractor
 
 logger = logging.getLogger(__name__)
 
@@ -103,9 +107,11 @@ class ExtractionPipeline:
         self,
         markitdown: MarkitdownExtractor | None = None,
         ocr: OCRExtractor | None = None,
+        glm_ocr: GlmOcrExtractor | None = None,
     ) -> None:
         self._markitdown = markitdown or MarkitdownExtractor()
         self._ocr = ocr or OCRExtractor()
+        self._glm_ocr = glm_ocr
 
     # ------------------------------------------------------------------
     # Public API
@@ -268,7 +274,7 @@ class ExtractionPipeline:
         return self._failed_entry(filepath, chain)
 
     def _extract_pdf(self, filepath: Path, out_file: Path) -> ExtractionQualityEntry:
-        """PDF fallback chain: pymupdf (page-aware) -> pdftotext -> markitdown -> OCR -> read."""
+        """PDF fallback chain: pymupdf -> pdftotext -> markitdown -> GLM-OCR (optional) -> OCR -> read."""
         chain: list[str] = []
 
         # 1. pymupdf — per-page extraction with explicit page markers.
@@ -322,7 +328,21 @@ class ExtractionPipeline:
                 fallback_chain=chain,
             )
 
-        # 4. pytesseract OCR
+        # 4. GLM-OCR (optional, higher quality than pytesseract)
+        if self._glm_ocr is not None:
+            chain.append("glm_ocr")
+            text, conf = self._glm_ocr.extract(filepath)
+            if text and len(text.strip()) >= _MIN_TEXT_LEN:
+                out_file.write_text(text, encoding="utf-8")
+                return ExtractionQualityEntry(
+                    file_path=str(filepath),
+                    method="fallback_glm_ocr",
+                    bytes_extracted=len(text.encode("utf-8")),
+                    confidence=conf,
+                    fallback_chain=chain,
+                )
+
+        # 5. pytesseract OCR
         chain.append("ocr")
         text, conf = self._ocr.extract(filepath)
         if text and len(text.strip()) >= _MIN_TEXT_LEN:
@@ -335,7 +355,7 @@ class ExtractionPipeline:
                 fallback_chain=chain,
             )
 
-        # 5. Raw read (last resort)
+        # 6. Raw read (last resort)
         chain.append("direct_read")
         text, conf = self._read_text(filepath)
         if text and len(text.strip()) >= _MIN_TEXT_LEN:
@@ -351,7 +371,7 @@ class ExtractionPipeline:
         return self._failed_entry(filepath, chain)
 
     def _extract_image(self, filepath: Path, out_file: Path) -> ExtractionQualityEntry:
-        """Image fallback chain: markitdown (OCR) -> pytesseract."""
+        """Image fallback chain: markitdown (OCR) -> GLM-OCR (optional) -> pytesseract."""
         chain: list[str] = []
 
         # 1. markitdown
@@ -367,7 +387,21 @@ class ExtractionPipeline:
                 fallback_chain=chain,
             )
 
-        # 2. pytesseract
+        # 2. GLM-OCR (optional)
+        if self._glm_ocr is not None:
+            chain.append("glm_ocr")
+            text, conf = self._glm_ocr.extract(filepath)
+            if text and len(text.strip()) >= _MIN_TEXT_LEN:
+                out_file.write_text(text, encoding="utf-8")
+                return ExtractionQualityEntry(
+                    file_path=str(filepath),
+                    method="fallback_glm_ocr",
+                    bytes_extracted=len(text.encode("utf-8")),
+                    confidence=conf,
+                    fallback_chain=chain,
+                )
+
+        # 3. pytesseract
         chain.append("ocr")
         text, conf = self._ocr.extract(filepath)
         if text and len(text.strip()) >= _MIN_TEXT_LEN:
