@@ -19,7 +19,6 @@ from dd_agents.models.search import (
     SearchCitation,
     SearchColumnResult,
     SearchCustomerResult,
-    parse_citations,
     parse_column_result,
 )
 from dd_agents.search.chunker import (
@@ -925,12 +924,12 @@ class SearchAnalyzer:
             if not isinstance(col_data, dict):
                 continue
 
-            new_citations = parse_citations(col_data.get("citations", []))
+            parsed = parse_column_result(col_data)
 
             merged.columns[col_name] = SearchColumnResult(
-                answer=col_data.get("answer", merged.columns[col_name].answer),
-                confidence=col_data.get("confidence") or merged.columns[col_name].confidence,
-                citations=new_citations or merged.columns[col_name].citations,
+                answer=parsed.answer or merged.columns[col_name].answer,
+                confidence=parsed.confidence or merged.columns[col_name].confidence,
+                citations=parsed.citations or merged.columns[col_name].citations,
             )
 
         return merged
@@ -1012,19 +1011,17 @@ class SearchAnalyzer:
             return result
 
         # Update only the NOT_ADDRESSED columns with validation results.
+        # Uses parse_column_result to ensure answer normalization and
+        # citation dedup are applied consistently.  Issue #24.
         for col_name in not_addressed:
             col_data = data.get(col_name)
             if not isinstance(col_data, dict):
                 continue
-            answer = col_data.get("answer", "")
-            if not answer or answer.upper().strip() == "NOT_ADDRESSED":
+            parsed = parse_column_result(col_data)
+            if not parsed.answer or parsed.answer.upper().strip() == "NOT_ADDRESSED":
                 continue  # Validation didn't help for this column.
 
-            result.columns[col_name] = SearchColumnResult(
-                answer=answer,
-                confidence=col_data.get("confidence") or "",
-                citations=parse_citations(col_data.get("citations", [])),
-            )
+            result.columns[col_name] = parsed
 
         return result
 

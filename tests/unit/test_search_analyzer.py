@@ -2326,3 +2326,55 @@ class TestParseTimeCitationDedup:
         ]
         result = _dedup_citations(citations)
         assert len(result) == 2
+
+
+# ---------------------------------------------------------------------------
+# Test answer normalization coverage (Issue #24 — additional patterns)
+# ---------------------------------------------------------------------------
+
+
+class TestAnswerNormalizationAdditional:
+    """Additional normalization patterns discovered during E2E audit."""
+
+    def test_not_determinable(self) -> None:
+        from dd_agents.models.search import _normalize_answer
+
+        assert _normalize_answer("Not determinable from the provided documents") == "NOT_ADDRESSED"
+
+    def test_validation_phase_normalizes(self) -> None:
+        """parse_column_result used in validation phase catches non-standard answers.
+
+        Regression test for bug where validation phase bypassed
+        parse_column_result, allowing 'Unable to determine...' to
+        overwrite the normalized NOT_ADDRESSED from the map phase.
+        """
+        from dd_agents.models.search import parse_column_result
+
+        # Simulate validation response with non-standard answer.
+        result = parse_column_result(
+            {
+                "answer": "Unable to determine from the provided document."
+                " The one-page PO does not contain relevant provisions.",
+                "confidence": "LOW",
+                "citations": [],
+            }
+        )
+        # After normalization, this should be NOT_ADDRESSED.
+        assert result.answer == "NOT_ADDRESSED"
+
+    def test_validation_skip_check_works_after_normalization(self) -> None:
+        """Validation skip check sees normalized answer, not raw."""
+        from dd_agents.models.search import parse_column_result
+
+        result = parse_column_result(
+            {
+                "answer": "Not determinable from these documents",
+                "confidence": "LOW",
+                "citations": [],
+            }
+        )
+        # After normalization, this is NOT_ADDRESSED.
+        # The validation phase's skip check (answer.upper() == "NOT_ADDRESSED")
+        # should now correctly see this as NOT_ADDRESSED and skip it.
+        assert result.answer == "NOT_ADDRESSED"
+        assert result.answer.upper().strip() == "NOT_ADDRESSED"
