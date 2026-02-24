@@ -90,7 +90,7 @@ def _render_pdf_pages(filepath: Path, work_dir: Path) -> list[Path]:
     """Render PDF pages to PNG images using pypdfium2.
 
     Returns a list of image paths in *work_dir*.  Images are capped at
-    :data:`MAX_IMAGE_DIM` pixels on their longest side (150 DPI base).
+    :data:`MAX_IMAGE_DIM` pixels on their longest side.
     """
     pdfium = _import_pdfium()
     if pdfium is None:
@@ -152,18 +152,32 @@ def _render_image_for_ocr(filepath: Path, work_dir: Path) -> list[Path]:
         return []
 
 
-# ── MLX-VLM backend ─────────────────────────────────────────────────
+# ── Page assembly ────────────────────────────────────────────────────
 
 
-def _mlx_ocr_pages(image_paths: list[Path]) -> list[str]:
-    """Run GLM-OCR on each image via mlx-vlm.  Returns per-page text."""
+def _assemble_pages(page_texts: list[str]) -> str:
+    """Combine per-page OCR results with ``--- Page N ---`` markers."""
+    parts: list[str] = []
+    for idx, text in enumerate(page_texts):
+        if text.strip():
+            parts.append(f"--- Page {idx + 1} ---\n{text}")
+    return "\n\n".join(parts)
+
+
+# ── MLX-VLM backend (per-page OCR, uses cached model) ───────────────
+
+
+def _mlx_ocr_pages(image_paths: list[Path], model: Any, processor: Any) -> list[str]:
+    """Run GLM-OCR on each image via mlx-vlm.  Returns per-page text.
+
+    *model* and *processor* are pre-loaded by the caller to avoid
+    re-downloading/re-loading on every file.
+    """
     imports = _import_mlx_vlm()
     if imports is None:
         return []
 
-    load_fn, generate_fn, apply_chat_template_fn = imports
-
-    model, processor = load_fn(MODEL_ID_MLX)
+    _load_fn, generate_fn, apply_chat_template_fn = imports
 
     results: list[str] = []
     for img_path in image_paths:
@@ -187,21 +201,11 @@ def _mlx_ocr_pages(image_paths: list[Path]) -> list[str]:
     return results
 
 
-def _assemble_pages(page_texts: list[str]) -> str:
-    """Combine per-page OCR results with ``--- Page N ---`` markers."""
-    parts: list[str] = []
-    for idx, text in enumerate(page_texts):
-        if text.strip():
-            parts.append(f"--- Page {idx + 1} ---\n{text}")
-    return "\n\n".join(parts)
+def _try_mlx_extract(filepath: Path, model: Any, processor: Any) -> tuple[str, float]:
+    """Attempt extraction via mlx-vlm.  Returns ``(text, confidence)``.
 
-
-def _try_mlx_extract(filepath: Path) -> tuple[str, float]:
-    """Attempt extraction via mlx-vlm.  Returns ``(text, confidence)``."""
-    if _import_mlx_vlm() is None:
-        logger.debug("mlx-vlm not available -- skipping MLX backend")
-        return "", _CONFIDENCE_FAILURE
-
+    *model* and *processor* are pre-loaded by the caller.
+    """
     work_dir = Path(tempfile.mkdtemp(prefix="dd_glm_mlx_"))
     try:
         suffix = filepath.suffix.lower()
@@ -215,7 +219,7 @@ def _try_mlx_extract(filepath: Path) -> tuple[str, float]:
         if not image_paths:
             return "", _CONFIDENCE_FAILURE
 
-        page_texts = _mlx_ocr_pages(image_paths)
+        page_texts = _mlx_ocr_pages(image_paths, model, processor)
         if not page_texts or not any(t.strip() for t in page_texts):
             return "", _CONFIDENCE_FAILURE
 
@@ -300,11 +304,40 @@ class GlmOcrExtractor:
     Tries mlx-vlm first (Apple Silicon, fastest), then Ollama
     (cross-platform).  Returns ``("", 0.0)`` if neither is available.
 
+    The MLX model is loaded lazily on first use and cached for the
+    lifetime of the extractor instance — subsequent files reuse the
+    same model without re-downloading or re-loading.
+
     Usage::
 
         extractor = GlmOcrExtractor()
         text, confidence = extractor.extract(Path("scanned_doc.pdf"))
     """
+
+    def __init__(self) -> None:
+        self._mlx_model: Any = None
+        self._mlx_processor: Any = None
+        self._mlx_checked = False
+
+    def _ensure_mlx_model(self) -> bool:
+        """Load the MLX model/processor on first call.  Returns *True* if available."""
+        if self._mlx_checked:
+            return self._mlx_model is not None
+
+        self._mlx_checked = True
+        imports = _import_mlx_vlm()
+        if imports is None:
+            logger.debug("mlx-vlm not available -- skipping MLX backend")
+            return False
+
+        load_fn = imports[0]
+        try:
+            self._mlx_model, self._mlx_processor = load_fn(MODEL_ID_MLX)
+            logger.info("GLM-OCR MLX model loaded: %s", MODEL_ID_MLX)
+            return True
+        except Exception:
+            logger.warning("Failed to load MLX model %s", MODEL_ID_MLX, exc_info=True)
+            return False
 
     def extract(self, filepath: Path) -> tuple[str, float]:
         """Extract text from *filepath* using GLM-OCR.
@@ -324,9 +357,10 @@ class GlmOcrExtractor:
             return "", _CONFIDENCE_FAILURE
 
         # Backend 1: mlx-vlm (Apple Silicon)
-        text, conf = _try_mlx_extract(filepath)
-        if text.strip():
-            return text, conf
+        if self._ensure_mlx_model():
+            text, conf = _try_mlx_extract(filepath, self._mlx_model, self._mlx_processor)
+            if text.strip():
+                return text, conf
 
         # Backend 2: Ollama (cross-platform)
         text, conf = _try_ollama_extract(filepath)

@@ -93,6 +93,9 @@ class TestGlmOcrExtractor:
         )
 
         extractor = GlmOcrExtractor()
+        extractor._mlx_checked = True
+        extractor._mlx_model = MagicMock()
+        extractor._mlx_processor = MagicMock()
         text, conf = extractor.extract(src)
 
         assert "--- Page 1 ---" in text
@@ -117,6 +120,9 @@ class TestGlmOcrExtractor:
         )
 
         extractor = GlmOcrExtractor()
+        extractor._mlx_checked = True
+        extractor._mlx_model = MagicMock()
+        extractor._mlx_processor = MagicMock()
         text, conf = extractor.extract(src)
 
         mock_mlx.assert_called_once()
@@ -132,6 +138,9 @@ class TestGlmOcrExtractor:
         src.write_bytes(b"%PDF-1.4 fake content")
 
         extractor = GlmOcrExtractor()
+        extractor._mlx_checked = True
+        extractor._mlx_model = MagicMock()
+        extractor._mlx_processor = MagicMock()
         text, conf = extractor.extract(src)
 
         assert text == ""
@@ -149,6 +158,9 @@ class TestGlmOcrExtractor:
         )
 
         extractor = GlmOcrExtractor()
+        extractor._mlx_checked = True
+        extractor._mlx_model = MagicMock()
+        extractor._mlx_processor = MagicMock()
         text, conf = extractor.extract(src)
 
         assert "--- Page 1 ---" in text
@@ -164,6 +176,9 @@ class TestGlmOcrExtractor:
         mock_mlx.return_value = ("--- Page 1 ---\nTIFF text.", 0.8)
 
         extractor = GlmOcrExtractor()
+        extractor._mlx_checked = True
+        extractor._mlx_model = MagicMock()
+        extractor._mlx_processor = MagicMock()
         text, conf = extractor.extract(src)
         assert conf == 0.8
 
@@ -176,6 +191,41 @@ class TestGlmOcrExtractor:
         # GLM-OCR should be higher than pytesseract (0.6)
         assert _CONFIDENCE_GLM_OCR > 0.6
 
+    def test_model_cached_across_extractions(self, tmp_path: Path) -> None:
+        """MLX model is loaded once and reused across multiple extract() calls."""
+        mock_load = MagicMock(return_value=(MagicMock(), MagicMock()))
+        mock_imports = (mock_load, MagicMock(), MagicMock())
+
+        src1 = tmp_path / "a.pdf"
+        src1.write_bytes(b"%PDF-1.4 fake")
+        src2 = tmp_path / "b.pdf"
+        src2.write_bytes(b"%PDF-1.4 fake")
+
+        extractor = GlmOcrExtractor()
+
+        with (
+            patch("dd_agents.extraction.glm_ocr._import_mlx_vlm", return_value=mock_imports),
+            patch("dd_agents.extraction.glm_ocr._try_mlx_extract", return_value=("text", 0.8)),
+        ):
+            extractor.extract(src1)
+            extractor.extract(src2)
+
+        # load should be called exactly once (cached after first call)
+        mock_load.assert_called_once()
+
+    def test_ensure_mlx_model_caches_failure(self) -> None:
+        """If mlx-vlm import fails, _ensure_mlx_model does not retry."""
+        extractor = GlmOcrExtractor()
+
+        with patch("dd_agents.extraction.glm_ocr._import_mlx_vlm", return_value=None) as mock_import:
+            result1 = extractor._ensure_mlx_model()
+            result2 = extractor._ensure_mlx_model()
+
+        assert result1 is False
+        assert result2 is False
+        # Only checked once — second call uses cached result
+        mock_import.assert_called_once()
+
 
 # ======================================================================
 # MLX backend — _try_mlx_extract
@@ -186,14 +236,13 @@ class TestMlxBackend:
     """Tests for the mlx-vlm extraction backend."""
 
     def test_mlx_unavailable_returns_empty(self, tmp_path: Path) -> None:
-        """When mlx_vlm is not installed, returns empty gracefully."""
-        from dd_agents.extraction.glm_ocr import _try_mlx_extract
-
+        """When mlx_vlm is not installed, _ensure_mlx_model returns False."""
         src = tmp_path / "doc.pdf"
         src.write_bytes(b"%PDF-1.4 fake")
 
-        with patch.dict("sys.modules", {"mlx_vlm": None}):
-            text, conf = _try_mlx_extract(src)
+        extractor = GlmOcrExtractor()
+        with patch("dd_agents.extraction.glm_ocr._import_mlx_vlm", return_value=None):
+            text, conf = extractor.extract(src)
 
         assert text == ""
         assert conf == 0.0
@@ -216,7 +265,9 @@ class TestMlxBackend:
         ]
         mock_ocr.return_value = ["Page one text.", "Page two text."]
 
-        text, conf = _try_mlx_extract(src)
+        mock_model = MagicMock()
+        mock_processor = MagicMock()
+        text, conf = _try_mlx_extract(src, mock_model, mock_processor)
 
         assert "--- Page 1 ---" in text
         assert "--- Page 2 ---" in text
@@ -239,7 +290,9 @@ class TestMlxBackend:
         mock_render.return_value = [tmp_path / "p1.png", tmp_path / "p2.png"]
         mock_ocr.return_value = ["Real text here.", ""]
 
-        text, conf = _try_mlx_extract(src)
+        mock_model = MagicMock()
+        mock_processor = MagicMock()
+        text, conf = _try_mlx_extract(src, mock_model, mock_processor)
 
         # Only non-empty pages contribute
         assert "--- Page 1 ---" in text
