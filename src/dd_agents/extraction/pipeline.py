@@ -15,6 +15,7 @@ import hashlib
 import logging
 import re
 import subprocess
+from collections import Counter
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -285,7 +286,7 @@ class ExtractionPipeline:
         is_dense_enough = text_len >= _MIN_EXTRACTION_CHARS and (
             page_count <= 1 or text_len / page_count >= _MIN_CHARS_PER_PAGE
         )
-        if text and is_dense_enough:
+        if text and is_dense_enough and not self._is_watermark_only(text):
             out_file.write_text(text, encoding="utf-8")
             return ExtractionQualityEntry(
                 file_path=str(filepath),
@@ -303,7 +304,7 @@ class ExtractionPipeline:
         pdftotext_dense = pdftotext_len >= _MIN_EXTRACTION_CHARS and (
             pdftotext_pages <= 1 or pdftotext_len / pdftotext_pages >= _MIN_CHARS_PER_PAGE
         )
-        if text and pdftotext_dense:
+        if text and pdftotext_dense and not self._is_watermark_only(text):
             out_file.write_text(text, encoding="utf-8")
             return ExtractionQualityEntry(
                 file_path=str(filepath),
@@ -374,10 +375,11 @@ class ExtractionPipeline:
         """Image fallback chain: markitdown (OCR) -> GLM-OCR (optional) -> pytesseract."""
         chain: list[str] = []
 
-        # 1. markitdown
+        # 1. markitdown — readability gate rejects binary image data that
+        #    markitdown dumps verbatim for image files it cannot OCR (Bug B).
         chain.append("markitdown")
         text, conf = self._markitdown.extract(filepath)
-        if text and len(text.strip()) >= _MIN_TEXT_LEN:
+        if text and len(text.strip()) >= _MIN_TEXT_LEN and self._is_readable_text(text):
             out_file.write_text(text, encoding="utf-8")
             return ExtractionQualityEntry(
                 file_path=str(filepath),
@@ -576,6 +578,29 @@ class ExtractionPipeline:
             return printable / max(len(sample), 1) >= _MIN_PRINTABLE_RATIO
         except OSError:
             return False
+
+    @staticmethod
+    def _is_watermark_only(text: str) -> bool:
+        """Return *True* if extracted PDF text is dominated by repeated watermarks.
+
+        Detects scanned PDFs where pymupdf/pdftotext can only read a
+        transparent overlay (e.g. DocuSign envelope IDs) but not the
+        actual page content underneath.  Heuristic: if >50 % of
+        non-blank, non-marker lines are identical repeated strings the
+        extraction is almost certainly a watermark artifact.
+        """
+        if not text:
+            return False
+        lines = [
+            ln.strip() for ln in text.split("\n") if ln.strip() and not re.match(r"^--- Page \d+ ---$", ln.strip())
+        ]
+        if len(lines) < 4:
+            return False
+
+        counts = Counter(lines)
+        _line, most_common_count = counts.most_common(1)[0]
+        # If a single line accounts for >50% of content lines, it's a watermark
+        return most_common_count / len(lines) > 0.5
 
     @staticmethod
     def _is_readable_text(text: str, *, sample_size: int = 10_000) -> bool:

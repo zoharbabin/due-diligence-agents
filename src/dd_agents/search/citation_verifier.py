@@ -279,6 +279,16 @@ class CitationVerifier:
             safe_name = ExtractionPipeline._safe_text_name(absolute)
             text_path = self._text_dir / safe_name
 
+            # Fallback: LLM may cite colons (`:`) that the filesystem
+            # stores as HTML entities (`&#x3a_`).  Try the encoded variant.
+            if not text_path.exists() and ":" in file_path:
+                encoded_path = file_path.replace(":", "&#x3a_")
+                alt_absolute = str(self._data_room / encoded_path)
+                alt_safe = ExtractionPipeline._safe_text_name(alt_absolute)
+                alt_text_path = self._text_dir / alt_safe
+                if alt_text_path.exists():
+                    text_path = alt_text_path
+
             if text_path.exists():
                 text = text_path.read_text(encoding="utf-8", errors="replace")
                 self._file_cache[file_path] = text

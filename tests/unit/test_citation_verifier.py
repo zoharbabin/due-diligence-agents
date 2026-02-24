@@ -624,3 +624,94 @@ class TestProgressiveSearchScope:
         cit = result.columns["Q1"].citations[0]
         assert cit.quote_verified is False
         assert cit.quote_match_score < QUOTE_MATCH_THRESHOLD
+
+
+# ---------------------------------------------------------------------------
+# Test colon-in-filename fallback (Bug C)
+# ---------------------------------------------------------------------------
+
+
+class TestColonInFilenameFallback:
+    """Tests for the colon → &#x3a_ filename fallback in _load_customer_texts."""
+
+    def test_colon_in_path_resolved_via_encoded_fallback(self, tmp_path: Path) -> None:
+        """LLM cites path with literal colon; filesystem stores &#x3a_ encoding."""
+        from dd_agents.extraction.pipeline import ExtractionPipeline
+
+        text_dir = tmp_path / "text"
+        text_dir.mkdir()
+        data_room = tmp_path / "data_room"
+        data_room.mkdir()
+
+        # The LLM cites this path (with literal colon):
+        llm_cited_path = "Below-100K/WSPS/Order Form 2:3.pdf"
+        # The filesystem stores the colon-encoded variant:
+        encoded_path = "Below-100K/WSPS/Order Form 2&#x3a_3.pdf"
+
+        # Write the extracted text file under the encoded variant.
+        absolute_encoded = str(data_room / encoded_path)
+        safe_name = ExtractionPipeline._safe_text_name(absolute_encoded)
+        text_file = text_dir / safe_name
+        text_file.write_text(
+            "\n--- Page 1 ---\nThis agreement governs the purchase of services.\n",
+            encoding="utf-8",
+        )
+
+        verifier = CitationVerifier(text_dir=text_dir, data_room_path=data_room)
+        result = _make_result_with_citation(
+            file_path=llm_cited_path,
+            exact_quote="This agreement governs the purchase of services.",
+            page="1",
+            section_ref="",
+        )
+        verifier.verify_result(result)
+
+        cit = result.columns["Q1"].citations[0]
+        assert cit.quote_verified is True
+        assert cit.quote_match_score >= QUOTE_MATCH_THRESHOLD
+
+    def test_no_colon_path_unaffected(self, tmp_path: Path) -> None:
+        """Paths without colons skip the fallback and still load normally."""
+        from dd_agents.extraction.pipeline import ExtractionPipeline
+
+        text_dir = tmp_path / "text"
+        text_dir.mkdir()
+        data_room = tmp_path / "data_room"
+        data_room.mkdir()
+
+        normal_path = "GroupA/Customer/msa.pdf"
+        absolute = str(data_room / normal_path)
+        safe_name = ExtractionPipeline._safe_text_name(absolute)
+        text_file = text_dir / safe_name
+        text_file.write_text(
+            "\n--- Page 5 ---\nSection 12.3\nUpon change of control, the agreement terminates.\n",
+            encoding="utf-8",
+        )
+
+        verifier = CitationVerifier(text_dir=text_dir, data_room_path=data_room)
+        result = _make_result_with_citation(
+            file_path=normal_path,
+        )
+        verifier.verify_result(result)
+
+        cit = result.columns["Q1"].citations[0]
+        assert cit.quote_verified is True
+
+    def test_colon_path_no_encoded_file_fails_gracefully(self, tmp_path: Path) -> None:
+        """Colon path with no matching encoded file still fails gracefully."""
+        text_dir = tmp_path / "text"
+        text_dir.mkdir()
+        data_room = tmp_path / "data_room"
+        data_room.mkdir()
+
+        verifier = CitationVerifier(text_dir=text_dir, data_room_path=data_room)
+        result = _make_result_with_citation(
+            file_path="Below-100K/WSPS/Order Form 2:3.pdf",
+            exact_quote="Some quote from the document.",
+        )
+        verifier.verify_result(result)
+
+        cit = result.columns["Q1"].citations[0]
+        # No file found → verification fails.
+        assert cit.quote_verified is False
+        assert cit.quote_match_score == 0.0

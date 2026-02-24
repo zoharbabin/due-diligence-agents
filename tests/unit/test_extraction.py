@@ -762,3 +762,99 @@ class TestExtractionPipeline:
 
         assert entry.method == "primary"
         assert entry.confidence == 0.9
+
+    def test_is_watermark_only_detects_docusign_overlay(self) -> None:
+        """PDFs with repeated DocuSign envelope IDs are detected as watermark-only."""
+        text = "\n".join(
+            [
+                "--- Page 1 ---",
+                "DocuSign Envelope ID: ABC123-DEF456",
+                "",
+                "--- Page 2 ---",
+                "DocuSign Envelope ID: ABC123-DEF456",
+                "",
+                "--- Page 3 ---",
+                "DocuSign Envelope ID: ABC123-DEF456",
+                "9/29/2023",
+                "CEO",
+                "Dev Ganesan",
+                "",
+                "--- Page 4 ---",
+                "DocuSign Envelope ID: ABC123-DEF456",
+                "",
+                "--- Page 5 ---",
+                "DocuSign Envelope ID: ABC123-DEF456",
+            ]
+        )
+        assert ExtractionPipeline._is_watermark_only(text) is True
+
+    def test_is_watermark_only_rejects_normal_pdf(self) -> None:
+        """Normal PDFs with diverse content are not flagged as watermark-only."""
+        text = (
+            "\n--- Page 1 ---\n\nThis Agreement is made between Party A and Party B.\n"
+            "\n--- Page 2 ---\n\nSection 1. Definitions. The following terms apply.\n"
+            "\n--- Page 3 ---\n\nSection 2. Payment. Fees are due within 30 days.\n"
+        )
+        assert ExtractionPipeline._is_watermark_only(text) is False
+
+    def test_is_watermark_only_empty_text(self) -> None:
+        """Empty text is not flagged as watermark-only."""
+        assert ExtractionPipeline._is_watermark_only("") is False
+
+    def test_is_watermark_only_short_text(self) -> None:
+        """Short text (< 4 lines) is not flagged as watermark-only."""
+        assert ExtractionPipeline._is_watermark_only("line 1\nline 2\nline 3") is False
+
+    def test_watermark_pdf_falls_through_to_glm_ocr(self, tmp_path: Path) -> None:
+        """Watermark-only PDFs fall through pymupdf/pdftotext to GLM-OCR."""
+        from dd_agents.extraction.glm_ocr import GlmOcrExtractor
+
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        src = tmp_path / "encrypted.pdf"
+        src.write_bytes(b"%PDF-1.4 fake")
+
+        watermark_text = "\n".join(f"--- Page {i} ---\nDocuSign Envelope ID: ABC-123" for i in range(1, 12))
+
+        glm_text = "--- Page 1 ---\nThis is the actual contract text extracted by OCR. " * 10
+        glm_extractor = GlmOcrExtractor()
+        pipeline = ExtractionPipeline(glm_ocr=glm_extractor)
+
+        with (
+            patch.object(pipeline, "_run_pymupdf", return_value=watermark_text),
+            patch.object(pipeline, "_run_pdftotext", return_value=watermark_text),
+            patch.object(pipeline._markitdown, "extract", return_value=("", 0.0)),
+            patch.object(glm_extractor, "extract", return_value=(glm_text, 0.8)),
+        ):
+            entry = pipeline.extract_single(src, output_dir)
+
+        assert entry.method == "fallback_glm_ocr"
+        assert entry.confidence == 0.8
+        assert "glm_ocr" in entry.fallback_chain
+
+    def test_image_binary_garbage_falls_through(self, tmp_path: Path) -> None:
+        """Image files where markitdown returns binary data fall through to GLM-OCR."""
+        from dd_agents.extraction.glm_ocr import GlmOcrExtractor
+
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        src = tmp_path / "scan.png"
+        src.write_bytes(b"\x89PNG fake")
+
+        # Simulate markitdown returning binary PNG data (low printable ratio)
+        binary_text = "\x89PNG\r\n\x1a\n" + "\x00\x01\x02" * 100
+
+        glm_text = "--- Page 1 ---\nOCR extracted text from scanned image. " * 10
+        glm_extractor = GlmOcrExtractor()
+        pipeline = ExtractionPipeline(glm_ocr=glm_extractor)
+
+        with (
+            patch.object(pipeline._markitdown, "extract", return_value=(binary_text, 0.5)),
+            patch.object(glm_extractor, "extract", return_value=(glm_text, 0.8)),
+        ):
+            entry = pipeline.extract_single(src, output_dir)
+
+        assert entry.method == "fallback_glm_ocr"
+        assert entry.confidence == 0.8
