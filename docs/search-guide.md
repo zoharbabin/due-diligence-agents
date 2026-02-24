@@ -215,6 +215,23 @@ confused with the customer's own contract terms. External references
 may be relevant for vendor/infrastructure analysis but must be
 explicitly opted-in for that use case.
 
+## Answer Normalization
+
+LLMs sometimes return free-text answers like "Unable to determine..." or
+"Cannot be determined from the available documents" instead of the
+requested YES/NO/NOT_ADDRESSED format. The analyzer normalizes these
+at parse time:
+
+- **10 recognized prefixes**: "Unable to determine", "Cannot determine",
+  "Insufficient information", "Indeterminate", etc. are all mapped to
+  NOT_ADDRESSED
+- **Applied at every entry point**: Map phase, synthesis phase, and
+  validation phase all route through `parse_column_result()` which
+  normalizes before any downstream logic evaluates the answer
+- **Parse-time citation dedup**: Duplicate citations (same file, page,
+  section, and quote) are removed at parse time via a 4-tuple key,
+  ensuring consistent dedup for both single-chunk and multi-chunk customers
+
 ## Citation Verification
 
 After analysis, all citations are verified against the extracted
@@ -224,12 +241,30 @@ additional API calls.
 
 - **80% match threshold** — tolerates OCR character errors while
   flagging fabricated quotes
-- **Page-scoped search** — when a page number is cited, verification
-  searches within that page's text
+- **Whitespace normalization** — all whitespace (newlines, tabs, multiple
+  spaces) is collapsed to single spaces before comparison, handling
+  line breaks from PDF column layout, OCR, and markitdown reformatting
 - **Section verification** — checks that the cited section reference
   actually appears in the source document
-- Results appear in the Excel Details sheet (Quote Verified / Match
-  Score columns) and in the CLI summary output
+
+### Progressive Search Scope
+
+Quote verification uses a 4-level progressive search to maximize
+recall while keeping attribution accurate:
+
+1. **Page-scoped** — search within the cited page only
+2. **Adjacent pages (+-1)** — expand to neighboring pages (catches
+   cross-page quotes and off-by-one page citations)
+3. **Full document** — search the entire source file
+4. **Cross-file** — search ALL files in the customer's text set
+   (catches file misattributions from the LLM merge phase)
+
+When a quote is found in a different file (scope 4), the citation's
+`file_path` and `page` are automatically corrected to point to the
+actual source document.
+
+Results appear in the Excel Details sheet (Quote Verified / Match
+Score columns) and in the CLI summary output.
 
 ## Data Completeness Guarantees
 

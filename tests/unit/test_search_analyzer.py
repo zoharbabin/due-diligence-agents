@@ -2317,14 +2317,14 @@ class TestParseTimeCitationDedup:
         assert len(result.citations) == 1
 
     def test_dedup_function_directly(self) -> None:
-        from dd_agents.models.search import SearchCitation, _dedup_citations
+        from dd_agents.models.search import SearchCitation, dedup_citations
 
         citations = [
             SearchCitation(file_path="a.pdf", page="1", section_ref="S1", exact_quote="Quote A"),
             SearchCitation(file_path="a.pdf", page="1", section_ref="S1", exact_quote="Quote A"),
             SearchCitation(file_path="b.pdf", page="2", section_ref="S2", exact_quote="Quote B"),
         ]
-        result = _dedup_citations(citations)
+        result = dedup_citations(citations)
         assert len(result) == 2
 
 

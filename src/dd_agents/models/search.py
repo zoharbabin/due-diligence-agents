@@ -145,7 +145,7 @@ def _normalize_answer(answer: str) -> str:
     return answer.strip()
 
 
-def _dedup_citations(citations: list[SearchCitation]) -> list[SearchCitation]:
+def dedup_citations(citations: list[SearchCitation]) -> list[SearchCitation]:
     """Deduplicate citations by (file_path, page, section_ref, exact_quote).
 
     Applied at parse time so both single-chunk and multi-chunk customers
@@ -177,5 +177,5 @@ def parse_column_result(col_data: dict[str, Any]) -> SearchColumnResult:
     return SearchColumnResult(
         answer=_normalize_answer(col_data.get("answer", "")),
         confidence=col_data.get("confidence") or "",
-        citations=_dedup_citations(parse_citations(col_data.get("citations", []))),
+        citations=dedup_citations(parse_citations(col_data.get("citations", []))),
     )

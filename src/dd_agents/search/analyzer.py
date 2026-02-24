@@ -19,6 +19,7 @@ from dd_agents.models.search import (
     SearchCitation,
     SearchColumnResult,
     SearchCustomerResult,
+    dedup_citations,
     parse_column_result,
 )
 from dd_agents.search.chunker import (
@@ -786,26 +787,10 @@ class SearchAnalyzer:
             if answer_set == {"YES", "NO"}:
                 conflicted_columns.append(col.name)
 
-            # Deduplicate citations by (file_path, page, section_ref, exact_quote).
-            # The 4-tuple key preserves distinct quotes from the same location
-            # (e.g. two different clauses on the same page/section).  Issue #17.
-            seen_keys: set[tuple[str, str, str, str]] = set()
-            deduped_citations: list[SearchCitation] = []
-            for cit in all_citations:
-                key = (
-                    (cit.file_path or "").strip(),
-                    (cit.page or "").strip(),
-                    (cit.section_ref or "").strip(),
-                    (cit.exact_quote or "").strip(),
-                )
-                if key not in seen_keys:
-                    seen_keys.add(key)
-                    deduped_citations.append(cit)
-
             merged_columns[col.name] = SearchColumnResult(
                 answer=best_answer,
                 confidence=best_confidence,
-                citations=deduped_citations,
+                citations=dedup_citations(all_citations),
             )
 
         # Collect incomplete columns from any chunk.
