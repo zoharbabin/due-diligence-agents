@@ -301,6 +301,9 @@ class ExtractionPipeline:
         except ImportError:
             return "normal"
 
+        # Suppress MuPDF C-level stderr messages (e.g. "premature end in
+        # aes filter") — capture them via mupdf_warnings() instead.
+        fitz.TOOLS.mupdf_display_errors(False)
         try:
             doc = fitz.open(str(filepath))
         except Exception:
@@ -332,6 +335,11 @@ class ExtractionPipeline:
         except Exception:
             return "normal"
         finally:
+            # Log any MuPDF warnings at debug level, then restore display.
+            warnings = fitz.TOOLS.mupdf_warnings()
+            if warnings:
+                logger.debug("MuPDF warnings for %s: %s", filepath, warnings)
+            fitz.TOOLS.mupdf_display_errors(True)
             doc.close()
 
     @staticmethod
@@ -734,10 +742,13 @@ class ExtractionPipeline:
         except ImportError:
             return ""
 
+        # Suppress MuPDF C-level stderr messages; capture via warnings API.
+        fitz.TOOLS.mupdf_display_errors(False)
         try:
             doc = fitz.open(str(filepath))
         except Exception as exc:
             logger.debug("pymupdf failed to open %s: %s", filepath, exc)
+            fitz.TOOLS.mupdf_display_errors(True)
             return ""
 
         parts: list[str] = []
@@ -749,6 +760,10 @@ class ExtractionPipeline:
         except Exception as exc:
             logger.debug("pymupdf extraction error for %s: %s", filepath, exc)
         finally:
+            warnings = fitz.TOOLS.mupdf_warnings()
+            if warnings:
+                logger.debug("MuPDF warnings for %s: %s", filepath, warnings)
+            fitz.TOOLS.mupdf_display_errors(True)
             doc.close()
 
         return "\n".join(parts)
