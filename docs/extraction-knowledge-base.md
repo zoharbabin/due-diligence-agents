@@ -1084,24 +1084,24 @@ has proven reliable for text-native PDFs but has structural weaknesses:
 
 ### 16.2 Library Comparison Matrix
 
-Six libraries evaluated as potential replacements or supplements to
+Seven libraries evaluated as potential replacements or supplements to
 markitdown in our fallback chain:
 
-| Criteria | markitdown (current) | Docling (IBM) | MinerU (OpenDataLab) | PP-StructureV3 (PaddlePaddle) | LangExtract (Google) | Unstructured |
-|----------|---------------------|---------------|---------------------|-------------------------------|---------------------|--------------|
-| **PDF text extraction** | Basic | Layout-aware | Layout-aware | Layout-aware | LLM-driven | Layout-aware |
-| **Table → structured** | No | HTML/CSV | HTML/Markdown | HTML | JSON | HTML |
-| **Formula → LaTeX** | No | Yes | Yes | Yes | No | No |
-| **Reading order** | No | Yes | Yes | Yes | N/A | Yes |
-| **OCR languages** | English only | Multi-language | 109 languages | Multi-language | N/A (LLM) | Multi-language |
-| **Page markers** | No | Yes (page-level) | Yes (page-level) | Yes | N/A | Yes (element-level) |
-| **Scanned PDF** | Binary dump (Bug G) | DocTR/EasyOCR | PaddleOCR/Tesseract | PaddleOCR | Vision LLM | Tesseract/paddle |
-| **Formats beyond PDF** | DOCX, XLSX, PPTX, RTF | DOCX, PPTX, XLSX, HTML, images, AsciiDoc | PDF only | PDF/images only | Any (LLM) | All major formats |
-| **Lossless output** | Markdown only | JSON (DoclingDocument) | Markdown + JSON | Markdown | JSON | JSON elements |
-| **License** | MIT | MIT | AGPL-3.0 | Apache 2.0 | Apache 2.0 | Apache 2.0 |
-| **Python install** | `pip install` | `pip install docling` | `pip install magic-pdf` | `pip install paddlepaddle paddleocr` | `pip install langextract` | `pip install unstructured` |
-| **GPU required** | No | Optional (faster) | Optional | Optional | No (API-based) | Optional |
-| **Benchmark (OmniDocBench)** | N/A | 0.589 EN edit distance | 0.238 EN edit distance | **0.145 EN edit distance** | N/A | N/A |
+| Criteria | markitdown (current) | Docling (IBM) | MinerU (OpenDataLab) | PP-StructureV3 (PaddlePaddle) | LangExtract (Google) | Unstructured | **AWS Textract** |
+|----------|---------------------|---------------|---------------------|-------------------------------|---------------------|--------------|-----------------|
+| **PDF text extraction** | Basic | Layout-aware | Layout-aware | Layout-aware | LLM-driven | Layout-aware | Layout-aware (managed) |
+| **Table → structured** | No | HTML/CSV | HTML/Markdown | HTML | JSON | HTML | HTML (rows/cols/merged cells) |
+| **Formula → LaTeX** | No | Yes | Yes | Yes | No | No | No |
+| **Reading order** | No | Yes | Yes | Yes | N/A | Yes | Yes (LAYOUT API) |
+| **OCR languages** | English only | Multi-language | 109 languages | Multi-language | N/A (LLM) | Multi-language | 6 Latin (EN/FR/DE/IT/PT/ES) |
+| **Page markers** | No | Yes (page-level) | Yes (page-level) | Yes | N/A | Yes (element-level) | Yes (page-level) |
+| **Scanned PDF** | Binary dump (Bug G) | DocTR/EasyOCR | PaddleOCR/Tesseract | PaddleOCR | Vision LLM | Tesseract/paddle | Native OCR (managed) |
+| **Formats beyond PDF** | DOCX, XLSX, PPTX, RTF | DOCX, PPTX, XLSX, HTML, images, AsciiDoc | PDF only | PDF/images only | Any (LLM) | All major formats | PDF, TIFF, PNG, JPEG only |
+| **Lossless output** | Markdown only | JSON (DoclingDocument) | Markdown + JSON | Markdown | JSON | JSON elements | JSON (blocks/tables/forms) |
+| **License** | MIT | MIT | AGPL-3.0 | Apache 2.0 | Apache 2.0 | Apache 2.0 | Proprietary (pay-per-page) |
+| **Python install** | `pip install` | `pip install docling` | `pip install magic-pdf` | `pip install paddlepaddle paddleocr` | `pip install langextract` | `pip install unstructured` | `pip install boto3` |
+| **GPU required** | No | Optional (faster) | Optional | Optional | No (API-based) | Optional | No (cloud-managed) |
+| **Benchmark (OmniDocBench)** | N/A | 0.589 EN edit distance | 0.238 EN edit distance | **0.145 EN edit distance** | N/A | N/A | N/A (proprietary) |
 
 ### 16.3 Docling (IBM, Open Source)
 
@@ -1219,7 +1219,93 @@ lower than MinerU's pipeline backend.
 - Chart understanding could extract data from embedded diagrams
 - Requires PaddlePaddle, which adds a non-trivial dependency
 
-### 16.6 Head-to-Head Recommendation
+### 16.6 AWS Textract (Amazon)
+
+**Service:** Managed OCR/document analysis API (proprietary, pay-per-page)
+
+**Architecture:** Documents uploaded to S3 (async) or sent inline (sync,
+single page only) → AWS-managed OCR and layout analysis → JSON response
+with blocks (pages, lines, words), tables (rows, columns, merged cells),
+forms (key-value pairs), signatures, and layout elements.
+
+**Five API types:**
+
+| API | Purpose | Price/page |
+|-----|---------|------------|
+| `DetectDocumentText` | Basic OCR (lines + words) | $0.0015 |
+| `AnalyzeDocument` — Tables | Table extraction with cell structure | $0.015 |
+| `AnalyzeDocument` — Forms | Key-value pair extraction | $0.050 |
+| `AnalyzeDocument` — Layout | Reading order, headers, footers, sections | $0.015 |
+| `AnalyzeDocument` — Queries | Natural language questions about the document | $0.015 + query fee |
+
+Additional APIs: `AnalyzeExpense` (invoices/receipts, $0.01/page),
+`AnalyzeID` (identity documents, $0.01/page), `AnalyzeLending`
+(mortgage documents, $0.003/page).
+
+**Strengths:**
+- Table extraction with HTML-level structure (rows, columns, merged
+  cells, column headers) — strongest table capability among evaluated
+  options alongside PP-StructureV3
+- Layout analysis API returns reading order, section headers, page
+  headers/footers, titles — solves multi-column interleaving
+- Form extraction (key-value pairs) useful for insurance forms,
+  compliance questionnaires
+- Signature detection — useful for identifying signed vs unsigned docs
+- Confidence scores per word/line/cell — enables quality-aware fallback
+  decisions (low-confidence blocks could trigger re-extraction)
+- Bounding box coordinates for every element — enables visual grounding
+- Zero infrastructure: no GPU, no model downloads, no dependency
+  management
+- Async API handles up to 3,000 pages / 500 MB per document
+
+**Weaknesses:**
+- Only 6 Latin languages (EN, FR, DE, IT, PT, ES) — **no CJK support**
+  (Korean, Japanese, Chinese). Does not solve our Korean MSA problem
+- S3 dependency for async (multi-page) processing — adds AWS credential
+  management and S3 bucket provisioning to deployment
+- Sync API limited to single page — impractical for multi-page contracts
+- Cost at scale: a 200-customer deal with ~50 pages each = 10,000 pages.
+  At $0.015/page (tables) = $150/deal; at $0.065/page (tables+forms) =
+  $650/deal. Adds up for repeated runs
+- Proprietary: no local/offline mode, no self-hosting, subject to AWS
+  pricing changes and rate limits
+- No formula/LaTeX extraction
+- No DOCX/XLSX support (PDF and image formats only)
+- Async workflow adds polling/callback complexity compared to
+  synchronous local libraries
+
+**Cost comparison for typical M&A deal (10,000 pages):**
+
+| Method | Cost | Notes |
+|--------|------|-------|
+| pytesseract (current) | $0 | Local, free |
+| Textract DetectDocumentText | $15 | Basic OCR only |
+| Textract AnalyzeDocument (tables) | $150 | Tables + OCR |
+| Textract AnalyzeDocument (tables + forms) | $650 | Full extraction |
+| PP-StructureV3 / PaddleOCR | $0 | Local, free (GPU optional) |
+
+**Relevance to dd-agents:**
+- Best positioned as a **pytesseract replacement** (Step 4 in our PDF
+  fallback chain) for scanned PDFs where local OCR produces poor results
+- Table extraction valuable for pricing schedules, payment tables, and
+  financial exhibits that our current chain flattens to plain text
+- Confidence scores could feed into our quality gates (reject
+  low-confidence extractions and trigger re-extraction with a different
+  method)
+- **Not recommended as default** due to cost, AWS dependency, and
+  limited language support
+- **Add when these triggers occur:**
+  1. Table extraction accuracy matters for the analysis (pricing
+     schedules, financial exhibits with complex table layouts)
+  2. The deployment already runs on AWS (S3 and credentials available)
+  3. Volume justifies the cost vs. manual review savings
+  4. English/Western European documents dominate the deal (CJK excluded)
+- **Integration point:** Add as Step 4b in the PDF chain, between
+  pytesseract (Step 4) and direct-read fallback (Step 5). Gate on:
+  file is scanned PDF + pytesseract confidence < threshold + AWS
+  credentials available
+
+### 16.7 Head-to-Head Recommendation
 
 For the dd-agents pipeline, the evaluation suggests a **hybrid approach**
 rather than a single library replacement:
@@ -1228,7 +1314,8 @@ rather than a single library replacement:
 |------|---------|-------------|-----------|
 | PDF text extraction (primary) | pymupdf | **MinerU hybrid** or **PP-StructureV3** | Layout-aware, reading order, 2-4x better accuracy |
 | PDF OCR (scanned docs) | pytesseract | **MinerU** (109-lang OCR) or **PaddleOCR** | Multi-language, integrated with layout analysis |
-| PDF tables | None (flattened) | **PP-StructureV3** (SLANeXt) or **Docling** | Preserves row/column structure for pricing analysis |
+| PDF OCR (scanned, AWS deploy) | pytesseract | **AWS Textract** | Managed service, confidence scores, zero infra; only when on AWS and CJK not needed |
+| PDF tables | None (flattened) | **PP-StructureV3** (SLANeXt) or **AWS Textract** | Preserves row/column structure for pricing analysis |
 | Office documents (DOCX/XLSX/PPTX) | markitdown | **Docling** | Table structure, multi-format, LangChain integration |
 | Formulas | None | **MinerU** or **PP-StructureV3** | LaTeX output for mathematical terms in contracts |
 | Citation grounding | Page markers | **LangExtract** pattern (see §17) | Bounding-box-level source attribution |
@@ -1593,11 +1680,14 @@ Reading order detection is particularly important for:
 | MinerU | AGPL-3.0 | **Requires open-sourcing or commercial license** | Best accuracy but license risk |
 | LangExtract | Apache 2.0 | Yes, unrestricted | Source grounding patterns |
 | outlines | Apache 2.0 | Yes, unrestricted | Only for local models |
+| AWS Textract | Proprietary (pay-per-page) | Yes, unrestricted | $0.0015–$0.065/page; requires AWS account + S3 for async |
 
 **Recommendation:** Use PP-StructureV3 + PaddleOCR (both Apache 2.0) for
 PDF extraction, Docling (MIT) for Office documents, and instructor (MIT)
 for structured output. Avoid MinerU's AGPL unless legal approves or it's
-deployed as an isolated service.
+deployed as an isolated service. AWS Textract is a viable managed
+alternative for scanned PDF OCR and table extraction when deploying on
+AWS, but adds cost and does not support CJK languages.
 
 ---
 
