@@ -109,14 +109,72 @@ def parse_citations(raw_list: list[Any]) -> list[SearchCitation]:
     return citations
 
 
+# Prefixes that are semantically equivalent to NOT_ADDRESSED.  Issue #24.
+_NOT_ADDRESSED_PREFIXES = (
+    "UNABLE TO DETERMINE",
+    "CANNOT DETERMINE",
+    "CANNOT BE DETERMINED",
+    "UNABLE TO ASSESS",
+    "INSUFFICIENT INFORMATION",
+    "NOT ENOUGH INFORMATION",
+    "COULD NOT DETERMINE",
+    "COULD NOT BE DETERMINED",
+    "INDETERMINATE",
+)
+
+
+def _normalize_answer(answer: str) -> str:
+    """Normalize non-standard LLM answer values to YES/NO/NOT_ADDRESSED.
+
+    LLMs sometimes return free-text like "Unable to determine..." or
+    "Cannot determine..." instead of conforming to the requested format.
+    These are semantically equivalent to NOT_ADDRESSED and should be
+    normalized for consistent downstream filtering/coloring.  Issue #24.
+    """
+    if not answer:
+        return answer
+    upper = answer.strip().upper()
+    # Already standard — return as-is (preserving original casing for
+    # free-text answers that happen to start with YES/NO).
+    if upper in ("YES", "NO", "NOT_ADDRESSED"):
+        return answer.strip()
+    for prefix in _NOT_ADDRESSED_PREFIXES:
+        if upper.startswith(prefix):
+            return "NOT_ADDRESSED"
+    return answer.strip()
+
+
+def _dedup_citations(citations: list[SearchCitation]) -> list[SearchCitation]:
+    """Deduplicate citations by (file_path, page, section_ref, exact_quote).
+
+    Applied at parse time so both single-chunk and multi-chunk customers
+    get consistent dedup.  The same 4-tuple key is used in the merge phase
+    for cross-chunk dedup.  Issue #24.
+    """
+    seen: set[tuple[str, str, str, str]] = set()
+    deduped: list[SearchCitation] = []
+    for cit in citations:
+        key = (
+            (cit.file_path or "").strip(),
+            (cit.page or "").strip(),
+            (cit.section_ref or "").strip(),
+            (cit.exact_quote or "").strip(),
+        )
+        if key not in seen:
+            seen.add(key)
+            deduped.append(cit)
+    return deduped
+
+
 def parse_column_result(col_data: dict[str, Any]) -> SearchColumnResult:
     """Parse a single column dict from an LLM JSON response.
 
-    Handles type coercion for ``confidence`` (via Pydantic validator)
+    Handles type coercion for ``confidence`` (via Pydantic validator),
+    answer normalization (Issue #24), parse-time citation dedup (Issue #24),
     and delegates citation parsing to :func:`parse_citations`.
     """
     return SearchColumnResult(
-        answer=col_data.get("answer", ""),
+        answer=_normalize_answer(col_data.get("answer", "")),
         confidence=col_data.get("confidence") or "",
-        citations=parse_citations(col_data.get("citations", [])),
+        citations=_dedup_citations(parse_citations(col_data.get("citations", []))),
     )

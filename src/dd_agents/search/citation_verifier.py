@@ -4,6 +4,14 @@ Verifies that LLM-generated citations (``exact_quote``, ``page``,
 ``section_ref``) actually exist in the extracted source text.  Uses
 ``rapidfuzz`` for fuzzy matching to tolerate OCR artefacts.
 
+Verification uses a **progressive search scope** (Issue #24):
+1. Page-scoped: search within the cited page only.
+2. Adjacent pages: expand to ±1 page (catches cross-page quotes
+   and off-by-one page citations).
+3. Full document: search the entire source file.
+4. Cross-file: search ALL files in the customer's text set
+   (catches file misattributions from the LLM merge phase).
+
 This module runs locally — no API calls, no LLM usage.
 """
 
@@ -30,6 +38,18 @@ QUOTE_MATCH_THRESHOLD = 80
 # Regex to split extracted text into pages by ``--- Page N ---`` markers.
 _PAGE_MARKER_RE = re.compile(r"\n--- Page (\d+) ---\n")
 
+# Regex to collapse whitespace for normalization.
+_WHITESPACE_RE = re.compile(r"\s+")
+
+
+def _normalize_whitespace(text: str) -> str:
+    """Collapse all whitespace (newlines, tabs, multiple spaces) to single space.
+
+    This handles line breaks from PDF column layout, OCR, and markitdown
+    reformatting that cause false-negative fuzzy matches.  Issue #24.
+    """
+    return _WHITESPACE_RE.sub(" ", text.strip())
+
 
 def split_by_pages(text: str) -> dict[str, str]:
     """Split extracted text into page-number → page-text mapping.
@@ -55,6 +75,24 @@ def split_by_pages(text: str) -> dict[str, str]:
         pages[page_num] = page_text
 
     return pages
+
+
+def _get_adjacent_pages_text(pages: dict[str, str], page_num: str) -> str:
+    """Return concatenated text for a page and its immediate neighbors (±1).
+
+    Handles cross-page quotes and off-by-one page citations.  Issue #24.
+    """
+    try:
+        num = int(page_num)
+    except (ValueError, TypeError):
+        return ""
+
+    parts: list[str] = []
+    for p in (num - 1, num, num + 1):
+        text = pages.get(str(p), "")
+        if text:
+            parts.append(text)
+    return "\n".join(parts)
 
 
 class CitationVerifier:
@@ -113,18 +151,20 @@ class CitationVerifier:
         citation: SearchCitation,
         text_lookup: dict[str, str],
     ) -> None:
-        """Verify a single citation and populate its verification fields."""
-        source_text = text_lookup.get(citation.file_path, "")
-        if not source_text:
-            # File not found in extracted texts — can't verify.
-            citation.quote_verified = False
-            citation.quote_match_score = 0.0
-            citation.section_verified = False
-            return
+        """Verify a single citation and populate its verification fields.
 
-        # Verify section_ref.
+        Uses progressive search scope (Issue #24):
+        1. Cited page → 2. Adjacent pages (±1) → 3. Full document → 4. Other files.
+        """
+        source_text = text_lookup.get(citation.file_path, "")
+
+        # Verify section_ref against the full source text (any file that has it).
         if citation.section_ref:
-            citation.section_verified = citation.section_ref in source_text
+            if source_text:
+                citation.section_verified = citation.section_ref in source_text
+            else:
+                # Try all files — the section might be in a different file.
+                citation.section_verified = any(citation.section_ref in txt for txt in text_lookup.values())
         else:
             citation.section_verified = None  # Nothing to verify.
 
@@ -134,18 +174,89 @@ class CitationVerifier:
             citation.quote_match_score = 0.0
             return
 
-        # Determine search scope: page-scoped if page is specified.
-        search_text = source_text
-        if citation.page and citation.page.strip():
+        # Normalize the quote once for all comparisons.
+        norm_quote = _normalize_whitespace(citation.exact_quote)
+
+        # --- Progressive search scope ---
+
+        # Scope 1: Cited page only.
+        if source_text and citation.page and citation.page.strip():
             pages = split_by_pages(source_text)
             page_text = pages.get(citation.page.strip())
             if page_text:
-                search_text = page_text
+                score = fuzz.partial_ratio(norm_quote, _normalize_whitespace(page_text))
+                if score >= self._threshold:
+                    citation.quote_match_score = float(score)
+                    citation.quote_verified = True
+                    return
 
-        # Fuzzy match the quote against the source text.
-        score = fuzz.partial_ratio(citation.exact_quote, search_text)
-        citation.quote_match_score = float(score)
-        citation.quote_verified = score >= self._threshold
+                # Scope 2: Adjacent pages (±1).
+                adj_text = _get_adjacent_pages_text(pages, citation.page.strip())
+                if adj_text and adj_text != page_text:
+                    score = fuzz.partial_ratio(norm_quote, _normalize_whitespace(adj_text))
+                    if score >= self._threshold:
+                        citation.quote_match_score = float(score)
+                        citation.quote_verified = True
+                        return
+
+        # Scope 3: Full document.
+        if source_text:
+            score = fuzz.partial_ratio(norm_quote, _normalize_whitespace(source_text))
+            if score >= self._threshold:
+                citation.quote_match_score = float(score)
+                citation.quote_verified = True
+                return
+
+        # Scope 4: Cross-file search — the quote may be misattributed.
+        # Search ALL other files in the customer's text set.  Issue #24.
+        best_score = 0.0
+        best_file = ""
+        for file_path, text in text_lookup.items():
+            if file_path == citation.file_path:
+                continue  # Already checked.
+            if not text:
+                continue
+            score = fuzz.partial_ratio(norm_quote, _normalize_whitespace(text))
+            if score > best_score:
+                best_score = score
+                best_file = file_path
+
+        if best_score >= self._threshold and best_file:
+            # Quote found in a different file — correct the attribution.
+            logger.info(
+                "Citation file_path corrected: %r → %r (score %.0f → %.0f)",
+                citation.file_path,
+                best_file,
+                fuzz.partial_ratio(norm_quote, _normalize_whitespace(source_text)) if source_text else 0,
+                best_score,
+            )
+            citation.file_path = best_file
+            citation.quote_match_score = float(best_score)
+            citation.quote_verified = True
+            # Try to find the correct page in the new file.
+            new_text = text_lookup[best_file]
+            new_pages = split_by_pages(new_text)
+            if new_pages:
+                for page_num, page_text in new_pages.items():
+                    pg_score = fuzz.partial_ratio(norm_quote, _normalize_whitespace(page_text))
+                    if pg_score >= self._threshold:
+                        citation.page = page_num
+                        break
+            return
+
+        # All scopes exhausted — quote not found anywhere.
+        # Use the best score we found (full document or cross-file).
+        final_score = 0.0
+        if source_text:
+            final_score = fuzz.partial_ratio(norm_quote, _normalize_whitespace(source_text))
+        if best_score > final_score:
+            final_score = best_score
+        citation.quote_match_score = float(final_score)
+        citation.quote_verified = False
+
+        if not source_text and not best_file:
+            citation.quote_verified = False
+            citation.quote_match_score = 0.0
 
     def _load_customer_texts(self, result: SearchCustomerResult) -> dict[str, str]:
         """Load extracted .md files for all cited file paths."""

@@ -1,10 +1,13 @@
-"""Unit tests for the citation verifier (Issue #5).
+"""Unit tests for the citation verifier (Issue #5, Issue #24).
 
 Tests cover:
 - Page splitting by ``--- Page N ---`` markers
 - Exact and fuzzy quote matching
 - Section reference verification
 - Page-scoped verification
+- Progressive search scope (Issue #24): page → adjacent → full doc → cross-file
+- Whitespace normalization (Issue #24)
+- Cross-file quote correction (Issue #24)
 - Verification summary computation
 - Integration with SearchCustomerResult
 """
@@ -246,8 +249,8 @@ class TestCitationVerifier:
         assert cit.quote_verified is False
         assert cit.section_verified is False
 
-    def test_page_scoped_verification(self, tmp_path: Path) -> None:
-        """Quote found on the wrong page should still verify against full text."""
+    def test_page_scoped_verification_wrong_page_full_doc_fallback(self, tmp_path: Path) -> None:
+        """Quote on wrong page is found via full-document fallback (Issue #24)."""
         verifier = _make_verifier(tmp_path)
         source_text = (
             "\n--- Page 3 ---\n"
@@ -264,14 +267,14 @@ class TestCitationVerifier:
         ]
 
         # Citation claims page 5 but quote is actually on page 3.
+        # Progressive search: page 5 fails → adjacent (4,5,6) fails →
+        # full document succeeds.
         result = _make_result_with_citation(page="5")
         verifier.verify_result(result, file_texts=file_texts)
 
         cit = result.columns["Q1"].citations[0]
-        # Page-scoped search won't find it on page 5.
-        # But the verifier falls back to the full page text scope.
-        # Since page 5 text doesn't contain the quote, it should fail.
-        assert cit.quote_verified is False
+        assert cit.quote_verified is True
+        assert cit.quote_match_score >= QUOTE_MATCH_THRESHOLD
 
     def test_no_page_markers_searches_full_text(self, tmp_path: Path) -> None:
         """Without page markers, verifier searches the full document text."""
@@ -417,3 +420,207 @@ class TestSearchCitationPageValidator:
     def test_float_page_coerced(self) -> None:
         cit = SearchCitation(page=3.0)  # type: ignore[arg-type]
         assert cit.page == "3.0"
+
+
+# ---------------------------------------------------------------------------
+# Test _normalize_whitespace (Issue #24)
+# ---------------------------------------------------------------------------
+
+
+class TestNormalizeWhitespace:
+    """Tests for whitespace normalization before fuzzy matching."""
+
+    def test_collapses_newlines(self) -> None:
+        from dd_agents.search.citation_verifier import _normalize_whitespace
+
+        assert _normalize_whitespace("hello\nworld") == "hello world"
+
+    def test_collapses_multiple_spaces(self) -> None:
+        from dd_agents.search.citation_verifier import _normalize_whitespace
+
+        assert _normalize_whitespace("hello   world") == "hello world"
+
+    def test_collapses_tabs(self) -> None:
+        from dd_agents.search.citation_verifier import _normalize_whitespace
+
+        assert _normalize_whitespace("hello\t\tworld") == "hello world"
+
+    def test_strips_leading_trailing(self) -> None:
+        from dd_agents.search.citation_verifier import _normalize_whitespace
+
+        assert _normalize_whitespace("  hello  ") == "hello"
+
+    def test_mixed_whitespace(self) -> None:
+        from dd_agents.search.citation_verifier import _normalize_whitespace
+
+        text = "  The agreement\nshall not be\r\nassigned  without   consent.  "
+        assert _normalize_whitespace(text) == "The agreement shall not be assigned without consent."
+
+
+# ---------------------------------------------------------------------------
+# Test _get_adjacent_pages_text (Issue #24)
+# ---------------------------------------------------------------------------
+
+
+class TestGetAdjacentPagesText:
+    """Tests for the ±1 page expansion helper."""
+
+    def test_returns_three_pages(self) -> None:
+        from dd_agents.search.citation_verifier import _get_adjacent_pages_text
+
+        pages = {"1": "page1", "2": "page2", "3": "page3", "4": "page4"}
+        result = _get_adjacent_pages_text(pages, "2")
+        assert "page1" in result
+        assert "page2" in result
+        assert "page3" in result
+        assert "page4" not in result
+
+    def test_first_page_no_negative(self) -> None:
+        from dd_agents.search.citation_verifier import _get_adjacent_pages_text
+
+        pages = {"1": "page1", "2": "page2"}
+        result = _get_adjacent_pages_text(pages, "1")
+        assert "page1" in result
+        assert "page2" in result
+
+    def test_non_numeric_page_returns_empty(self) -> None:
+        from dd_agents.search.citation_verifier import _get_adjacent_pages_text
+
+        assert _get_adjacent_pages_text({"1": "text"}, "abc") == ""
+
+    def test_none_page_returns_empty(self) -> None:
+        from dd_agents.search.citation_verifier import _get_adjacent_pages_text
+
+        assert _get_adjacent_pages_text({"1": "text"}, None) == ""  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# Test progressive search scope (Issue #24)
+# ---------------------------------------------------------------------------
+
+
+class TestProgressiveSearchScope:
+    """Tests for the progressive page → adjacent → full doc → cross-file search."""
+
+    def test_adjacent_page_catches_off_by_one(self, tmp_path: Path) -> None:
+        """Quote on page 2 with citation claiming page 3 is found via adjacent pages."""
+        verifier = _make_verifier(tmp_path)
+        source_text = (
+            "\n--- Page 2 ---\n"
+            "Upon change of control, the agreement terminates.\n"
+            "\n--- Page 3 ---\n"
+            "Payment terms are net 30 days.\n"
+        )
+        file_texts = [
+            FileText(
+                file_path="GroupA/Customer/msa.pdf",
+                text=source_text,
+                has_page_markers=True,
+            )
+        ]
+
+        # Citation claims page 3, quote is on page 2 (adjacent).
+        result = _make_result_with_citation(page="3")
+        verifier.verify_result(result, file_texts=file_texts)
+
+        cit = result.columns["Q1"].citations[0]
+        assert cit.quote_verified is True
+        assert cit.quote_match_score >= QUOTE_MATCH_THRESHOLD
+
+    def test_whitespace_normalized_in_fuzzy_match(self, tmp_path: Path) -> None:
+        """Line breaks in extracted text don't prevent quote verification."""
+        verifier = _make_verifier(tmp_path)
+        # Source text has line breaks mid-sentence (PDF column layout).
+        source_text = "\n--- Page 5 ---\nSection 12.3\nUpon change of\ncontrol, the\nagreement terminates.\n"
+        file_texts = [
+            FileText(
+                file_path="GroupA/Customer/msa.pdf",
+                text=source_text,
+                has_page_markers=True,
+            )
+        ]
+
+        # Citation quote is a clean single-line string.
+        result = _make_result_with_citation(exact_quote="Upon change of control, the agreement terminates.")
+        verifier.verify_result(result, file_texts=file_texts)
+
+        cit = result.columns["Q1"].citations[0]
+        assert cit.quote_verified is True
+        assert cit.quote_match_score >= QUOTE_MATCH_THRESHOLD
+
+    def test_cross_file_correction(self, tmp_path: Path) -> None:
+        """Quote in wrong file is found and file_path is corrected."""
+        verifier = _make_verifier(tmp_path)
+
+        # File A has the quote.
+        file_a_text = "\n--- Page 2 ---\nUpon change of control, the agreement terminates.\n"
+        # File B does NOT have the quote — LLM attributed it here incorrectly.
+        file_b_text = "\n--- Page 1 ---\nThis purchase order is for consulting services.\n"
+        file_texts = [
+            FileText(file_path="GroupA/Customer/contract_a.pdf", text=file_a_text, has_page_markers=True),
+            FileText(file_path="GroupA/Customer/contract_b.pdf", text=file_b_text, has_page_markers=True),
+        ]
+
+        # Citation incorrectly attributes the quote to contract_b.
+        result = _make_result_with_citation(
+            file_path="GroupA/Customer/contract_b.pdf",
+            page="1",
+        )
+        verifier.verify_result(result, file_texts=file_texts)
+
+        cit = result.columns["Q1"].citations[0]
+        assert cit.quote_verified is True
+        assert cit.file_path == "GroupA/Customer/contract_a.pdf"
+        assert cit.quote_match_score >= QUOTE_MATCH_THRESHOLD
+
+    def test_cross_file_correction_updates_page(self, tmp_path: Path) -> None:
+        """Cross-file correction also finds the correct page number."""
+        verifier = _make_verifier(tmp_path)
+
+        file_a_text = (
+            "\n--- Page 1 ---\n"
+            "Introduction and definitions.\n"
+            "\n--- Page 4 ---\n"
+            "Upon change of control, the agreement terminates.\n"
+        )
+        file_b_text = "\n--- Page 1 ---\nUnrelated purchase order.\n"
+        file_texts = [
+            FileText(file_path="GroupA/Customer/msa.pdf", text=file_a_text, has_page_markers=True),
+            FileText(file_path="GroupA/Customer/po.pdf", text=file_b_text, has_page_markers=True),
+        ]
+
+        result = _make_result_with_citation(
+            file_path="GroupA/Customer/po.pdf",
+            page="1",
+        )
+        verifier.verify_result(result, file_texts=file_texts)
+
+        cit = result.columns["Q1"].citations[0]
+        assert cit.file_path == "GroupA/Customer/msa.pdf"
+        assert cit.page == "4"
+
+    def test_truly_hallucinated_quote_fails_all_scopes(self, tmp_path: Path) -> None:
+        """A completely fabricated quote fails at all search scopes."""
+        verifier = _make_verifier(tmp_path)
+
+        file_texts = [
+            FileText(
+                file_path="GroupA/Customer/msa.pdf",
+                text="\n--- Page 1 ---\nThis is a standard consulting agreement.\n",
+                has_page_markers=True,
+            ),
+            FileText(
+                file_path="GroupA/Customer/sow.pdf",
+                text="\n--- Page 1 ---\nStatement of work for project delivery.\n",
+                has_page_markers=True,
+            ),
+        ]
+
+        result = _make_result_with_citation(
+            exact_quote="The vendor shall indemnify the customer for all losses arising from negligence."
+        )
+        verifier.verify_result(result, file_texts=file_texts)
+
+        cit = result.columns["Q1"].citations[0]
+        assert cit.quote_verified is False
+        assert cit.quote_match_score < QUOTE_MATCH_THRESHOLD

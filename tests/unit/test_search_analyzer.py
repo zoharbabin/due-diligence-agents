@@ -2142,3 +2142,187 @@ class TestExternalReferenceIsolation:
         assert len(file_texts) == 1
         assert file_texts[0].file_path == "GroupA/Acme Corp/msa.pdf"
         assert "aws" not in file_texts[0].text.lower()
+
+
+# ---------------------------------------------------------------------------
+# Test answer normalization (Issue #24)
+# ---------------------------------------------------------------------------
+
+
+class TestAnswerNormalization:
+    """Tests for _normalize_answer in parse_column_result."""
+
+    def test_unable_to_determine(self) -> None:
+        from dd_agents.models.search import _normalize_answer
+
+        assert _normalize_answer("Unable to determine from the provided documents") == "NOT_ADDRESSED"
+
+    def test_cannot_determine(self) -> None:
+        from dd_agents.models.search import _normalize_answer
+
+        assert _normalize_answer("Cannot determine based on available information") == "NOT_ADDRESSED"
+
+    def test_insufficient_information(self) -> None:
+        from dd_agents.models.search import _normalize_answer
+
+        assert _normalize_answer("Insufficient information to answer this question") == "NOT_ADDRESSED"
+
+    def test_cannot_be_determined(self) -> None:
+        from dd_agents.models.search import _normalize_answer
+
+        assert _normalize_answer("Cannot be determined from the contract text") == "NOT_ADDRESSED"
+
+    def test_could_not_determine(self) -> None:
+        from dd_agents.models.search import _normalize_answer
+
+        assert _normalize_answer("Could not determine whether consent is required") == "NOT_ADDRESSED"
+
+    def test_indeterminate(self) -> None:
+        from dd_agents.models.search import _normalize_answer
+
+        assert _normalize_answer("Indeterminate") == "NOT_ADDRESSED"
+
+    def test_yes_unchanged(self) -> None:
+        from dd_agents.models.search import _normalize_answer
+
+        assert _normalize_answer("YES") == "YES"
+
+    def test_no_unchanged(self) -> None:
+        from dd_agents.models.search import _normalize_answer
+
+        assert _normalize_answer("NO") == "NO"
+
+    def test_not_addressed_unchanged(self) -> None:
+        from dd_agents.models.search import _normalize_answer
+
+        assert _normalize_answer("NOT_ADDRESSED") == "NOT_ADDRESSED"
+
+    def test_substantive_free_text_preserved(self) -> None:
+        from dd_agents.models.search import _normalize_answer
+
+        answer = "YES - Section 12.3 requires prior written consent"
+        assert _normalize_answer(answer) == answer
+
+    def test_empty_string_unchanged(self) -> None:
+        from dd_agents.models.search import _normalize_answer
+
+        assert _normalize_answer("") == ""
+
+    def test_whitespace_stripped(self) -> None:
+        from dd_agents.models.search import _normalize_answer
+
+        assert _normalize_answer("  YES  ") == "YES"
+
+    def test_case_insensitive_detection(self) -> None:
+        from dd_agents.models.search import _normalize_answer
+
+        assert _normalize_answer("unable to determine...") == "NOT_ADDRESSED"
+
+    def test_normalization_in_parse_column_result(self) -> None:
+        """parse_column_result applies answer normalization."""
+        from dd_agents.models.search import parse_column_result
+
+        result = parse_column_result(
+            {
+                "answer": "Unable to determine from the provided document whether consent is required",
+                "confidence": "LOW",
+                "citations": [],
+            }
+        )
+        assert result.answer == "NOT_ADDRESSED"
+
+
+# ---------------------------------------------------------------------------
+# Test parse-time citation dedup (Issue #24)
+# ---------------------------------------------------------------------------
+
+
+class TestParseTimeCitationDedup:
+    """Tests for citation deduplication at parse time."""
+
+    def test_duplicate_citations_removed(self) -> None:
+        from dd_agents.models.search import parse_column_result
+
+        result = parse_column_result(
+            {
+                "answer": "YES",
+                "confidence": "HIGH",
+                "citations": [
+                    {
+                        "file_path": "GroupA/Customer/msa.pdf",
+                        "page": "5",
+                        "section_ref": "Section 12.3",
+                        "exact_quote": "Consent is required.",
+                    },
+                    {
+                        "file_path": "GroupA/Customer/msa.pdf",
+                        "page": "5",
+                        "section_ref": "Section 12.3",
+                        "exact_quote": "Consent is required.",
+                    },
+                ],
+            }
+        )
+        assert len(result.citations) == 1
+
+    def test_different_quotes_preserved(self) -> None:
+        from dd_agents.models.search import parse_column_result
+
+        result = parse_column_result(
+            {
+                "answer": "YES",
+                "confidence": "HIGH",
+                "citations": [
+                    {
+                        "file_path": "GroupA/Customer/msa.pdf",
+                        "page": "5",
+                        "section_ref": "Section 12.3",
+                        "exact_quote": "Consent is required.",
+                    },
+                    {
+                        "file_path": "GroupA/Customer/msa.pdf",
+                        "page": "5",
+                        "section_ref": "Section 12.3",
+                        "exact_quote": "Written notice must be provided 30 days prior.",
+                    },
+                ],
+            }
+        )
+        assert len(result.citations) == 2
+
+    def test_whitespace_differences_deduped(self) -> None:
+        """Citations that differ only by leading/trailing whitespace are deduped."""
+        from dd_agents.models.search import parse_column_result
+
+        result = parse_column_result(
+            {
+                "answer": "YES",
+                "confidence": "HIGH",
+                "citations": [
+                    {
+                        "file_path": "GroupA/Customer/msa.pdf",
+                        "page": "5",
+                        "section_ref": "Section 12.3",
+                        "exact_quote": "Consent is required.",
+                    },
+                    {
+                        "file_path": " GroupA/Customer/msa.pdf ",
+                        "page": " 5 ",
+                        "section_ref": " Section 12.3 ",
+                        "exact_quote": " Consent is required. ",
+                    },
+                ],
+            }
+        )
+        assert len(result.citations) == 1
+
+    def test_dedup_function_directly(self) -> None:
+        from dd_agents.models.search import SearchCitation, _dedup_citations
+
+        citations = [
+            SearchCitation(file_path="a.pdf", page="1", section_ref="S1", exact_quote="Quote A"),
+            SearchCitation(file_path="a.pdf", page="1", section_ref="S1", exact_quote="Quote A"),
+            SearchCitation(file_path="b.pdf", page="2", section_ref="S2", exact_quote="Quote B"),
+        ]
+        result = _dedup_citations(citations)
+        assert len(result) == 2
