@@ -829,6 +829,43 @@ Extraction time: ~33 seconds for 995 files (33 ms/file average).
 | **Fix** | Added `_is_cached_output_readable()` to cache gate; also deleted stale `.md` output files to force immediate re-extraction |
 | **Lesson** | Cache gates must be upgraded alongside extraction logic. When deploying new quality checks, delete stale outputs for affected files |
 
+### Bug I: DocuSign Watermark-Only PDFs Accepted as Valid Extraction
+
+| | |
+|---|---|
+| **Symptom** | 3 scanned PDFs (Data Room A) extracted only repeating DocuSign envelope IDs — every page identical (`DocuSign Envelope ID: XXXXXXXX-...`). Passed density checks because watermarks are valid ASCII text |
+| **Root cause** | pymupdf/pdftotext can only read the transparent DocuSign overlay on scanned PDFs, not the actual page content underneath. Text passes `_MIN_CHARS_PER_PAGE` because watermark text is dense enough |
+| **Fix** | Added `_is_watermark_only()` heuristic — uses `Counter` to detect when >50% of non-blank, non-marker lines are identical repeated strings. Integrated as guard on pymupdf and pdftotext steps |
+| **Lesson** | Density checks (chars/page) are necessary but not sufficient. Repetitive content detection is a separate quality gate |
+
+### Bug J: Image Extraction Chain Missing Readability Gate
+
+| | |
+|---|---|
+| **Symptom** | PNG image file extracted as 260KB binary garbage by markitdown (23% printable characters) |
+| **Root cause** | The PDF chain has `_is_readable_text()` gate (Bug G fix), but the image chain did not apply the same check |
+| **Fix** | Added `self._is_readable_text(text)` to the markitdown check in `_extract_image` |
+| **Lesson** | Every extraction chain (PDF, image, Office) must apply the same quality gates. Bug G was fixed for PDFs but not propagated to images |
+
+### Bug K: Colon-in-Filename Breaks Citation Verifier File Lookup
+
+| | |
+|---|---|
+| **Symptom** | 8 citations marked unverified for files with colons in their names (e.g., `Order Form 2:3.pdf`). Citation verifier could not find extracted text files |
+| **Root cause** | macOS stores colons as `&#x3a_` in filenames. LLM cites paths with literal colons. `_safe_text_name` computes a different hash for `2:3` vs `2&#x3a_3` |
+| **Fix** | Added fallback in `_load_customer_texts` — if text_path doesn't exist and file_path contains `:`, try replacing `:` with `&#x3a_` and recompute safe name |
+| **Lesson** | Filesystem encoding normalization must be handled at every file lookup point, not just during extraction |
+
+### Bug L: Missing ToUnicode CMap Produces Garbled Text That Passes All Checks
+
+| | |
+|---|---|
+| **Symptom** | 13 of 56 pages in a PandaDoc-generated PDF extracted as ASCII control characters (0x01-0x1F). pymupdf reports confidence 0.9 despite 46% control characters on affected pages. 12.4% control characters across full document |
+| **Root cause** | PDF uses `Identity-H` CID-keyed fonts (Cambria, Calibri) without `/ToUnicode` CMap entries. pymupdf's `get_text()` returns raw CID codes as control bytes. The first 9 pages use Arial fonts with valid ToUnicode → clean text. `_is_readable_text()` only samples the first 10K chars (clean pages), missing the corruption |
+| **Discovery** | Pre-inspection of all 426 PDFs in 3.5 seconds (8ms/file avg) correctly identifies exactly 1 file with this issue + 18 scanned PDFs with no fonts |
+| **Fix** | Pending — control-character ratio check on full pymupdf output (>1% control chars → reject → fall through to GLM-OCR). See §16.9 for library comparison |
+| **Lesson** | PDF text extraction quality depends on font encoding metadata, not just content density. Pre-inspection of font tables can predict extraction failures before attempting extraction |
+
 ---
 
 ## 12. Edge Cases Catalog
@@ -839,6 +876,8 @@ Extraction time: ~33 seconds for 995 files (33 ms/file average).
 |-----------|----------|
 | Empty PDF (0 bytes) | All methods fail → confidence 0.0, recorded as failed |
 | Encrypted PDF | pymupdf/pdftotext fail → markitdown may succeed → OCR as last resort |
+| PDF with missing ToUnicode CMap | pymupdf returns control bytes (0x01-0x1F) → control-char check rejects → GLM-OCR renders and extracts visually. All 7 text extraction libraries fail; only image-based OCR works (see §16.9) |
+| PDF with watermark-only overlay | pymupdf extracts only DocuSign/watermark text → `_is_watermark_only()` detects >50% identical lines → GLM-OCR |
 | PDF with only images | pymupdf returns ~0 chars → density check fails → OCR triggered |
 | Scanned PDF → markitdown binary dump | markitdown returns raw PDF binary → `_is_readable_text()` rejects (< 85% printable) → OCR triggered |
 | Multi-page scanned PDF with headers | Total chars > 100 but chars/page < 50 → density check catches it |
@@ -847,6 +886,8 @@ Extraction time: ~33 seconds for 995 files (33 ms/file average).
 | .xlsx with merged cells | markitdown handles; future: openpyxl smart extraction |
 | Corrupt/truncated file | All methods fail gracefully → confidence 0.0 |
 | Non-UTF-8 encoding | UTF-8 with error replacement → latin-1 fallback |
+| Filename with colons (macOS) | macOS stores `:` as `&#x3a_`; citation verifier tries encoded variant as fallback |
+| Image file → binary garbage | markitdown dumps raw image bytes → `_is_readable_text()` rejects → GLM-OCR |
 | Filename with Unicode/spaces | Safe name conversion: `/` → `__`, length cap with hash |
 | Filename > 200 chars | Truncated with SHA-256 suffix for uniqueness (macOS 255-byte limit) |
 | macOS resource forks (`__MACOSX`) | Excluded from file discovery |
@@ -1081,6 +1122,9 @@ has proven reliable for text-native PDFs but has structural weaknesses:
 | No reading order detection | Multi-column layouts extracted column-interleaved | pymupdf follows PDF object order, not visual flow |
 | Single-language OCR | Korean, Japanese, Chinese contracts → garbled | pytesseract hardcoded to `lang="eng"` |
 | No layout analysis | Cannot distinguish headers, footers, sidebars from body | Extraction is purely text-based |
+| Missing ToUnicode CMap → garbled text (Bug L) | 46% control characters on affected pages; passes density checks | pymupdf returns raw CID codes when font has no ToUnicode mapping; `_is_readable_text()` only samples first 10K chars |
+| No PDF pre-inspection | Fallback chain runs 3-4 extractors before reaching OCR on known-bad PDFs | No upfront analysis of PDF structure (fonts, encryption, page images) |
+| Sequential fallback chain | ~700ms wasted on futile extractors before OCR for scanned/garbled PDFs | Each extractor runs to completion before checking quality |
 
 ### 16.2 Library Comparison Matrix
 
@@ -1578,6 +1622,13 @@ speed (9.4s/2pp), and VRAM (1.5 GB).
 
 ### 16.8 Head-to-Head Recommendation
 
+**Production update (Data Room A, 432 files):** GLM-OCR integrated and
+deployed as Step 4 in the fallback chain. 19 scanned PDFs successfully
+extracted via GLM-OCR (mlx-vlm backend, 8-bit model, 1024px, 200 DPI).
+Also verified to correctly extract PDFs with missing ToUnicode CMaps
+(Bug L) since pypdfium2 renders pages visually (font glyph outlines are
+intact even when Unicode mapping is missing).
+
 For the dd-agents pipeline, the evaluation suggests a **hybrid approach**
 rather than a single library replacement:
 
@@ -1599,6 +1650,54 @@ an isolated microservice to avoid copyleft obligations. PP-StructureV3
 additional steps in the fallback chain rather than replacing existing
 ones immediately. This preserves backward compatibility while gaining
 accuracy on previously-failing documents.
+
+### 16.9 Missing ToUnicode CMap: Library Comparison (Bug L Research)
+
+PDFs with `Identity-H` CID-keyed fonts and no `/ToUnicode` CMap entry
+produce garbled output (raw control bytes or CID placeholders) from
+**every** text extraction library tested. This is a malformed PDF
+problem — the Unicode mapping data simply does not exist in the file.
+
+**Seven libraries tested on the same garbled PDF (56 pages, pages 10-22 affected):**
+
+| Library | Result | Output |
+|---------|--------|--------|
+| pymupdf (fitz) | **FAIL** — 46% control chars on page 10 | Raw CID codes as `\x01\x05\x07...` |
+| pypdfium2 | **FAIL** — 46% control chars | Same raw CID codes |
+| pypdf | **FAIL** — 46% control chars | Same raw CID codes |
+| PyPDF2 | **FAIL** — 46% control chars | Same (shares code with pypdf) |
+| pdfplumber (pdfminer.six) | **FAIL** — 0% control but unreadable | `(cid:4)(cid:5)(cid:7)...` placeholders |
+| pdfminer.six | **FAIL** — 0% control but unreadable | `(cid:4)(cid:5)(cid:7)...` placeholders |
+| pymupdf4llm | **FAIL** — 0% control but unreadable | `�` replacement characters |
+| extractous (Apache Tika) | **PASS** — full readable text, 0% control | Tika resolves CID via internal font handling; 40s on 56 pages |
+| marker-pdf | N/A (downloads 1.35GB model — ML/OCR pipeline, not text extraction) | Would work but is effectively OCR |
+
+**Key finding:** extractous (Rust bindings to Apache Tika) is the only
+pure text extraction library that resolves CID codes without a ToUnicode
+CMap. However, it is 2-3x slower on normal PDFs (27-140ms vs 5-56ms for
+pymupdf) and 40s on the problem file. It also lacks page markers
+(`--- Page N ---`) which would need to be added.
+
+**Font analysis confirms root cause:**
+- Page 1 fonts (Arial): `/ToUnicode 918 0 R` present → text extraction works
+- Page 10 fonts (Cambria, Calibri): no `/ToUnicode` entry → garbled output
+- PDF producer: PandaDoc/PDF4U (bfo.com) omitted the mapping table
+- Visual rendering works perfectly — font glyph outlines are intact
+
+**Pre-inspection benchmark (426 PDFs in 3.5 seconds):**
+A pymupdf-based font inspection (check `/ToUnicode` + `Identity-H` on
+all fonts across all pages) correctly identifies:
+- 1 file missing ToUnicode (the exact problem file)
+- 18 scanned PDFs (no fonts at all → need OCR)
+- 407 normal PDFs → safe for pymupdf text extraction
+- Average 8ms per PDF, no extraction needed
+
+**Recommended approach:** Pre-inspect PDF font tables before extraction
+to route files directly to the correct extractor. Files with missing
+ToUnicode CMaps bypass text extraction and go straight to GLM-OCR, which
+renders pages via pypdfium2 (visual rendering is unaffected by the
+missing CMap) and extracts text via VLM. This avoids running 3-4 futile
+extractors before reaching OCR.
 
 ---
 
@@ -1804,6 +1903,7 @@ citation fidelity):
 
 | Priority | Improvement | Effort | Impact on Completeness | Impact on Accuracy | Impact on Citations |
 |----------|-------------|--------|----------------------|-------------------|-------------------|
+| **P0** | Add PDF pre-inspection and control-char detection (Bug L) | Low | Medium — catches missing ToUnicode CMaps | **High** — eliminates garbled text | None |
 | **P0** | Replace pytesseract with PaddleOCR (109 languages) | Medium | High — solves Korean/Japanese/Chinese | Medium | None |
 | **P0** | Add layout-aware PDF extraction (MinerU or PP-StructureV3) | High | Low (most PDFs already work) | **High** — tables, reading order, formulas | Medium — page coordinates |
 | **P1** | Adopt `instructor` for structured LLM output | Medium | Medium — eliminates empty/malformed responses | Medium — schema-enforced confidence | Low |
@@ -1818,16 +1918,25 @@ citation fidelity):
 ### 19.2 Proposed New Fallback Chain (Post-Upgrade)
 
 ```
-PDF Extraction Chain v2:
+PDF Extraction Chain v2 (with pre-inspection):
+
+Step 0: PDF PRE-INSPECTION (8ms avg, no extraction)
+  ├─ No fonts detected → SCANNED → skip to Step 4 (OCR)
+  ├─ Missing ToUnicode CMap → GARBLED → skip to Step 4 (OCR)
+  ├─ Encrypted/password-protected → flag, skip to Step 3
+  └─ Normal fonts with ToUnicode → proceed to Step 1
+
 Step 1: MinerU hybrid or PP-StructureV3 (layout-aware, tables, reading order)
   ↓ fails density check?
 Step 2: pymupdf (fast fallback, page markers)
-  ↓ fails density check?
+  ↓ fails density + watermark + control-char check?
 Step 3: pdftotext (poppler, form-heavy PDFs)
   ↓ fails density + readability check?
-Step 4: PaddleOCR (109-language OCR, layout-aware)
+Step 4: GLM-OCR (Vision-LM OCR, 100+ languages)
   ↓ fails threshold?
-Step 5: Direct text read (last resort)
+Step 5: PaddleOCR (109-language OCR, layout-aware)
+  ↓ fails threshold?
+Step 6: Direct text read (last resort)
   ↓ fails threshold?
 FAILED — confidence 0.0
 
@@ -1844,11 +1953,13 @@ FAILED
 ```
 
 **Key changes from current chain:**
-1. Layout-aware extraction becomes Step 1 (MinerU/PP-StructureV3)
-2. pymupdf demoted to Step 2 (still fast and reliable for simple PDFs)
-3. pytesseract replaced by PaddleOCR (multi-language, layout-aware)
-4. markitdown demoted from Step 3 to Step 2 in Office chain
-5. Docling becomes primary Office extractor
+1. **PDF pre-inspection** (Step 0) routes scanned/garbled PDFs directly to OCR, saving ~700ms of futile extraction attempts per file
+2. Layout-aware extraction becomes Step 1 (MinerU/PP-StructureV3)
+3. pymupdf demoted to Step 2 with enhanced quality gates (watermark + control-char checks)
+4. GLM-OCR promoted above PaddleOCR (higher quality, already integrated)
+5. pytesseract removed (GLM-OCR + PaddleOCR cover all cases)
+6. markitdown demoted from Step 3 to Step 2 in Office chain
+7. Docling becomes primary Office extractor
 
 ### 19.3 Confidence Score Revision
 
@@ -1952,7 +2063,8 @@ Reading order detection is particularly important for:
 | LangExtract | Apache 2.0 | Yes, unrestricted | Source grounding patterns |
 | outlines | Apache 2.0 | Yes, unrestricted | Only for local models |
 | AWS Textract | Proprietary (pay-per-page) | Yes, unrestricted | $0.0015–$0.065/page; requires AWS account + S3 for async |
-| GLM-OCR | MIT (model) + Apache 2.0 (code) | Yes, unrestricted | 0.9B VLM; #1 OmniDocBench V1.5; 100+ langs; tested at 0.30 pg/sec (4bit/720px, M3 Max); deploy via mlx-vlm (Mac) or Ollama (cross-platform) |
+| GLM-OCR | MIT (model) + Apache 2.0 (code) | Yes, unrestricted | 0.9B VLM; #1 OmniDocBench V1.5; 100+ langs; production: 8-bit/1024px/200DPI; deploy via mlx-vlm (Mac) or Ollama (cross-platform) |
+| extractous (Apache Tika) | Apache 2.0 | Yes, unrestricted | Only library that resolves missing ToUnicode CMaps; 48MB; 2-3x slower than pymupdf on normal PDFs; no page markers |
 
 **Recommendation:** Use PP-StructureV3 + PaddleOCR (both Apache 2.0) for
 PDF extraction, Docling (MIT) for Office documents, and instructor (MIT)
@@ -2051,6 +2163,12 @@ cost and does not support CJK languages.
 - **Docling vs markitdown on Office documents:** Measure table structure
   preservation, page marker accuracy, and extraction completeness for
   DOCX/XLSX files in both data rooms.
+
+- **extractous (Tika) vs pre-inspection + GLM-OCR for garbled PDFs:**
+  extractous resolves missing ToUnicode CMaps natively but is 2-3x slower
+  on normal PDFs and lacks page markers. Pre-inspection + GLM-OCR adds
+  ~8ms overhead per file but only invokes OCR on the ~5% of files that
+  need it. Measure end-to-end pipeline time on a 500+ file data room.
 
 - **instructor adoption cost/benefit:** Measure how many of the 8 known
   bugs (A-H) would have been prevented by schema-enforced output. Track
