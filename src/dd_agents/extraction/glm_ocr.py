@@ -91,7 +91,7 @@ def _import_mlx_vlm() -> tuple[Any, Any, Any] | None:
 def _import_ollama() -> Any:
     """Return the ``ollama`` module if available, else *None*."""
     try:
-        import ollama  # type: ignore[import-not-found]
+        import ollama
 
         return ollama
     except (ImportError, ModuleNotFoundError):
