@@ -432,7 +432,9 @@ class PipelineEngine:
         # Resolve file paths to absolute
         file_paths = [str(state.project_dir / entry.path) for entry in files]
 
-        pipeline = ExtractionPipeline()
+        from dd_agents.extraction.glm_ocr import GlmOcrExtractor
+
+        pipeline = ExtractionPipeline(glm_ocr=GlmOcrExtractor())
         try:
             pipeline.extract_all(
                 files=file_paths,

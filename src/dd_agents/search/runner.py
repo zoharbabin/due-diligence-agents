@@ -161,9 +161,10 @@ class SearchRunner:
 
         if relevant_file_paths:
             self._console.print("\n[bold]Running text extraction...[/bold]")
+            from dd_agents.extraction.glm_ocr import GlmOcrExtractor
             from dd_agents.extraction.pipeline import ExtractionPipeline
 
-            pipeline = ExtractionPipeline()
+            pipeline = ExtractionPipeline(glm_ocr=GlmOcrExtractor())
             pipeline.extract_all(
                 files=relevant_file_paths,
                 output_dir=text_dir,
