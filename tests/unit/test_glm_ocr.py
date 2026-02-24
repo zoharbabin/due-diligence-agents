@@ -200,7 +200,10 @@ class TestMlxBackend:
 
     @patch("dd_agents.extraction.glm_ocr._mlx_ocr_pages")
     @patch("dd_agents.extraction.glm_ocr._render_pdf_pages")
-    def test_mlx_pdf_with_page_markers(self, mock_render: MagicMock, mock_ocr: MagicMock, tmp_path: Path) -> None:
+    @patch("dd_agents.extraction.glm_ocr._import_mlx_vlm", return_value=(MagicMock(), MagicMock(), MagicMock()))
+    def test_mlx_pdf_with_page_markers(
+        self, mock_import: MagicMock, mock_render: MagicMock, mock_ocr: MagicMock, tmp_path: Path
+    ) -> None:
         """MLX extraction produces correct page markers for PDFs."""
         from dd_agents.extraction.glm_ocr import _try_mlx_extract
 
@@ -223,7 +226,10 @@ class TestMlxBackend:
 
     @patch("dd_agents.extraction.glm_ocr._mlx_ocr_pages")
     @patch("dd_agents.extraction.glm_ocr._render_pdf_pages")
-    def test_mlx_empty_pages_skipped(self, mock_render: MagicMock, mock_ocr: MagicMock, tmp_path: Path) -> None:
+    @patch("dd_agents.extraction.glm_ocr._import_mlx_vlm", return_value=(MagicMock(), MagicMock(), MagicMock()))
+    def test_mlx_empty_pages_skipped(
+        self, mock_import: MagicMock, mock_render: MagicMock, mock_ocr: MagicMock, tmp_path: Path
+    ) -> None:
         """Pages with empty OCR output are still included with markers."""
         from dd_agents.extraction.glm_ocr import _try_mlx_extract
 
