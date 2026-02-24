@@ -29,6 +29,8 @@ from dd_agents.search.chunker import (
     create_analysis_chunks,
     detect_page_markers,
     estimate_chunks,
+    split_by_pages,
+    split_by_paragraphs,
 )
 
 if TYPE_CHECKING:
@@ -76,11 +78,13 @@ _CONFIDENCE_RANK: dict[str, int] = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
 def _max_confidence(a: str, b: str) -> str:
     """Return the stronger of two confidence levels (HIGH > MEDIUM > LOW).
 
+    Always returns normalized uppercase (e.g. ``"HIGH"``).
     Unknown values rank below LOW.  Issue #22.
     """
     rank_a = _CONFIDENCE_RANK.get(a.upper().strip(), 0) if a else 0
     rank_b = _CONFIDENCE_RANK.get(b.upper().strip(), 0) if b else 0
-    return a if rank_a >= rank_b else b
+    winner = a if rank_a >= rank_b else b
+    return winner.upper().strip() if winner else ""
 
 
 def _extract_yes_no(answer_upper: str) -> str:
@@ -112,7 +116,6 @@ def _extract_leading_segment(ft: FileText, max_chars: int) -> str:
     Uses page markers (``--- Page N ---``) if present, otherwise paragraph
     boundaries.  This avoids cutting mid-sentence or mid-clause.  Issue #19.
     """
-    from dd_agents.search.chunker import split_by_pages, split_by_paragraphs
 
     if len(ft.text) <= max_chars:
         return ft.text
@@ -365,7 +368,40 @@ class SearchAnalyzer:
                 asyncio.create_task(self._analyze_single(chunk, customer, files_with_text, skipped_files))
                 for chunk in chunks
             ]
-            chunk_results = list(await asyncio.gather(*chunk_tasks))
+            raw_results = await asyncio.gather(*chunk_tasks, return_exceptions=True)
+
+            # Convert stray exceptions into NOT_ADDRESSED fallback results so a
+            # single chunk failure doesn't lose the entire customer.
+            chunk_results = []
+            for i, item in enumerate(raw_results):
+                if isinstance(item, BaseException):
+                    logger.error(
+                        "Chunk %d/%d failed for %s: %s",
+                        i + 1,
+                        len(chunks),
+                        customer.name,
+                        item,
+                    )
+                    chunk_results.append(
+                        SearchCustomerResult(
+                            customer_name=customer.name,
+                            group=customer.group,
+                            files_analyzed=files_with_text,
+                            total_files=customer.file_count,
+                            skipped_files=skipped_files,
+                            columns={
+                                col.name: SearchColumnResult(
+                                    answer="NOT_ADDRESSED",
+                                    confidence="LOW",
+                                    citations=[],
+                                )
+                                for col in self._prompts.columns
+                            },
+                            error=f"Chunk {i + 1} failed: {item}",
+                        )
+                    )
+                else:
+                    chunk_results.append(item)
 
         # PHASE 2: Merge.
         if len(chunk_results) == 1:
@@ -758,10 +794,10 @@ class SearchAnalyzer:
             deduped_citations: list[SearchCitation] = []
             for cit in all_citations:
                 key = (
-                    cit.file_path.strip(),
-                    cit.page.strip(),
-                    cit.section_ref.strip(),
-                    cit.exact_quote.strip(),
+                    (cit.file_path or "").strip(),
+                    (cit.page or "").strip(),
+                    (cit.section_ref or "").strip(),
+                    (cit.exact_quote or "").strip(),
                 )
                 if key not in seen_keys:
                     seen_keys.add(key)
