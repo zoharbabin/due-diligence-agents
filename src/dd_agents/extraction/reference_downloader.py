@@ -19,6 +19,7 @@ warnings but never halt the pipeline.
 
 from __future__ import annotations
 
+import concurrent.futures
 import hashlib
 import logging
 import re
@@ -65,6 +66,9 @@ _TC_PATH_KEYWORDS: frozenset[str] = frozenset(
     }
 )
 
+# Pre-compiled regex from keyword set for faster matching.
+_TC_KEYWORD_PATTERN = re.compile("|".join(re.escape(kw) for kw in _TC_PATH_KEYWORDS))
+
 # Maximum content size to download (5 MB).
 _MAX_CONTENT_BYTES = 5 * 1024 * 1024
 
@@ -73,6 +77,9 @@ _DEFAULT_TIMEOUT = 30
 
 # Maximum number of URLs to download per run.
 _DEFAULT_MAX_DOWNLOADS = 50
+
+# Default number of parallel download workers.
+_DEFAULT_WORKERS = 8
 
 
 @dataclass
@@ -100,6 +107,8 @@ class ReferenceDownloader:
         Maximum number of URLs to download per invocation.
     max_content_bytes:
         Maximum response body size to accept.
+    workers:
+        Number of parallel download threads.
     """
 
     def __init__(
@@ -108,11 +117,13 @@ class ReferenceDownloader:
         timeout: int = _DEFAULT_TIMEOUT,
         max_downloads: int = _DEFAULT_MAX_DOWNLOADS,
         max_content_bytes: int = _MAX_CONTENT_BYTES,
+        workers: int = _DEFAULT_WORKERS,
     ) -> None:
         self._text_dir = text_dir
         self._timeout = timeout
         self._max_downloads = max_downloads
         self._max_content_bytes = max_content_bytes
+        self._workers = workers
 
     # ------------------------------------------------------------------
     # Public API
@@ -136,12 +147,23 @@ class ReferenceDownloader:
             sum(len(files) for files in url_map.values()),
         )
 
-        # Phase 2: Download and extract.
+        # Phase 2: Download and extract (parallel).
+        urls_to_process = list(url_map.items())[: self._max_downloads]
         results: list[DownloadResult] = []
-        for url, referencing_files in list(url_map.items())[: self._max_downloads]:
-            result = self._download_and_extract(url)
-            result.referencing_files = referencing_files
-            results.append(result)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self._workers) as executor:
+            future_to_url = {
+                executor.submit(self._download_and_extract, url): (url, refs) for url, refs in urls_to_process
+            }
+            for future in concurrent.futures.as_completed(future_to_url):
+                url, referencing_files = future_to_url[future]
+                try:
+                    result = future.result()
+                except Exception as exc:
+                    logger.warning("Download thread failed for %s: %s", url, exc)
+                    result = DownloadResult(url=url, success=False, error=str(exc))
+                result.referencing_files = referencing_files
+                results.append(result)
 
         succeeded = sum(1 for r in results if r.success)
         failed = len(results) - succeeded
@@ -158,7 +180,7 @@ class ReferenceDownloader:
     # ------------------------------------------------------------------
 
     def _scan_for_urls(self) -> dict[str, list[str]]:
-        """Scan .md files and return URL → list of referencing file names.
+        """Scan .md files and return URL -> list of referencing file names.
 
         Deduplicates URLs across files: each URL is downloaded once.
         Skips ``__external__*`` files to avoid recursive URL discovery
@@ -267,7 +289,7 @@ def is_reference_url(url: str) -> bool:
     Heuristic: the URL path must contain at least one keyword from
     :data:`_TC_PATH_KEYWORDS`.
 
-    No domain exclusion is applied — if a URL appears in a legal
+    No domain exclusion is applied -- if a URL appears in a legal
     contract and its path matches a legal keyword (``agreement``,
     ``terms``, ``policy``, etc.), it was put there for a reason and
     should be downloaded.  The downstream analyzer controls which
@@ -281,7 +303,7 @@ def is_reference_url(url: str) -> bool:
         return False
 
     path = lower[path_start:]
-    return any(kw in path for kw in _TC_PATH_KEYWORDS)
+    return _TC_KEYWORD_PATTERN.search(path) is not None
 
 
 def _url_to_safe_filename(url: str) -> str:

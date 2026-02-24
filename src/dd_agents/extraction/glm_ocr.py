@@ -30,12 +30,13 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from dd_agents.extraction._constants import CONFIDENCE_FAILURE, IMAGE_EXTENSIONS
+
 logger = logging.getLogger(__name__)
 
 # Confidence score for GLM-OCR output — higher than pytesseract (0.6)
 # because GLM-OCR produces structured Markdown with fewer artifacts.
 _CONFIDENCE_GLM_OCR = 0.8
-_CONFIDENCE_FAILURE = 0.0
 
 # ── Tuning constants (benchmarked on Apple M3 Max) ───────────────────
 MODEL_ID_MLX = "mlx-community/GLM-OCR-8bit"
@@ -45,8 +46,20 @@ DPI = 200
 MAX_IMAGE_DIM = 1024
 _MAX_PAGES = 100
 
-# Extensions treated as direct images (no PDF-to-image conversion).
-_IMAGE_EXTENSIONS: frozenset[str] = frozenset({".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".gif"})
+
+# ── Image helpers ────────────────────────────────────────────────────
+
+
+def _resize_image(img: Any, max_dim: int = MAX_IMAGE_DIM) -> Any:
+    """Resize *img* so its longest side does not exceed *max_dim*.
+
+    Returns the original image unchanged if already within limits.
+    """
+    w, h = img.size
+    if max(w, h) > max_dim:
+        ratio = max_dim / max(w, h)
+        return img.resize((int(w * ratio), int(h * ratio)))
+    return img
 
 
 # ── Lazy import helpers ──────────────────────────────────────────────
@@ -110,11 +123,7 @@ def _render_pdf_pages(filepath: Path, work_dir: Path) -> list[Path]:
             page = doc[i]
             bitmap = page.render(scale=DPI / 72)
             img = bitmap.to_pil()
-
-            w, h = img.size
-            if max(w, h) > MAX_IMAGE_DIM:
-                ratio = MAX_IMAGE_DIM / max(w, h)
-                img = img.resize((int(w * ratio), int(h * ratio)))
+            img = _resize_image(img)
 
             out_path = work_dir / f"page_{i + 1:03d}.png"
             img.save(str(out_path), optimize=True)
@@ -139,10 +148,7 @@ def _render_image_for_ocr(filepath: Path, work_dir: Path) -> list[Path]:
 
     try:
         img: Any = Image.open(str(filepath))
-        w, h = img.size
-        if max(w, h) > MAX_IMAGE_DIM:
-            ratio = MAX_IMAGE_DIM / max(w, h)
-            img = img.resize((int(w * ratio), int(h * ratio)))
+        img = _resize_image(img)
 
         out_path = work_dir / "page_001.png"
         img.save(str(out_path), optimize=True)
@@ -150,6 +156,21 @@ def _render_image_for_ocr(filepath: Path, work_dir: Path) -> list[Path]:
     except Exception:
         logger.exception("Failed to prepare image %s for GLM-OCR", filepath)
         return []
+
+
+def _prepare_images(filepath: Path, work_dir: Path) -> list[Path]:
+    """Route *filepath* to the appropriate image renderer.
+
+    PDFs are rendered via :func:`_render_pdf_pages`; recognised image
+    extensions via :func:`_render_image_for_ocr`.  Unsupported formats
+    return an empty list.
+    """
+    suffix = filepath.suffix.lower()
+    if suffix == ".pdf":
+        return _render_pdf_pages(filepath, work_dir)
+    if suffix in IMAGE_EXTENSIONS:
+        return _render_image_for_ocr(filepath, work_dir)
+    return []
 
 
 # ── Page assembly ────────────────────────────────────────────────────
@@ -167,18 +188,20 @@ def _assemble_pages(page_texts: list[str]) -> str:
 # ── MLX-VLM backend (per-page OCR, uses cached model) ───────────────
 
 
-def _mlx_ocr_pages(image_paths: list[Path], model: Any, processor: Any) -> list[str]:
+def _mlx_ocr_pages(
+    image_paths: list[Path],
+    model: Any,
+    processor: Any,
+    generate_fn: Any,
+    apply_chat_template_fn: Any,
+) -> list[str]:
     """Run GLM-OCR on each image via mlx-vlm.  Returns per-page text.
 
     *model* and *processor* are pre-loaded by the caller to avoid
-    re-downloading/re-loading on every file.
+    re-downloading/re-loading on every file.  *generate_fn* and
+    *apply_chat_template_fn* are passed in from the caller so that
+    ``_import_mlx_vlm`` is called once in ``_try_mlx_extract``.
     """
-    imports = _import_mlx_vlm()
-    if imports is None:
-        return []
-
-    _load_fn, generate_fn, apply_chat_template_fn = imports
-
     results: list[str] = []
     for img_path in image_paths:
         try:
@@ -206,28 +229,27 @@ def _try_mlx_extract(filepath: Path, model: Any, processor: Any) -> tuple[str, f
 
     *model* and *processor* are pre-loaded by the caller.
     """
+    imports = _import_mlx_vlm()
+    if imports is None:
+        return "", CONFIDENCE_FAILURE
+    _load_fn, generate_fn, apply_chat_template_fn = imports
+
     work_dir = Path(tempfile.mkdtemp(prefix="dd_glm_mlx_"))
     try:
-        suffix = filepath.suffix.lower()
-        if suffix == ".pdf":
-            image_paths = _render_pdf_pages(filepath, work_dir)
-        elif suffix in _IMAGE_EXTENSIONS:
-            image_paths = _render_image_for_ocr(filepath, work_dir)
-        else:
-            return "", _CONFIDENCE_FAILURE
+        image_paths = _prepare_images(filepath, work_dir)
 
         if not image_paths:
-            return "", _CONFIDENCE_FAILURE
+            return "", CONFIDENCE_FAILURE
 
-        page_texts = _mlx_ocr_pages(image_paths, model, processor)
+        page_texts = _mlx_ocr_pages(image_paths, model, processor, generate_fn, apply_chat_template_fn)
         if not page_texts or not any(t.strip() for t in page_texts):
-            return "", _CONFIDENCE_FAILURE
+            return "", CONFIDENCE_FAILURE
 
         assembled = _assemble_pages(page_texts)
         return assembled, _CONFIDENCE_GLM_OCR
     except Exception:
         logger.exception("MLX GLM-OCR extraction failed for %s", filepath)
-        return "", _CONFIDENCE_FAILURE
+        return "", CONFIDENCE_FAILURE
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
 
@@ -267,30 +289,24 @@ def _try_ollama_extract(filepath: Path) -> tuple[str, float]:
     """Attempt extraction via Ollama.  Returns ``(text, confidence)``."""
     if _import_ollama() is None:
         logger.debug("ollama not available -- skipping Ollama backend")
-        return "", _CONFIDENCE_FAILURE
+        return "", CONFIDENCE_FAILURE
 
     work_dir = Path(tempfile.mkdtemp(prefix="dd_glm_ollama_"))
     try:
-        suffix = filepath.suffix.lower()
-        if suffix == ".pdf":
-            image_paths = _render_pdf_pages(filepath, work_dir)
-        elif suffix in _IMAGE_EXTENSIONS:
-            image_paths = _render_image_for_ocr(filepath, work_dir)
-        else:
-            return "", _CONFIDENCE_FAILURE
+        image_paths = _prepare_images(filepath, work_dir)
 
         if not image_paths:
-            return "", _CONFIDENCE_FAILURE
+            return "", CONFIDENCE_FAILURE
 
         page_texts = _ollama_ocr_pages(image_paths)
         if not page_texts or not any(t.strip() for t in page_texts):
-            return "", _CONFIDENCE_FAILURE
+            return "", CONFIDENCE_FAILURE
 
         assembled = _assemble_pages(page_texts)
         return assembled, _CONFIDENCE_GLM_OCR
     except Exception:
         logger.exception("Ollama GLM-OCR extraction failed for %s", filepath)
-        return "", _CONFIDENCE_FAILURE
+        return "", CONFIDENCE_FAILURE
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
 
@@ -349,12 +365,12 @@ class GlmOcrExtractor:
             any failure (missing dependencies, unsupported format, etc.).
         """
         if not filepath.exists():
-            return "", _CONFIDENCE_FAILURE
+            return "", CONFIDENCE_FAILURE
 
         suffix = filepath.suffix.lower()
-        if suffix != ".pdf" and suffix not in _IMAGE_EXTENSIONS:
+        if suffix != ".pdf" and suffix not in IMAGE_EXTENSIONS:
             logger.debug("GLM-OCR does not support extension %s", suffix)
-            return "", _CONFIDENCE_FAILURE
+            return "", CONFIDENCE_FAILURE
 
         # Backend 1: mlx-vlm (Apple Silicon)
         if self._ensure_mlx_model():
@@ -367,4 +383,4 @@ class GlmOcrExtractor:
         if text.strip():
             return text, conf
 
-        return "", _CONFIDENCE_FAILURE
+        return "", CONFIDENCE_FAILURE

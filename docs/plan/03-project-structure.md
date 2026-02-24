@@ -44,11 +44,15 @@ due-diligence-agents/
 │       │   └── reporting_lead.py     # Reporting Lead agent
 │       ├── extraction/
 │       │   ├── __init__.py
-│       │   ├── pipeline.py           # Extraction orchestrator
-│       │   ├── markitdown.py         # markitdown wrapper
+│       │   ├── _constants.py         # Shared extension sets + confidence constants
+│       │   ├── _helpers.py           # Shared read_text() helper
+│       │   ├── pipeline.py           # Extraction orchestrator (pre-inspection + fallback chains)
+│       │   ├── markitdown.py         # markitdown wrapper (Office + PDF)
 │       │   ├── ocr.py                # OCR fallback (pytesseract)
+│       │   ├── glm_ocr.py            # GLM-OCR vision-language model (mlx-vlm / Ollama)
 │       │   ├── cache.py              # Checksum-based cache
-│       │   └── quality.py            # ExtractionQuality tracker
+│       │   ├── quality.py            # ExtractionQuality tracker
+│       │   └── reference_downloader.py  # External T&C URL download
 │       ├── entity_resolution/
 │       │   ├── __init__.py
 │       │   ├── matcher.py            # 6-pass cascading matcher

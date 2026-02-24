@@ -13,13 +13,17 @@ from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from dd_agents.extraction.cache import ExtractionCache
 from dd_agents.extraction.markitdown import MarkitdownExtractor
-from dd_agents.extraction.pipeline import ExtractionPipeline, ExtractionPipelineError
+from dd_agents.extraction.pipeline import (
+    _MIN_EXTRACTION_CHARS,
+    ExtractionPipeline,
+    ExtractionPipelineError,
+)
 from dd_agents.extraction.quality import ExtractionQualityTracker
 from dd_agents.models.inventory import ExtractionQualityEntry
 
@@ -179,6 +183,20 @@ class TestExtractionQualityTracker:
         )
         assert entry.fallback_chain == ["markitdown", "pdftotext", "fallback_ocr"]
 
+    def test_record_with_failure_reasons(self) -> None:
+        """failure_reasons are stored and round-trip through save/load."""
+        tracker = ExtractionQualityTracker()
+        reasons = ["pymupdf: too short (10 < 500)", "pdftotext: low density"]
+        entry = tracker.record(
+            "hard.pdf",
+            "fallback_ocr",
+            1200,
+            0.6,
+            fallback_chain=["pymupdf", "pdftotext", "ocr"],
+            failure_reasons=reasons,
+        )
+        assert entry.failure_reasons == reasons
+
     def test_record_overwrites_previous(self) -> None:
         tracker = ExtractionQualityTracker()
         tracker.record("file.pdf", "primary", 5000, 0.9)
@@ -191,7 +209,13 @@ class TestExtractionQualityTracker:
 
         tracker = ExtractionQualityTracker()
         tracker.record("a.pdf", "primary", 5000, 0.9)
-        tracker.record("b.docx", "fallback_read", 2000, 0.5)
+        tracker.record(
+            "b.docx",
+            "fallback_read",
+            2000,
+            0.5,
+            failure_reasons=["markitdown: too short (5 < 20)"],
+        )
         tracker.save(quality_path)
 
         # Load into a fresh tracker.
@@ -202,6 +226,10 @@ class TestExtractionQualityTracker:
         entries = tracker2.entries
         paths = {e.file_path for e in entries}
         assert paths == {"a.pdf", "b.docx"}
+
+        # failure_reasons survive round-trip.
+        b_entry = next(e for e in entries if e.file_path == "b.docx")
+        assert b_entry.failure_reasons == ["markitdown: too short (5 < 20)"]
 
     def test_save_creates_parent_dirs(self, tmp_path: Path) -> None:
         nested = tmp_path / "a" / "b" / "quality.json"
@@ -858,3 +886,1016 @@ class TestExtractionPipeline:
 
         assert entry.method == "fallback_glm_ocr"
         assert entry.confidence == 0.8
+
+
+# ======================================================================
+# TestPdfInspection — _inspect_pdf pre-inspection
+# ======================================================================
+
+
+class TestPdfInspection:
+    """Tests for ExtractionPipeline._inspect_pdf."""
+
+    def test_inspect_normal_pdf(self, tmp_path: Path) -> None:
+        """Normal PDF (not encrypted, text > 100 chars, no Identity-H) → 'normal'."""
+        pdf_path = tmp_path / "normal.pdf"
+        pdf_path.write_bytes(b"%PDF-1.4 fake")
+
+        mock_page = MagicMock()
+        mock_page.get_text.return_value = "A" * 200
+        mock_page.get_fonts.return_value = [
+            (1, "ext", "Type1", "Helvetica", "name", "WinAnsiEncoding", "extra"),
+        ]
+
+        mock_doc = MagicMock()
+        mock_doc.is_encrypted = False
+        mock_doc.__len__ = lambda self: 1
+        mock_doc.__getitem__ = lambda self, idx: mock_page
+
+        mock_fitz = MagicMock()
+        mock_fitz.open.return_value = mock_doc
+
+        with patch.dict("sys.modules", {"fitz": mock_fitz}):
+            result = ExtractionPipeline._inspect_pdf(pdf_path)
+
+        assert result == "normal"
+
+    def test_inspect_encrypted_pdf(self, tmp_path: Path) -> None:
+        """Encrypted PDF → 'encrypted'."""
+        pdf_path = tmp_path / "encrypted.pdf"
+        pdf_path.write_bytes(b"%PDF-1.4 fake")
+
+        mock_doc = MagicMock()
+        mock_doc.is_encrypted = True
+
+        mock_fitz = MagicMock()
+        mock_fitz.open.return_value = mock_doc
+
+        with patch.dict("sys.modules", {"fitz": mock_fitz}):
+            result = ExtractionPipeline._inspect_pdf(pdf_path)
+
+        assert result == "encrypted"
+
+    def test_inspect_scanned_pdf(self, tmp_path: Path) -> None:
+        """First page text < 100 chars → 'scanned'."""
+        pdf_path = tmp_path / "scanned.pdf"
+        pdf_path.write_bytes(b"%PDF-1.4 fake")
+
+        mock_page = MagicMock()
+        mock_page.get_text.return_value = "Short"  # < 100 chars
+
+        mock_doc = MagicMock()
+        mock_doc.is_encrypted = False
+        mock_doc.__len__ = lambda self: 1
+        mock_doc.__getitem__ = lambda self, idx: mock_page
+
+        mock_fitz = MagicMock()
+        mock_fitz.open.return_value = mock_doc
+
+        with patch.dict("sys.modules", {"fitz": mock_fitz}):
+            result = ExtractionPipeline._inspect_pdf(pdf_path)
+
+        assert result == "scanned"
+
+    def test_inspect_missing_tounicode(self, tmp_path: Path) -> None:
+        """Identity-H encoding + control-char corruption → 'missing_tounicode'."""
+        pdf_path = tmp_path / "garbled.pdf"
+        pdf_path.write_bytes(b"%PDF-1.4 fake")
+
+        # Text with >1% control chars simulating garbled Identity-H output.
+        garbled_text = "A" * 100 + "\x00\x01\x02\x03\x04" * 10 + "B" * 50
+        mock_page = MagicMock()
+        mock_page.get_text.return_value = garbled_text
+        mock_page.get_fonts.return_value = [
+            (1, "ext", "Type0", "Arial", "name", "Identity-H", "extra"),
+        ]
+
+        mock_doc = MagicMock()
+        mock_doc.is_encrypted = False
+        mock_doc.__len__ = lambda self: 1
+        mock_doc.__getitem__ = lambda self, idx: mock_page
+
+        mock_fitz = MagicMock()
+        mock_fitz.open.return_value = mock_doc
+
+        with patch.dict("sys.modules", {"fitz": mock_fitz}):
+            result = ExtractionPipeline._inspect_pdf(pdf_path)
+
+        assert result == "missing_tounicode"
+
+    def test_inspect_empty_pdf(self, tmp_path: Path) -> None:
+        """Empty PDF (0 pages) → 'scanned'."""
+        pdf_path = tmp_path / "empty.pdf"
+        pdf_path.write_bytes(b"%PDF-1.4 fake")
+
+        mock_doc = MagicMock()
+        mock_doc.is_encrypted = False
+        mock_doc.__len__ = lambda self: 0
+
+        mock_fitz = MagicMock()
+        mock_fitz.open.return_value = mock_doc
+
+        with patch.dict("sys.modules", {"fitz": mock_fitz}):
+            result = ExtractionPipeline._inspect_pdf(pdf_path)
+
+        assert result == "scanned"
+
+    def test_inspect_fitz_unavailable(self, tmp_path: Path) -> None:
+        """fitz import raises ImportError → graceful degradation to 'normal'."""
+        import sys
+
+        pdf_path = tmp_path / "any.pdf"
+        pdf_path.write_bytes(b"%PDF-1.4 fake")
+
+        # Remove fitz from sys.modules if present, and block re-import.
+        saved = sys.modules.pop("fitz", None)
+        import builtins
+
+        original_import = builtins.__import__
+
+        def fake_import(name: str, *args: object, **kwargs: object) -> object:
+            if name == "fitz":
+                raise ImportError("No module named 'fitz'")
+            return original_import(name, *args, **kwargs)
+
+        try:
+            with patch("builtins.__import__", side_effect=fake_import):
+                result = ExtractionPipeline._inspect_pdf(pdf_path)
+        finally:
+            if saved is not None:
+                sys.modules["fitz"] = saved
+
+        assert result == "normal"
+
+
+# ======================================================================
+# TestControlCharCorruption — _has_control_char_corruption
+# ======================================================================
+
+
+class TestControlCharCorruption:
+    """Tests for ExtractionPipeline._has_control_char_corruption."""
+
+    def test_clean_text(self) -> None:
+        """Normal text → False."""
+        text = "This is perfectly normal contract text with no issues."
+        assert ExtractionPipeline._has_control_char_corruption(text) is False
+
+    def test_corrupted_text(self) -> None:
+        """Text with >1% control chars → True."""
+        # 100 normal chars + 5 control chars = 105 total, 5/105 ≈ 4.8% > 1%
+        text = "A" * 100 + "\x00\x01\x02\x03\x04"
+        assert ExtractionPipeline._has_control_char_corruption(text) is True
+
+    def test_whitespace_not_counted(self) -> None:
+        """Text with only \\n\\r\\t\\x0c whitespace → False."""
+        text = "Normal text\n\twith\rtabs\x0cand newlines." * 10
+        assert ExtractionPipeline._has_control_char_corruption(text) is False
+
+    def test_empty_text(self) -> None:
+        """Empty string → False."""
+        assert ExtractionPipeline._has_control_char_corruption("") is False
+
+    def test_threshold_boundary(self) -> None:
+        """Text at exactly 1% control chars → False (must be OVER threshold)."""
+        # 99 normal chars + 1 control char = 100 total, 1/100 = 1% = threshold
+        text = "A" * 99 + "\x00"
+        assert ExtractionPipeline._has_control_char_corruption(text) is False
+
+
+# ======================================================================
+# TestTryMethod — _try_method unified helper
+# ======================================================================
+
+
+class TestTryMethod:
+    """Tests for ExtractionPipeline._try_method."""
+
+    def test_success_basic(self, tmp_path: Path) -> None:
+        """Valid text passes all gates and returns ExtractionQualityEntry."""
+        pipeline = ExtractionPipeline()
+        out_file = tmp_path / "output.md"
+        filepath = tmp_path / "source.txt"
+        filepath.write_text("x" * 100, encoding="utf-8")
+        chain: list[str] = []
+        failure_reasons: list[str] = []
+
+        result = pipeline._try_method(
+            "test_method",
+            "Good text content " * 10,
+            0.9,
+            out_file,
+            filepath,
+            chain,
+            failure_reasons,
+            method_label="primary",
+        )
+
+        assert result is not None
+        assert isinstance(result, ExtractionQualityEntry)
+        assert result.method == "primary"
+        assert result.confidence > 0.0
+        assert "test_method" in result.fallback_chain
+
+    def test_too_short(self, tmp_path: Path) -> None:
+        """Text below min_chars → None, appends to failure_reasons."""
+        pipeline = ExtractionPipeline()
+        out_file = tmp_path / "output.md"
+        filepath = tmp_path / "source.txt"
+        filepath.write_text("x", encoding="utf-8")
+        chain: list[str] = []
+        failure_reasons: list[str] = []
+
+        result = pipeline._try_method(
+            "test_method",
+            "short",
+            0.9,
+            out_file,
+            filepath,
+            chain,
+            failure_reasons,
+            method_label="primary",
+            min_chars=100,
+        )
+
+        assert result is None
+        assert len(failure_reasons) == 1
+        assert "too short" in failure_reasons[0]
+
+    def test_none_text(self, tmp_path: Path) -> None:
+        """None text → None."""
+        pipeline = ExtractionPipeline()
+        out_file = tmp_path / "output.md"
+        filepath = tmp_path / "source.txt"
+        filepath.write_text("x", encoding="utf-8")
+        chain: list[str] = []
+        failure_reasons: list[str] = []
+
+        result = pipeline._try_method(
+            "test_method",
+            None,
+            0.9,
+            out_file,
+            filepath,
+            chain,
+            failure_reasons,
+            method_label="primary",
+        )
+
+        assert result is None
+
+    def test_density_gate_fails(self, tmp_path: Path) -> None:
+        """check_density=True with sparse text → None."""
+        pipeline = ExtractionPipeline()
+        out_file = tmp_path / "output.md"
+        filepath = tmp_path / "source.pdf"
+        filepath.write_bytes(b"%PDF fake")
+        chain: list[str] = []
+        failure_reasons: list[str] = []
+
+        # Create sparse text across many pages with few chars per page
+        sparse_text = ""
+        for i in range(1, 33):
+            sparse_text += f"\n--- Page {i} ---\n\nSig."
+        # This has ~32 pages with very few chars per page
+
+        result = pipeline._try_method(
+            "pymupdf",
+            sparse_text,
+            0.9,
+            out_file,
+            filepath,
+            chain,
+            failure_reasons,
+            method_label="primary",
+            min_chars=_MIN_EXTRACTION_CHARS,
+            check_density=True,
+        )
+
+        assert result is None
+        assert any("density" in r for r in failure_reasons)
+
+    def test_readability_gate_fails(self, tmp_path: Path) -> None:
+        """check_readability=True with binary garbage → None."""
+        pipeline = ExtractionPipeline()
+        out_file = tmp_path / "output.md"
+        filepath = tmp_path / "source.pdf"
+        filepath.write_bytes(b"%PDF fake")
+        chain: list[str] = []
+        failure_reasons: list[str] = []
+
+        binary_garbage = "%PDF-1.3\n%\x80\x81\x82\x83\n" + "\x00\x01\x02\x03" * 500
+
+        result = pipeline._try_method(
+            "markitdown",
+            binary_garbage,
+            0.5,
+            out_file,
+            filepath,
+            chain,
+            failure_reasons,
+            method_label="fallback_markitdown",
+            check_readability=True,
+        )
+
+        assert result is None
+        assert any("readability" in r for r in failure_reasons)
+
+    def test_watermark_gate_fails(self, tmp_path: Path) -> None:
+        """check_watermark=True with watermark text → None."""
+        pipeline = ExtractionPipeline()
+        out_file = tmp_path / "output.md"
+        filepath = tmp_path / "source.pdf"
+        filepath.write_bytes(b"%PDF fake")
+        chain: list[str] = []
+        failure_reasons: list[str] = []
+
+        # >50% of lines are the same string, enough pages to pass min_chars
+        watermark_text = "\n".join(
+            f"--- Page {i} ---\nDocuSign Envelope ID: ABC-123-DEF-456-GHI-789" for i in range(1, 30)
+        )
+
+        result = pipeline._try_method(
+            "pymupdf",
+            watermark_text,
+            0.9,
+            out_file,
+            filepath,
+            chain,
+            failure_reasons,
+            method_label="primary",
+            check_watermark=True,
+        )
+
+        assert result is None
+        assert any("watermark" in r for r in failure_reasons)
+
+    def test_control_chars_gate_fails(self, tmp_path: Path) -> None:
+        """check_control_chars=True with corrupted text → None."""
+        pipeline = ExtractionPipeline()
+        out_file = tmp_path / "output.md"
+        filepath = tmp_path / "source.pdf"
+        filepath.write_bytes(b"%PDF fake")
+        chain: list[str] = []
+        failure_reasons: list[str] = []
+
+        # Text with >1% control characters
+        corrupted = "A" * 100 + "\x00\x01\x02\x03\x04\x05\x06\x07\x08\x0b\x0e\x0f" * 5
+        # Pad to pass min_chars
+        corrupted = corrupted * 5
+
+        result = pipeline._try_method(
+            "pymupdf",
+            corrupted,
+            0.9,
+            out_file,
+            filepath,
+            chain,
+            failure_reasons,
+            method_label="primary",
+            min_chars=_MIN_EXTRACTION_CHARS,
+            check_control_chars=True,
+        )
+
+        assert result is None
+        assert any("control-char" in r for r in failure_reasons)
+
+    def test_chain_appended_before_gates(self, tmp_path: Path) -> None:
+        """Name is appended to chain even when gates fail."""
+        pipeline = ExtractionPipeline()
+        out_file = tmp_path / "output.md"
+        filepath = tmp_path / "source.pdf"
+        filepath.write_bytes(b"%PDF fake")
+        chain: list[str] = []
+        failure_reasons: list[str] = []
+
+        # This will fail the readability gate
+        binary_garbage = "%PDF-1.3\n" + "\x00\x01\x02\x03" * 500
+
+        pipeline._try_method(
+            "markitdown",
+            binary_garbage,
+            0.5,
+            out_file,
+            filepath,
+            chain,
+            failure_reasons,
+            method_label="fallback_markitdown",
+            check_readability=True,
+        )
+
+        # Chain should contain the method name even though it failed
+        assert "markitdown" in chain
+
+    def test_failure_reasons_accumulated(self, tmp_path: Path) -> None:
+        """Multiple failed methods accumulate in failure_reasons list."""
+        pipeline = ExtractionPipeline()
+        out_file = tmp_path / "output.md"
+        filepath = tmp_path / "source.pdf"
+        filepath.write_bytes(b"%PDF fake")
+        chain: list[str] = []
+        failure_reasons: list[str] = []
+
+        # First method fails: too short
+        pipeline._try_method(
+            "pymupdf",
+            "short",
+            0.9,
+            out_file,
+            filepath,
+            chain,
+            failure_reasons,
+            method_label="primary",
+            min_chars=500,
+        )
+
+        # Second method fails: too short
+        pipeline._try_method(
+            "pdftotext",
+            "also short",
+            0.7,
+            out_file,
+            filepath,
+            chain,
+            failure_reasons,
+            method_label="fallback_pdftotext",
+            min_chars=500,
+        )
+
+        # Third method fails: readability
+        binary_garbage = "%PDF-1.3\n" + "\x00\x01\x02\x03" * 500
+        pipeline._try_method(
+            "markitdown",
+            binary_garbage,
+            0.5,
+            out_file,
+            filepath,
+            chain,
+            failure_reasons,
+            method_label="fallback_markitdown",
+            check_readability=True,
+        )
+
+        assert len(failure_reasons) == 3
+        assert "pymupdf" in failure_reasons[0]
+        assert "pdftotext" in failure_reasons[1]
+        assert "markitdown" in failure_reasons[2]
+
+
+# ======================================================================
+# TestPdfRouting — pre-inspection routing in _extract_pdf
+# ======================================================================
+
+
+class TestPdfRouting:
+    """Tests for pre-inspection routing in _extract_pdf."""
+
+    def test_scanned_pdf_skips_pymupdf_pdftotext_markitdown(self, tmp_path: Path) -> None:
+        """'scanned' inspection → pymupdf, pdftotext, and markitdown NOT called."""
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+        src = tmp_path / "scanned.pdf"
+        src.write_bytes(b"%PDF-1.4 fake")
+
+        pipeline = ExtractionPipeline()
+
+        mock_pymupdf = MagicMock(return_value="")
+        mock_pdftotext = MagicMock(return_value="")
+        mock_markitdown = MagicMock(return_value=("", 0.0))
+        ocr_text = "OCR content " * 50
+
+        with (
+            patch.object(ExtractionPipeline, "_inspect_pdf", return_value="scanned"),
+            patch.object(pipeline, "_run_pymupdf", mock_pymupdf),
+            patch.object(pipeline, "_run_pdftotext", mock_pdftotext),
+            patch.object(pipeline._markitdown, "extract", mock_markitdown),
+            patch.object(pipeline._ocr, "extract", return_value=(ocr_text, 0.7)),
+        ):
+            entry = pipeline.extract_single(src, output_dir)
+
+        mock_pymupdf.assert_not_called()
+        mock_pdftotext.assert_not_called()
+        mock_markitdown.assert_not_called()
+        assert entry.method == "fallback_ocr"
+
+    def test_missing_tounicode_skips_text_extractors(self, tmp_path: Path) -> None:
+        """'missing_tounicode' inspection → pymupdf, pdftotext, and markitdown NOT called."""
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+        src = tmp_path / "garbled.pdf"
+        src.write_bytes(b"%PDF-1.4 fake")
+
+        pipeline = ExtractionPipeline()
+
+        mock_pymupdf = MagicMock(return_value="")
+        mock_pdftotext = MagicMock(return_value="")
+        mock_markitdown = MagicMock(return_value=("", 0.0))
+        ocr_text = "OCR content " * 50
+
+        with (
+            patch.object(ExtractionPipeline, "_inspect_pdf", return_value="missing_tounicode"),
+            patch.object(pipeline, "_run_pymupdf", mock_pymupdf),
+            patch.object(pipeline, "_run_pdftotext", mock_pdftotext),
+            patch.object(pipeline._markitdown, "extract", mock_markitdown),
+            patch.object(pipeline._ocr, "extract", return_value=(ocr_text, 0.7)),
+        ):
+            entry = pipeline.extract_single(src, output_dir)
+
+        mock_pymupdf.assert_not_called()
+        mock_pdftotext.assert_not_called()
+        mock_markitdown.assert_not_called()
+        assert entry.method == "fallback_ocr"
+
+    def test_normal_pdf_tries_pymupdf_first(self, tmp_path: Path) -> None:
+        """'normal' inspection → pymupdf IS called."""
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+        src = tmp_path / "normal.pdf"
+        src.write_bytes(b"%PDF-1.4 fake")
+
+        pipeline = ExtractionPipeline()
+
+        good_text = (
+            "\n--- Page 1 ---\n\n"
+            + "Contract clause with substantive content. " * 15
+            + "\n--- Page 2 ---\n\n"
+            + "More contract text with additional provisions. " * 15
+        )
+
+        mock_pymupdf = MagicMock(return_value=good_text)
+
+        with (
+            patch.object(ExtractionPipeline, "_inspect_pdf", return_value="normal"),
+            patch.object(pipeline, "_run_pymupdf", mock_pymupdf),
+        ):
+            entry = pipeline.extract_single(src, output_dir)
+
+        mock_pymupdf.assert_called_once()
+        assert entry.method == "primary"
+
+
+# ======================================================================
+# TestConfidenceScaling — _scale_confidence
+# ======================================================================
+
+
+class TestConfidenceScaling:
+    """Tests for ExtractionPipeline._scale_confidence."""
+
+    def test_full_confidence(self, tmp_path: Path) -> None:
+        """actual_chars >= expected → returns base unchanged."""
+        filepath = tmp_path / "doc.pdf"
+        filepath.write_bytes(b"x" * 1000)
+        # Expected: 1000 * 0.09 = 90. Actual: 100 >= 90 → no scaling.
+        result = ExtractionPipeline._scale_confidence(0.9, 100, filepath)
+        assert result == 0.9
+
+    def test_partial_confidence(self, tmp_path: Path) -> None:
+        """actual_chars < expected → returns base * (actual/expected)."""
+        filepath = tmp_path / "doc.pdf"
+        filepath.write_bytes(b"x" * 1000)
+        # Expected: 1000 * 0.09 = 90. Actual: 45 → scale = 45/90 = 0.5
+        result = ExtractionPipeline._scale_confidence(0.9, 45, filepath)
+        assert result == pytest.approx(0.45, abs=0.001)
+
+    def test_unknown_extension(self, tmp_path: Path) -> None:
+        """.xyz extension → returns base unchanged."""
+        filepath = tmp_path / "file.xyz"
+        filepath.write_bytes(b"x" * 1000)
+        result = ExtractionPipeline._scale_confidence(0.9, 100, filepath)
+        assert result == 0.9
+
+    def test_zero_file_size(self, tmp_path: Path) -> None:
+        """File with 0 bytes → returns base unchanged."""
+        filepath = tmp_path / "empty.pdf"
+        filepath.write_bytes(b"")
+        result = ExtractionPipeline._scale_confidence(0.9, 0, filepath)
+        assert result == 0.9
+
+
+# ======================================================================
+# TestFailureReasons — failure_reasons in pipeline
+# ======================================================================
+
+
+class TestFailureReasons:
+    """Tests for failure_reasons tracking throughout the pipeline."""
+
+    def test_failure_reasons_in_failed_entry(self, tmp_path: Path) -> None:
+        """_failed_entry includes failure_reasons."""
+        filepath = tmp_path / "bad.pdf"
+        chain = ["pymupdf", "pdftotext"]
+        reasons = ["pymupdf: too short (10 < 500)", "pdftotext: low density"]
+
+        entry = ExtractionPipeline._failed_entry(filepath, chain, failure_reasons=reasons)
+
+        assert entry.failure_reasons == reasons
+        assert entry.method == "failed"
+        assert entry.confidence == 0.0
+
+    def test_failure_reasons_default_empty(self) -> None:
+        """ExtractionQualityEntry default failure_reasons is empty list."""
+        entry = ExtractionQualityEntry(
+            file_path="test.pdf",
+            method="primary",
+            bytes_extracted=1000,
+            confidence=0.9,
+        )
+        assert entry.failure_reasons == []
+
+    def test_try_method_accumulates_reasons(self, tmp_path: Path) -> None:
+        """Multiple failed gates append to failure_reasons."""
+        pipeline = ExtractionPipeline()
+        out_file = tmp_path / "output.md"
+        filepath = tmp_path / "source.pdf"
+        filepath.write_bytes(b"%PDF fake")
+        chain: list[str] = []
+        failure_reasons: list[str] = []
+
+        # First: too short
+        pipeline._try_method(
+            "pymupdf",
+            "tiny",
+            0.9,
+            out_file,
+            filepath,
+            chain,
+            failure_reasons,
+            method_label="primary",
+            min_chars=500,
+        )
+
+        # Second: also too short
+        pipeline._try_method(
+            "pdftotext",
+            "small",
+            0.7,
+            out_file,
+            filepath,
+            chain,
+            failure_reasons,
+            method_label="fallback_pdftotext",
+            min_chars=500,
+        )
+
+        assert len(failure_reasons) == 2
+        assert "pymupdf" in failure_reasons[0]
+        assert "pdftotext" in failure_reasons[1]
+
+    def test_successful_extraction_preserves_reasons(self, tmp_path: Path) -> None:
+        """Entry from _try_method includes prior failure_reasons."""
+        pipeline = ExtractionPipeline()
+        out_file = tmp_path / "output.md"
+        filepath = tmp_path / "source.txt"
+        filepath.write_text("x" * 100, encoding="utf-8")
+        chain: list[str] = []
+        failure_reasons: list[str] = ["pymupdf: too short (10 < 500)"]
+
+        result = pipeline._try_method(
+            "pdftotext",
+            "Good text content " * 30,
+            0.7,
+            out_file,
+            filepath,
+            chain,
+            failure_reasons,
+            method_label="fallback_pdftotext",
+        )
+
+        assert result is not None
+        assert "pymupdf: too short (10 < 500)" in result.failure_reasons
+
+    def test_pdf_chain_collects_all_reasons(self, tmp_path: Path) -> None:
+        """Full PDF chain collects reasons from all failed methods."""
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+        src = tmp_path / "difficult.pdf"
+        src.write_bytes(b"%PDF-1.4 fake")
+
+        pipeline = ExtractionPipeline()
+
+        # All methods fail except OCR
+        ocr_text = "OCR extracted content " * 30
+
+        with (
+            patch.object(ExtractionPipeline, "_inspect_pdf", return_value="normal"),
+            patch.object(pipeline, "_run_pymupdf", return_value="short"),
+            patch.object(pipeline, "_run_pdftotext", return_value="short"),
+            patch.object(pipeline._markitdown, "extract", return_value=("", 0.0)),
+            patch.object(pipeline._ocr, "extract", return_value=(ocr_text, 0.7)),
+        ):
+            entry = pipeline.extract_single(src, output_dir)
+
+        assert entry.method == "fallback_ocr"
+        # Should have failure reasons from pymupdf, pdftotext, and markitdown
+        assert len(entry.failure_reasons) >= 3
+        assert any("pymupdf" in r for r in entry.failure_reasons)
+        assert any("pdftotext" in r for r in entry.failure_reasons)
+        assert any("markitdown" in r for r in entry.failure_reasons)
+
+
+# ======================================================================
+# TestBinaryImageDetection — Bug 2: PNG/JPEG magic + U+FFFD
+# ======================================================================
+
+
+class TestBinaryImageDetection:
+    """Tests for PNG/JPEG binary detection in readability checks."""
+
+    def test_is_readable_text_rejects_png_binary_utf8(self) -> None:
+        """Binary PNG decoded as UTF-8 → caught by replacement-char gate."""
+        raw_png = b"\x89PNG\r\n\x1a\n" + b"\x00\x01\x02\xff" * 200
+        text = raw_png.decode("utf-8", errors="replace")
+        assert ExtractionPipeline._is_readable_text(text) is False
+
+    def test_is_readable_text_rejects_png_binary_latin1(self) -> None:
+        """Binary PNG decoded as latin-1 → caught by magic-byte gate."""
+        # latin-1 maps bytes 1:1 to codepoints, preserving magic bytes.
+        raw_png = b"\x89PNG\r\n\x1a\n" + b"\x00\x01\x02\xff" * 200
+        text = raw_png.decode("latin-1")
+        assert ExtractionPipeline._is_readable_text(text) is False
+
+    def test_is_readable_text_rejects_jpeg_binary_utf8(self) -> None:
+        """Binary JPEG decoded as UTF-8 → caught by replacement-char gate."""
+        raw_jpeg = b"\xff\xd8\xff\xe0" + b"\x00\x01\x02\x80" * 200
+        text = raw_jpeg.decode("utf-8", errors="replace")
+        assert ExtractionPipeline._is_readable_text(text) is False
+
+    def test_is_readable_text_rejects_jpeg_binary_latin1(self) -> None:
+        """Binary JPEG decoded as latin-1 → caught by magic-byte gate."""
+        raw_jpeg = b"\xff\xd8\xff\xe0" + b"JFIF" + b"\x00" * 200
+        text = raw_jpeg.decode("latin-1")
+        assert ExtractionPipeline._is_readable_text(text) is False
+
+    def test_is_readable_text_rejects_high_replacement_chars(self) -> None:
+        """Text with >1% U+FFFD replacement characters should fail."""
+        # 100 chars total: 95 normal + 5 U+FFFD = 5% replacement
+        text = "A" * 95 + "\ufffd" * 5
+        assert ExtractionPipeline._is_readable_text(text) is False
+
+    def test_is_readable_text_accepts_low_replacement_chars(self) -> None:
+        """Text with <=1% U+FFFD replacement characters should pass."""
+        # 1000 chars total: 995 normal + 5 U+FFFD = 0.5% replacement
+        text = "Normal readable contract text. " * 33 + "\ufffd" * 5
+        assert ExtractionPipeline._is_readable_text(text) is True
+
+    def test_is_cached_output_rejects_png(self, tmp_path: Path) -> None:
+        """Cached output starting with PNG magic should be rejected."""
+        out_file = tmp_path / "output.md"
+        out_file.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 500)
+        assert ExtractionPipeline._is_cached_output_readable(out_file) is False
+
+    def test_is_cached_output_rejects_jpeg(self, tmp_path: Path) -> None:
+        """Cached output starting with JPEG magic should be rejected."""
+        out_file = tmp_path / "output.md"
+        out_file.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 500)
+        assert ExtractionPipeline._is_cached_output_readable(out_file) is False
+
+
+# ======================================================================
+# TestInspectPdfIdentityH — Bug 3: Identity-H clean text → "normal"
+# ======================================================================
+
+
+class TestInspectPdfIdentityH:
+    """Tests for _inspect_pdf Identity-H classification fix."""
+
+    def test_identity_h_clean_text_returns_normal(self, tmp_path: Path) -> None:
+        """Identity-H encoding with clean extracted text → 'normal'."""
+        pdf_path = tmp_path / "clean_identity_h.pdf"
+        pdf_path.write_bytes(b"%PDF-1.4 fake")
+
+        # Clean text — no control-char corruption.
+        mock_page = MagicMock()
+        mock_page.get_text.return_value = "This is perfectly clean text from an Identity-H font. " * 5
+        mock_page.get_fonts.return_value = [
+            (1, "ext", "Type0", "NotoSans", "name", "Identity-H", "extra"),
+        ]
+
+        mock_doc = MagicMock()
+        mock_doc.is_encrypted = False
+        mock_doc.__len__ = lambda self: 1
+        mock_doc.__getitem__ = lambda self, idx: mock_page
+
+        mock_fitz = MagicMock()
+        mock_fitz.open.return_value = mock_doc
+
+        with patch.dict("sys.modules", {"fitz": mock_fitz}):
+            result = ExtractionPipeline._inspect_pdf(pdf_path)
+
+        assert result == "normal"
+
+    def test_identity_h_garbled_text_returns_missing_tounicode(self, tmp_path: Path) -> None:
+        """Identity-H encoding with garbled text → 'missing_tounicode'."""
+        pdf_path = tmp_path / "garbled_identity_h.pdf"
+        pdf_path.write_bytes(b"%PDF-1.4 fake")
+
+        # Garbled text with control chars (>1% threshold).
+        garbled = "A" * 80 + "\x00\x01\x02\x03\x04\x05" * 5 + "B" * 20
+        mock_page = MagicMock()
+        mock_page.get_text.return_value = garbled
+        mock_page.get_fonts.return_value = [
+            (1, "ext", "Type0", "Arial", "name", "Identity-H", "extra"),
+        ]
+
+        mock_doc = MagicMock()
+        mock_doc.is_encrypted = False
+        mock_doc.__len__ = lambda self: 1
+        mock_doc.__getitem__ = lambda self, idx: mock_page
+
+        mock_fitz = MagicMock()
+        mock_fitz.open.return_value = mock_doc
+
+        with patch.dict("sys.modules", {"fitz": mock_fitz}):
+            result = ExtractionPipeline._inspect_pdf(pdf_path)
+
+        assert result == "missing_tounicode"
+
+    def test_scanned_pdf_skips_markitdown(self, tmp_path: Path) -> None:
+        """Scanned PDFs skip markitdown (pdfminer can't extract from images)."""
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+        src = tmp_path / "scanned.pdf"
+        src.write_bytes(b"%PDF-1.4 fake")
+
+        pipeline = ExtractionPipeline()
+
+        mock_markitdown = MagicMock(return_value=("", 0.0))
+        ocr_text = "OCR extracted content " * 30
+
+        with (
+            patch.object(ExtractionPipeline, "_inspect_pdf", return_value="scanned"),
+            patch.object(pipeline._markitdown, "extract", mock_markitdown),
+            patch.object(pipeline._ocr, "extract", return_value=(ocr_text, 0.7)),
+        ):
+            entry = pipeline.extract_single(src, output_dir)
+
+        mock_markitdown.assert_not_called()
+        assert entry.method == "fallback_ocr"
+
+
+# ======================================================================
+# TestClaudeVision — Claude vision last-resort
+# ======================================================================
+
+
+class TestClaudeVision:
+    """Tests for Claude vision fallback in extraction chains."""
+
+    def test_claude_vision_in_pdf_chain(self, tmp_path: Path) -> None:
+        """Claude vision is tried after OCR fails in PDF chain."""
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+        src = tmp_path / "unreadable.pdf"
+        src.write_bytes(b"%PDF-1.4 fake")
+
+        vision_text = "Visual description of the document content from Claude. " * 10
+
+        pipeline = ExtractionPipeline()
+
+        with (
+            patch.object(ExtractionPipeline, "_inspect_pdf", return_value="scanned"),
+            patch.object(pipeline._ocr, "extract", return_value=("", 0.0)),
+            patch.object(ExtractionPipeline, "_try_claude_vision", return_value=(vision_text, 0.65)),
+        ):
+            entry = pipeline.extract_single(src, output_dir)
+
+        assert entry.method == "fallback_claude_vision"
+        assert entry.confidence == 0.65
+        assert "claude_vision" in entry.fallback_chain
+
+    def test_claude_vision_in_image_chain(self, tmp_path: Path) -> None:
+        """Claude vision is tried after OCR fails in image chain."""
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+        src = tmp_path / "complex.png"
+        src.write_bytes(b"\x89PNG fake image data")
+
+        vision_text = "Chart showing revenue trends Q1-Q4 with data points. " * 10
+
+        pipeline = ExtractionPipeline()
+
+        with (
+            patch.object(pipeline._markitdown, "extract", return_value=("", 0.0)),
+            patch.object(pipeline._ocr, "extract", return_value=("", 0.0)),
+            patch.object(ExtractionPipeline, "_try_claude_vision", return_value=(vision_text, 0.65)),
+        ):
+            entry = pipeline.extract_single(src, output_dir)
+
+        assert entry.method == "fallback_claude_vision"
+        assert entry.confidence == 0.65
+        assert "claude_vision" in entry.fallback_chain
+
+    def test_claude_vision_failure_falls_through(self, tmp_path: Path) -> None:
+        """When Claude vision fails, fall through to diagram placeholder (images)."""
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+        src = tmp_path / "broken.png"
+        src.write_bytes(b"\x89PNG fake image data")
+
+        pipeline = ExtractionPipeline()
+
+        with (
+            patch.object(pipeline._markitdown, "extract", return_value=("", 0.0)),
+            patch.object(pipeline._ocr, "extract", return_value=("", 0.0)),
+            patch.object(ExtractionPipeline, "_try_claude_vision", return_value=("", 0.0)),
+        ):
+            entry = pipeline.extract_single(src, output_dir)
+
+        # Should fall through to diagram placeholder.
+        assert entry.method == "fallback_read"
+        assert "diagram_placeholder" in entry.fallback_chain
+
+    def test_claude_vision_not_called_when_ocr_succeeds(self, tmp_path: Path) -> None:
+        """Claude vision is NOT called when OCR succeeds."""
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+        src = tmp_path / "ocreable.png"
+        src.write_bytes(b"\x89PNG fake image data")
+
+        ocr_text = "OCR successfully extracted this text from the image. " * 10
+
+        pipeline = ExtractionPipeline()
+        mock_vision = MagicMock(return_value=("", 0.0))
+
+        with (
+            patch.object(pipeline._markitdown, "extract", return_value=("", 0.0)),
+            patch.object(pipeline._ocr, "extract", return_value=(ocr_text, 0.7)),
+            patch.object(ExtractionPipeline, "_try_claude_vision", mock_vision),
+        ):
+            entry = pipeline.extract_single(src, output_dir)
+
+        mock_vision.assert_not_called()
+        assert entry.method == "fallback_ocr"
+
+    def test_try_claude_vision_timeout(self) -> None:
+        """_try_claude_vision returns empty on timeout."""
+        from pathlib import Path as _Path
+
+        filepath = _Path("/tmp/fake_image.png")
+
+        with patch.object(
+            ExtractionPipeline,
+            "_describe_image_async",
+            side_effect=TimeoutError("timed out"),
+        ):
+            text, conf = ExtractionPipeline._try_claude_vision(filepath)
+
+        assert text == ""
+        assert conf == 0.0
+
+
+# ======================================================================
+# TestSharedConstants — _constants and _helpers modules
+# ======================================================================
+
+
+class TestSharedConstants:
+    """Tests for shared constants and helpers in dd_agents.extraction._constants / _helpers."""
+
+    def test_image_extensions_complete(self) -> None:
+        """IMAGE_EXTENSIONS contains exactly 7 extensions."""
+        from dd_agents.extraction._constants import IMAGE_EXTENSIONS
+
+        assert len(IMAGE_EXTENSIONS) == 7
+        for ext in (".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".gif"):
+            assert ext in IMAGE_EXTENSIONS
+
+    def test_plaintext_extensions_complete(self) -> None:
+        """PLAINTEXT_EXTENSIONS contains exactly 12 extensions."""
+        from dd_agents.extraction._constants import PLAINTEXT_EXTENSIONS
+
+        assert len(PLAINTEXT_EXTENSIONS) == 12
+        for ext in (".txt", ".csv", ".md", ".json", ".yaml", ".yml", ".xml", ".log", ".tsv", ".ini", ".cfg", ".conf"):
+            assert ext in PLAINTEXT_EXTENSIONS
+
+    def test_read_text_basic(self, tmp_path: Path) -> None:
+        """Shared read_text helper reads a UTF-8 text file."""
+        from dd_agents.extraction._helpers import read_text
+
+        f = tmp_path / "sample.txt"
+        f.write_text("Hello, shared helper!", encoding="utf-8")
+        text, conf = read_text(f)
+        assert "Hello, shared helper!" in text
+        assert conf == 0.5
+
+    def test_read_text_empty_file(self, tmp_path: Path) -> None:
+        """Shared read_text returns ('', 0.0) for empty files."""
+        from dd_agents.extraction._helpers import read_text
+
+        f = tmp_path / "empty.txt"
+        f.write_text("", encoding="utf-8")
+        text, conf = read_text(f)
+        assert text == ""
+        assert conf == 0.0
+
+    def test_check_text_quality_rejects_binary(self) -> None:
+        """_check_text_quality rejects binary garbage."""
+        # High U+FFFD ratio → reject
+        sample = "A" * 50 + "\ufffd" * 50
+        assert ExtractionPipeline._check_text_quality(sample) is False
+
+    def test_check_text_quality_accepts_clean_text(self) -> None:
+        """_check_text_quality accepts clean readable text."""
+        sample = "This is perfectly clean readable text with normal characters.\n" * 10
+        assert ExtractionPipeline._check_text_quality(sample) is True

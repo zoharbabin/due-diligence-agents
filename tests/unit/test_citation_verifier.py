@@ -715,3 +715,81 @@ class TestColonInFilenameFallback:
         # No file found → verification fails.
         assert cit.quote_verified is False
         assert cit.quote_match_score == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Test caching optimizations (Issue #27 Phase 4)
+# ---------------------------------------------------------------------------
+
+
+class TestVerifierCaching:
+    """Tests for citation verifier caching optimizations (Issue #27 Phase 4)."""
+
+    def test_page_cache_populated(self, tmp_path: Path) -> None:
+        """After verification, _page_cache contains the split pages."""
+        verifier = _make_verifier(tmp_path)
+        source_text = "\n--- Page 1 ---\nSection 12.3\nUpon change of control, the agreement terminates.\n"
+        file_texts = [
+            FileText(
+                file_path="GroupA/Customer/msa.pdf",
+                text=source_text,
+                has_page_markers=True,
+            )
+        ]
+
+        result = _make_result_with_citation(
+            file_path="GroupA/Customer/msa.pdf",
+            page="1",
+            exact_quote="Upon change of control, the agreement terminates.",
+        )
+        verifier.verify_result(result, file_texts=file_texts)
+
+        # The page cache should now contain the file's split pages.
+        assert "GroupA/Customer/msa.pdf" in verifier._page_cache
+        pages = verifier._page_cache["GroupA/Customer/msa.pdf"]
+        assert "1" in pages
+        assert "Upon change of control" in pages["1"]
+
+    def test_norm_cache_populated(self, tmp_path: Path) -> None:
+        """After verification, _norm_cache contains normalized text."""
+        verifier = _make_verifier(tmp_path)
+        source_text = "\n--- Page 5 ---\nSection 12.3\nUpon change of control, the agreement terminates.\n"
+        file_texts = [
+            FileText(
+                file_path="GroupA/Customer/msa.pdf",
+                text=source_text,
+                has_page_markers=True,
+            )
+        ]
+
+        result = _make_result_with_citation()
+        verifier.verify_result(result, file_texts=file_texts)
+
+        # At least the page-level normalization key should be cached.
+        assert len(verifier._norm_cache) > 0
+        # Check that a page-level key exists.
+        assert "GroupA/Customer/msa.pdf:page:5" in verifier._norm_cache
+
+    def test_exact_substring_short_circuits(self, tmp_path: Path) -> None:
+        """Exact substring match returns 100.0 without calling fuzz."""
+        verifier = _make_verifier(tmp_path)
+
+        # When the quote is an exact substring, _match_score returns 100.0.
+        score = verifier._match_score(
+            "the agreement terminates",
+            "Upon change of control, the agreement terminates immediately.",
+        )
+        assert score == 100.0
+
+    def test_match_score_falls_back_to_fuzz(self, tmp_path: Path) -> None:
+        """Non-exact match falls back to fuzz.partial_ratio."""
+        verifier = _make_verifier(tmp_path)
+
+        # Slightly different text (OCR-like typo) — not an exact substring.
+        score = verifier._match_score(
+            "the agreernent terrninates",
+            "Upon change of control, the agreement terminates immediately.",
+        )
+        # Should still get a reasonable fuzzy score (not 100.0 exact, but > 0).
+        assert score > 0.0
+        assert score != 100.0  # Not an exact substring match.

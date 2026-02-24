@@ -346,3 +346,57 @@ class TestReferenceDownloader:
         # Only the URL from the customer file should be found.
         assert "https://vendor.com/terms" in url_map
         assert "https://other-vendor.com/privacy-policy" not in url_map
+
+
+class TestParallelDownloads:
+    """Tests for parallel download execution (Issue #27 Phase 6)."""
+
+    def test_workers_parameter(self, tmp_path: Path) -> None:
+        """workers parameter is stored on the downloader."""
+        text_dir = tmp_path / "text"
+        text_dir.mkdir()
+        downloader = ReferenceDownloader(text_dir=text_dir, workers=4)
+        assert downloader._workers == 4
+
+    def test_default_workers(self, tmp_path: Path) -> None:
+        """Default workers is 8."""
+        text_dir = tmp_path / "text"
+        text_dir.mkdir()
+        downloader = ReferenceDownloader(text_dir=text_dir)
+        assert downloader._workers == 8
+
+    @patch("dd_agents.extraction.reference_downloader._fetch_url")
+    @patch("dd_agents.extraction.reference_downloader._extract_text")
+    def test_parallel_downloads_all_complete(
+        self, mock_extract: MagicMock, mock_fetch: MagicMock, tmp_path: Path
+    ) -> None:
+        """All URLs are processed when using thread pool."""
+        text_dir = tmp_path / "text"
+        text_dir.mkdir()
+
+        # Write file with 3 T&C URLs.
+        (text_dir / "customer.md").write_text("See https://a.com/terms and https://b.com/terms and https://c.com/terms")
+
+        mock_fetch.return_value = b"<html><body>Terms content</body></html>"
+        mock_extract.return_value = "# External Reference\n\nThese are the terms and conditions. " * 5
+
+        downloader = ReferenceDownloader(text_dir=text_dir, workers=2)
+        results = downloader.process_all()
+
+        assert len(results) == 3
+        assert all(r.success for r in results)
+
+
+class TestPrecompiledKeywordRegex:
+    """Tests for pre-compiled keyword regex (Issue #27 Phase 6)."""
+
+    def test_pattern_matches_keywords(self) -> None:
+        """Pre-compiled pattern matches all expected keywords."""
+        assert is_reference_url("https://example.com/terms") is True
+        assert is_reference_url("https://example.com/legal/agreement") is True
+        assert is_reference_url("https://example.com/privacy-policy") is True
+
+    def test_pattern_rejects_non_keywords(self) -> None:
+        """Pre-compiled pattern rejects non-keyword URLs."""
+        assert is_reference_url("https://example.com/products/widget") is False
+        assert is_reference_url("https://example.com/blog/post") is False

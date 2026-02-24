@@ -119,6 +119,32 @@ class CitationVerifier:
         self._threshold = threshold
         # Cache loaded file texts to avoid repeated I/O.
         self._file_cache: dict[str, str] = {}
+        # Cache split pages per file to avoid re-splitting.  Issue #27 Phase 4.
+        self._page_cache: dict[str, dict[str, str]] = {}
+        # Cache normalized text to avoid re-normalizing.  Issue #27 Phase 4.
+        self._norm_cache: dict[str, str] = {}
+
+    def _get_pages(self, file_path: str, text: str) -> dict[str, str]:
+        """Return page-split dict, using cache if available.  Issue #27 Phase 4."""
+        if file_path in self._page_cache:
+            return self._page_cache[file_path]
+        pages = split_by_pages(text)
+        self._page_cache[file_path] = pages
+        return pages
+
+    def _get_normalized(self, key: str, text: str) -> str:
+        """Return normalized text, using cache if available.  Issue #27 Phase 4."""
+        if key in self._norm_cache:
+            return self._norm_cache[key]
+        normalized = _normalize_whitespace(text)
+        self._norm_cache[key] = normalized
+        return normalized
+
+    def _match_score(self, norm_quote: str, norm_text: str) -> float:
+        """Return match score, short-circuiting on exact substring.  Issue #27 Phase 4."""
+        if norm_quote in norm_text:
+            return 100.0
+        return float(fuzz.partial_ratio(norm_quote, norm_text))
 
     def verify_result(
         self,
@@ -155,6 +181,9 @@ class CitationVerifier:
 
         Uses progressive search scope (Issue #24):
         1. Cited page → 2. Adjacent pages (±1) → 3. Full document → 4. Other files.
+
+        Uses cached helpers for pages, normalized text, and match scoring
+        to avoid redundant computation across citations.  Issue #27 Phase 4.
         """
         source_text = text_lookup.get(citation.file_path, "")
 
@@ -181,19 +210,22 @@ class CitationVerifier:
 
         # Scope 1: Cited page only.
         if source_text and citation.page and citation.page.strip():
-            pages = split_by_pages(source_text)
+            pages = self._get_pages(citation.file_path, source_text)
             page_text = pages.get(citation.page.strip())
             if page_text:
-                score = fuzz.partial_ratio(norm_quote, _normalize_whitespace(page_text))
+                page_num = citation.page.strip()
+                norm_page = self._get_normalized(f"{citation.file_path}:page:{page_num}", page_text)
+                score = self._match_score(norm_quote, norm_page)
                 if score >= self._threshold:
                     citation.quote_match_score = float(score)
                     citation.quote_verified = True
                     return
 
                 # Scope 2: Adjacent pages (±1).
-                adj_text = _get_adjacent_pages_text(pages, citation.page.strip())
+                adj_text = _get_adjacent_pages_text(pages, page_num)
                 if adj_text and adj_text != page_text:
-                    score = fuzz.partial_ratio(norm_quote, _normalize_whitespace(adj_text))
+                    norm_adj = self._get_normalized(f"{citation.file_path}:adj:{page_num}", adj_text)
+                    score = self._match_score(norm_quote, norm_adj)
                     if score >= self._threshold:
                         citation.quote_match_score = float(score)
                         citation.quote_verified = True
@@ -201,7 +233,8 @@ class CitationVerifier:
 
         # Scope 3: Full document.
         if source_text:
-            score = fuzz.partial_ratio(norm_quote, _normalize_whitespace(source_text))
+            norm_full = self._get_normalized(f"{citation.file_path}:full", source_text)
+            score = self._match_score(norm_quote, norm_full)
             if score >= self._threshold:
                 citation.quote_match_score = float(score)
                 citation.quote_verified = True
@@ -216,18 +249,23 @@ class CitationVerifier:
                 continue  # Already checked.
             if not text:
                 continue
-            score = fuzz.partial_ratio(norm_quote, _normalize_whitespace(text))
+            norm_cross = self._get_normalized(f"{file_path}:full", text)
+            score = self._match_score(norm_quote, norm_cross)
             if score > best_score:
                 best_score = score
                 best_file = file_path
 
         if best_score >= self._threshold and best_file:
             # Quote found in a different file — correct the attribution.
+            src_score: float = 0.0
+            if source_text:
+                norm_src = self._get_normalized(f"{citation.file_path}:full", source_text)
+                src_score = self._match_score(norm_quote, norm_src)
             logger.info(
                 "Citation file_path corrected: %r → %r (score %.0f → %.0f)",
                 citation.file_path,
                 best_file,
-                fuzz.partial_ratio(norm_quote, _normalize_whitespace(source_text)) if source_text else 0,
+                src_score,
                 best_score,
             )
             citation.file_path = best_file
@@ -235,10 +273,11 @@ class CitationVerifier:
             citation.quote_verified = True
             # Try to find the correct page in the new file.
             new_text = text_lookup[best_file]
-            new_pages = split_by_pages(new_text)
+            new_pages = self._get_pages(best_file, new_text)
             if new_pages:
                 for page_num, page_text in new_pages.items():
-                    pg_score = fuzz.partial_ratio(norm_quote, _normalize_whitespace(page_text))
+                    norm_pg = self._get_normalized(f"{best_file}:page:{page_num}", page_text)
+                    pg_score = self._match_score(norm_quote, norm_pg)
                     if pg_score >= self._threshold:
                         citation.page = page_num
                         break
@@ -248,7 +287,8 @@ class CitationVerifier:
         # Use the best score we found (full document or cross-file).
         final_score = 0.0
         if source_text:
-            final_score = fuzz.partial_ratio(norm_quote, _normalize_whitespace(source_text))
+            norm_final = self._get_normalized(f"{citation.file_path}:full", source_text)
+            final_score = self._match_score(norm_quote, norm_final)
         if best_score > final_score:
             final_score = best_score
         citation.quote_match_score = float(final_score)

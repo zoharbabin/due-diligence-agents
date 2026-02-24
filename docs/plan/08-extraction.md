@@ -15,16 +15,21 @@ Before any agent touches a document, every non-plaintext file in the data room i
 
 Each file type has a primary extraction method and fallback chain. The pipeline tries each method in order, stopping at the first that produces non-empty output.
 
-| File Type | Detection (MIME) | Primary | Fallback 1 | Fallback 2 |
-|-----------|-----------------|---------|------------|------------|
-| PDF (text-based) | `application/pdf` | `markitdown` | `pdftotext` (poppler) | Read tool (raw text) |
-| PDF (scanned/image) | `application/pdf` + markitdown returns <100 chars | `markitdown` (OCR mode) | `pytesseract` via `~/ocr_work/` | -- |
-| Word (.docx) | `application/vnd.openxmlformats*wordprocessing*` | `markitdown` | Read tool | -- |
-| Excel (.xlsx) | `application/vnd.openxmlformats*spreadsheet*` | `markitdown` | `openpyxl` (smart extraction — see §1.1) | Read tool |
-| PowerPoint (.pptx) | `application/vnd.openxmlformats*presentation*` | `markitdown` | Read tool | -- |
-| Images (text) | `image/*` | `markitdown` (OCR) | `pytesseract` via `~/ocr_work/` | -- |
-| Images (diagrams) | `image/*` + OCR yields <50 chars | Read tool (visual) | Record diagram description | -- |
-| Plain text (.txt, .csv, .json, .md) | `text/*` | Read tool directly | -- | -- |
+| File Type | Detection | Primary | Fallback Chain |
+|-----------|-----------|---------|----------------|
+| PDF (normal) | `_inspect_pdf()` → `"normal"` | pymupdf (page markers) | pdftotext → markitdown → GLM-OCR → pytesseract → Claude vision → direct read |
+| PDF (scanned) | `_inspect_pdf()` → `"scanned"` | GLM-OCR | pytesseract → Claude vision → direct read |
+| PDF (missing ToUnicode) | `_inspect_pdf()` → `"missing_tounicode"` | GLM-OCR | pytesseract → Claude vision → direct read |
+| Word (.docx) | Extension match | `markitdown` | macOS textutil → direct read |
+| Excel (.xlsx) | Extension match | `markitdown` | `openpyxl` (smart extraction — see §1.1) → direct read |
+| PowerPoint (.pptx) | Extension match | `markitdown` | direct read |
+| Images (text) | Extension match | markitdown (OCR) | GLM-OCR → pytesseract → Claude vision → diagram placeholder |
+| Images (diagrams) | OCR yields <20 chars | Claude vision | Diagram placeholder |
+| Plain text (.txt, .csv, .json, .md) | Extension match | Direct read | -- |
+
+> **Note:** PDF pre-inspection (`_inspect_pdf()`) classifies PDFs at ~8ms/file before extraction.
+> Scanned and missing-ToUnicode PDFs skip pymupdf/pdftotext/markitdown entirely, routing
+> directly to GLM-OCR. This saves ~700ms of futile extraction attempts per scanned file.
 
 ### 1.1 Smart Excel Extraction (openpyxl fallback)
 
@@ -61,22 +66,44 @@ Chunking strategy:
 
 Implementation: `src/dd_agents/extraction/chunking.py` (~200 lines). See `22-llm-robustness.md` §2.2 for code outline.
 
-### Scanned PDF Detection
+### PDF Pre-Inspection (`_inspect_pdf`)
 
-A PDF is classified as "scanned" when the primary `markitdown` extraction returns fewer than 100 characters of text content (after stripping whitespace). This indicates the PDF contains images of text rather than selectable text. The pipeline then re-attempts extraction with OCR-focused methods.
+Before attempting extraction, `_inspect_pdf()` classifies each PDF by examining
+its fonts and first-page text content. This costs ~8ms per file and routes
+known-bad PDFs directly to OCR, avoiding wasted extraction attempts.
 
-The 100-character threshold for scanned PDF detection is based on empirical testing: legitimate text-based PDFs always produce >100 characters of extracted text per page. PDFs producing fewer characters per page are either scanned images or have embedded images without OCR text layers.
+| Classification | Condition | Routing |
+|---------------|-----------|---------|
+| `"normal"` | Text-based with valid fonts | Full chain (pymupdf → pdftotext → ...) |
+| `"scanned"` | First page has < 100 text characters | Skip to GLM-OCR |
+| `"missing_tounicode"` | Identity-H fonts AND >1% control-char corruption | Skip to GLM-OCR |
+| `"encrypted"` | Password-protected | Skip to GLM-OCR (some allow text copy) |
 
-### pytesseract OCR Workflow
+> **Identity-H handling note:** Identity-H is a standard CIDFont encoding used by most
+> modern PDF generators. Only 1 in 26 Identity-H PDFs actually produces garbled output
+> (the one missing a /ToUnicode CMap). The classifier requires BOTH Identity-H encoding
+> AND detected control-char corruption before flagging — avoiding false positives on the
+> other 25.
 
-When `pytesseract` is used as a fallback:
-1. Copy the source file to `~/ocr_work/` (temporary staging directory)
-2. For PDFs: convert pages to images using `pdf2image` (poppler `pdftoppm`)
-3. Run `pytesseract.image_to_string()` on each image
-4. Concatenate results with page separators
-5. Clean up `~/ocr_work/` after extraction
+### OCR Workflows
 
-`pytesseract` operations have a per-page timeout of 30 seconds (configurable via `extraction.ocr_timeout_seconds` in `deal-config.json`). Pages exceeding the timeout are logged as extraction failures in `extraction_quality.json` but do not block the pipeline.
+**GLM-OCR** (preferred OCR method, higher accuracy than pytesseract):
+1. Render PDF pages to PNG images using pypdfium2 (200 DPI, max 1024px)
+2. Run GLM-OCR vision-language model per page (mlx-vlm on Apple Silicon, or Ollama cross-platform)
+3. Assemble results with `--- Page N ---` markers
+4. Model cached for extractor lifetime (~1.5 GB for 8-bit model)
+
+**pytesseract** (fallback when GLM-OCR unavailable):
+1. Convert PDF pages to PNG images using pdf2image (poppler, 300 DPI)
+2. Run `pytesseract.image_to_string()` per page (30s timeout each)
+3. Concatenate results with page separators
+4. Temporary files cleaned up after extraction
+
+**Claude vision** (last resort for unreadable images/PDFs):
+1. Uses `claude_agent_sdk.query()` with Read-only tool access
+2. Claude visually examines the file and produces a textual description
+3. Includes transcribed text, table data, diagram layouts, signatures
+4. Runs in a separate thread (120s timeout) since the pipeline is synchronous
 
 ---
 
@@ -894,14 +921,22 @@ extraction = [
     "markitdown>=0.1.0",         # Primary extraction for all formats
     "openpyxl>=3.1.0",           # Excel fallback
     "pytesseract>=0.3.10",       # OCR fallback
-    "pdf2image>=1.16.0",         # PDF-to-image for OCR
+    "pdf2image>=1.16.0",         # PDF-to-image for OCR (pytesseract)
     "Pillow>=10.0.0",            # Image handling
+    "pypdfium2>=4.0.0",          # PDF-to-image for GLM-OCR
 ]
+```
+
+Optional Python packages:
+```
+    "mlx-vlm>=0.1.0",           # Apple Silicon GLM-OCR backend
+    "ollama>=0.1.0",             # Cross-platform GLM-OCR backend
 ```
 
 Required system dependencies:
 - `poppler-utils` (provides `pdftotext` and `pdftoppm`): `brew install poppler` (macOS), `apt install poppler-utils` (Debian/Ubuntu)
 - `tesseract-ocr`: `brew install tesseract` (macOS), `apt install tesseract-ocr` (Debian/Ubuntu)
+- `pymupdf` (fitz): PDF pre-inspection and primary extraction (pip install)
 
 ---
 
@@ -911,8 +946,15 @@ Required system dependencies:
 src/dd_agents/
   extraction/
     __init__.py
-    extractor.py             # DocumentExtractor class
-    methods.py               # Low-level extraction functions
+    _constants.py            # Shared constants (extension sets, confidence values)
+    _helpers.py              # Shared helpers (read_text)
+    pipeline.py              # ExtractionPipeline orchestrator with fallback chains
+    markitdown.py            # markitdown wrapper (Office + PDF)
+    ocr.py                   # OCR fallback (pytesseract)
+    glm_ocr.py               # GLM-OCR vision-language model (mlx-vlm / Ollama)
+    cache.py                 # SHA-256 checksum cache
+    quality.py               # ExtractionQualityTracker
+    reference_downloader.py  # External T&C URL download + extraction
 ```
 
 Extraction artifacts in the data room:

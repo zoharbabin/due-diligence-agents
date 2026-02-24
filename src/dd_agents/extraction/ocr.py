@@ -13,27 +13,15 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from dd_agents.extraction._constants import CONFIDENCE_FAILURE, IMAGE_EXTENSIONS
+
 logger = logging.getLogger(__name__)
 
-# Confidence score assigned to OCR-extracted text.
+# Confidence score assigned to OCR-extracted text (unique to this module).
 _CONFIDENCE_OCR = 0.6
-_CONFIDENCE_FAILURE = 0.0
 
 # Per-page timeout in seconds (configurable externally if needed).
 OCR_PAGE_TIMEOUT = 30
-
-# Extensions treated as direct images (no PDF-to-image conversion needed).
-_IMAGE_EXTENSIONS: frozenset[str] = frozenset(
-    {
-        ".png",
-        ".jpg",
-        ".jpeg",
-        ".tiff",
-        ".tif",
-        ".bmp",
-        ".gif",
-    }
-)
 
 
 class OCRExtractor:
@@ -66,14 +54,14 @@ class OCRExtractor:
             logger.warning(
                 "pytesseract is not installed -- OCR fallback unavailable.  Install with: pip install pytesseract"
             )
-            return "", _CONFIDENCE_FAILURE
+            return "", CONFIDENCE_FAILURE
 
         work_dir = Path(tempfile.mkdtemp(prefix="dd_ocr_"))
         try:
             return self._do_extract(filepath, work_dir, pytesseract)
         except Exception:
             logger.exception("OCR extraction failed for %s", filepath)
-            return "", _CONFIDENCE_FAILURE
+            return "", CONFIDENCE_FAILURE
         finally:
             # Always clean up the temporary working directory.
             shutil.rmtree(work_dir, ignore_errors=True)
@@ -93,14 +81,14 @@ class OCRExtractor:
 
         if suffix == ".pdf":
             images = OCRExtractor._pdf_to_images(filepath, work_dir)
-        elif suffix in _IMAGE_EXTENSIONS:
+        elif suffix in IMAGE_EXTENSIONS:
             images = OCRExtractor._load_image(filepath)
         else:
             logger.debug("OCR does not support extension %s", suffix)
-            return "", _CONFIDENCE_FAILURE
+            return "", CONFIDENCE_FAILURE
 
         if not images:
-            return "", _CONFIDENCE_FAILURE
+            return "", CONFIDENCE_FAILURE
 
         texts: list[str] = []
         for idx, img in enumerate(images):
@@ -113,7 +101,7 @@ class OCRExtractor:
 
         if texts:
             return "\n\n".join(texts), _CONFIDENCE_OCR
-        return "", _CONFIDENCE_FAILURE
+        return "", CONFIDENCE_FAILURE
 
     @staticmethod
     def _pdf_to_images(filepath: Path, work_dir: Path) -> list[Any]:

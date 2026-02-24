@@ -184,10 +184,11 @@ class TestGlmOcrExtractor:
 
     def test_confidence_score_value(self) -> None:
         """Confidence constants are within Pydantic's [0.0, 1.0] range."""
-        from dd_agents.extraction.glm_ocr import _CONFIDENCE_FAILURE, _CONFIDENCE_GLM_OCR
+        from dd_agents.extraction._constants import CONFIDENCE_FAILURE
+        from dd_agents.extraction.glm_ocr import _CONFIDENCE_GLM_OCR
 
         assert 0.0 <= _CONFIDENCE_GLM_OCR <= 1.0
-        assert _CONFIDENCE_FAILURE == 0.0
+        assert CONFIDENCE_FAILURE == 0.0
         # GLM-OCR should be higher than pytesseract (0.6)
         assert _CONFIDENCE_GLM_OCR > 0.6
 
@@ -521,3 +522,88 @@ class TestPipelineIntegration:
 
         assert entry.method == "fallback_glm_ocr"
         assert entry.confidence == 0.8
+
+
+# ======================================================================
+# _resize_image helper (Issue #27 Phase 5)
+# ======================================================================
+
+
+class TestResizeImage:
+    """Tests for the _resize_image helper (Issue #27 Phase 5)."""
+
+    def test_resize_large_image(self) -> None:
+        """Image exceeding max_dim is resized."""
+        from dd_agents.extraction.glm_ocr import _resize_image
+
+        img = MagicMock()
+        img.size = (2000, 3000)
+        resized = MagicMock()
+        img.resize = MagicMock(return_value=resized)
+        result = _resize_image(img)
+        img.resize.assert_called_once()
+        assert result is resized
+
+    def test_no_resize_small_image(self) -> None:
+        """Image within max_dim is not resized."""
+        from dd_agents.extraction.glm_ocr import _resize_image
+
+        img = MagicMock()
+        img.size = (500, 600)
+        result = _resize_image(img)
+        img.resize.assert_not_called()
+        assert result is img
+
+    def test_custom_max_dim(self) -> None:
+        """Custom max_dim parameter is respected."""
+        from dd_agents.extraction.glm_ocr import _resize_image
+
+        img = MagicMock()
+        img.size = (800, 600)
+        resized = MagicMock()
+        img.resize = MagicMock(return_value=resized)
+        result = _resize_image(img, max_dim=500)
+        img.resize.assert_called_once()
+        assert result is resized
+
+
+# ======================================================================
+# _prepare_images helper (Issue #27 Phase 5)
+# ======================================================================
+
+
+class TestPrepareImages:
+    """Tests for the _prepare_images helper (Issue #27 Phase 5)."""
+
+    def test_pdf_routes_to_render_pdf(self, tmp_path: Path) -> None:
+        """PDF files are routed to _render_pdf_pages."""
+        from dd_agents.extraction.glm_ocr import _prepare_images
+
+        src = tmp_path / "doc.pdf"
+        src.write_bytes(b"%PDF-1.4 fake")
+        with patch("dd_agents.extraction.glm_ocr._render_pdf_pages", return_value=[tmp_path / "p1.png"]) as mock_render:
+            result = _prepare_images(src, tmp_path)
+        mock_render.assert_called_once_with(src, tmp_path)
+        assert len(result) == 1
+
+    def test_image_routes_to_render_image(self, tmp_path: Path) -> None:
+        """Image files are routed to _render_image_for_ocr."""
+        from dd_agents.extraction.glm_ocr import _prepare_images
+
+        src = tmp_path / "scan.png"
+        src.write_bytes(b"\x89PNG fake")
+        with patch(
+            "dd_agents.extraction.glm_ocr._render_image_for_ocr", return_value=[tmp_path / "p1.png"]
+        ) as mock_render:
+            result = _prepare_images(src, tmp_path)
+        mock_render.assert_called_once_with(src, tmp_path)
+        assert len(result) == 1
+
+    def test_unsupported_returns_empty(self, tmp_path: Path) -> None:
+        """Unsupported extensions return empty list."""
+        from dd_agents.extraction.glm_ocr import _prepare_images
+
+        src = tmp_path / "data.xlsx"
+        src.write_bytes(b"fake")
+        result = _prepare_images(src, tmp_path)
+        assert result == []

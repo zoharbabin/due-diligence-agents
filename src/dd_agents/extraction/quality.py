@@ -45,6 +45,7 @@ class ExtractionQualityTracker:
         bytes_extracted: int,
         confidence: float,
         fallback_chain: list[str] | None = None,
+        failure_reasons: list[str] | None = None,
     ) -> ExtractionQualityEntry:
         """Record extraction quality for a single file.
 
@@ -60,6 +61,8 @@ class ExtractionQualityTracker:
             Confidence score ``[0.0, 1.0]``.
         fallback_chain:
             Ordered list of methods attempted (including the final one).
+        failure_reasons:
+            Diagnostic strings for each gate failure in the chain.
 
         Returns
         -------
@@ -72,6 +75,7 @@ class ExtractionQualityTracker:
             bytes_extracted=bytes_extracted,
             confidence=confidence,
             fallback_chain=fallback_chain or [method],
+            failure_reasons=failure_reasons or [],
         )
         self._entries[filepath] = entry
         self._timestamps[filepath] = datetime.now(UTC).isoformat()

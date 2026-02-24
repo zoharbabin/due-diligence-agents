@@ -86,3 +86,4 @@ class ExtractionQualityEntry(BaseModel):
     bytes_extracted: int = 0
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     fallback_chain: list[str] = Field(default_factory=list, description="Methods attempted in order")
+    failure_reasons: list[str] = Field(default_factory=list, description="Diagnostic strings for each gate failure")
