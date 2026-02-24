@@ -5,7 +5,7 @@ Covers:
     - Graceful fallback when mlx-vlm is not installed
     - Graceful fallback when Ollama is not available
     - Page marker formatting (``--- Page N ---``)
-    - Image resize logic (720px cap)
+    - Image resize logic (1024px cap)
     - max_tokens / temperature / DPI configuration
     - Integration with ExtractionPipeline as fallback step
 """

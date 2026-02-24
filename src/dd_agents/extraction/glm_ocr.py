@@ -3,7 +3,7 @@
 Replaces ``pytesseract`` as the preferred OCR method for scanned/degraded
 PDFs and images.  Two deployment backends are tried in order:
 
-1. **mlx-vlm** (Apple Silicon) — fastest, loads the 4-bit quantized model
+1. **mlx-vlm** (Apple Silicon) — fastest, loads the 8-bit quantized model
    locally via Apple's MLX framework.
 2. **Ollama** (cross-platform) — uses ``ollama chat`` with the ``glm-ocr``
    model over localhost.
@@ -12,9 +12,14 @@ If neither backend is available the extractor returns ``("", 0.0)`` so
 the pipeline falls through to the next method (pytesseract).
 
 Optimal configuration (benchmarked on BLUERUSH data room):
-    Model: mlx-community/GLM-OCR-4bit (1.25 GB)
-    DPI: 150, max image dimension: 720px
+    Model: mlx-community/GLM-OCR-8bit (1.5 GB)
+    DPI: 200, max image dimension: 1024px
     max_tokens: 2048, temperature: 0.0
+
+Resolution is the dominant quality factor — increasing from 720px to
+1024px fixed all 4 benchmark errors (Notwithstanding, retitling, solely,
+claims) with only ~2s/page additional cost.  Quantization (4-bit vs 8-bit
+vs bf16) had minimal impact on accuracy.
 """
 
 from __future__ import annotations
@@ -33,11 +38,11 @@ _CONFIDENCE_GLM_OCR = 0.8
 _CONFIDENCE_FAILURE = 0.0
 
 # ── Tuning constants (benchmarked on Apple M3 Max) ───────────────────
-MODEL_ID_MLX = "mlx-community/GLM-OCR-4bit"
+MODEL_ID_MLX = "mlx-community/GLM-OCR-8bit"
 MODEL_ID_OLLAMA = "glm-ocr"
 MAX_TOKENS = 2048
-DPI = 150
-MAX_IMAGE_DIM = 720
+DPI = 200
+MAX_IMAGE_DIM = 1024
 _MAX_PAGES = 100
 
 # Extensions treated as direct images (no PDF-to-image conversion).
