@@ -17,6 +17,8 @@ from dd_agents.utils.constants import INDEX_DIR, TEXT_DIR
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from dd_agents.models.search import SearchCustomerResult
+
 logger = logging.getLogger(__name__)
 
 
@@ -159,15 +161,19 @@ class SearchRunner:
 
         if relevant_file_paths:
             self._console.print("\n[bold]Running text extraction...[/bold]")
+            from dd_agents.extraction.glm_ocr import GlmOcrExtractor
             from dd_agents.extraction.pipeline import ExtractionPipeline
 
-            pipeline = ExtractionPipeline()
+            pipeline = ExtractionPipeline(glm_ocr=GlmOcrExtractor())
             pipeline.extract_all(
                 files=relevant_file_paths,
                 output_dir=text_dir,
                 cache_path=cache_path,
             )
             self._console.print("[green]Extraction complete.[/green]")
+
+        # 4b. Download external T&Cs referenced by URL in extracted text.
+        self._download_external_references(text_dir)
 
         # 5. Cost estimate and confirmation.
         from dd_agents.search.analyzer import SearchAnalyzer
@@ -213,7 +219,6 @@ class SearchRunner:
                 return
 
         # 6. Run analysis with progress bar.
-        from dd_agents.models.search import SearchCustomerResult
 
         analyzed: list[SearchCustomerResult] = []
         with Progress(console=self._console) as progress:
@@ -223,6 +228,9 @@ class SearchRunner:
                 progress.advance(task)
 
             analyzed = asyncio.run(analyzer.analyze_all(customers, progress_callback=on_progress))
+
+        # 6b. Citation verification — verify LLM citations against source text.
+        self._verify_citations(analyzed, text_dir)
 
         # 7. Verify completeness.
         if len(analyzed) != len(customers):
@@ -252,6 +260,16 @@ class SearchRunner:
         incomplete = sum(1 for r in analyzed if r.incomplete_columns)
         skipped_files_total = sum(len(r.skipped_files) for r in analyzed)
 
+        # Citation verification summary.
+        from dd_agents.search.citation_verifier import compute_verification_summary
+
+        total_verified = 0
+        total_failed = 0
+        for result in analyzed:
+            verification_counts = compute_verification_summary(result)
+            total_verified += verification_counts["verified"]
+            total_failed += verification_counts["failed"]
+
         summary_lines = [
             "[bold green]Search complete[/bold green]",
             f"Customers analyzed: {len(analyzed)}",
@@ -270,6 +288,11 @@ class SearchRunner:
                 f"[bold yellow]Files skipped (no text extraction): {skipped_files_total}[/bold yellow]"
             )
 
+        if total_verified or total_failed:
+            summary_lines.append(
+                f"Citations verified: {total_verified} | [bold yellow]unverified: {total_failed}[/bold yellow]"
+            )
+
         summary_lines.append(f"Output: {self._output_path}")
 
         self._console.print()
@@ -280,6 +303,43 @@ class SearchRunner:
                 border_style="green" if not failures else "yellow",
             )
         )
+
+    # ------------------------------------------------------------------
+    # Pipeline integration steps
+    # ------------------------------------------------------------------
+
+    def _download_external_references(self, text_dir: Path) -> None:
+        """Download external T&Cs referenced by URL in extracted text (Issue #15).
+
+        Non-blocking: failures are logged as warnings but never halt the pipeline.
+        """
+        from dd_agents.extraction.reference_downloader import ReferenceDownloader
+
+        try:
+            downloader = ReferenceDownloader(text_dir=text_dir)
+            results = downloader.process_all()
+            succeeded = sum(1 for r in results if r.success)
+            if results:
+                self._console.print(f"[dim]External references: {succeeded}/{len(results)} downloaded[/dim]")
+        except Exception as exc:
+            logger.warning("External reference download failed (non-blocking): %s", exc)
+
+    def _verify_citations(self, analyzed: list[SearchCustomerResult], text_dir: Path) -> None:
+        """Verify LLM citations against source text (Issue #5).
+
+        Runs locally using fuzzy matching — no API calls.
+        """
+        from dd_agents.search.citation_verifier import CitationVerifier
+
+        try:
+            verifier = CitationVerifier(
+                text_dir=text_dir,
+                data_room_path=self._data_room,
+            )
+            for result in analyzed:
+                verifier.verify_result(result)
+        except Exception as exc:
+            logger.warning("Citation verification failed (non-blocking): %s", exc)
 
     # ------------------------------------------------------------------
     # Helpers

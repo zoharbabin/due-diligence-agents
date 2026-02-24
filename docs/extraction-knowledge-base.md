@@ -87,11 +87,11 @@ attempted is recorded in the `fallback_chain` array for auditability.
 
 ```
 Step 1: pymupdf (page-aware, injects --- Page N --- markers)
-  ↓ fails density check? (<100 chars total, or <50 chars/page)
+  ↓ fails density check? (<500 chars total, or <50 chars/page)
 Step 2: pdftotext (poppler CLI, converts \f to page markers)
-  ↓ fails density check? (<100 chars total, or <50 chars/page)
+  ↓ fails density check? (<500 chars total, or <50 chars/page)
 Step 3: markitdown (handles edge-case PDFs, no page markers)
-  ↓ fails threshold? (<100 chars)
+  ↓ fails threshold? (<100 chars) OR fails readability gate? (<85% printable)
 Step 4: pytesseract OCR (page-by-page image OCR, injects markers)
   ↓ fails threshold? (<20 chars)
 Step 5: Direct text read (UTF-8 → latin-1, last resort)
@@ -247,7 +247,7 @@ chars/page (scattered headers/footers). The density check catches this:
 
 ```python
 is_dense_enough = (
-    text_len >= _SCANNED_PDF_THRESHOLD
+    text_len >= _MIN_EXTRACTION_CHARS  # 500 chars (Bug H fix)
     and (page_count <= 1 or text_len / page_count >= _MIN_CHARS_PER_PAGE)
 )
 ```
@@ -361,7 +361,7 @@ Phase 4 — VALID:  If any NOT_ADDRESSED remains, re-query with targeted follow-
 - Answer priority: YES (3) > substantive free-text (2) = NO (2) > NOT_ADDRESSED (1)
 - When tied at same priority: prefer the longer, more substantive answer
 - Conflict detection: if both YES and NO present → trigger Phase 3
-- Citation deduplication: key = `(file_path, page, section_ref)`
+- Citation deduplication: key = `(file_path, page, section_ref, exact_quote)`
 
 ---
 
@@ -407,14 +407,24 @@ enables human reviewers to:
 
 ### 6.5 Citation Deduplication
 
-When merging multi-chunk results, identical citations are deduplicated:
+Citations are deduplicated at two levels using a 4-tuple key:
 
 ```python
-key = (citation.file_path, citation.page, citation.section_ref)
+key = (citation.file_path, citation.page, citation.section_ref, citation.exact_quote)
 ```
 
-This prevents the same clause from appearing multiple times when
-overlapping chunks both cite it.
+This preserves distinct quotes from the same page/section (e.g., two
+different clauses on the same page) while eliminating true duplicates.
+
+Dedup is applied via the shared `dedup_citations()` function at:
+
+1. **Parse time** — inside `parse_column_result()`, so every LLM
+   response (map, synthesis, validation) gets deduped immediately
+2. **Merge time** — in `_merge_chunk_results()`, deduping citations
+   collected across multiple chunks
+
+This two-level approach ensures consistent dedup for both single-chunk
+customers (parse-time only) and multi-chunk customers (parse + merge).
 
 ### 6.6 Known Citation Limitations
 
@@ -424,6 +434,48 @@ overlapping chunks both cite it.
    recognition errors
 3. **Synthesis truncation** — the synthesis pass truncates `exact_quote` to
    200 chars for compactness in the conflict resolution prompt
+
+### 6.7 Citation Verification (Issue #5)
+
+After analysis, all citations are verified against extracted source text
+using `rapidfuzz.fuzz.partial_ratio`. This runs locally — no API calls.
+
+**Core configuration:**
+- **80% threshold** — quotes scoring >= 80 are marked as verified.
+  This tolerates OCR character-level errors while catching fabricated text.
+- **Whitespace normalization** — all whitespace (newlines, tabs, multiple
+  spaces) is collapsed to single spaces before comparison, handling line
+  breaks from PDF column layout, OCR, and markitdown reformatting.
+- **Section verification** — substring check for `section_ref` in the
+  full document text (any file in the customer's set).
+- **Non-blocking** — verification failures populate metadata fields but
+  never block the pipeline.
+
+**Progressive search scope (Issue #24):**
+
+Quote verification uses a 4-level progressive search to maximize recall
+while keeping attribution accurate:
+
+1. **Page-scoped** — search within the cited page only (fastest, most
+   precise attribution).
+2. **Adjacent pages (+-1)** — expand to neighboring pages. Catches
+   cross-page quotes and off-by-one page citations from the LLM.
+3. **Full document** — search the entire source file. Catches quotes
+   where the page number is wrong but the file is correct.
+4. **Cross-file** — search ALL files in the customer's text set. Catches
+   file misattributions from the LLM merge phase. When found, the
+   citation's `file_path` and `page` are automatically corrected.
+
+**Production results (Data Room B, 37 customers):**
+- 244 citations verified (99.6%)
+- 1 citation unverified (OCR artifact, score 71)
+- 136 citations unverifiable (no exact_quote provided — expected)
+
+Fields on `SearchCitation`:
+- `quote_verified: bool | None` — True if found, False if not, None if
+  nothing to verify (empty quote)
+- `quote_match_score: float` — fuzzy match score (0-100)
+- `section_verified: bool | None` — True if section_ref found in source
 
 ---
 
@@ -490,6 +542,21 @@ if failure_rate > 0.50:
 This is a hard stop — something is fundamentally wrong (missing
 dependencies, corrupted data room, permission issues).
 
+### 7.5 External Reference Completeness (Issue #15)
+
+Contracts that incorporate external T&Cs by URL are a known accuracy gap.
+The pipeline now includes a post-extraction step that:
+
+1. Scans all `.md` files in `text_dir` for URL patterns
+2. Filters to T&C-like URLs using path keyword heuristics
+   (terms, conditions, policy, SLA, EULA, privacy, legal, etc.)
+3. Downloads via `urllib.request` (stdlib, no new deps)
+4. Extracts text via `markitdown` (existing dep)
+5. Caches to `text_dir` with `__external__<slug>.md` naming
+
+This step is **non-blocking**: download failures are logged as warnings
+but never halt the pipeline. On re-runs, cached files are skipped.
+
 ---
 
 ## 8. LLM Output Normalization
@@ -505,17 +572,45 @@ not just at the initial parse. We initially added `.upper()` at parse time
 and validation pass (Phase 4). This caused 53% of confidence values in the
 a production retest to remain mixed-case.
 
-**Rule:** Every `col_data.get("confidence", "")` must end with `.upper()`.
+**Fix (final):** Confidence normalization is now centralized in the Pydantic
+`field_validator` on `SearchColumnResult.confidence`. All four phases (map,
+merge, synthesis, validation) route through `parse_column_result()` which
+triggers the validator automatically. No manual `.upper()` needed.
 
-### 8.2 Answer Normalization
+### 8.2 Answer Normalization (Issue #24)
 
-Answers are compared case-insensitively:
+LLMs sometimes return free-text answers instead of the requested
+YES/NO/NOT_ADDRESSED format. The `_normalize_answer()` function in
+`models/search.py` detects 10 non-standard prefixes and maps them to
+NOT_ADDRESSED:
+
 ```python
-answer_upper = col_result.answer.upper().strip()
+_NOT_ADDRESSED_PREFIXES = (
+    "UNABLE TO DETERMINE",
+    "CANNOT DETERMINE",
+    "CANNOT BE DETERMINED",
+    "UNABLE TO ASSESS",
+    "INSUFFICIENT INFORMATION",
+    "NOT ENOUGH INFORMATION",
+    "COULD NOT DETERMINE",
+    "COULD NOT BE DETERMINED",
+    "NOT DETERMINABLE",
+    "INDETERMINATE",
+)
 ```
 
-But the original casing is preserved for display (free-text summaries
-should not be uppercased).
+**Normalization rules:**
+- Standard answers (YES, NO, NOT_ADDRESSED) are returned as-is
+  (preserving original casing for free-text that starts with YES/NO)
+- Any answer starting with a recognized prefix is replaced with
+  NOT_ADDRESSED
+- All other answers are whitespace-stripped but otherwise preserved
+
+**Applied at every entry point:** Normalization runs inside
+`parse_column_result()` which is called by all four pipeline phases.
+This was critical — the initial implementation only normalized in the
+map phase, but the validation phase re-queries Claude which returns
+the same non-standard text again, bypassing the normalization.
 
 ### 8.3 Verbose NOT_ADDRESSED Detection
 
@@ -524,12 +619,17 @@ The LLM sometimes returns:
 > do not contain an explicit obligation..."
 
 This must be treated as NOT_ADDRESSED (priority 1), not as substantive
-free-text (priority 2). Detection:
+free-text (priority 2). Detection in the merge phase:
 
 ```python
 if answer_upper.startswith("NOT_ADDRESSED") or answer_upper.startswith("NOT ADDRESSED"):
     priority = 1  # Not substantive
 ```
+
+This is separate from the `_normalize_answer()` normalization above —
+the merge phase needs to detect verbose NOT_ADDRESSED for priority
+ranking, while `_normalize_answer()` handles non-standard phrasings
+that don't start with "NOT_ADDRESSED" at all.
 
 ### 8.4 JSON Extraction from LLM Output
 
@@ -729,6 +829,43 @@ Extraction time: ~33 seconds for 995 files (33 ms/file average).
 | **Fix** | Added `_is_cached_output_readable()` to cache gate; also deleted stale `.md` output files to force immediate re-extraction |
 | **Lesson** | Cache gates must be upgraded alongside extraction logic. When deploying new quality checks, delete stale outputs for affected files |
 
+### Bug I: DocuSign Watermark-Only PDFs Accepted as Valid Extraction
+
+| | |
+|---|---|
+| **Symptom** | 3 scanned PDFs (Data Room A) extracted only repeating DocuSign envelope IDs — every page identical (`DocuSign Envelope ID: XXXXXXXX-...`). Passed density checks because watermarks are valid ASCII text |
+| **Root cause** | pymupdf/pdftotext can only read the transparent DocuSign overlay on scanned PDFs, not the actual page content underneath. Text passes `_MIN_CHARS_PER_PAGE` because watermark text is dense enough |
+| **Fix** | Added `_is_watermark_only()` heuristic — uses `Counter` to detect when >50% of non-blank, non-marker lines are identical repeated strings. Integrated as guard on pymupdf and pdftotext steps |
+| **Lesson** | Density checks (chars/page) are necessary but not sufficient. Repetitive content detection is a separate quality gate |
+
+### Bug J: Image Extraction Chain Missing Readability Gate
+
+| | |
+|---|---|
+| **Symptom** | PNG image file extracted as 260KB binary garbage by markitdown (23% printable characters) |
+| **Root cause** | The PDF chain has `_is_readable_text()` gate (Bug G fix), but the image chain did not apply the same check |
+| **Fix** | Added `self._is_readable_text(text)` to the markitdown check in `_extract_image` |
+| **Lesson** | Every extraction chain (PDF, image, Office) must apply the same quality gates. Bug G was fixed for PDFs but not propagated to images |
+
+### Bug K: Colon-in-Filename Breaks Citation Verifier File Lookup
+
+| | |
+|---|---|
+| **Symptom** | 8 citations marked unverified for files with colons in their names (e.g., `Order Form 2:3.pdf`). Citation verifier could not find extracted text files |
+| **Root cause** | macOS stores colons as `&#x3a_` in filenames. LLM cites paths with literal colons. `_safe_text_name` computes a different hash for `2:3` vs `2&#x3a_3` |
+| **Fix** | Added fallback in `_load_customer_texts` — if text_path doesn't exist and file_path contains `:`, try replacing `:` with `&#x3a_` and recompute safe name |
+| **Lesson** | Filesystem encoding normalization must be handled at every file lookup point, not just during extraction |
+
+### Bug L: Missing ToUnicode CMap Produces Garbled Text That Passes All Checks
+
+| | |
+|---|---|
+| **Symptom** | 13 of 56 pages in a PandaDoc-generated PDF extracted as ASCII control characters (0x01-0x1F). pymupdf reports confidence 0.9 despite 46% control characters on affected pages. 12.4% control characters across full document |
+| **Root cause** | PDF uses `Identity-H` CID-keyed fonts (Cambria, Calibri) without `/ToUnicode` CMap entries. pymupdf's `get_text()` returns raw CID codes as control bytes. The first 9 pages use Arial fonts with valid ToUnicode → clean text. `_is_readable_text()` only samples the first 10K chars (clean pages), missing the corruption |
+| **Discovery** | Pre-inspection of all 426 PDFs in 3.5 seconds (8ms/file avg) correctly identifies exactly 1 file with this issue + 18 scanned PDFs with no fonts |
+| **Fix** | Pending — control-character ratio check on full pymupdf output (>1% control chars → reject → fall through to GLM-OCR). See §16.9 for library comparison |
+| **Lesson** | PDF text extraction quality depends on font encoding metadata, not just content density. Pre-inspection of font tables can predict extraction failures before attempting extraction |
+
 ---
 
 ## 12. Edge Cases Catalog
@@ -739,6 +876,8 @@ Extraction time: ~33 seconds for 995 files (33 ms/file average).
 |-----------|----------|
 | Empty PDF (0 bytes) | All methods fail → confidence 0.0, recorded as failed |
 | Encrypted PDF | pymupdf/pdftotext fail → markitdown may succeed → OCR as last resort |
+| PDF with missing ToUnicode CMap | pymupdf returns control bytes (0x01-0x1F) → control-char check rejects → GLM-OCR renders and extracts visually. All 7 text extraction libraries fail; only image-based OCR works (see §16.9) |
+| PDF with watermark-only overlay | pymupdf extracts only DocuSign/watermark text → `_is_watermark_only()` detects >50% identical lines → GLM-OCR |
 | PDF with only images | pymupdf returns ~0 chars → density check fails → OCR triggered |
 | Scanned PDF → markitdown binary dump | markitdown returns raw PDF binary → `_is_readable_text()` rejects (< 85% printable) → OCR triggered |
 | Multi-page scanned PDF with headers | Total chars > 100 but chars/page < 50 → density check catches it |
@@ -747,6 +886,8 @@ Extraction time: ~33 seconds for 995 files (33 ms/file average).
 | .xlsx with merged cells | markitdown handles; future: openpyxl smart extraction |
 | Corrupt/truncated file | All methods fail gracefully → confidence 0.0 |
 | Non-UTF-8 encoding | UTF-8 with error replacement → latin-1 fallback |
+| Filename with colons (macOS) | macOS stores `:` as `&#x3a_`; citation verifier tries encoded variant as fallback |
+| Image file → binary garbage | markitdown dumps raw image bytes → `_is_readable_text()` rejects → GLM-OCR |
 | Filename with Unicode/spaces | Safe name conversion: `/` → `__`, length cap with hash |
 | Filename > 200 chars | Truncated with SHA-256 suffix for uniqueness (macOS 255-byte limit) |
 | macOS resource forks (`__MACOSX`) | Excluded from file discovery |
@@ -864,9 +1005,11 @@ Single-chunk customers get a standard prompt. Multi-chunk customers get:
 | Constant | Value | Purpose |
 |----------|-------|---------|
 | `_MIN_TEXT_LEN` | 20 chars | Minimum for any extraction to be "non-empty" |
-| `_SCANNED_PDF_THRESHOLD` | 100 chars | Minimum for PDF extraction to be accepted |
+| `_SCANNED_PDF_THRESHOLD` | 100 chars | Cache gate minimum; markitdown fallback threshold |
+| `_MIN_EXTRACTION_CHARS` | 500 chars | Density check hard minimum for pymupdf/pdftotext (Bug H fix) |
 | `_MIN_CHARS_PER_PAGE` | 50 chars/page | Density check for scanned PDF detection |
 | `_MIN_PRINTABLE_RATIO` | 0.85 (85%) | Readability gate — rejects binary garbage from markitdown |
+| `QUOTE_MATCH_THRESHOLD` | 80 (0-100) | Citation verification fuzzy match minimum |
 | `OCR_PAGE_TIMEOUT` | 30 seconds | Per-page timeout for pytesseract |
 | `OCR_LAST_PAGE_CAP` | 50 pages | Maximum pages for OCR processing |
 | Systemic failure gate | 50% | Pipeline halts if > 50% non-plaintext files fail |
@@ -979,27 +1122,30 @@ has proven reliable for text-native PDFs but has structural weaknesses:
 | No reading order detection | Multi-column layouts extracted column-interleaved | pymupdf follows PDF object order, not visual flow |
 | Single-language OCR | Korean, Japanese, Chinese contracts → garbled | pytesseract hardcoded to `lang="eng"` |
 | No layout analysis | Cannot distinguish headers, footers, sidebars from body | Extraction is purely text-based |
+| Missing ToUnicode CMap → garbled text (Bug L) | 46% control characters on affected pages; passes density checks | pymupdf returns raw CID codes when font has no ToUnicode mapping; `_is_readable_text()` only samples first 10K chars |
+| No PDF pre-inspection | Fallback chain runs 3-4 extractors before reaching OCR on known-bad PDFs | No upfront analysis of PDF structure (fonts, encryption, page images) |
+| Sequential fallback chain | ~700ms wasted on futile extractors before OCR for scanned/garbled PDFs | Each extractor runs to completion before checking quality |
 
 ### 16.2 Library Comparison Matrix
 
-Six libraries evaluated as potential replacements or supplements to
+Eight libraries evaluated as potential replacements or supplements to
 markitdown in our fallback chain:
 
-| Criteria | markitdown (current) | Docling (IBM) | MinerU (OpenDataLab) | PP-StructureV3 (PaddlePaddle) | LangExtract (Google) | Unstructured |
-|----------|---------------------|---------------|---------------------|-------------------------------|---------------------|--------------|
-| **PDF text extraction** | Basic | Layout-aware | Layout-aware | Layout-aware | LLM-driven | Layout-aware |
-| **Table → structured** | No | HTML/CSV | HTML/Markdown | HTML | JSON | HTML |
-| **Formula → LaTeX** | No | Yes | Yes | Yes | No | No |
-| **Reading order** | No | Yes | Yes | Yes | N/A | Yes |
-| **OCR languages** | English only | Multi-language | 109 languages | Multi-language | N/A (LLM) | Multi-language |
-| **Page markers** | No | Yes (page-level) | Yes (page-level) | Yes | N/A | Yes (element-level) |
-| **Scanned PDF** | Binary dump (Bug G) | DocTR/EasyOCR | PaddleOCR/Tesseract | PaddleOCR | Vision LLM | Tesseract/paddle |
-| **Formats beyond PDF** | DOCX, XLSX, PPTX, RTF | DOCX, PPTX, XLSX, HTML, images, AsciiDoc | PDF only | PDF/images only | Any (LLM) | All major formats |
-| **Lossless output** | Markdown only | JSON (DoclingDocument) | Markdown + JSON | Markdown | JSON | JSON elements |
-| **License** | MIT | MIT | AGPL-3.0 | Apache 2.0 | Apache 2.0 | Apache 2.0 |
-| **Python install** | `pip install` | `pip install docling` | `pip install magic-pdf` | `pip install paddlepaddle paddleocr` | `pip install langextract` | `pip install unstructured` |
-| **GPU required** | No | Optional (faster) | Optional | Optional | No (API-based) | Optional |
-| **Benchmark (OmniDocBench)** | N/A | 0.589 EN edit distance | 0.238 EN edit distance | **0.145 EN edit distance** | N/A | N/A |
+| Criteria | markitdown (current) | Docling (IBM) | MinerU (OpenDataLab) | PP-StructureV3 (PaddlePaddle) | LangExtract (Google) | Unstructured | AWS Textract | **GLM-OCR (Zhipu AI)** |
+|----------|---------------------|---------------|---------------------|-------------------------------|---------------------|--------------|-----------------|----------------------|
+| **PDF text extraction** | Basic | Layout-aware | Layout-aware | Layout-aware | LLM-driven | Layout-aware | Layout-aware (managed) | Vision-LM (image-based) |
+| **Table → structured** | No | HTML/CSV | HTML/Markdown | HTML | JSON | HTML | HTML (rows/cols/merged cells) | Markdown tables |
+| **Formula → LaTeX** | No | Yes | Yes | Yes | No | No | No | Yes |
+| **Reading order** | No | Yes | Yes | Yes | N/A | Yes | Yes (LAYOUT API) | Yes (PP-DocLayout-V3) |
+| **OCR languages** | English only | Multi-language | 109 languages | Multi-language | N/A (LLM) | Multi-language | 6 Latin (EN/FR/DE/IT/PT/ES) | 100+ languages |
+| **Page markers** | No | Yes (page-level) | Yes (page-level) | Yes | N/A | Yes (element-level) | Yes (page-level) | Yes (page-level) |
+| **Scanned PDF** | Binary dump (Bug G) | DocTR/EasyOCR | PaddleOCR/Tesseract | PaddleOCR | Vision LLM | Tesseract/paddle | Native OCR (managed) | Vision-LM OCR (renders to images) |
+| **Formats beyond PDF** | DOCX, XLSX, PPTX, RTF | DOCX, PPTX, XLSX, HTML, images, AsciiDoc | PDF only | PDF/images only | Any (LLM) | All major formats | PDF, TIFF, PNG, JPEG only | PDF, PNG, JPG only |
+| **Lossless output** | Markdown only | JSON (DoclingDocument) | Markdown + JSON | Markdown | JSON | JSON elements | JSON (blocks/tables/forms) | Markdown + JSON |
+| **License** | MIT | MIT | AGPL-3.0 | Apache 2.0 | Apache 2.0 | Apache 2.0 | Proprietary (pay-per-page) | MIT (model) + Apache 2.0 (code) |
+| **Python install** | `pip install` | `pip install docling` | `pip install magic-pdf` | `pip install paddlepaddle paddleocr` | `pip install langextract` | `pip install unstructured` | `pip install boto3` | `pip install mlx-vlm pypdfium2` (Mac) / `ollama pull glm-ocr` (cross-platform) |
+| **GPU required** | No | Optional (faster) | Optional | Optional | No (API-based) | Optional | No (cloud-managed) | No (0.9B runs on CPU; GPU faster) |
+| **Benchmark (OmniDocBench)** | N/A | 0.589 EN edit distance | 0.238 EN edit distance | **0.145 EN edit distance** | N/A | N/A | N/A (proprietary) | **94.62 OmniDocBench V1.5** (#1) |
 
 ### 16.3 Docling (IBM, Open Source)
 
@@ -1117,7 +1263,371 @@ lower than MinerU's pipeline backend.
 - Chart understanding could extract data from embedded diagrams
 - Requires PaddlePaddle, which adds a non-trivial dependency
 
-### 16.6 Head-to-Head Recommendation
+### 16.6 AWS Textract (Amazon)
+
+**Service:** Managed OCR/document analysis API (proprietary, pay-per-page)
+
+**Architecture:** Documents uploaded to S3 (async) or sent inline (sync,
+single page only) → AWS-managed OCR and layout analysis → JSON response
+with blocks (pages, lines, words), tables (rows, columns, merged cells),
+forms (key-value pairs), signatures, and layout elements.
+
+**Five API types:**
+
+| API | Purpose | Price/page |
+|-----|---------|------------|
+| `DetectDocumentText` | Basic OCR (lines + words) | $0.0015 |
+| `AnalyzeDocument` — Tables | Table extraction with cell structure | $0.015 |
+| `AnalyzeDocument` — Forms | Key-value pair extraction | $0.050 |
+| `AnalyzeDocument` — Layout | Reading order, headers, footers, sections | $0.015 |
+| `AnalyzeDocument` — Queries | Natural language questions about the document | $0.015 + query fee |
+
+Additional APIs: `AnalyzeExpense` (invoices/receipts, $0.01/page),
+`AnalyzeID` (identity documents, $0.01/page), `AnalyzeLending`
+(mortgage documents, $0.003/page).
+
+**Strengths:**
+- Table extraction with HTML-level structure (rows, columns, merged
+  cells, column headers) — strongest table capability among evaluated
+  options alongside PP-StructureV3
+- Layout analysis API returns reading order, section headers, page
+  headers/footers, titles — solves multi-column interleaving
+- Form extraction (key-value pairs) useful for insurance forms,
+  compliance questionnaires
+- Signature detection — useful for identifying signed vs unsigned docs
+- Confidence scores per word/line/cell — enables quality-aware fallback
+  decisions (low-confidence blocks could trigger re-extraction)
+- Bounding box coordinates for every element — enables visual grounding
+- Zero infrastructure: no GPU, no model downloads, no dependency
+  management
+- Async API handles up to 3,000 pages / 500 MB per document
+
+**Weaknesses:**
+- Only 6 Latin languages (EN, FR, DE, IT, PT, ES) — **no CJK support**
+  (Korean, Japanese, Chinese). Does not solve our Korean MSA problem
+- S3 dependency for async (multi-page) processing — adds AWS credential
+  management and S3 bucket provisioning to deployment
+- Sync API limited to single page — impractical for multi-page contracts
+- Cost at scale: a 200-customer deal with ~50 pages each = 10,000 pages.
+  At $0.015/page (tables) = $150/deal; at $0.065/page (tables+forms) =
+  $650/deal. Adds up for repeated runs
+- Proprietary: no local/offline mode, no self-hosting, subject to AWS
+  pricing changes and rate limits
+- No formula/LaTeX extraction
+- No DOCX/XLSX support (PDF and image formats only)
+- Async workflow adds polling/callback complexity compared to
+  synchronous local libraries
+
+**Cost comparison for typical M&A deal (10,000 pages):**
+
+| Method | Cost | Notes |
+|--------|------|-------|
+| pytesseract (current) | $0 | Local, free |
+| Textract DetectDocumentText | $15 | Basic OCR only |
+| Textract AnalyzeDocument (tables) | $150 | Tables + OCR |
+| Textract AnalyzeDocument (tables + forms) | $650 | Full extraction |
+| PP-StructureV3 / PaddleOCR | $0 | Local, free (GPU optional) |
+
+**Relevance to dd-agents:**
+- Best positioned as a **pytesseract replacement** (Step 4 in our PDF
+  fallback chain) for scanned PDFs where local OCR produces poor results
+- Table extraction valuable for pricing schedules, payment tables, and
+  financial exhibits that our current chain flattens to plain text
+- Confidence scores could feed into our quality gates (reject
+  low-confidence extractions and trigger re-extraction with a different
+  method)
+- **Not recommended as default** due to cost, AWS dependency, and
+  limited language support
+- **Add when these triggers occur:**
+  1. Table extraction accuracy matters for the analysis (pricing
+     schedules, financial exhibits with complex table layouts)
+  2. The deployment already runs on AWS (S3 and credentials available)
+  3. Volume justifies the cost vs. manual review savings
+  4. English/Western European documents dominate the deal (CJK excluded)
+- **Integration point:** Add as Step 4b in the PDF chain, between
+  pytesseract (Step 4) and direct-read fallback (Step 5). Gate on:
+  file is scanned PDF + pytesseract confidence < threshold + AWS
+  credentials available
+
+### 16.7 GLM-OCR (Zhipu AI)
+
+**Repository:** github.com/zai-org/GLM-OCR (MIT model + Apache 2.0 code)
+**Ollama:** `ollama pull glm-ocr` (2.2 GB default, 1.6 GB q8_0)
+**Hugging Face:** zai-org/GLM-OCR (original), mlx-community/GLM-OCR-* (Apple MLX variants)
+**Local deployment (Mac):** `pip install mlx-vlm pypdfium2` — 5 lines of code via `mlx_vlm.load()` + `mlx_vlm.generate()`
+
+**Architecture:** A 0.9B-parameter multimodal vision-language model with
+a two-stage pipeline:
+1. **Layout analysis** (PP-DocLayout-V3): Detects text regions, tables,
+   formulas, figures, seals, code blocks on the page image.
+2. **Parallel recognition** (CogViT encoder + GLM-0.5B decoder): Each
+   detected region is recognized in parallel and assembled into
+   structured output.
+
+Uses Multi-Token Prediction (MTP) loss for contextual error correction
+and Stable Full-Task Reinforcement Learning for layout generalization.
+128K context window.
+
+**Key difference from other OCR tools:** GLM-OCR is not a traditional
+OCR engine — it is a vision-language model. It processes pages as images,
+not as PDF text streams. This means it re-OCRs digitally-born PDFs
+rather than extracting embedded text, which is slower but handles
+scanned/degraded documents better than text-layer extraction.
+
+**Capabilities:**
+- Text recognition (print and handwriting)
+- Table recognition (complex, nested, cross-page → Markdown tables)
+- Formula recognition (→ LaTeX)
+- Figure/chart description
+- Seal/stamp recognition (circular, elliptical, irregular)
+- Code block recognition with syntax awareness
+- Information extraction with JSON Schema output
+- 100+ languages including CJK (English, Chinese, Japanese, Korean,
+  European languages)
+
+**Benchmark results:**
+
+| Benchmark | GLM-OCR (0.9B) | PP-StructureV3 | MinerU | Docling |
+|-----------|---------------|----------------|--------|---------|
+| OmniDocBench V1.5 | **94.62** (#1) | — | — | — |
+| OmniDocBench V1 edit dist. | — | **0.145** | 0.238 | 0.589 |
+
+Note: OmniDocBench V1 and V1.5 use different scoring (edit distance vs
+composite score), so direct comparison is not possible. GLM-OCR ranks #1
+on the V1.5 leaderboard. Independent head-to-head benchmarks against
+PP-StructureV3 on identical test sets are not yet available (model
+released February 2026).
+
+**System requirements:**
+
+| Variant | HuggingFace ID | Download size | Min RAM | GPU |
+|---------|---------------|--------------|---------|-----|
+| bf16 (full precision) | `mlx-community/GLM-OCR-bf16` | 2.21 GB | ~4 GB | Optional (Metal) |
+| 4-bit quantized | `mlx-community/GLM-OCR-4bit` | 1.25 GB | ~2.5 GB | Optional (Metal) |
+| 8-bit quantized | `mlx-community/GLM-OCR-8bit` | 1.58 GB | ~3 GB | **Crashes on macOS Metal** |
+| Ollama default (bf16) | `glm-ocr:latest` | 2.2 GB | ~4 GB | Optional |
+| Ollama quantized (q8) | `glm-ocr:q8_0` | 1.6 GB | ~3 GB | Optional |
+
+**Note:** The 8-bit MLX variant crashes with a Metal assertion error
+(`MTLCommandBuffer addCompletedHandler:1011: failed assertion`). Use
+the 4-bit variant instead — it is both smaller and faster.
+
+Throughput (measured on Apple M3 Max, 36 GB, macOS 15.3):
+
+| Config | Pages/sec | 16-page doc | Notes |
+|--------|----------|-------------|-------|
+| 4bit / 720px / 150 DPI | **0.30** | **53s** | Optimal config — 4/4 quality |
+| 4bit / 1000px / 150 DPI | 0.23 | 70s | Slightly slower, same quality |
+| bf16 / 1000px / 150 DPI | 0.12 | 135s | Full precision, no quality gain |
+| bf16 / 1200px / 150 DPI | 0.11 | 150s | — |
+| bf16 / 1600px / 150 DPI | 0.08 | 189s | Default — too slow |
+| bf16 / 1600px / 300 DPI | 0.01 | >1600s | Hallucination, unusable |
+
+Key performance findings from dd-agents testing (BLUERUSH data room,
+Broadridge OEM Agreement — 16-page scanned contract, hardest PDF in
+the data room):
+- **Image tokens are the bottleneck:** 300 DPI = ~6,064 tokens/page
+  (17s prefill). 150 DPI + 720px cap = ~1,000 tokens (1s prefill)
+- **4-bit quantization = 2x faster than bf16** with zero quality loss
+  on contract text. The 4-bit model (1.25 GB) is the clear winner
+- **max_tokens=2048 prevents hallucination:** At max_tokens=8192,
+  pages 3-4 produced 37K-44K garbage chars (repetition loops). Capping
+  at 2048 eliminated this completely
+- **Threading crashes (Metal not thread-safe):** Even 2 concurrent
+  `generate()` calls segfault. MLX's Metal GPU backend cannot be shared
+  across threads
+- **Multi-process = marginal gain:** 2 separate processes (each loading
+  own model) = 49s vs 53s sequential. GPU contention limits parallelism
+- **torchvision fast image processor:** No measurable impact (52.8s vs
+  53.5s). The bottleneck is Metal inference, not image preprocessing
+- **temperature=0.0 (greedy decode):** Required for deterministic OCR.
+  Any temperature > 0 introduces variation in text recognition output
+
+**Strengths:**
+- #1 on OmniDocBench V1.5 with only 0.9B parameters — remarkable
+  efficiency vs competitors at 3B–72B+
+- Structured Markdown/JSON/LaTeX output (not raw text) — directly
+  compatible with our page-aware chunking pipeline
+- 100+ language OCR including CJK — directly solves our Korean MSA
+  and Japanese contract limitations
+- Table extraction to Markdown — preserves structure for pricing
+  schedules and payment tables
+- Formula → LaTeX — handles mathematical terms in financial exhibits
+- Fully local, air-gapped capable — ideal for confidential M&A data
+  rooms where data cannot leave the network
+- MIT + Apache 2.0 license — no commercial restrictions
+- Tiny footprint (1.25 GB at 4-bit) — can run alongside the rest of
+  the pipeline on a standard laptop
+- Multiple deployment options — mlx-vlm (Apple Silicon, simplest),
+  Ollama (cross-platform), vLLM/SGLang (Linux GPU servers)
+- Fine-tunable via LLaMA-Factory for domain-specific document layouts
+- **Tested against hardest BLUERUSH PDF:** Won 5/6 artifact checks vs
+  pytesseract (0 losses), found all 12 key legal terms, 50.7K chars
+  extracted vs pytesseract's 46.7K for the same 16-page scanned contract
+
+**Weaknesses:**
+- **Image-based processing only** — PDFs are rendered to images before
+  OCR. For digitally-born PDFs with selectable text, pymupdf/pdftotext
+  remain faster and more accurate. GLM-OCR should not replace text-layer
+  extraction; it should replace pytesseract for scanned/degraded docs
+- **100-page PDF limit** — long documents must be chunked before
+  processing (our pipeline already handles this via page-level splitting)
+- **No technical report yet** — training data, failure modes, and
+  ablation studies are unavailable. "Coming soon" per authors
+- **Young ecosystem** — released February 2026, ~40K downloads, 27
+  commits, 31 open issues. Limited independent validation
+- **Layout detection dependency** — pipeline relies on PP-DocLayout-V3
+  as a separate stage; layout errors propagate to OCR quality
+- **No embedded text extraction** — cannot use PDF text layer, always
+  does visual recognition. Slower than `pdftotext` for text-native PDFs
+- **Throughput** — 0.30 pages/sec at optimal config (4bit/720px on
+  Apple M3 Max). A 10,000-page deal would need ~9.3 hours on a single
+  instance. However, GLM-OCR only runs on scanned PDFs that failed
+  text-layer extraction — typically 5-20% of a data room (500-2,000
+  pages = 28-111 minutes). pytesseract is comparable speed
+- **Not thread-safe on macOS** — MLX Metal backend crashes with
+  concurrent `generate()` calls. Multi-process provides marginal gain
+  due to GPU contention. True parallelism requires separate GPU hardware
+  or Linux multi-GPU with vLLM
+- **Precision claims unverified** — "99.9% precision" in PRECISION_MODE
+  lacks metric definitions or public test results
+- **Hallucination risk at high token limits** — Must cap max_tokens at
+  2048 per page. At 8192, repetition loops produce 37K-44K garbage chars
+  on dense pages. This is a known VLM failure mode, not specific to
+  GLM-OCR
+
+**Cost comparison (10,000-page deal, scanned PDF subset):**
+
+| Method | Cost | Hardware | Speed (measured) | 16-page contract |
+|--------|------|----------|-----------------|-----------------|
+| pytesseract (current) | $0 | CPU | ~1-2 pages/sec | ~10-16s |
+| GLM-OCR 8bit/mlx-vlm (1024px) | $0 | Apple Silicon | 0.21 pages/sec | **~75s** |
+| GLM-OCR 4bit/mlx-vlm (720px) | $0 | Apple Silicon | 0.30 pages/sec | ~53s |
+| GLM-OCR bf16/mlx-vlm | $0 | Apple Silicon | 0.08-0.12 pages/sec | 135-189s |
+| GLM-OCR via Ollama | $0 | CPU (GPU optional) | ~0.2-0.3 pages/sec (est.) | ~60-80s (est.) |
+| AWS Textract (tables) | $150 | Cloud | ~5-10 pages/sec | ~2-3s |
+| PP-StructureV3 | $0 | CPU (GPU optional) | Varies | — |
+
+GLM-OCR is 3-6x slower than pytesseract per page, but produces
+significantly higher quality output. The trade-off is worthwhile for
+scanned/degraded documents where pytesseract produces garbled text.
+
+**Resolution vs quantization findings (A/B tested, Feb 2024):**
+Resolution is the dominant quality lever. Increasing max image dimension
+from 720px to 1024px (at 200 DPI) fixed all 4 tested word-level errors
+while adding only ~2s/page. Quantization (4-bit → 8-bit → bf16) had
+minimal accuracy impact — 8-bit is the recommended balance of quality,
+speed (9.4s/2pp), and VRAM (1.5 GB).
+
+**Relevance to dd-agents:**
+- **Strongest candidate for replacing pytesseract** as Step 4 in the
+  PDF fallback chain. Same role (scanned PDF OCR) but with structured
+  output, table extraction, formula recognition, and 100+ languages
+- Unlike AWS Textract: free, local, air-gapped, no cloud dependency
+- Unlike PP-StructureV3: simpler deployment via Ollama (no PaddlePaddle
+  framework), smaller model, MIT-licensed
+- Unlike MinerU: no AGPL license concerns
+- **Integration point:** Replace pytesseract as Step 4 in the PDF
+  fallback chain. New `GlmOcrExtractor` class implementing the same
+  `extract(filepath) -> (text, confidence)` interface as `OCRExtractor`.
+  Tested integration via mlx-vlm (Apple Silicon) and Ollama (cross-platform):
+  ```python
+  # Tested mlx-vlm integration (Apple Silicon — optimal)
+  from mlx_vlm import load, generate
+  from mlx_vlm.prompt_utils import apply_chat_template
+  import pypdfium2 as pdfium
+
+  MODEL_ID = "mlx-community/GLM-OCR-8bit"  # 1.5 GB
+  model, processor = load(MODEL_ID)
+
+  # Render PDF page to image
+  pdf = pdfium.PdfDocument(str(filepath))
+  page = pdf[page_idx]
+  bitmap = page.render(scale=200 / 72)  # 200 DPI
+  img = bitmap.to_pil()
+  w, h = img.size
+  if max(w, h) > 1024:  # Cap at 1024px
+      ratio = 1024 / max(w, h)
+      img = img.resize((int(w * ratio), int(h * ratio)))
+  img.save(str(tmp_path), optimize=True)
+
+  # Run OCR
+  formatted = apply_chat_template(
+      processor, model.config, "Text Recognition:", num_images=1
+  )
+  text = generate(
+      model, processor, formatted,
+      image=[str(tmp_path)],
+      max_tokens=2048,       # Prevents hallucination
+      temperature=0.0,       # Greedy decode for deterministic OCR
+      verbose=False,
+  )
+  ```
+  ```python
+  # Ollama integration (cross-platform fallback)
+  import ollama
+  response = ollama.chat(
+      model="glm-ocr",
+      messages=[{
+          "role": "user",
+          "content": [
+              {"type": "image", "url": page_image_path},
+              {"type": "text", "text": "Text Recognition:"},
+          ],
+      }],
+  )
+  text = response.message.content  # Structured Markdown
+  ```
+- **Optimal configuration (tested, updated Feb 2024):**
+  - Model: `mlx-community/GLM-OCR-8bit` (1.5 GB)
+  - DPI: 200 (higher than 150 for better small-text accuracy)
+  - Max image dimension: 1024px (fixes word-level errors vs 720px)
+  - max_tokens: 2048 (prevents hallucination/repetition)
+  - temperature: 0.0 (greedy decode for deterministic output)
+  - Sequential processing only (threading crashes on Metal)
+  - Resolution is the dominant accuracy lever (quantization has
+    minimal impact: 4-bit and bf16 produce nearly identical errors)
+- **Add when these triggers occur:**
+  1. Scanned PDFs are a significant portion of the data room (>20%)
+  2. Table structure matters for analysis accuracy (pricing schedules,
+     financial exhibits)
+  3. Non-English documents appear (Korean, Japanese, Chinese contracts)
+  4. pytesseract output quality is insufficient (low density, garbled
+     text from complex layouts)
+- **Quality results (tested):** Against the hardest scanned PDF in the
+  BLUERUSH data room (Broadridge OEM Agreement, 16 pages):
+  - pytesseract artifacts fixed: "THISAGREEMENT" → "THIS AGREEMENT",
+    "White4labeled" → "White-labeled", "= Definitions" → "1. Definitions",
+    "#TAQMND" garbage eliminated, "# computer program" → "a computer
+    program". Score: GLM-OCR 5, pytesseract 0, ties 1
+  - All 12 key legal terms found (Effective Date, Channel Partner,
+    BlueRush, Broadridge, IndiVideo, Territory, Confidential Information,
+    Intellectual Property, Termination, Governing Law, indemnif,
+    limitation of liability)
+  - Total chars: GLM-OCR 50.7K vs pytesseract 46.7K (more complete)
+- **Resolution vs quantization A/B test** (Broadridge Amendment, 2 pages):
+
+  | Config | Errors (4 checked) | Speed | Image size |
+  |--------|-------------------|-------|-----------|
+  | 4-bit, 150 DPI, 720px | 4/4 errors | 5.3s | 508x720 |
+  | 8-bit, 150 DPI, 720px | 3/4 errors | 7.3s | 508x720 |
+  | bf16, 150 DPI, 720px | 3/4 errors | 11.4s | 508x720 |
+  | **8-bit, 200 DPI, 1024px** | **0/4 errors** | **9.4s** | **723x1024** |
+  | 8-bit, 300 DPI, 1440px | 0/4 errors | 13.1s | 1017x1440 |
+  | 8-bit, 300 DPI, 2048px | 0/4 errors | 35.8s | 1447x2048 |
+
+  Checked words: "Notwithstanding", "retitling", "solely", "claims".
+  The 1024px/200DPI config is the sweet spot — all errors fixed with
+  minimal speed increase over 720px.
+
+### 16.8 Head-to-Head Recommendation
+
+**Production update (Data Room A, 432 files):** GLM-OCR integrated and
+deployed as Step 4 in the fallback chain. 19 scanned PDFs successfully
+extracted via GLM-OCR (mlx-vlm backend, 8-bit model, 1024px, 200 DPI).
+Also verified to correctly extract PDFs with missing ToUnicode CMaps
+(Bug L) since pypdfium2 renders pages visually (font glyph outlines are
+intact even when Unicode mapping is missing).
 
 For the dd-agents pipeline, the evaluation suggests a **hybrid approach**
 rather than a single library replacement:
@@ -1125,10 +1635,11 @@ rather than a single library replacement:
 | Role | Current | Recommended | Rationale |
 |------|---------|-------------|-----------|
 | PDF text extraction (primary) | pymupdf | **MinerU hybrid** or **PP-StructureV3** | Layout-aware, reading order, 2-4x better accuracy |
-| PDF OCR (scanned docs) | pytesseract | **MinerU** (109-lang OCR) or **PaddleOCR** | Multi-language, integrated with layout analysis |
-| PDF tables | None (flattened) | **PP-StructureV3** (SLANeXt) or **Docling** | Preserves row/column structure for pricing analysis |
+| PDF OCR (scanned docs) | pytesseract | **GLM-OCR** or **MinerU** (109-lang OCR) | GLM-OCR: #1 benchmark, 100+ langs, local, MIT, simple Ollama deploy; MinerU: proven, but AGPL |
+| PDF OCR (scanned, AWS deploy) | pytesseract | **AWS Textract** | Managed service, confidence scores, zero infra; only when on AWS and CJK not needed |
+| PDF tables | None (flattened) | **PP-StructureV3** (SLANeXt) or **GLM-OCR** | PP-StructureV3: HTML tables, best edit distance; GLM-OCR: Markdown tables, simpler deploy |
 | Office documents (DOCX/XLSX/PPTX) | markitdown | **Docling** | Table structure, multi-format, LangChain integration |
-| Formulas | None | **MinerU** or **PP-StructureV3** | LaTeX output for mathematical terms in contracts |
+| Formulas | None | **GLM-OCR**, **MinerU**, or **PP-StructureV3** | All produce LaTeX; GLM-OCR simplest to deploy |
 | Citation grounding | Page markers | **LangExtract** pattern (see §17) | Bounding-box-level source attribution |
 
 **License consideration:** MinerU's AGPL-3.0 may require running it as
@@ -1139,6 +1650,54 @@ an isolated microservice to avoid copyleft obligations. PP-StructureV3
 additional steps in the fallback chain rather than replacing existing
 ones immediately. This preserves backward compatibility while gaining
 accuracy on previously-failing documents.
+
+### 16.9 Missing ToUnicode CMap: Library Comparison (Bug L Research)
+
+PDFs with `Identity-H` CID-keyed fonts and no `/ToUnicode` CMap entry
+produce garbled output (raw control bytes or CID placeholders) from
+**every** text extraction library tested. This is a malformed PDF
+problem — the Unicode mapping data simply does not exist in the file.
+
+**Seven libraries tested on the same garbled PDF (56 pages, pages 10-22 affected):**
+
+| Library | Result | Output |
+|---------|--------|--------|
+| pymupdf (fitz) | **FAIL** — 46% control chars on page 10 | Raw CID codes as `\x01\x05\x07...` |
+| pypdfium2 | **FAIL** — 46% control chars | Same raw CID codes |
+| pypdf | **FAIL** — 46% control chars | Same raw CID codes |
+| PyPDF2 | **FAIL** — 46% control chars | Same (shares code with pypdf) |
+| pdfplumber (pdfminer.six) | **FAIL** — 0% control but unreadable | `(cid:4)(cid:5)(cid:7)...` placeholders |
+| pdfminer.six | **FAIL** — 0% control but unreadable | `(cid:4)(cid:5)(cid:7)...` placeholders |
+| pymupdf4llm | **FAIL** — 0% control but unreadable | `�` replacement characters |
+| extractous (Apache Tika) | **PASS** — full readable text, 0% control | Tika resolves CID via internal font handling; 40s on 56 pages |
+| marker-pdf | N/A (downloads 1.35GB model — ML/OCR pipeline, not text extraction) | Would work but is effectively OCR |
+
+**Key finding:** extractous (Rust bindings to Apache Tika) is the only
+pure text extraction library that resolves CID codes without a ToUnicode
+CMap. However, it is 2-3x slower on normal PDFs (27-140ms vs 5-56ms for
+pymupdf) and 40s on the problem file. It also lacks page markers
+(`--- Page N ---`) which would need to be added.
+
+**Font analysis confirms root cause:**
+- Page 1 fonts (Arial): `/ToUnicode 918 0 R` present → text extraction works
+- Page 10 fonts (Cambria, Calibri): no `/ToUnicode` entry → garbled output
+- PDF producer: PandaDoc/PDF4U (bfo.com) omitted the mapping table
+- Visual rendering works perfectly — font glyph outlines are intact
+
+**Pre-inspection benchmark (426 PDFs in 3.5 seconds):**
+A pymupdf-based font inspection (check `/ToUnicode` + `Identity-H` on
+all fonts across all pages) correctly identifies:
+- 1 file missing ToUnicode (the exact problem file)
+- 18 scanned PDFs (no fonts at all → need OCR)
+- 407 normal PDFs → safe for pymupdf text extraction
+- Average 8ms per PDF, no extraction needed
+
+**Recommended approach:** Pre-inspect PDF font tables before extraction
+to route files directly to the correct extractor. Files with missing
+ToUnicode CMaps bypass text extraction and go straight to GLM-OCR, which
+renders pages via pypdfium2 (visual rendering is unaffected by the
+missing CMap) and extracts text via VLM. This avoids running 3-4 futile
+extractors before reaching OCR.
 
 ---
 
@@ -1215,8 +1774,10 @@ reference to the exact source text that produced it.
 **Short-term (no architecture change):**
 - Add source span tracking to citations: store `char_start` and `char_end`
   offsets into the extracted `.md` file alongside `page` and `section_ref`
-- Implement citation verification: check that `exact_quote` appears within
-  the cited page's text (±50 chars for OCR tolerance)
+- ~~Implement citation verification~~ — **DONE** (Issue #5, Issue #24):
+  `CitationVerifier` with progressive 4-scope search, whitespace
+  normalization, and cross-file correction. 99.6% verification rate
+  in production (Data Room B).
 - Generate interactive HTML review pages where clicking a finding
   highlights the source passage
 
@@ -1342,13 +1903,14 @@ citation fidelity):
 
 | Priority | Improvement | Effort | Impact on Completeness | Impact on Accuracy | Impact on Citations |
 |----------|-------------|--------|----------------------|-------------------|-------------------|
+| **P0** | Add PDF pre-inspection and control-char detection (Bug L) | Low | Medium — catches missing ToUnicode CMaps | **High** — eliminates garbled text | None |
 | **P0** | Replace pytesseract with PaddleOCR (109 languages) | Medium | High — solves Korean/Japanese/Chinese | Medium | None |
 | **P0** | Add layout-aware PDF extraction (MinerU or PP-StructureV3) | High | Low (most PDFs already work) | **High** — tables, reading order, formulas | Medium — page coordinates |
 | **P1** | Adopt `instructor` for structured LLM output | Medium | Medium — eliminates empty/malformed responses | Medium — schema-enforced confidence | Low |
-| **P1** | Add citation verification (quote ∈ source text) | Medium | None | None | **High** — catches hallucinated quotes |
+| ~~P1~~ | ~~Add citation verification~~ | ~~Medium~~ | — | — | **DONE** — Issue #5, progressive 4-scope search, 99.6% verification rate |
 | **P1** | Replace markitdown for Office docs with Docling | Medium | Low | **High** — preserves table structure in XLSX/DOCX | Medium — element-level page refs |
 | **P2** | Add visual grounding (bounding boxes) | High | None | Low | **High** — pixel-precise citations |
-| **P2** | Parallel chunk analysis | Low | None | None | None — but 3-5x faster |
+| ~~P2~~ | ~~Parallel chunk analysis~~ | ~~Low~~ | — | — | **DONE** — Issue #21, `asyncio.gather` concurrent chunks |
 | **P2** | Interactive HTML review pages | Medium | None | None | **High** — reviewer experience |
 | **P3** | VLM-based extraction (vision LLM) | High | Medium — handles any visual layout | High — understands context | High — visual coordinates |
 | **P3** | Cross-document entity resolution | Medium | None | Medium — consistent naming | Low |
@@ -1356,16 +1918,25 @@ citation fidelity):
 ### 19.2 Proposed New Fallback Chain (Post-Upgrade)
 
 ```
-PDF Extraction Chain v2:
+PDF Extraction Chain v2 (with pre-inspection):
+
+Step 0: PDF PRE-INSPECTION (8ms avg, no extraction)
+  ├─ No fonts detected → SCANNED → skip to Step 4 (OCR)
+  ├─ Missing ToUnicode CMap → GARBLED → skip to Step 4 (OCR)
+  ├─ Encrypted/password-protected → flag, skip to Step 3
+  └─ Normal fonts with ToUnicode → proceed to Step 1
+
 Step 1: MinerU hybrid or PP-StructureV3 (layout-aware, tables, reading order)
   ↓ fails density check?
 Step 2: pymupdf (fast fallback, page markers)
-  ↓ fails density check?
+  ↓ fails density + watermark + control-char check?
 Step 3: pdftotext (poppler, form-heavy PDFs)
   ↓ fails density + readability check?
-Step 4: PaddleOCR (109-language OCR, layout-aware)
+Step 4: GLM-OCR (Vision-LM OCR, 100+ languages)
   ↓ fails threshold?
-Step 5: Direct text read (last resort)
+Step 5: PaddleOCR (109-language OCR, layout-aware)
+  ↓ fails threshold?
+Step 6: Direct text read (last resort)
   ↓ fails threshold?
 FAILED — confidence 0.0
 
@@ -1382,11 +1953,13 @@ FAILED
 ```
 
 **Key changes from current chain:**
-1. Layout-aware extraction becomes Step 1 (MinerU/PP-StructureV3)
-2. pymupdf demoted to Step 2 (still fast and reliable for simple PDFs)
-3. pytesseract replaced by PaddleOCR (multi-language, layout-aware)
-4. markitdown demoted from Step 3 to Step 2 in Office chain
-5. Docling becomes primary Office extractor
+1. **PDF pre-inspection** (Step 0) routes scanned/garbled PDFs directly to OCR, saving ~700ms of futile extraction attempts per file
+2. Layout-aware extraction becomes Step 1 (MinerU/PP-StructureV3)
+3. pymupdf demoted to Step 2 with enhanced quality gates (watermark + control-char checks)
+4. GLM-OCR promoted above PaddleOCR (higher quality, already integrated)
+5. pytesseract removed (GLM-OCR + PaddleOCR cover all cases)
+6. markitdown demoted from Step 3 to Step 2 in Office chain
+7. Docling becomes primary Office extractor
 
 ### 19.3 Confidence Score Revision
 
@@ -1489,11 +2062,22 @@ Reading order detection is particularly important for:
 | MinerU | AGPL-3.0 | **Requires open-sourcing or commercial license** | Best accuracy but license risk |
 | LangExtract | Apache 2.0 | Yes, unrestricted | Source grounding patterns |
 | outlines | Apache 2.0 | Yes, unrestricted | Only for local models |
+| AWS Textract | Proprietary (pay-per-page) | Yes, unrestricted | $0.0015–$0.065/page; requires AWS account + S3 for async |
+| GLM-OCR | MIT (model) + Apache 2.0 (code) | Yes, unrestricted | 0.9B VLM; #1 OmniDocBench V1.5; 100+ langs; production: 8-bit/1024px/200DPI; deploy via mlx-vlm (Mac) or Ollama (cross-platform) |
+| extractous (Apache Tika) | Apache 2.0 | Yes, unrestricted | Only library that resolves missing ToUnicode CMaps; 48MB; 2-3x slower than pymupdf on normal PDFs; no page markers |
 
 **Recommendation:** Use PP-StructureV3 + PaddleOCR (both Apache 2.0) for
 PDF extraction, Docling (MIT) for Office documents, and instructor (MIT)
-for structured output. Avoid MinerU's AGPL unless legal approves or it's
-deployed as an isolated service.
+for structured output. For scanned PDF OCR, **GLM-OCR** (MIT) is the
+recommended pytesseract replacement — tested against the hardest scanned
+PDF in the BLUERUSH data room and won 5/6 artifact checks vs pytesseract.
+Optimal config: 4-bit quantized model (1.25 GB) at 720px/150 DPI via
+mlx-vlm on Apple Silicon (0.30 pages/sec on M3 Max). 3-6x slower per
+page than pytesseract but significantly higher quality on degraded scans.
+Deploy via mlx-vlm (Mac) or Ollama (cross-platform). Avoid MinerU's AGPL
+unless legal approves or it's deployed as an isolated service. AWS
+Textract is a viable managed alternative when deploying on AWS, but adds
+cost and does not support CJK languages.
 
 ---
 
@@ -1547,10 +2131,10 @@ deployed as an isolated service.
    boundaries) could improve answer quality. → Docling's
    `HybridChunker` (§16.3) supports semantic-aware splitting.
 
-4. **Citation verification** — Post-hoc check that `exact_quote` actually
-   appears in the cited `file_path` at the cited `page`. Flag
-   hallucinated citations. → **Addressed in §17.3-17.4:** Source span
-   tracking and automated verification. See §19.1 (P1).
+4. ~~**Citation verification**~~ — **DONE** (Issue #5, Issue #24).
+   `CitationVerifier` with progressive 4-scope search (page → adjacent
+   ±1 → full doc → cross-file), whitespace normalization, and automatic
+   cross-file correction. See §6.7 for details.
 
 5. **Incremental search** — Re-analyze only customers whose documents
    changed, carrying forward unchanged results. Currently the full
@@ -1579,6 +2163,12 @@ deployed as an isolated service.
 - **Docling vs markitdown on Office documents:** Measure table structure
   preservation, page marker accuracy, and extraction completeness for
   DOCX/XLSX files in both data rooms.
+
+- **extractous (Tika) vs pre-inspection + GLM-OCR for garbled PDFs:**
+  extractous resolves missing ToUnicode CMaps natively but is 2-3x slower
+  on normal PDFs and lacks page markers. Pre-inspection + GLM-OCR adds
+  ~8ms overhead per file but only invokes OCR on the ~5% of files that
+  need it. Measure end-to-end pipeline time on a 500+ file data room.
 
 - **instructor adoption cost/benefit:** Measure how many of the 8 known
   bugs (A-H) would have been prevented by schema-enforced output. Track

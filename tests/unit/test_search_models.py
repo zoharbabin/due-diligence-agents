@@ -148,3 +148,119 @@ class TestConfidenceValidator:
     def test_default_empty(self) -> None:
         result = SearchColumnResult(answer="YES")
         assert result.confidence == ""
+
+
+class TestParseCitations:
+    """Tests for the parse_citations helper (Issue #4 Phase B)."""
+
+    def test_valid_citations(self) -> None:
+        from dd_agents.models.search import parse_citations
+
+        raw = [
+            {"file_path": "msa.pdf", "page": "5", "section_ref": "Section 12", "exact_quote": "consent required"},
+            {"file_path": "sow.pdf", "page": "1", "section_ref": "", "exact_quote": ""},
+        ]
+        result = parse_citations(raw)
+        assert len(result) == 2
+        assert result[0].file_path == "msa.pdf"
+        assert result[0].page == "5"
+
+    def test_int_page_coerced(self) -> None:
+        from dd_agents.models.search import parse_citations
+
+        raw = [{"file_path": "doc.pdf", "page": 7}]
+        result = parse_citations(raw)
+        assert result[0].page == "7"
+
+    def test_none_page_coerced(self) -> None:
+        from dd_agents.models.search import parse_citations
+
+        raw = [{"file_path": "doc.pdf", "page": None}]
+        result = parse_citations(raw)
+        assert result[0].page == ""
+
+    def test_non_dict_entries_skipped(self) -> None:
+        from dd_agents.models.search import parse_citations
+
+        raw = [{"file_path": "doc.pdf"}, "not a dict", 42, None]
+        result = parse_citations(raw)
+        assert len(result) == 1
+
+    def test_empty_list(self) -> None:
+        from dd_agents.models.search import parse_citations
+
+        assert parse_citations([]) == []
+
+
+class TestParseColumnResult:
+    """Tests for the parse_column_result helper (Issue #4 Phase B)."""
+
+    def test_full_column(self) -> None:
+        from dd_agents.models.search import parse_column_result
+
+        data = {
+            "answer": "YES",
+            "confidence": "high",
+            "citations": [
+                {"file_path": "msa.pdf", "page": "3", "section_ref": "Section 5", "exact_quote": "consent text"}
+            ],
+        }
+        result = parse_column_result(data)
+        assert result.answer == "YES"
+        assert result.confidence == "HIGH"  # Normalized
+        assert len(result.citations) == 1
+        assert result.citations[0].file_path == "msa.pdf"
+
+    def test_missing_fields_default(self) -> None:
+        from dd_agents.models.search import parse_column_result
+
+        data = {}
+        result = parse_column_result(data)
+        assert result.answer == ""
+        assert result.confidence == ""
+        assert result.citations == []
+
+    def test_confidence_normalization(self) -> None:
+        from dd_agents.models.search import parse_column_result
+
+        data = {"answer": "NO", "confidence": "  Medium  "}
+        result = parse_column_result(data)
+        assert result.confidence == "MEDIUM"
+
+    def test_none_confidence(self) -> None:
+        from dd_agents.models.search import parse_column_result
+
+        data = {"answer": "YES", "confidence": None}
+        result = parse_column_result(data)
+        assert result.confidence == ""
+
+
+class TestCitationVerificationFields:
+    """Tests for the new verification fields on SearchCitation (Issue #5)."""
+
+    def test_defaults(self) -> None:
+        cit = SearchCitation()
+        assert cit.quote_verified is None
+        assert cit.quote_match_score == 0.0
+        assert cit.section_verified is None
+
+    def test_verified_citation(self) -> None:
+        cit = SearchCitation(
+            file_path="msa.pdf",
+            quote_verified=True,
+            quote_match_score=95.5,
+            section_verified=True,
+        )
+        assert cit.quote_verified is True
+        assert cit.quote_match_score == 95.5
+        assert cit.section_verified is True
+
+    def test_failed_citation(self) -> None:
+        cit = SearchCitation(
+            file_path="msa.pdf",
+            quote_verified=False,
+            quote_match_score=30.0,
+            section_verified=False,
+        )
+        assert cit.quote_verified is False
+        assert cit.quote_match_score == 30.0
