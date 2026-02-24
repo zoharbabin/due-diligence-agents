@@ -1084,24 +1084,24 @@ has proven reliable for text-native PDFs but has structural weaknesses:
 
 ### 16.2 Library Comparison Matrix
 
-Seven libraries evaluated as potential replacements or supplements to
+Eight libraries evaluated as potential replacements or supplements to
 markitdown in our fallback chain:
 
-| Criteria | markitdown (current) | Docling (IBM) | MinerU (OpenDataLab) | PP-StructureV3 (PaddlePaddle) | LangExtract (Google) | Unstructured | **AWS Textract** |
-|----------|---------------------|---------------|---------------------|-------------------------------|---------------------|--------------|-----------------|
-| **PDF text extraction** | Basic | Layout-aware | Layout-aware | Layout-aware | LLM-driven | Layout-aware | Layout-aware (managed) |
-| **Table → structured** | No | HTML/CSV | HTML/Markdown | HTML | JSON | HTML | HTML (rows/cols/merged cells) |
-| **Formula → LaTeX** | No | Yes | Yes | Yes | No | No | No |
-| **Reading order** | No | Yes | Yes | Yes | N/A | Yes | Yes (LAYOUT API) |
-| **OCR languages** | English only | Multi-language | 109 languages | Multi-language | N/A (LLM) | Multi-language | 6 Latin (EN/FR/DE/IT/PT/ES) |
-| **Page markers** | No | Yes (page-level) | Yes (page-level) | Yes | N/A | Yes (element-level) | Yes (page-level) |
-| **Scanned PDF** | Binary dump (Bug G) | DocTR/EasyOCR | PaddleOCR/Tesseract | PaddleOCR | Vision LLM | Tesseract/paddle | Native OCR (managed) |
-| **Formats beyond PDF** | DOCX, XLSX, PPTX, RTF | DOCX, PPTX, XLSX, HTML, images, AsciiDoc | PDF only | PDF/images only | Any (LLM) | All major formats | PDF, TIFF, PNG, JPEG only |
-| **Lossless output** | Markdown only | JSON (DoclingDocument) | Markdown + JSON | Markdown | JSON | JSON elements | JSON (blocks/tables/forms) |
-| **License** | MIT | MIT | AGPL-3.0 | Apache 2.0 | Apache 2.0 | Apache 2.0 | Proprietary (pay-per-page) |
-| **Python install** | `pip install` | `pip install docling` | `pip install magic-pdf` | `pip install paddlepaddle paddleocr` | `pip install langextract` | `pip install unstructured` | `pip install boto3` |
-| **GPU required** | No | Optional (faster) | Optional | Optional | No (API-based) | Optional | No (cloud-managed) |
-| **Benchmark (OmniDocBench)** | N/A | 0.589 EN edit distance | 0.238 EN edit distance | **0.145 EN edit distance** | N/A | N/A | N/A (proprietary) |
+| Criteria | markitdown (current) | Docling (IBM) | MinerU (OpenDataLab) | PP-StructureV3 (PaddlePaddle) | LangExtract (Google) | Unstructured | AWS Textract | **GLM-OCR (Zhipu AI)** |
+|----------|---------------------|---------------|---------------------|-------------------------------|---------------------|--------------|-----------------|----------------------|
+| **PDF text extraction** | Basic | Layout-aware | Layout-aware | Layout-aware | LLM-driven | Layout-aware | Layout-aware (managed) | Vision-LM (image-based) |
+| **Table → structured** | No | HTML/CSV | HTML/Markdown | HTML | JSON | HTML | HTML (rows/cols/merged cells) | Markdown tables |
+| **Formula → LaTeX** | No | Yes | Yes | Yes | No | No | No | Yes |
+| **Reading order** | No | Yes | Yes | Yes | N/A | Yes | Yes (LAYOUT API) | Yes (PP-DocLayout-V3) |
+| **OCR languages** | English only | Multi-language | 109 languages | Multi-language | N/A (LLM) | Multi-language | 6 Latin (EN/FR/DE/IT/PT/ES) | 100+ languages |
+| **Page markers** | No | Yes (page-level) | Yes (page-level) | Yes | N/A | Yes (element-level) | Yes (page-level) | Yes (page-level) |
+| **Scanned PDF** | Binary dump (Bug G) | DocTR/EasyOCR | PaddleOCR/Tesseract | PaddleOCR | Vision LLM | Tesseract/paddle | Native OCR (managed) | Vision-LM OCR (renders to images) |
+| **Formats beyond PDF** | DOCX, XLSX, PPTX, RTF | DOCX, PPTX, XLSX, HTML, images, AsciiDoc | PDF only | PDF/images only | Any (LLM) | All major formats | PDF, TIFF, PNG, JPEG only | PDF, PNG, JPG only |
+| **Lossless output** | Markdown only | JSON (DoclingDocument) | Markdown + JSON | Markdown | JSON | JSON elements | JSON (blocks/tables/forms) | Markdown + JSON |
+| **License** | MIT | MIT | AGPL-3.0 | Apache 2.0 | Apache 2.0 | Apache 2.0 | Proprietary (pay-per-page) | MIT (model) + Apache 2.0 (code) |
+| **Python install** | `pip install` | `pip install docling` | `pip install magic-pdf` | `pip install paddlepaddle paddleocr` | `pip install langextract` | `pip install unstructured` | `pip install boto3` | `ollama pull glm-ocr` |
+| **GPU required** | No | Optional (faster) | Optional | Optional | No (API-based) | Optional | No (cloud-managed) | No (0.9B runs on CPU; GPU faster) |
+| **Benchmark (OmniDocBench)** | N/A | 0.589 EN edit distance | 0.238 EN edit distance | **0.145 EN edit distance** | N/A | N/A | N/A (proprietary) | **94.62 OmniDocBench V1.5** (#1) |
 
 ### 16.3 Docling (IBM, Open Source)
 
@@ -1305,7 +1305,153 @@ Additional APIs: `AnalyzeExpense` (invoices/receipts, $0.01/page),
   file is scanned PDF + pytesseract confidence < threshold + AWS
   credentials available
 
-### 16.7 Head-to-Head Recommendation
+### 16.7 GLM-OCR (Zhipu AI)
+
+**Repository:** github.com/zai-org/GLM-OCR (MIT model + Apache 2.0 code)
+**Ollama:** `ollama pull glm-ocr` (2.2 GB default, 1.6 GB q8_0)
+**Hugging Face:** zai-org/GLM-OCR
+
+**Architecture:** A 0.9B-parameter multimodal vision-language model with
+a two-stage pipeline:
+1. **Layout analysis** (PP-DocLayout-V3): Detects text regions, tables,
+   formulas, figures, seals, code blocks on the page image.
+2. **Parallel recognition** (CogViT encoder + GLM-0.5B decoder): Each
+   detected region is recognized in parallel and assembled into
+   structured output.
+
+Uses Multi-Token Prediction (MTP) loss for contextual error correction
+and Stable Full-Task Reinforcement Learning for layout generalization.
+128K context window.
+
+**Key difference from other OCR tools:** GLM-OCR is not a traditional
+OCR engine — it is a vision-language model. It processes pages as images,
+not as PDF text streams. This means it re-OCRs digitally-born PDFs
+rather than extracting embedded text, which is slower but handles
+scanned/degraded documents better than text-layer extraction.
+
+**Capabilities:**
+- Text recognition (print and handwriting)
+- Table recognition (complex, nested, cross-page → Markdown tables)
+- Formula recognition (→ LaTeX)
+- Figure/chart description
+- Seal/stamp recognition (circular, elliptical, irregular)
+- Code block recognition with syntax awareness
+- Information extraction with JSON Schema output
+- 100+ languages including CJK (English, Chinese, Japanese, Korean,
+  European languages)
+
+**Benchmark results:**
+
+| Benchmark | GLM-OCR (0.9B) | PP-StructureV3 | MinerU | Docling |
+|-----------|---------------|----------------|--------|---------|
+| OmniDocBench V1.5 | **94.62** (#1) | — | — | — |
+| OmniDocBench V1 edit dist. | — | **0.145** | 0.238 | 0.589 |
+
+Note: OmniDocBench V1 and V1.5 use different scoring (edit distance vs
+composite score), so direct comparison is not possible. GLM-OCR ranks #1
+on the V1.5 leaderboard. Independent head-to-head benchmarks against
+PP-StructureV3 on identical test sets are not yet available (model
+released February 2026).
+
+**System requirements:**
+
+| Variant | Download size | Min RAM | GPU |
+|---------|--------------|---------|-----|
+| `glm-ocr:latest` (bf16) | 2.2 GB | ~4 GB | Optional |
+| `glm-ocr:q8_0` (quantized) | 1.6 GB | ~3 GB | Optional |
+
+Throughput: ~1.86 pages/sec (PDF), ~0.67 images/sec (single instance).
+Runs on CPU (including Apple Silicon via MLX-VLM). GPU accelerates but
+is not required.
+
+**Strengths:**
+- #1 on OmniDocBench V1.5 with only 0.9B parameters — remarkable
+  efficiency vs competitors at 3B–72B+
+- Structured Markdown/JSON/LaTeX output (not raw text) — directly
+  compatible with our page-aware chunking pipeline
+- 100+ language OCR including CJK — directly solves our Korean MSA
+  and Japanese contract limitations
+- Table extraction to Markdown — preserves structure for pricing
+  schedules and payment tables
+- Formula → LaTeX — handles mathematical terms in financial exhibits
+- Fully local, air-gapped capable — ideal for confidential M&A data
+  rooms where data cannot leave the network
+- MIT + Apache 2.0 license — no commercial restrictions
+- Tiny footprint (2.2 GB) — can run alongside the rest of the pipeline
+  on a standard laptop
+- Ollama integration — simple localhost API, same pattern as our
+  existing claude-agent-sdk calls
+- Fine-tunable via LLaMA-Factory for domain-specific document layouts
+
+**Weaknesses:**
+- **Image-based processing only** — PDFs are rendered to images before
+  OCR. For digitally-born PDFs with selectable text, pymupdf/pdftotext
+  remain faster and more accurate. GLM-OCR should not replace text-layer
+  extraction; it should replace pytesseract for scanned/degraded docs
+- **100-page PDF limit** — long documents must be chunked before
+  processing (our pipeline already handles this via page-level splitting)
+- **No technical report yet** — training data, failure modes, and
+  ablation studies are unavailable. "Coming soon" per authors
+- **Young ecosystem** — released February 2026, ~40K downloads, 27
+  commits, 31 open issues. Limited independent validation
+- **Layout detection dependency** — pipeline relies on PP-DocLayout-V3
+  as a separate stage; layout errors propagate to OCR quality
+- **No embedded text extraction** — cannot use PDF text layer, always
+  does visual recognition. Slower than `pdftotext` for text-native PDFs
+- **Throughput** — 1.86 pages/sec is adequate for our deal sizes
+  (~10,000 pages) but would need ~90 minutes for a full deal on a single
+  instance (pytesseract is comparable)
+- **Precision claims unverified** — "99.9% precision" in PRECISION_MODE
+  lacks metric definitions or public test results
+
+**Cost comparison (10,000-page deal):**
+
+| Method | Cost | Hardware | Speed |
+|--------|------|----------|-------|
+| pytesseract (current) | $0 | CPU | ~1-2 pages/sec |
+| GLM-OCR via Ollama | $0 | CPU (GPU optional) | ~1.86 pages/sec |
+| AWS Textract (tables) | $150 | Cloud | ~5-10 pages/sec |
+| PP-StructureV3 | $0 | CPU (GPU optional) | Varies |
+
+**Relevance to dd-agents:**
+- **Strongest candidate for replacing pytesseract** as Step 4 in the
+  PDF fallback chain. Same role (scanned PDF OCR) but with structured
+  output, table extraction, formula recognition, and 100+ languages
+- Unlike AWS Textract: free, local, air-gapped, no cloud dependency
+- Unlike PP-StructureV3: simpler deployment via Ollama (no PaddlePaddle
+  framework), smaller model, MIT-licensed
+- Unlike MinerU: no AGPL license concerns
+- **Integration point:** Replace pytesseract as Step 4, or add as
+  Step 3b (between markitdown and pytesseract). The Ollama API makes
+  integration straightforward:
+  ```python
+  # Conceptual integration
+  import ollama
+  response = ollama.chat(
+      model="glm-ocr",
+      messages=[{
+          "role": "user",
+          "content": [
+              {"type": "image", "url": page_image_path},
+              {"type": "text", "text": "Text Recognition:"},
+          ],
+      }],
+  )
+  text = response.message.content  # Structured Markdown
+  ```
+- **Add when these triggers occur:**
+  1. Scanned PDFs are a significant portion of the data room (>20%)
+  2. Table structure matters for analysis accuracy (pricing schedules,
+     financial exhibits)
+  3. Non-English documents appear (Korean, Japanese, Chinese contracts)
+  4. pytesseract output quality is insufficient (low density, garbled
+     text from complex layouts)
+- **Wait for:** Independent benchmarks confirming OmniDocBench V1.5
+  results, technical report publication, and ecosystem maturation
+  (currently <30 commits). Run a pilot on one deal's scanned PDFs
+  before committing to pipeline integration
+
+### 16.8 Head-to-Head Recommendation
 
 For the dd-agents pipeline, the evaluation suggests a **hybrid approach**
 rather than a single library replacement:
@@ -1313,11 +1459,11 @@ rather than a single library replacement:
 | Role | Current | Recommended | Rationale |
 |------|---------|-------------|-----------|
 | PDF text extraction (primary) | pymupdf | **MinerU hybrid** or **PP-StructureV3** | Layout-aware, reading order, 2-4x better accuracy |
-| PDF OCR (scanned docs) | pytesseract | **MinerU** (109-lang OCR) or **PaddleOCR** | Multi-language, integrated with layout analysis |
+| PDF OCR (scanned docs) | pytesseract | **GLM-OCR** or **MinerU** (109-lang OCR) | GLM-OCR: #1 benchmark, 100+ langs, local, MIT, simple Ollama deploy; MinerU: proven, but AGPL |
 | PDF OCR (scanned, AWS deploy) | pytesseract | **AWS Textract** | Managed service, confidence scores, zero infra; only when on AWS and CJK not needed |
-| PDF tables | None (flattened) | **PP-StructureV3** (SLANeXt) or **AWS Textract** | Preserves row/column structure for pricing analysis |
+| PDF tables | None (flattened) | **PP-StructureV3** (SLANeXt) or **GLM-OCR** | PP-StructureV3: HTML tables, best edit distance; GLM-OCR: Markdown tables, simpler deploy |
 | Office documents (DOCX/XLSX/PPTX) | markitdown | **Docling** | Table structure, multi-format, LangChain integration |
-| Formulas | None | **MinerU** or **PP-StructureV3** | LaTeX output for mathematical terms in contracts |
+| Formulas | None | **GLM-OCR**, **MinerU**, or **PP-StructureV3** | All produce LaTeX; GLM-OCR simplest to deploy |
 | Citation grounding | Page markers | **LangExtract** pattern (see §17) | Bounding-box-level source attribution |
 
 **License consideration:** MinerU's AGPL-3.0 may require running it as
@@ -1681,13 +1827,18 @@ Reading order detection is particularly important for:
 | LangExtract | Apache 2.0 | Yes, unrestricted | Source grounding patterns |
 | outlines | Apache 2.0 | Yes, unrestricted | Only for local models |
 | AWS Textract | Proprietary (pay-per-page) | Yes, unrestricted | $0.0015–$0.065/page; requires AWS account + S3 for async |
+| GLM-OCR | MIT (model) + Apache 2.0 (code) | Yes, unrestricted | 0.9B VLM via Ollama; #1 OmniDocBench V1.5; 100+ langs; new ecosystem (Feb 2026) |
 
 **Recommendation:** Use PP-StructureV3 + PaddleOCR (both Apache 2.0) for
 PDF extraction, Docling (MIT) for Office documents, and instructor (MIT)
-for structured output. Avoid MinerU's AGPL unless legal approves or it's
-deployed as an isolated service. AWS Textract is a viable managed
-alternative for scanned PDF OCR and table extraction when deploying on
-AWS, but adds cost and does not support CJK languages.
+for structured output. For scanned PDF OCR, **GLM-OCR** (MIT) is the
+most promising pytesseract replacement — #1 on OmniDocBench V1.5 with
+only 0.9B parameters, 100+ language support, structured Markdown output,
+and simple Ollama deployment with no cloud dependency. Pending:
+independent benchmark validation and ecosystem maturation. Avoid MinerU's
+AGPL unless legal approves or it's deployed as an isolated service. AWS
+Textract is a viable managed alternative when deploying on AWS, but adds
+cost and does not support CJK languages.
 
 ---
 
