@@ -173,7 +173,7 @@ def _mlx_ocr_pages(image_paths: list[Path]) -> list[str]:
                 temperature=0.0,
                 verbose=False,
             )
-            text = output if isinstance(output, str) else str(output)
+            text = output if isinstance(output, str) else getattr(output, "text", str(output))
             results.append(text)
         except Exception:
             logger.warning("MLX GLM-OCR failed on %s", img_path)
