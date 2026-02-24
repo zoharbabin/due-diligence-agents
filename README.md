@@ -1,6 +1,6 @@
 # Due Diligence Agent SDK
 
-> **Status**: Implemented. Full pipeline, contract search, and auto-config commands operational with 661 passing tests.
+> **Status**: Implemented. Full pipeline, contract search, and auto-config commands operational with 997+ passing tests.
 
 Standalone Python application for forensic M&A due diligence. Migrates a Claude Code Skill (3,100+ lines across 9 files) to a programmatic pipeline using `claude-agent-sdk` v0.1.39+. Six agents (4 specialists + optional Judge + Reporting Lead) analyze contract data rooms, extract clauses, build governance graphs, detect gaps, and produce a 14-sheet Excel report — all under deterministic Python orchestration with hook-enforced quality gates.
 
@@ -16,7 +16,7 @@ due-diligence-agents/
 │       ├── models/              # Pydantic v2 data models (20+ schemas)
 │       ├── orchestrator/        # 35-step pipeline, state machine, checkpoints
 │       ├── agents/              # Agent definitions, prompt builder, specialists
-│       ├── extraction/          # Document extraction, markitdown, OCR fallback
+│       ├── extraction/          # Document extraction: pymupdf, markitdown, GLM-OCR, Claude vision
 │       ├── entity_resolution/   # 6-pass cascading matcher, cache, rapidfuzz
 │       ├── inventory/           # File discovery, customer registry, references
 │       ├── validation/          # Numerical audit, QA, DoD checks, schema validation
@@ -136,7 +136,7 @@ The full implementation plan is in [`docs/plan/`](docs/plan/). Start with the [e
 | 05 | [Orchestrator](docs/plan/05-orchestrator.md) | 35-step pipeline, 5 blocking gates, state machine, step dependencies |
 | 06 | [Agents](docs/plan/06-agents.md) | 6 agent definitions, prompt construction, model selection, tool access |
 | 07 | [Tools & Hooks](docs/plan/07-tools-and-hooks.md) | Stop hooks, PreToolUse guards, custom MCP tools, validation hooks |
-| 08 | [Extraction](docs/plan/08-extraction.md) | File discovery, markitdown fallback chain, checksum cache |
+| 08 | [Extraction](docs/plan/08-extraction.md) | PDF pre-inspection, 7-step fallback chain (pymupdf → GLM-OCR → Claude vision), checksum cache |
 | 09 | [Entity Resolution](docs/plan/09-entity-resolution.md) | 6-pass cascading matcher, cache learning, rapidfuzz |
 | 10 | [Reporting](docs/plan/10-reporting.md) | 14-sheet Excel, report schema, merge/dedup, report diff |
 | 11 | [QA & Validation](docs/plan/11-qa-validation.md) | 5-layer numerical audit, 30 DoD checks, fail-closed gates |
@@ -199,7 +199,9 @@ Each phase is designed to fit within a single Claude Code session. Use `/clear` 
 - **NetworkX** — governance graph construction (~900 edges, in-memory)
 - **rapidfuzz** — token-sort-ratio fuzzy matching for entity resolution
 - **ChromaDB** (optional) — cross-document semantic search
-- **markitdown** — PDF/Office extraction with fallback chain
+- **markitdown** — PDF/Office extraction
+- **pymupdf** (fitz) — Primary PDF extraction with page markers
+- **GLM-OCR** (optional) — High-quality vision-LM OCR for scanned PDFs
 
 ## License
 

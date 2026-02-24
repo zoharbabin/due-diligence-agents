@@ -53,13 +53,17 @@ pytest tests/unit/ -x -q && mypy src/ --strict --ignore-missing-imports && ruff 
 - [x] Write `tests/unit/test_entity_resolution.py` — 59 tests across 12 test classes
 
 ### 1.5 Extraction Pipeline
-**Status**: Complete — 40 tests
+**Status**: Complete — 120+ tests (originally 40, expanded in Issue #27)
 - [x] Implement `src/dd_agents/extraction/cache.py` — SHA-256 checksum cache
 - [x] Implement `src/dd_agents/extraction/quality.py` — ExtractionQualityTracker
 - [x] Implement `src/dd_agents/extraction/markitdown.py` — MarkitdownExtractor
 - [x] Implement `src/dd_agents/extraction/ocr.py` — OCRExtractor
 - [x] Implement `src/dd_agents/extraction/pipeline.py` — ExtractionPipeline with fallback chain
-- [x] Write `tests/unit/test_extraction.py` — 40 tests
+- [x] Implement `src/dd_agents/extraction/glm_ocr.py` — GLM-OCR vision-language model extractor
+- [x] Implement `src/dd_agents/extraction/_constants.py` — Shared extension sets and confidence constants
+- [x] Implement `src/dd_agents/extraction/_helpers.py` — Shared `read_text()` helper
+- [x] Write `tests/unit/test_extraction.py` — 120+ tests (pre-inspection, quality gates, Claude vision, shared constants)
+- [x] Write `tests/unit/test_glm_ocr.py` — 24 tests
 
 ### 1.6 Config & CLI
 **Status**: Complete — 28 tests
@@ -234,8 +238,8 @@ pytest tests/unit/ -x -q && mypy src/ --strict --ignore-missing-imports && ruff 
 
 The project is complete when ALL of the following are true:
 - [x] All 6 phases have status "Complete"
-- [x] `pytest tests/ -x` passes — 577 tests (571 unit/integration + 6 E2E), 3 skipped (API-dependent)
-- [x] `mypy src/ --strict --ignore-missing-imports` passes — 0 errors in 80 files
+- [x] `pytest tests/ -x` passes — 997+ unit tests, 17 integration, 6 E2E (3 skipped without API key)
+- [x] `mypy src/ --strict` passes — 0 errors in 93 source files
 - [x] `ruff check src/ tests/` is clean
 - [x] `ruff format --check src/ tests/` is clean
 
@@ -243,11 +247,11 @@ The project is complete when ALL of the following are true:
 
 | Category | Count |
 |----------|-------|
-| Unit tests (models, utils, entity resolution, extraction, config, hooks, tools, orchestrator, agents, reporting, validation) | 554 |
+| Unit tests (models, utils, entity resolution, extraction, config, hooks, tools, orchestrator, agents, reporting, validation, search, glm_ocr) | 974 |
 | Integration tests (pipeline steps 1-11) | 17 |
 | E2E tests (pre-agent: config, tiers, discovery, registry, run manager, cache) | 6 |
 | E2E tests (API-dependent: dry run, full pipeline, incremental — skipped without key) | 3 |
-| **Total** | **577 passed, 3 skipped** |
+| **Total** | **997 passed, 3 skipped** |
 
 ## Git History (impl-01 branch)
 

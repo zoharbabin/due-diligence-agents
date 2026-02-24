@@ -1,6 +1,6 @@
 # 01 -- Architecture Decision Records
 
-Six ADRs defining the foundational technical choices for the Due Diligence Agent SDK.
+Seven ADRs defining the foundational technical choices for the Due Diligence Agent SDK.
 
 ---
 
@@ -245,3 +245,25 @@ async def run_pipeline(project_dir: Path, resume: bool = False):
 - Retry logic is programmatic with configurable limits
 - Step timing and cost tracked automatically via `ResultMessage`
 - No risk of the orchestrator "forgetting" to run a validation gate
+
+---
+
+## ADR-07: Multi-Method Extraction with Pre-Inspection Routing
+
+**Status**: Accepted (2026-02-24)
+
+**Context**: Production runs on two data rooms (431 + 432 files) revealed that a single-pass extraction approach cannot handle the diversity of real-world PDF formats: text-based, scanned, watermark-only overlays, missing-ToUnicode CMap fonts, and encrypted documents. Each failure mode requires a different extraction strategy. Attempting all methods sequentially on every file wasted time on known-bad PDFs.
+
+**Decision**: Add pre-inspection routing and a deeper fallback chain with vision-based extractors.
+
+1. **PDF pre-inspection** (`_inspect_pdf`) classifies each PDF before extraction (~8ms/file) into `normal`, `scanned`, `missing_tounicode`, or `encrypted`. Scanned and garbled PDFs skip text extractors entirely.
+2. **GLM-OCR** (Zhipu AI vision-language model) added as the preferred OCR method above pytesseract. Produces structured Markdown with page markers. Deployed via mlx-vlm (Apple Silicon) or Ollama (cross-platform). MIT-licensed.
+3. **Claude vision** added as last-resort fallback when all OCR methods fail. Uses `claude_agent_sdk.query()` with Read-only tool access.
+4. **Unified quality gates** (`_try_method`) apply density, readability, watermark, and control-character checks uniformly across all extraction methods.
+
+**Consequences**:
+- 7-step PDF chain replaces the original 3-step chain, handling all known failure modes
+- Pre-inspection saves ~700ms per scanned file by skipping futile text extraction
+- GLM-OCR adds ~1.5 GB model download on first use (cached thereafter)
+- Claude vision incurs API cost but only triggers on files where all local methods fail
+- Shared constants and helpers (`_constants.py`, `_helpers.py`) eliminate duplication across 4 extraction modules

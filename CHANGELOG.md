@@ -4,6 +4,36 @@ All notable changes to this project will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.0] - 2026-02-24
+
+### Added
+
+- PDF pre-inspection (`_inspect_pdf`) classifies PDFs before extraction — routes scanned and garbled PDFs directly to OCR, saving ~700ms per file.
+- GLM-OCR vision-language model as preferred OCR method (mlx-vlm on Apple Silicon, Ollama cross-platform). Higher accuracy than pytesseract with structured Markdown output.
+- Claude vision as last-resort fallback for images and PDFs that all OCR methods fail on — uses Claude Agent SDK to visually examine files.
+- Control-character corruption detection (`_has_control_char_corruption`) catches garbled text from PDFs with missing /ToUnicode CMap entries.
+- Watermark detection (`_is_watermark_only`) catches DocuSign overlay-only PDFs where >50% of lines are identical repeated strings.
+- Binary image detection in readability gates — PNG/JPEG magic bytes, U+FFFD replacement character ratio, improved printable character counting.
+- Confidence scaling (`_scale_confidence`) — base scores now scale by actual-vs-expected text extraction ratio, calibrated from production medians.
+- Shared extraction constants (`_constants.py`) and helpers (`_helpers.py`) — eliminates 5 duplicate definitions across extraction modules.
+- Unified `_try_method()` helper consolidates duplicated try/check/write/return patterns across PDF, image, and Office extraction chains.
+- `_check_text_quality()` extracts shared U+FFFD and printable-ratio checks used by both `_is_cached_output_readable` and `_is_readable_text`.
+- Reference URL downloads parallelized with `ThreadPoolExecutor` (5 concurrent).
+- Citation verifier optimized with per-file page split caching and exact substring matching before fuzzy matching.
+
+### Fixed
+
+- Confidence scores calibrated to real-world medians — PDF ratio lowered from 0.5 to 0.09 (was producing 0.01-0.05 scores for well-extracted files).
+- Binary PNG/JPEG data no longer passes readability gates (U+FFFD counted as non-printable).
+- Identity-H PDF over-classification fixed — 25/26 Identity-H PDFs now extract normally with page markers (was skipping 91% of PDFs to markitdown, losing page markers).
+- MuPDF C-level stderr noise suppressed and routed through Python logging.
+
+### Changed
+
+- PDF extraction chain expanded: pymupdf → pdftotext → markitdown → GLM-OCR → pytesseract → Claude vision → direct read.
+- Image extraction chain expanded: markitdown → GLM-OCR → pytesseract → Claude vision → diagram placeholder.
+- Scanned PDF chain: GLM-OCR → pytesseract → Claude vision → direct read (skips text extractors entirely).
+
 ## [0.1.0] - 2026-02-22
 
 ### Added

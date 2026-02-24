@@ -30,12 +30,13 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from dd_agents.extraction._constants import CONFIDENCE_FAILURE, IMAGE_EXTENSIONS
+
 logger = logging.getLogger(__name__)
 
 # Confidence score for GLM-OCR output — higher than pytesseract (0.6)
 # because GLM-OCR produces structured Markdown with fewer artifacts.
 _CONFIDENCE_GLM_OCR = 0.8
-_CONFIDENCE_FAILURE = 0.0
 
 # ── Tuning constants (benchmarked on Apple M3 Max) ───────────────────
 MODEL_ID_MLX = "mlx-community/GLM-OCR-8bit"
@@ -44,9 +45,6 @@ MAX_TOKENS = 2048
 DPI = 200
 MAX_IMAGE_DIM = 1024
 _MAX_PAGES = 100
-
-# Extensions treated as direct images (no PDF-to-image conversion).
-_IMAGE_EXTENSIONS: frozenset[str] = frozenset({".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".gif"})
 
 
 # ── Image helpers ────────────────────────────────────────────────────
@@ -170,7 +168,7 @@ def _prepare_images(filepath: Path, work_dir: Path) -> list[Path]:
     suffix = filepath.suffix.lower()
     if suffix == ".pdf":
         return _render_pdf_pages(filepath, work_dir)
-    if suffix in _IMAGE_EXTENSIONS:
+    if suffix in IMAGE_EXTENSIONS:
         return _render_image_for_ocr(filepath, work_dir)
     return []
 
@@ -233,7 +231,7 @@ def _try_mlx_extract(filepath: Path, model: Any, processor: Any) -> tuple[str, f
     """
     imports = _import_mlx_vlm()
     if imports is None:
-        return "", _CONFIDENCE_FAILURE
+        return "", CONFIDENCE_FAILURE
     _load_fn, generate_fn, apply_chat_template_fn = imports
 
     work_dir = Path(tempfile.mkdtemp(prefix="dd_glm_mlx_"))
@@ -241,17 +239,17 @@ def _try_mlx_extract(filepath: Path, model: Any, processor: Any) -> tuple[str, f
         image_paths = _prepare_images(filepath, work_dir)
 
         if not image_paths:
-            return "", _CONFIDENCE_FAILURE
+            return "", CONFIDENCE_FAILURE
 
         page_texts = _mlx_ocr_pages(image_paths, model, processor, generate_fn, apply_chat_template_fn)
         if not page_texts or not any(t.strip() for t in page_texts):
-            return "", _CONFIDENCE_FAILURE
+            return "", CONFIDENCE_FAILURE
 
         assembled = _assemble_pages(page_texts)
         return assembled, _CONFIDENCE_GLM_OCR
     except Exception:
         logger.exception("MLX GLM-OCR extraction failed for %s", filepath)
-        return "", _CONFIDENCE_FAILURE
+        return "", CONFIDENCE_FAILURE
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
 
@@ -291,24 +289,24 @@ def _try_ollama_extract(filepath: Path) -> tuple[str, float]:
     """Attempt extraction via Ollama.  Returns ``(text, confidence)``."""
     if _import_ollama() is None:
         logger.debug("ollama not available -- skipping Ollama backend")
-        return "", _CONFIDENCE_FAILURE
+        return "", CONFIDENCE_FAILURE
 
     work_dir = Path(tempfile.mkdtemp(prefix="dd_glm_ollama_"))
     try:
         image_paths = _prepare_images(filepath, work_dir)
 
         if not image_paths:
-            return "", _CONFIDENCE_FAILURE
+            return "", CONFIDENCE_FAILURE
 
         page_texts = _ollama_ocr_pages(image_paths)
         if not page_texts or not any(t.strip() for t in page_texts):
-            return "", _CONFIDENCE_FAILURE
+            return "", CONFIDENCE_FAILURE
 
         assembled = _assemble_pages(page_texts)
         return assembled, _CONFIDENCE_GLM_OCR
     except Exception:
         logger.exception("Ollama GLM-OCR extraction failed for %s", filepath)
-        return "", _CONFIDENCE_FAILURE
+        return "", CONFIDENCE_FAILURE
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
 
@@ -367,12 +365,12 @@ class GlmOcrExtractor:
             any failure (missing dependencies, unsupported format, etc.).
         """
         if not filepath.exists():
-            return "", _CONFIDENCE_FAILURE
+            return "", CONFIDENCE_FAILURE
 
         suffix = filepath.suffix.lower()
-        if suffix != ".pdf" and suffix not in _IMAGE_EXTENSIONS:
+        if suffix != ".pdf" and suffix not in IMAGE_EXTENSIONS:
             logger.debug("GLM-OCR does not support extension %s", suffix)
-            return "", _CONFIDENCE_FAILURE
+            return "", CONFIDENCE_FAILURE
 
         # Backend 1: mlx-vlm (Apple Silicon)
         if self._ensure_mlx_model():
@@ -385,4 +383,4 @@ class GlmOcrExtractor:
         if text.strip():
             return text, conf
 
-        return "", _CONFIDENCE_FAILURE
+        return "", CONFIDENCE_FAILURE

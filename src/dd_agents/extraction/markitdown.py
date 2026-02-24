@@ -13,15 +13,16 @@ import platform
 import subprocess
 from typing import TYPE_CHECKING
 
+from dd_agents.extraction._constants import CONFIDENCE_FAILURE, CONFIDENCE_FALLBACK_READ, PLAINTEXT_EXTENSIONS
+from dd_agents.extraction._helpers import read_text
+
 if TYPE_CHECKING:
     from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# Confidence scores returned by this extractor.
+# Confidence score for successful markitdown conversion (unique to this module).
 _CONFIDENCE_SUCCESS = 0.9
-_CONFIDENCE_FALLBACK_READ = 0.5
-_CONFIDENCE_FAILURE = 0.0
 
 # File extensions that markitdown is expected to handle.
 MARKITDOWN_EXTENSIONS: frozenset[str] = frozenset(
@@ -46,24 +47,6 @@ MARKITDOWN_EXTENSIONS: frozenset[str] = frozenset(
     }
 )
 
-# Extensions that can be safely read as UTF-8 text.
-_PLAINTEXT_EXTENSIONS: frozenset[str] = frozenset(
-    {
-        ".txt",
-        ".csv",
-        ".md",
-        ".json",
-        ".yaml",
-        ".yml",
-        ".xml",
-        ".log",
-        ".tsv",
-        ".ini",
-        ".cfg",
-        ".conf",
-    }
-)
-
 
 class MarkitdownExtractor:
     """Extracts document text using the ``markitdown`` library.
@@ -85,7 +68,7 @@ class MarkitdownExtractor:
             confidence ``0.9``.
         """
         # For plain-text files, just read directly (no markitdown needed).
-        if filepath.suffix.lower() in _PLAINTEXT_EXTENSIONS:
+        if filepath.suffix.lower() in PLAINTEXT_EXTENSIONS:
             return self._read_text(filepath)
 
         # Attempt markitdown conversion.
@@ -129,7 +112,7 @@ class MarkitdownExtractor:
         text = result.text_content if hasattr(result, "text_content") else ""
         if text and text.strip():
             return text, _CONFIDENCE_SUCCESS
-        return "", _CONFIDENCE_FAILURE
+        return "", CONFIDENCE_FAILURE
 
     @staticmethod
     def _run_textutil(filepath: Path) -> tuple[str, float]:
@@ -140,11 +123,11 @@ class MarkitdownExtractor:
         Returns ``("", 0.0)`` on non-macOS systems or on failure.
         """
         if platform.system() != "Darwin":
-            return "", _CONFIDENCE_FAILURE
+            return "", CONFIDENCE_FAILURE
 
         textutil_extensions = {".doc", ".docx", ".rtf", ".html", ".htm", ".odt", ".webarchive"}
         if filepath.suffix.lower() not in textutil_extensions:
-            return "", _CONFIDENCE_FAILURE
+            return "", CONFIDENCE_FAILURE
 
         try:
             result = subprocess.run(
@@ -156,20 +139,13 @@ class MarkitdownExtractor:
                 text = result.stdout.decode("utf-8", errors="replace")
                 if text.strip():
                     logger.debug("textutil extracted %d chars from %s", len(text), filepath.name)
-                    return text, _CONFIDENCE_FALLBACK_READ
+                    return text, CONFIDENCE_FALLBACK_READ
         except (subprocess.TimeoutExpired, OSError) as exc:
             logger.debug("textutil failed for %s: %s", filepath, exc)
 
-        return "", _CONFIDENCE_FAILURE
+        return "", CONFIDENCE_FAILURE
 
     @staticmethod
     def _read_text(filepath: Path) -> tuple[str, float]:
         """Read a file as plain text (UTF-8, falling back to latin-1)."""
-        for encoding in ("utf-8", "latin-1"):
-            try:
-                text = filepath.read_text(encoding=encoding, errors="replace")
-                if text.strip():
-                    return text, _CONFIDENCE_FALLBACK_READ
-            except (OSError, UnicodeDecodeError):
-                continue
-        return "", _CONFIDENCE_FAILURE
+        return read_text(filepath)

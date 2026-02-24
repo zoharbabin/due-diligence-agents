@@ -13,7 +13,6 @@
 ```bash
 git clone https://github.com/<org>/due-diligence-agents.git
 cd due-diligence-agents
-git checkout impl-01
 pip install -e ".[dev]"
 pre-commit install
 ```
@@ -24,8 +23,8 @@ This installs the package in editable mode with all dev dependencies (pytest, ru
 
 | Prefix | Purpose |
 |--------|---------|
-| `impl-*` | Implementation phases (e.g., `impl-01`, `impl-02`) |
-| `feature/*` | New features branched from an impl or main branch |
+| `main` | Stable release branch |
+| `feat/*` | Feature development (e.g., `feat/issue-27-pipeline-optimization`) |
 | `fix/*` | Bug fixes |
 
 ## Running Tests
@@ -65,7 +64,7 @@ Configuration lives in `pyproject.toml` under `[tool.ruff]`, `[tool.mypy]`, and 
 
 ## Pull Request Process
 
-1. Branch from `impl-01` (or `main` once the implementation branch is merged).
+1. Branch from `main`.
 2. Write tests first, then implement.
 3. Ensure `make verify` passes locally before pushing.
 4. Add or update tests for any new functionality.

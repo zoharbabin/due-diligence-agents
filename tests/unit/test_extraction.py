@@ -183,6 +183,20 @@ class TestExtractionQualityTracker:
         )
         assert entry.fallback_chain == ["markitdown", "pdftotext", "fallback_ocr"]
 
+    def test_record_with_failure_reasons(self) -> None:
+        """failure_reasons are stored and round-trip through save/load."""
+        tracker = ExtractionQualityTracker()
+        reasons = ["pymupdf: too short (10 < 500)", "pdftotext: low density"]
+        entry = tracker.record(
+            "hard.pdf",
+            "fallback_ocr",
+            1200,
+            0.6,
+            fallback_chain=["pymupdf", "pdftotext", "ocr"],
+            failure_reasons=reasons,
+        )
+        assert entry.failure_reasons == reasons
+
     def test_record_overwrites_previous(self) -> None:
         tracker = ExtractionQualityTracker()
         tracker.record("file.pdf", "primary", 5000, 0.9)
@@ -195,7 +209,13 @@ class TestExtractionQualityTracker:
 
         tracker = ExtractionQualityTracker()
         tracker.record("a.pdf", "primary", 5000, 0.9)
-        tracker.record("b.docx", "fallback_read", 2000, 0.5)
+        tracker.record(
+            "b.docx",
+            "fallback_read",
+            2000,
+            0.5,
+            failure_reasons=["markitdown: too short (5 < 20)"],
+        )
         tracker.save(quality_path)
 
         # Load into a fresh tracker.
@@ -206,6 +226,10 @@ class TestExtractionQualityTracker:
         entries = tracker2.entries
         paths = {e.file_path for e in entries}
         assert paths == {"a.pdf", "b.docx"}
+
+        # failure_reasons survive round-trip.
+        b_entry = next(e for e in entries if e.file_path == "b.docx")
+        assert b_entry.failure_reasons == ["markitdown: too short (5 < 20)"]
 
     def test_save_creates_parent_dirs(self, tmp_path: Path) -> None:
         nested = tmp_path / "a" / "b" / "quality.json"
@@ -1819,3 +1843,59 @@ class TestClaudeVision:
 
         assert text == ""
         assert conf == 0.0
+
+
+# ======================================================================
+# TestSharedConstants — _constants and _helpers modules
+# ======================================================================
+
+
+class TestSharedConstants:
+    """Tests for shared constants and helpers in dd_agents.extraction._constants / _helpers."""
+
+    def test_image_extensions_complete(self) -> None:
+        """IMAGE_EXTENSIONS contains exactly 7 extensions."""
+        from dd_agents.extraction._constants import IMAGE_EXTENSIONS
+
+        assert len(IMAGE_EXTENSIONS) == 7
+        for ext in (".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".gif"):
+            assert ext in IMAGE_EXTENSIONS
+
+    def test_plaintext_extensions_complete(self) -> None:
+        """PLAINTEXT_EXTENSIONS contains exactly 12 extensions."""
+        from dd_agents.extraction._constants import PLAINTEXT_EXTENSIONS
+
+        assert len(PLAINTEXT_EXTENSIONS) == 12
+        for ext in (".txt", ".csv", ".md", ".json", ".yaml", ".yml", ".xml", ".log", ".tsv", ".ini", ".cfg", ".conf"):
+            assert ext in PLAINTEXT_EXTENSIONS
+
+    def test_read_text_basic(self, tmp_path: Path) -> None:
+        """Shared read_text helper reads a UTF-8 text file."""
+        from dd_agents.extraction._helpers import read_text
+
+        f = tmp_path / "sample.txt"
+        f.write_text("Hello, shared helper!", encoding="utf-8")
+        text, conf = read_text(f)
+        assert "Hello, shared helper!" in text
+        assert conf == 0.5
+
+    def test_read_text_empty_file(self, tmp_path: Path) -> None:
+        """Shared read_text returns ('', 0.0) for empty files."""
+        from dd_agents.extraction._helpers import read_text
+
+        f = tmp_path / "empty.txt"
+        f.write_text("", encoding="utf-8")
+        text, conf = read_text(f)
+        assert text == ""
+        assert conf == 0.0
+
+    def test_check_text_quality_rejects_binary(self) -> None:
+        """_check_text_quality rejects binary garbage."""
+        # High U+FFFD ratio → reject
+        sample = "A" * 50 + "\ufffd" * 50
+        assert ExtractionPipeline._check_text_quality(sample) is False
+
+    def test_check_text_quality_accepts_clean_text(self) -> None:
+        """_check_text_quality accepts clean readable text."""
+        sample = "This is perfectly clean readable text with normal characters.\n" * 10
+        assert ExtractionPipeline._check_text_quality(sample) is True

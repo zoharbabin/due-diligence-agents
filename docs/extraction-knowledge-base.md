@@ -85,28 +85,48 @@ attempted is recorded in the `fallback_chain` array for auditability.
 
 ### 2.2 PDF Fallback Chain (Most Complex)
 
+PDFs are pre-inspected to classify them before extraction begins.
+Scanned and missing-ToUnicode PDFs skip text extractors and go
+directly to OCR. Normal PDFs follow the full chain.
+
 ```
+Step 0: PDF PRE-INSPECTION (_inspect_pdf, 8ms avg)
+  ├─ scanned (< 100 chars on first page) → skip to Step 4
+  ├─ missing_tounicode (Identity-H + control-char corruption) → skip to Step 4
+  ├─ encrypted → skip to Step 4
+  └─ normal → proceed to Step 1
+
+Normal PDF chain:
 Step 1: pymupdf (page-aware, injects --- Page N --- markers)
   ↓ fails density check? (<500 chars total, or <50 chars/page)
+  ↓ fails watermark check? (>50% identical lines)
+  ↓ fails control-char check? (>1% ASCII 0x00-0x1F)
 Step 2: pdftotext (poppler CLI, converts \f to page markers)
-  ↓ fails density check? (<500 chars total, or <50 chars/page)
+  ↓ fails density + watermark + control-char check?
 Step 3: markitdown (handles edge-case PDFs, no page markers)
   ↓ fails threshold? (<100 chars) OR fails readability gate? (<85% printable)
-Step 4: pytesseract OCR (page-by-page image OCR, injects markers)
+  ↓ fails control-char check?
+Step 4: GLM-OCR (vision-language model, page markers, high quality)
   ↓ fails threshold? (<20 chars)
-Step 5: Direct text read (UTF-8 → latin-1, last resort)
+Step 5: pytesseract OCR (page-by-page image OCR, injects markers)
+  ↓ fails threshold? (<20 chars)
+Step 6: Claude vision (SDK Read tool, visual description)
+  ↓ fails threshold? (<20 chars)
+Step 7: Direct text read (UTF-8 → latin-1, last resort)
   ↓ fails threshold? (<20 chars)
 FAILED — confidence 0.0
 ```
 
 **Confidence scores per method:**
 
-| Method | Confidence | Page Markers | Notes |
-|--------|-----------|--------------|-------|
-| pymupdf | 0.9 | Yes | Best quality, preserves layout |
+| Method | Base Confidence | Page Markers | Notes |
+|--------|----------------|--------------|-------|
+| pymupdf | 0.9 | Yes | Best quality, preserves layout; scaled by text-to-file-size ratio |
 | pdftotext | 0.7 | Yes (from \f) | Good for form-heavy PDFs |
-| markitdown | 0.5 | No | Catches edge cases pymupdf misses |
+| markitdown | 0.9 | No | Catches edge cases pymupdf misses |
+| GLM-OCR | 0.8 | Yes | High-quality vision-LM OCR; mlx-vlm or Ollama backend |
 | pytesseract | 0.6 | Yes | Slow but handles scanned docs |
+| Claude vision | 0.65 | No | Last-resort visual description via Claude Agent SDK |
 | Direct read | 0.5 | No | PDF binary → mostly garbage |
 | Failed | 0.0 | N/A | All methods exhausted |
 
@@ -126,10 +146,14 @@ FAILED
 
 ```
 Step 1: markitdown (OCR mode)
+  ↓ fails readability gate? (<85% printable, rejects binary dumps)
+Step 2: GLM-OCR (vision-language model)
   ↓ fails? (<20 chars)
-Step 2: pytesseract
+Step 3: pytesseract
   ↓ fails? (<20 chars)
-Step 3: Diagram placeholder (records that image exists but is unreadable)
+Step 4: Claude vision (visual description via SDK)
+  ↓ fails? (<20 chars)
+Step 5: Diagram placeholder (records that image exists but is unreadable)
   → confidence 0.3
 ```
 
@@ -169,7 +193,9 @@ Where N is the 1-indexed page number. This format was chosen because:
 |-------------------|---------------|
 | pymupdf | `page.get_text()` per page, marker injected between pages |
 | pdftotext | Form-feed characters (`\f`) converted to markers |
+| GLM-OCR | Each rendered page image gets a marker before its OCR text |
 | pytesseract OCR | Each page image gets a marker before its OCR text |
+| Claude vision | **No markers** — produces descriptive text, not page-level extraction |
 | markitdown | **No markers** — this is a known limitation |
 | Direct read | **No markers** |
 
@@ -863,7 +889,7 @@ Extraction time: ~33 seconds for 995 files (33 ms/file average).
 | **Symptom** | 13 of 56 pages in a PandaDoc-generated PDF extracted as ASCII control characters (0x01-0x1F). pymupdf reports confidence 0.9 despite 46% control characters on affected pages. 12.4% control characters across full document |
 | **Root cause** | PDF uses `Identity-H` CID-keyed fonts (Cambria, Calibri) without `/ToUnicode` CMap entries. pymupdf's `get_text()` returns raw CID codes as control bytes. The first 9 pages use Arial fonts with valid ToUnicode → clean text. `_is_readable_text()` only samples the first 10K chars (clean pages), missing the corruption |
 | **Discovery** | Pre-inspection of all 426 PDFs in 3.5 seconds (8ms/file avg) correctly identifies exactly 1 file with this issue + 18 scanned PDFs with no fonts |
-| **Fix** | Pending — control-character ratio check on full pymupdf output (>1% control chars → reject → fall through to GLM-OCR). See §16.9 for library comparison |
+| **Fix** | `_inspect_pdf()` pre-inspection classifies PDFs before extraction. Identity-H fonts only flagged when BOTH Identity-H encoding AND control-char corruption (>1%) detected in extracted text. 25/26 Identity-H PDFs extract normally. Truly garbled PDFs route to GLM-OCR. Control-char gate also applied as defense-in-depth on pymupdf/pdftotext output. See §16.9 for library comparison |
 | **Lesson** | PDF text extraction quality depends on font encoding metadata, not just content density. Pre-inspection of font tables can predict extraction failures before attempting extraction |
 
 ---
@@ -1009,9 +1035,17 @@ Single-chunk customers get a standard prompt. Multi-chunk customers get:
 | `_MIN_EXTRACTION_CHARS` | 500 chars | Density check hard minimum for pymupdf/pdftotext (Bug H fix) |
 | `_MIN_CHARS_PER_PAGE` | 50 chars/page | Density check for scanned PDF detection |
 | `_MIN_PRINTABLE_RATIO` | 0.85 (85%) | Readability gate — rejects binary garbage from markitdown |
+| `_MAX_REPLACEMENT_RATIO` | 0.01 (1%) | U+FFFD replacement character gate — rejects decoded binary |
+| `_CONTROL_CHAR_THRESHOLD` | 0.01 (1%) | ASCII control-char gate for ToUnicode CMap corruption |
+| `CONFIDENCE_FAILURE` | 0.0 | Shared constant — extraction failure (all extractors) |
+| `CONFIDENCE_FALLBACK_READ` | 0.5 | Shared constant — direct text read confidence |
+| `_CONFIDENCE_CLAUDE_VISION` | 0.65 | Claude vision last-resort confidence |
+| `_CONFIDENCE_GLM_OCR` | 0.8 | GLM-OCR confidence (higher than pytesseract) |
 | `QUOTE_MATCH_THRESHOLD` | 80 (0-100) | Citation verification fuzzy match minimum |
 | `OCR_PAGE_TIMEOUT` | 30 seconds | Per-page timeout for pytesseract |
 | `OCR_LAST_PAGE_CAP` | 50 pages | Maximum pages for OCR processing |
+| `_MAX_PAGES` (GLM-OCR) | 100 pages | Maximum pages for GLM-OCR processing |
+| `_CLAUDE_VISION_TIMEOUT` | 120 seconds | Timeout for Claude vision calls |
 | Systemic failure gate | 50% | Pipeline halts if > 50% non-plaintext files fail |
 
 ### 14.2 Chunking Constants
@@ -1035,14 +1069,33 @@ Single-chunk customers get a standard prompt. Multi-chunk customers get:
 
 ### 14.4 Confidence Score Scale
 
+Base confidence scores are scaled by `min(1.0, actual_chars / expected_chars)`
+where expected chars is derived from file size and per-format ratios (§14.5).
+
 | Score | Meaning | Extraction Method |
 |-------|---------|-------------------|
 | 0.9 | Primary method succeeded | pymupdf, markitdown (Office) |
+| 0.8 | High-quality OCR | GLM-OCR (vision-language model) |
 | 0.7 | First fallback | pdftotext (poppler) |
+| 0.65 | Visual description | Claude vision (SDK last resort) |
 | 0.6 | OCR fallback | pytesseract |
 | 0.5 | Direct text read / textutil | UTF-8 or macOS textutil |
 | 0.3 | Diagram placeholder | Image that couldn't be OCR'd |
 | 0.0 | Failed | All methods exhausted |
+
+### 14.5 Expected Text-to-File-Size Ratios (Confidence Scaling)
+
+Used by `_scale_confidence()` to penalize sparse extractions. Calibrated
+from production data room medians (432 files).
+
+| Format | Ratio | Notes |
+|--------|-------|-------|
+| `.pdf` | 0.09 | pymupdf median (was 0.5 — see Bug report in §11) |
+| `.docx` / `.doc` | 0.15 | |
+| `.xlsx` / `.xls` | 0.05 | Low ratio: spreadsheets are mostly binary formatting |
+| `.pptx` / `.ppt` | 0.05 | |
+| `.rtf` | 0.25 | |
+| `.html` / `.htm` | 0.35 | |
 
 ---
 
@@ -1058,7 +1111,11 @@ No single extraction method handles all document formats and conditions:
   also returns nothing for scans
 - **markitdown** handles Office formats and some edge-case PDFs but
   produces no page markers
+- **GLM-OCR** produces high-quality Markdown from scanned docs via
+  vision-language model but is slower (~5s/page vs ~1s/page for pytesseract)
 - **pytesseract** handles scanned documents but is slow and error-prone
+- **Claude vision** provides visual understanding when all OCR methods fail
+  (diagrams, complex layouts, degraded images)
 - **Direct read** catches plain text in unexpected containers
 
 ### 15.2 Why Page Markers Instead of Metadata

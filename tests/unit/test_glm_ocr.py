@@ -184,10 +184,11 @@ class TestGlmOcrExtractor:
 
     def test_confidence_score_value(self) -> None:
         """Confidence constants are within Pydantic's [0.0, 1.0] range."""
-        from dd_agents.extraction.glm_ocr import _CONFIDENCE_FAILURE, _CONFIDENCE_GLM_OCR
+        from dd_agents.extraction._constants import CONFIDENCE_FAILURE
+        from dd_agents.extraction.glm_ocr import _CONFIDENCE_GLM_OCR
 
         assert 0.0 <= _CONFIDENCE_GLM_OCR <= 1.0
-        assert _CONFIDENCE_FAILURE == 0.0
+        assert CONFIDENCE_FAILURE == 0.0
         # GLM-OCR should be higher than pytesseract (0.6)
         assert _CONFIDENCE_GLM_OCR > 0.6
 

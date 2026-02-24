@@ -21,6 +21,8 @@ from collections import Counter
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
+from dd_agents.extraction._constants import IMAGE_EXTENSIONS, PLAINTEXT_EXTENSIONS
+from dd_agents.extraction._helpers import read_text
 from dd_agents.extraction.cache import ExtractionCache
 from dd_agents.extraction.markitdown import MarkitdownExtractor
 from dd_agents.extraction.ocr import OCRExtractor
@@ -91,39 +93,8 @@ _EXPECTED_TEXT_RATIOS: dict[str, float] = {
     ".htm": 0.35,  # was 0.6
 }
 
-# Extensions read directly without extraction.
-_PLAINTEXT_EXTENSIONS: frozenset[str] = frozenset(
-    {
-        ".txt",
-        ".csv",
-        ".md",
-        ".json",
-        ".yaml",
-        ".yml",
-        ".xml",
-        ".log",
-        ".tsv",
-        ".ini",
-        ".cfg",
-        ".conf",
-    }
-)
-
 # Extensions that trigger the PDF branch of the fallback chain.
 _PDF_EXTENSIONS: frozenset[str] = frozenset({".pdf"})
-
-# Image extensions that go through the OCR branch.
-_IMAGE_EXTENSIONS: frozenset[str] = frozenset(
-    {
-        ".png",
-        ".jpg",
-        ".jpeg",
-        ".tiff",
-        ".tif",
-        ".bmp",
-        ".gif",
-    }
-)
 
 
 class ExtractionPipelineError(Exception):
@@ -226,7 +197,7 @@ class ExtractionPipeline:
                 continue
 
             # Not cached -- run extraction
-            is_plaintext = filepath.suffix.lower() in _PLAINTEXT_EXTENSIONS
+            is_plaintext = filepath.suffix.lower() in PLAINTEXT_EXTENSIONS
             if not is_plaintext:
                 total_non_plaintext += 1
 
@@ -237,6 +208,7 @@ class ExtractionPipeline:
                 bytes_extracted=entry.bytes_extracted,
                 confidence=entry.confidence,
                 fallback_chain=entry.fallback_chain,
+                failure_reasons=entry.failure_reasons,
             )
 
             if entry.confidence == 0.0 and not is_plaintext:
@@ -283,13 +255,13 @@ class ExtractionPipeline:
 
         suffix = filepath.suffix.lower()
 
-        if suffix in _PLAINTEXT_EXTENSIONS:
+        if suffix in PLAINTEXT_EXTENSIONS:
             return self._extract_plaintext(filepath, out_file)
 
         if suffix in _PDF_EXTENSIONS:
             return self._extract_pdf(filepath, out_file)
 
-        if suffix in _IMAGE_EXTENSIONS:
+        if suffix in IMAGE_EXTENSIONS:
             return self._extract_image(filepath, out_file)
 
         # Office / other formats -- markitdown then direct read.
@@ -858,6 +830,15 @@ class ExtractionPipeline:
         return len(markers) if markers else 1
 
     @staticmethod
+    def _check_text_quality(sample: str) -> bool:
+        """Return *True* if *sample* passes U+FFFD and printable-ratio checks."""
+        replacement_count = sample.count(_REPLACEMENT_CHAR)
+        if replacement_count / max(len(sample), 1) > _MAX_REPLACEMENT_RATIO:
+            return False
+        printable = sum(1 for ch in sample if ch != _REPLACEMENT_CHAR and (ch.isprintable() or ch in "\n\r\t"))
+        return printable / max(len(sample), 1) >= _MIN_PRINTABLE_RATIO
+
+    @staticmethod
     def _is_cached_output_readable(out_file: Path) -> bool:
         """Check if a cached ``.md`` output file contains readable text.
 
@@ -880,13 +861,7 @@ class ExtractionPipeline:
             if any(stripped_raw[:2] == m for m in _JPEG_MAGIC_MARKERS):
                 return False
             sample = raw.decode("utf-8", errors="replace")
-            # Reject if >1% replacement characters (decoded binary).
-            replacement_count = sample.count(_REPLACEMENT_CHAR)
-            if len(sample) > 0 and replacement_count / len(sample) > _MAX_REPLACEMENT_RATIO:
-                return False
-            # Exclude U+FFFD from printable count.
-            printable = sum(1 for ch in sample if ch != _REPLACEMENT_CHAR and (ch.isprintable() or ch in "\n\r\t"))
-            return printable / max(len(sample), 1) >= _MIN_PRINTABLE_RATIO
+            return ExtractionPipeline._check_text_quality(sample)
         except OSError:
             return False
 
@@ -939,13 +914,7 @@ class ExtractionPipeline:
         if stripped[:2] in ("\xff\xd8", "\xff\xe0", "\xff\xe1"):
             return False
         sample = text[:sample_size]
-        # Reject if >1% replacement characters (decoded binary).
-        replacement_count = sample.count(_REPLACEMENT_CHAR)
-        if replacement_count / max(len(sample), 1) > _MAX_REPLACEMENT_RATIO:
-            return False
-        # Exclude U+FFFD from printable count.
-        printable = sum(1 for ch in sample if ch != _REPLACEMENT_CHAR and (ch.isprintable() or ch in "\n\r\t"))
-        return printable / len(sample) >= _MIN_PRINTABLE_RATIO
+        return ExtractionPipeline._check_text_quality(sample)
 
     # ------------------------------------------------------------------
     # Claude vision last-resort (Issue #27)
@@ -1030,14 +999,7 @@ class ExtractionPipeline:
     @staticmethod
     def _read_text(filepath: Path) -> tuple[str, float]:
         """Read *filepath* as plain text (UTF-8, then latin-1)."""
-        for encoding in ("utf-8", "latin-1"):
-            try:
-                text = filepath.read_text(encoding=encoding, errors="replace")
-                if text.strip():
-                    return text, 0.5
-            except (OSError, UnicodeDecodeError):
-                continue
-        return "", 0.0
+        return read_text(filepath)
 
     @staticmethod
     def _failed_entry(
