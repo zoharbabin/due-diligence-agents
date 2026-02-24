@@ -1,9 +1,11 @@
 """Extraction pipeline -- orchestrates the fallback chain for all files.
 
 The pipeline converts every data-room file to a single canonical
-markdown representation.  The fallback chain is:
+markdown representation.  PDFs are pre-inspected to route the chain:
 
-    markitdown -> pdftotext (CLI) -> GLM-OCR (optional) -> pytesseract -> direct text read
+    Normal:  pymupdf → pdftotext → markitdown → GLM-OCR → pytesseract → Claude vision → direct read
+    Scanned: GLM-OCR → pytesseract → Claude vision → direct read
+    Images:  markitdown → GLM-OCR → pytesseract → Claude vision → diagram placeholder
 
 Extracted files are written as ``<safe_name>.md`` into the output
 directory.  Unchanged files (SHA-256 match) are skipped.
@@ -53,6 +55,21 @@ _MIN_EXTRACTION_CHARS = 500
 # PDF magic bytes — cached outputs starting with this are raw binary, not text.
 _PDF_MAGIC = b"%PDF-"
 
+# Image magic bytes — binary image data decoded as UTF-8 fools isprintable()
+# because U+FFFD (replacement char) is "printable".
+_PNG_MAGIC = b"\x89PNG"
+_JPEG_MAGIC_MARKERS = (b"\xff\xd8", b"\xff\xe0", b"\xff\xe1")
+
+# Replacement character U+FFFD — indicates decoded binary, not real text.
+_REPLACEMENT_CHAR = "\ufffd"
+_MAX_REPLACEMENT_RATIO = 0.01  # >1% replacement chars → reject
+
+# Confidence score for Claude vision descriptions.
+_CONFIDENCE_CLAUDE_VISION = 0.65
+
+# Timeout for Claude vision calls (seconds).
+_CLAUDE_VISION_TIMEOUT = 120
+
 # Threshold for control-character corruption detection (Issue #27 Phase 1).
 # ASCII 0x00-0x1F excluding whitespace (\n\r\t\x0c).
 _CONTROL_CHAR_THRESHOLD = 0.01
@@ -62,16 +79,16 @@ _CONTROL_CHAR_THRESHOLD = 0.01
 # extractions that technically pass quality gates but contain far less
 # text than expected for the file size.
 _EXPECTED_TEXT_RATIOS: dict[str, float] = {
-    ".pdf": 0.5,
-    ".docx": 0.3,
-    ".doc": 0.3,
-    ".xlsx": 0.2,
-    ".xls": 0.2,
-    ".pptx": 0.2,
-    ".ppt": 0.2,
-    ".rtf": 0.4,
-    ".html": 0.6,
-    ".htm": 0.6,
+    ".pdf": 0.09,  # pymupdf median from PathFactory audit (was 0.5)
+    ".docx": 0.15,  # was 0.3
+    ".doc": 0.15,  # was 0.3
+    ".xlsx": 0.05,  # was 0.2
+    ".xls": 0.05,  # was 0.2
+    ".pptx": 0.05,  # was 0.2
+    ".ppt": 0.05,  # was 0.2
+    ".rtf": 0.25,  # was 0.4
+    ".html": 0.35,  # was 0.6
+    ".htm": 0.35,  # was 0.6
 }
 
 # Extensions read directly without extraction.
@@ -323,13 +340,20 @@ class ExtractionPipeline:
             if text_len < _SCANNED_PDF_THRESHOLD:
                 return "scanned"
 
-            # Check for Identity-H fonts without /ToUnicode CMap.
+            # Check for Identity-H fonts — only flag as missing_tounicode
+            # if the extracted text also has control-char corruption.
+            # 25/26 Identity-H PDFs in PathFactory extract cleanly.
+            has_identity_h = False
             fonts = page.get_fonts(full=True)
             for font in fonts:
                 # font tuple: (xref, ext, type, basefont, name, encoding, ...)
                 encoding = font[5] if len(font) > 5 else ""
                 if isinstance(encoding, str) and "Identity-H" in encoding:
-                    return "missing_tounicode"
+                    has_identity_h = True
+                    break
+
+            if has_identity_h and ExtractionPipeline._has_control_char_corruption(page_text):
+                return "missing_tounicode"
 
             return "normal"
         except Exception:
@@ -530,22 +554,25 @@ class ExtractionPipeline:
             if entry is not None:
                 return entry
 
-        # 3. markitdown (no page markers, but may handle edge cases).
-        text, conf = self._markitdown.extract(filepath)
-        entry = self._try_method(
-            "markitdown",
-            text,
-            conf,
-            out_file,
-            filepath,
-            chain,
-            failure_reasons,
-            method_label="fallback_markitdown",
-            min_chars=_SCANNED_PDF_THRESHOLD,
-            check_readability=True,
-        )
-        if entry is not None:
-            return entry
+            # 3. markitdown — only for "normal" PDFs where pymupdf/pdftotext
+            #    failed.  markitdown uses pdfminer internally and cannot
+            #    extract text from images any better than pymupdf.
+            text, conf = self._markitdown.extract(filepath)
+            entry = self._try_method(
+                "markitdown",
+                text,
+                conf,
+                out_file,
+                filepath,
+                chain,
+                failure_reasons,
+                method_label="fallback_markitdown",
+                min_chars=_SCANNED_PDF_THRESHOLD,
+                check_readability=True,
+                check_control_chars=True,
+            )
+            if entry is not None:
+                return entry
 
         # 4. GLM-OCR (optional, higher quality than pytesseract).
         if self._glm_ocr is not None:
@@ -578,7 +605,22 @@ class ExtractionPipeline:
         if entry is not None:
             return entry
 
-        # 6. Raw read (last resort).
+        # 6. Claude vision (last resort for unreadable PDFs).
+        text, conf = self._try_claude_vision(filepath)
+        entry = self._try_method(
+            "claude_vision",
+            text,
+            conf,
+            out_file,
+            filepath,
+            chain,
+            failure_reasons,
+            method_label="fallback_claude_vision",
+        )
+        if entry is not None:
+            return entry
+
+        # 7. Raw read (final fallback).
         text, conf = self._read_text(filepath)
         entry = self._try_method(
             "direct_read",
@@ -596,7 +638,7 @@ class ExtractionPipeline:
         return self._failed_entry(filepath, chain, failure_reasons=failure_reasons)
 
     def _extract_image(self, filepath: Path, out_file: Path) -> ExtractionQualityEntry:
-        """Image fallback chain: markitdown -> GLM-OCR -> pytesseract."""
+        """Image fallback chain: markitdown -> GLM-OCR -> pytesseract -> Claude vision -> diagram placeholder."""
         chain: list[str] = []
         failure_reasons: list[str] = []
 
@@ -643,6 +685,21 @@ class ExtractionPipeline:
             chain,
             failure_reasons,
             method_label="fallback_ocr",
+        )
+        if entry is not None:
+            return entry
+
+        # 4. Claude vision (last resort for unreadable images).
+        text, conf = self._try_claude_vision(filepath)
+        entry = self._try_method(
+            "claude_vision",
+            text,
+            conf,
+            out_file,
+            filepath,
+            chain,
+            failure_reasons,
+            method_label="fallback_claude_vision",
         )
         if entry is not None:
             return entry
@@ -808,17 +865,27 @@ class ExtractionPipeline:
         garbage into memory.  Returns *False* for binary PDF dumps so
         they get re-extracted through the improved fallback chain.
 
-        Two-layer check:
-        1. PDF signature — linearized PDFs have mostly-ASCII headers that
-           fool the printable-ratio heuristic.
-        2. Printable ratio — catches other binary garbage.
+        Three-layer check:
+        1. Magic-byte signatures — PDF, PNG, JPEG raw binary.
+        2. Replacement-character gate — >1 % U+FFFD indicates decoded binary.
+        3. Printable ratio (excluding U+FFFD) — catches other binary garbage.
         """
         try:
             raw = out_file.read_bytes()[:10_000]
-            if raw.lstrip()[:5] == _PDF_MAGIC:
+            stripped_raw = raw.lstrip()
+            if stripped_raw[:5] == _PDF_MAGIC:
+                return False
+            if stripped_raw[:4] == _PNG_MAGIC:
+                return False
+            if any(stripped_raw[:2] == m for m in _JPEG_MAGIC_MARKERS):
                 return False
             sample = raw.decode("utf-8", errors="replace")
-            printable = sum(1 for ch in sample if ch.isprintable() or ch in "\n\r\t")
+            # Reject if >1% replacement characters (decoded binary).
+            replacement_count = sample.count(_REPLACEMENT_CHAR)
+            if len(sample) > 0 and replacement_count / len(sample) > _MAX_REPLACEMENT_RATIO:
+                return False
+            # Exclude U+FFFD from printable count.
+            printable = sum(1 for ch in sample if ch != _REPLACEMENT_CHAR and (ch.isprintable() or ch in "\n\r\t"))
             return printable / max(len(sample), 1) >= _MIN_PRINTABLE_RATIO
         except OSError:
             return False
@@ -850,18 +917,115 @@ class ExtractionPipeline:
     def _is_readable_text(text: str, *, sample_size: int = 10_000) -> bool:
         """Return *True* if *text* looks like human-readable content.
 
-        Two-layer check:
+        Five-layer check:
         1. PDF signature — rejects raw PDF binary that some extractors
            dump verbatim (linearized PDFs can fool the ratio check).
-        2. Printable ratio — catches other binary garbage (< 85 %).
+        2. PNG magic — rejects binary PNG decoded as latin-1 text.
+        3. JPEG magic — rejects binary JPEG decoded as latin-1 text.
+        4. Replacement-character gate — >1 % U+FFFD indicates binary
+           decoded as UTF-8 with ``errors='replace'``.
+        5. Printable ratio (excluding U+FFFD) — catches other binary garbage.
         """
         if not text:
             return False
-        if text.lstrip()[:5] == "%PDF-":
+        stripped = text.lstrip()
+        if stripped[:5] == "%PDF-":
+            return False
+        # Image magic: when binary is decoded with latin-1 (the _read_text
+        # fallback encoding), bytes map 1:1 to Unicode codepoints, so the
+        # magic survives as string characters.  E.g. b"\x89PNG" → "\x89PNG".
+        if stripped[:4] == "\x89PNG":
+            return False
+        if stripped[:2] in ("\xff\xd8", "\xff\xe0", "\xff\xe1"):
             return False
         sample = text[:sample_size]
-        printable = sum(1 for ch in sample if ch.isprintable() or ch in "\n\r\t")
+        # Reject if >1% replacement characters (decoded binary).
+        replacement_count = sample.count(_REPLACEMENT_CHAR)
+        if replacement_count / max(len(sample), 1) > _MAX_REPLACEMENT_RATIO:
+            return False
+        # Exclude U+FFFD from printable count.
+        printable = sum(1 for ch in sample if ch != _REPLACEMENT_CHAR and (ch.isprintable() or ch in "\n\r\t"))
         return printable / len(sample) >= _MIN_PRINTABLE_RATIO
+
+    # ------------------------------------------------------------------
+    # Claude vision last-resort (Issue #27)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def _describe_image_async(filepath: Path) -> str:
+        """Use Claude Agent SDK to visually describe an image or PDF.
+
+        Returns a text description or empty string on failure.
+        """
+        from claude_agent_sdk import (
+            AssistantMessage,
+            ClaudeAgentOptions,
+            ResultMessage,
+            TextBlock,
+            query,
+        )
+
+        system_prompt = (
+            "You are a document-analysis assistant.  The user will ask you "
+            "to read an image file.  Respond with:\n"
+            "1. ALL text visible in the image, transcribed verbatim.\n"
+            "2. A description of any tables, charts, or diagrams with their data.\n"
+            "3. A note about any signatures, logos, or stamps.\n"
+            "If no text is visible, describe the visual content in detail."
+        )
+
+        user_prompt = f"Use the Read tool to visually examine this file and describe everything you see: {filepath}"
+
+        options = ClaudeAgentOptions(
+            system_prompt=system_prompt,
+            max_turns=1,
+            permission_mode="bypassPermissions",
+            disallowed_tools=["Edit", "Write", "Bash", "Glob", "Grep", "WebFetch", "Task", "NotebookEdit"],
+        )
+
+        text_parts: list[str] = []
+        try:
+            async for message in query(prompt=user_prompt, options=options):
+                if isinstance(message, AssistantMessage):
+                    for block in message.content:
+                        if isinstance(block, TextBlock):
+                            text_parts.append(block.text)
+                elif isinstance(message, ResultMessage) and message.is_error:
+                    logger.debug("Claude vision error for %s: %s", filepath, message.result)
+                    return ""
+        except Exception as exc:
+            logger.debug("Claude vision failed for %s: %s", filepath, exc)
+            return ""
+
+        return "\n".join(text_parts)
+
+    @staticmethod
+    def _try_claude_vision(filepath: Path) -> tuple[str, float]:
+        """Synchronous wrapper for :meth:`_describe_image_async`.
+
+        The pipeline is synchronous but may be called from within a
+        running asyncio event loop.  Uses a separate thread to run the
+        async query safely.
+
+        Returns ``(text, confidence)`` on success, ``("", 0.0)`` on failure.
+        """
+        import asyncio as _asyncio
+        from concurrent.futures import ThreadPoolExecutor as _ThreadPoolExecutor
+
+        def _run() -> str:
+            return _asyncio.run(ExtractionPipeline._describe_image_async(filepath))
+
+        try:
+            with _ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(_run)
+                result = future.result(timeout=_CLAUDE_VISION_TIMEOUT)
+        except Exception as exc:
+            logger.debug("Claude vision timed out or failed for %s: %s", filepath, exc)
+            return "", 0.0
+
+        if result and result.strip():
+            return result, _CONFIDENCE_CLAUDE_VISION
+        return "", 0.0
 
     @staticmethod
     def _read_text(filepath: Path) -> tuple[str, float]:
