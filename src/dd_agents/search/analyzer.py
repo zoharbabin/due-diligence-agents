@@ -19,6 +19,8 @@ from dd_agents.models.search import (
     SearchCitation,
     SearchColumnResult,
     SearchCustomerResult,
+    dedup_citations,
+    parse_column_result,
 )
 from dd_agents.search.chunker import (
     TARGET_CHUNK_CHARS,
@@ -27,6 +29,8 @@ from dd_agents.search.chunker import (
     create_analysis_chunks,
     detect_page_markers,
     estimate_chunks,
+    split_by_pages,
+    split_by_paragraphs,
 )
 
 if TYPE_CHECKING:
@@ -60,6 +64,70 @@ _DOC_TYPE_KEYWORDS: dict[str, str] = {
     "side letter": "Side Letter",
     "exhibit": "Exhibit",
 }
+
+
+# Synthesis quote budget constants (Issue #20).
+_SYNTHESIS_BUDGET_CHARS = 80_000
+_MIN_QUOTE_CHARS = 200
+_MAX_QUOTE_CHARS = 1000
+
+# Confidence ranking for _max_confidence (higher = stronger).
+_CONFIDENCE_RANK: dict[str, int] = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
+
+
+def _max_confidence(a: str, b: str) -> str:
+    """Return the stronger of two confidence levels (HIGH > MEDIUM > LOW).
+
+    Always returns normalized uppercase (e.g. ``"HIGH"``).
+    Unknown values rank below LOW.  Issue #22.
+    """
+    rank_a = _CONFIDENCE_RANK.get(a.upper().strip(), 0) if a else 0
+    rank_b = _CONFIDENCE_RANK.get(b.upper().strip(), 0) if b else 0
+    winner = a if rank_a >= rank_b else b
+    return winner.upper().strip() if winner else ""
+
+
+def _extract_yes_no(answer_upper: str) -> str:
+    """Extract a semantic YES/NO from an uppercased answer string.
+
+    Many LLM answers are free-text that starts with "YES" or "NO" followed by
+    punctuation or a space (e.g. ``"NO - the amendment removed..."``,
+    ``"YES, consent is required per Section 12."``).  For conflict detection we
+    need the categorical signal, not the full text.
+
+    Returns ``"YES"``, ``"NO"``, or the original string if neither is detected.
+    Issue #18.
+    """
+    for keyword in ("YES", "NO"):
+        if answer_upper == keyword:
+            return keyword
+        # Check if the answer starts with the keyword followed by a
+        # non-alphanumeric character (space, comma, dash, period, etc.).
+        if answer_upper.startswith(keyword) and len(answer_upper) > len(keyword):
+            next_char = answer_upper[len(keyword)]
+            if not next_char.isalnum():
+                return keyword
+    return answer_upper
+
+
+def _extract_leading_segment(ft: FileText, max_chars: int) -> str:
+    """Extract the leading portion of a file up to *max_chars*, split at natural boundaries.
+
+    Uses page markers (``--- Page N ---``) if present, otherwise paragraph
+    boundaries.  This avoids cutting mid-sentence or mid-clause.  Issue #19.
+    """
+
+    if len(ft.text) <= max_chars:
+        return ft.text
+
+    if ft.has_page_markers:
+        segments = split_by_pages(ft.text, ft.file_path, target_chars=max_chars, overlap_ratio=0.0)
+    else:
+        segments = split_by_paragraphs(ft.text, ft.file_path, target_chars=max_chars, overlap_chars=0)
+
+    if segments:
+        return segments[0].text
+    return ft.text[:max_chars]  # Absolute fallback.
 
 
 class SearchAnalyzer:
@@ -289,11 +357,51 @@ class SearchAnalyzer:
         # Create chunks (pure logic).
         chunks = create_analysis_chunks(file_texts, TARGET_CHUNK_CHARS)
 
-        # PHASE 1: Map — analyse each chunk independently.
-        chunk_results: list[SearchCustomerResult] = []
-        for chunk in chunks:
-            result = await self._analyze_single(chunk, customer, files_with_text, skipped_files)
-            chunk_results.append(result)
+        # PHASE 1: Map — analyse each chunk independently and concurrently.
+        # Each chunk is an independent unit; no state is shared between calls.
+        # The customer-level semaphore in analyze_all() already bounds total
+        # concurrency, so we don't need an additional semaphore here.  Issue #21.
+        if len(chunks) == 1:
+            chunk_results = [await self._analyze_single(chunks[0], customer, files_with_text, skipped_files)]
+        else:
+            chunk_tasks = [
+                asyncio.create_task(self._analyze_single(chunk, customer, files_with_text, skipped_files))
+                for chunk in chunks
+            ]
+            raw_results = await asyncio.gather(*chunk_tasks, return_exceptions=True)
+
+            # Convert stray exceptions into NOT_ADDRESSED fallback results so a
+            # single chunk failure doesn't lose the entire customer.
+            chunk_results = []
+            for i, item in enumerate(raw_results):
+                if isinstance(item, BaseException):
+                    logger.error(
+                        "Chunk %d/%d failed for %s: %s",
+                        i + 1,
+                        len(chunks),
+                        customer.name,
+                        item,
+                    )
+                    chunk_results.append(
+                        SearchCustomerResult(
+                            customer_name=customer.name,
+                            group=customer.group,
+                            files_analyzed=files_with_text,
+                            total_files=customer.file_count,
+                            skipped_files=skipped_files,
+                            columns={
+                                col.name: SearchColumnResult(
+                                    answer="NOT_ADDRESSED",
+                                    confidence="LOW",
+                                    citations=[],
+                                )
+                                for col in self._prompts.columns
+                            },
+                            error=f"Chunk {i + 1} failed: {item}",
+                        )
+                    )
+                else:
+                    chunk_results.append(item)
 
         # PHASE 2: Merge.
         if len(chunk_results) == 1:
@@ -646,14 +754,14 @@ class SearchAnalyzer:
                     # Substantive free-text (higher than NOT_ADDRESSED).
                     priority = 2
 
-                # For the canonical YES/NO answer we track for conflict
-                # detection, normalise to the short form.
+                # For conflict detection, extract the semantic YES/NO signal
+                # from the answer.  Free-text like "NO - the amendment removed
+                # this requirement" starts with "NO" and should be treated as
+                # a NO for conflict purposes.  Issue #18.
                 if priority == 1:
                     answers.append("NOT_ADDRESSED")
-                elif answer_upper in ("YES", "NO"):
-                    answers.append(answer_upper)
                 else:
-                    answers.append(answer_upper)
+                    answers.append(_extract_yes_no(answer_upper))
 
                 # When tied at the same priority, prefer the longer
                 # substantive text (plan spec: "longest substantive
@@ -667,6 +775,10 @@ class SearchAnalyzer:
                     best_priority = priority
                     best_answer = col_result.answer
                     best_confidence = col_result.confidence
+                elif priority == best_priority:
+                    # Same priority, not a longer answer — but we may have
+                    # a higher confidence assessment.  Take the max.  Issue #22.
+                    best_confidence = _max_confidence(best_confidence, col_result.confidence)
 
                 all_citations.extend(col_result.citations)
 
@@ -675,19 +787,10 @@ class SearchAnalyzer:
             if answer_set == {"YES", "NO"}:
                 conflicted_columns.append(col.name)
 
-            # Deduplicate citations by normalized (file_path, page, section_ref).
-            seen_keys: set[tuple[str, str, str]] = set()
-            deduped_citations: list[SearchCitation] = []
-            for cit in all_citations:
-                key = (cit.file_path.strip(), cit.page.strip(), cit.section_ref.strip())
-                if key not in seen_keys:
-                    seen_keys.add(key)
-                    deduped_citations.append(cit)
-
             merged_columns[col.name] = SearchColumnResult(
                 answer=best_answer,
                 confidence=best_confidence,
-                citations=deduped_citations,
+                citations=dedup_citations(all_citations),
             )
 
         # Collect incomplete columns from any chunk.
@@ -731,6 +834,19 @@ class SearchAnalyzer:
         model reason about contractual precedence.
         """
         # Build compact findings JSON for the synthesis prompt.
+        # Dynamic quote budget: divide available space by citation count so the
+        # LLM sees as much evidence as possible.  Issue #20.
+        total_citations = sum(
+            len(cr.columns[col_name].citations)
+            for cr in chunk_results
+            for col_name in conflicted_columns
+            if col_name in cr.columns
+        )
+        quote_budget = max(
+            _MIN_QUOTE_CHARS,
+            min(_MAX_QUOTE_CHARS, _SYNTHESIS_BUDGET_CHARS // max(total_citations, 1)),
+        )
+
         findings: dict[str, list[dict[str, Any]]] = {}
         for i, cr in enumerate(chunk_results):
             for col_name in conflicted_columns:
@@ -747,7 +863,7 @@ class SearchAnalyzer:
                                 "file_path": c.file_path,
                                 "page": c.page,
                                 "section_ref": c.section_ref,
-                                "exact_quote": c.exact_quote[:200],  # Truncate for compactness
+                                "exact_quote": c.exact_quote[:quote_budget],
                                 "doc_type": self._infer_doc_type(c.file_path),
                             }
                             for c in col_result.citations
@@ -793,22 +909,12 @@ class SearchAnalyzer:
             if not isinstance(col_data, dict):
                 continue
 
-            citations = []
-            for cit in col_data.get("citations", []):
-                if isinstance(cit, dict):
-                    citations.append(
-                        SearchCitation(
-                            file_path=cit.get("file_path", ""),
-                            page=str(cit.get("page", "")),
-                            section_ref=cit.get("section_ref", ""),
-                            exact_quote=cit.get("exact_quote", ""),
-                        )
-                    )
+            parsed = parse_column_result(col_data)
 
             merged.columns[col_name] = SearchColumnResult(
-                answer=col_data.get("answer", merged.columns[col_name].answer),
-                confidence=col_data.get("confidence") or merged.columns[col_name].confidence,
-                citations=citations or merged.columns[col_name].citations,
+                answer=parsed.answer or merged.columns[col_name].answer,
+                confidence=parsed.confidence or merged.columns[col_name].confidence,
+                citations=parsed.citations or merged.columns[col_name].citations,
             )
 
         return merged
@@ -834,21 +940,33 @@ class SearchAnalyzer:
         if not not_addressed:
             return result
 
-        # Build focused document content: prioritise smaller files that fit together
-        # (these likely contain MSA/main agreements with key provisions).
-        sorted_texts = sorted(file_texts, key=lambda ft: len(ft.text))
+        # Build focused document content using document order (not sorted by
+        # size — MSAs are typically the largest and most relevant).  When a
+        # file exceeds the budget, split it at page/paragraph boundaries
+        # using the same chunker logic as Phase 1.  Issue #19.
         doc_parts: list[str] = []
         total_chars = 0
-        for ft in sorted_texts:
-            if total_chars + len(ft.text) > TARGET_CHUNK_CHARS:
-                break
-            doc_parts.append(f"\n---\n## Document: {ft.file_path}\n---\n{ft.text}\n")
-            total_chars += len(ft.text)
+        for ft in file_texts:
+            if total_chars + len(ft.text) <= TARGET_CHUNK_CHARS:
+                doc_parts.append(f"\n---\n## Document: {ft.file_path}\n---\n{ft.text}\n")
+                total_chars += len(ft.text)
+            elif total_chars < TARGET_CHUNK_CHARS:
+                # File doesn't fit whole — split at page/paragraph boundaries
+                # and take the first segment that fits the remaining budget.
+                remaining = TARGET_CHUNK_CHARS - total_chars
+                segment_text = _extract_leading_segment(ft, remaining)
+                doc_parts.append(f"\n---\n## Document: {ft.file_path} (partial)\n---\n{segment_text}\n")
+                total_chars += len(segment_text)
+                break  # Budget exhausted.
+            else:
+                break  # Budget already full.
 
         if not doc_parts:
-            # Even the smallest file is too large; take what we can.
-            ft = sorted_texts[0]
-            doc_parts.append(f"\n---\n## Document: {ft.file_path}\n---\n{ft.text[:TARGET_CHUNK_CHARS]}\n")
+            # All files exceed the budget individually — take the first
+            # file's leading segment split at page/paragraph boundaries.
+            ft = file_texts[0]
+            segment_text = _extract_leading_segment(ft, TARGET_CHUNK_CHARS)
+            doc_parts.append(f"\n---\n## Document: {ft.file_path} (partial)\n---\n{segment_text}\n")
 
         column_descriptions = "\n".join(
             f"- **{col.name}**: {col.prompt}" for col in self._prompts.columns if col.name in not_addressed
@@ -878,31 +996,17 @@ class SearchAnalyzer:
             return result
 
         # Update only the NOT_ADDRESSED columns with validation results.
+        # Uses parse_column_result to ensure answer normalization and
+        # citation dedup are applied consistently.  Issue #24.
         for col_name in not_addressed:
             col_data = data.get(col_name)
             if not isinstance(col_data, dict):
                 continue
-            answer = col_data.get("answer", "")
-            if not answer or answer.upper().strip() == "NOT_ADDRESSED":
+            parsed = parse_column_result(col_data)
+            if not parsed.answer or parsed.answer.upper().strip() == "NOT_ADDRESSED":
                 continue  # Validation didn't help for this column.
 
-            citations = []
-            for cit in col_data.get("citations", []):
-                if isinstance(cit, dict):
-                    citations.append(
-                        SearchCitation(
-                            file_path=cit.get("file_path", ""),
-                            page=str(cit.get("page", "")),
-                            section_ref=cit.get("section_ref", ""),
-                            exact_quote=cit.get("exact_quote", ""),
-                        )
-                    )
-
-            result.columns[col_name] = SearchColumnResult(
-                answer=answer,
-                confidence=col_data.get("confidence") or "",
-                citations=citations,
-            )
+            result.columns[col_name] = parsed
 
         return result
 
@@ -987,6 +1091,8 @@ class SearchAnalyzer:
             )
 
         # Parse columns and track which are missing.
+        # Uses centralized parse_column_result() to eliminate duplicated
+        # citation parsing logic (Issue #4 Phase B).
         columns: dict[str, SearchColumnResult] = {}
         incomplete_columns: list[str] = []
 
@@ -1011,23 +1117,7 @@ class SearchAnalyzer:
             if not isinstance(col_data, dict):
                 col_data = {"answer": str(col_data)}
 
-            citations = []
-            for cit in col_data.get("citations", []):
-                if isinstance(cit, dict):
-                    citations.append(
-                        SearchCitation(
-                            file_path=cit.get("file_path", ""),
-                            page=str(cit.get("page", "")),
-                            section_ref=cit.get("section_ref", ""),
-                            exact_quote=cit.get("exact_quote", ""),
-                        )
-                    )
-
-            columns[col.name] = SearchColumnResult(
-                answer=col_data.get("answer", ""),
-                confidence=col_data.get("confidence") or "",
-                citations=citations,
-            )
+            columns[col.name] = parse_column_result(col_data)
 
         error_msg = None
         if incomplete_columns:
@@ -1085,9 +1175,16 @@ class SearchAnalyzer:
             return candidate[:end_idx]
         except json.JSONDecodeError:
             # raw_decode failed — fall back to last-brace heuristic.
+            # Validate the result with json.loads() to avoid returning
+            # malformed substrings.  Issue #23.
             last_brace = candidate.rfind("}")
             if last_brace != -1:
-                return candidate[: last_brace + 1]
+                fallback = candidate[: last_brace + 1]
+                try:
+                    json.loads(fallback)
+                    return fallback
+                except json.JSONDecodeError:
+                    pass  # Fallback also invalid — return cleaned.
 
         return cleaned
 

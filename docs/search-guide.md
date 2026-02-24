@@ -162,6 +162,8 @@ One row per citation with the full evidence trail:
 | Page | Page number (if identifiable) |
 | Section | Section reference (e.g. "Section 12.3") |
 | Exact Quote | Verbatim text from the document |
+| Quote Verified | YES (green) if quote found in source, NO (orange) if not, blank if not verified |
+| Match Score | Fuzzy match percentage (0-100) from citation verification |
 
 ## Large File Handling
 
@@ -172,16 +174,97 @@ customer's combined document text exceeds the model's optimal context size
 1. **Splits** large documents at page boundaries (`--- Page N ---` markers)
    with 15% overlap between chunks to preserve cross-page context
 2. **Packs** smaller documents together into analysis chunks
-3. **Analyzes** each chunk independently (Phase 1: Map)
-4. **Merges** results using answer priority YES > NO > NOT_ADDRESSED (Phase 2)
+3. **Analyzes** each chunk concurrently (Phase 1: Map)
+4. **Merges** results using answer priority YES > NO > NOT_ADDRESSED,
+   with semantic conflict detection (free-text answers starting with
+   YES/NO are recognized) and best-of confidence selection (Phase 2)
 5. **Resolves** conflicts where chunks disagree via a lightweight synthesis
-   pass with all findings as structured JSON (Phase 3: Synthesis)
+   pass with all findings as structured JSON, using dynamic quote budgeting
+   to preserve full citation evidence (Phase 3: Synthesis)
 6. **Validates** any remaining NOT_ADDRESSED answers with a targeted
-   follow-up query (Phase 4: Validation)
+   follow-up query using document-order file selection and page-aware
+   splitting (Phase 4: Validation)
 
 This is fully transparent in the Excel report — the `chunks_analyzed` count
 shows how many analysis passes were needed per customer. Single-chunk
 customers (the majority) see no change in behavior.
+
+## External Reference Download
+
+Contracts frequently incorporate external Terms & Conditions by URL
+reference (e.g. `https://vendor.com/general-terms-and-conditions/`).
+After text extraction, the pipeline automatically:
+
+1. **Scans** customer-extracted text for URLs matching T&C-like patterns
+   (terms, conditions, policy, SLA, EULA, privacy, agreement, etc.)
+2. **Downloads** referenced documents via HTTP (any domain accepted —
+   if a URL appears in a contract with a legal keyword in its path, it
+   was put there for a reason)
+3. **Extracts** text content using markitdown
+4. **Caches** results in the text index with an `__external__` prefix
+
+This step is non-blocking: download failures are logged as warnings
+but never halt the pipeline.
+
+**Important**: Downloaded external references are cached for future use
+but are **not** automatically included in the customer contract analysis.
+The search analyzer only reads files listed in each customer's registry
+entry — never by scanning the text directory. This prevents external
+documents (e.g. a cloud provider's customer agreement) from being
+confused with the customer's own contract terms. External references
+may be relevant for vendor/infrastructure analysis but must be
+explicitly opted-in for that use case.
+
+## Answer Normalization
+
+LLMs sometimes return free-text answers like "Unable to determine..." or
+"Cannot be determined from the available documents" instead of the
+requested YES/NO/NOT_ADDRESSED format. The analyzer normalizes these
+at parse time:
+
+- **10 recognized prefixes**: "Unable to determine", "Cannot determine",
+  "Insufficient information", "Indeterminate", etc. are all mapped to
+  NOT_ADDRESSED
+- **Applied at every entry point**: Map phase, synthesis phase, and
+  validation phase all route through `parse_column_result()` which
+  normalizes before any downstream logic evaluates the answer
+- **Parse-time citation dedup**: Duplicate citations (same file, page,
+  section, and quote) are removed at parse time via a 4-tuple key,
+  ensuring consistent dedup for both single-chunk and multi-chunk customers
+
+## Citation Verification
+
+After analysis, all citations are verified against the extracted
+source text using fuzzy matching (rapidfuzz). This catches
+hallucinated quotes and wrong page references without requiring
+additional API calls.
+
+- **80% match threshold** — tolerates OCR character errors while
+  flagging fabricated quotes
+- **Whitespace normalization** — all whitespace (newlines, tabs, multiple
+  spaces) is collapsed to single spaces before comparison, handling
+  line breaks from PDF column layout, OCR, and markitdown reformatting
+- **Section verification** — checks that the cited section reference
+  actually appears in the source document
+
+### Progressive Search Scope
+
+Quote verification uses a 4-level progressive search to maximize
+recall while keeping attribution accurate:
+
+1. **Page-scoped** — search within the cited page only
+2. **Adjacent pages (+-1)** — expand to neighboring pages (catches
+   cross-page quotes and off-by-one page citations)
+3. **Full document** — search the entire source file
+4. **Cross-file** — search ALL files in the customer's text set
+   (catches file misattributions from the LLM merge phase)
+
+When a quote is found in a different file (scope 4), the citation's
+`file_path` and `page` are automatically corrected to point to the
+actual source document.
+
+Results appear in the Excel Details sheet (Quote Verified / Match
+Score columns) and in the CLI summary output.
 
 ## Data Completeness Guarantees
 
