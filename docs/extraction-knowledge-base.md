@@ -1857,97 +1857,66 @@ reference to the exact source text that produced it.
 
 ## 18. Structured LLM Output Techniques
 
-### 18.1 Current Approach and Its Limitations
+### 18.1 Implemented Approach: Claude Agent SDK `output_format` (Issue #4)
 
-Our pipeline instructs the LLM to return JSON via prompt engineering:
+All LLM calls in the search analyzer use the Claude Agent SDK's native
+`output_format` parameter on `ClaudeAgentOptions`.  This uses **constrained
+decoding** — the model physically cannot produce tokens that violate the
+JSON Schema — eliminating an entire class of parsing bugs with **zero new
+dependencies**.
 
-```
-Return a JSON object with exactly these keys: {column_names}
-Each value must have: answer, confidence, citations, ...
-```
+**How it works:**
+1. `_build_analysis_schema(column_names)` builds a JSON Schema at runtime
+   from the dynamic column names in the prompts file.
+2. `_call_claude()` passes the schema as
+   `output_format={"type": "json_schema", "schema": schema}`.
+3. The SDK translates this to a `--json-schema` CLI flag.
+4. The backend compiles the schema into a grammar and constrains token
+   generation — every token is guaranteed to produce schema-valid JSON.
 
-The LLM usually complies, but failure modes exist:
-- Malformed JSON (missing closing braces, trailing commas)
-- Extra keys or missing keys
-- Wrong types (string instead of array for citations)
-- Markdown fence wrapping requiring strip logic
-- Empty `{}` responses requiring retry
+**Schema enforces:**
+- Every column name as a required top-level key
+- `confidence` restricted to `HIGH`, `MEDIUM`, `LOW` via `enum`
+- All citation fields (`file_path`, `page`, `section_ref`, `exact_quote`) required
+- `additionalProperties: false` on all objects
 
-### 18.2 Approaches Evaluated
+**Three schema variants by phase:**
+- Phase 1 (Map): all `self._prompts.columns`
+- Phase 3 (Synthesis): only `conflicted_columns`
+- Phase 4 (Validation): only `not_addressed` columns
 
-Based on the structured output landscape (2024-2025):
+**What was eliminated:**
+- `raw_decode()` + `rfind("}")` fallback chain (fragile JSON recovery)
+- "Return ONLY raw JSON" prompt boilerplate (format enforced by schema)
+- Manual output format examples in prompts (schema is the specification)
 
-| Approach | Library | How It Works | Guarantees |
-|----------|---------|-------------|------------|
-| **Prompting** | None | System prompt instructs JSON format | None — LLM may not comply |
-| **Function calling** | `instructor` | Pydantic model → tool schema → validated response | Schema-valid, retries on failure |
-| **Constrained generation** | `outlines` | Token-level masking forces valid JSON | Guaranteed valid output |
-| **Grammar-guided** | `guidance` | Handlebars-style template with type constraints | Guaranteed valid output |
-| **API-native** | Anthropic `tool_use` | First-class structured output in API | Schema-valid per provider |
+### 18.2 Why Not `instructor`?
 
-### 18.3 Recommended Approach: `instructor` with Pydantic
+`instructor` requires patching a real LLM client's `.create()` method
+(e.g., `anthropic.AsyncAnthropic`).  Our project calls all LLMs through
+`claude_agent_sdk.query()` — an opaque subprocess wrapper.  Per CLAUDE.md:
+"ALL LLM calls MUST go through `claude_agent_sdk`".  The SDK already
+supports structured output natively via `output_format`.
 
-**Why `instructor`:**
-- Works with Claude's `tool_use` API natively
-- Pydantic models define the exact schema — type checking, required
-  fields, enum constraints (e.g., confidence must be HIGH/MEDIUM/LOW)
-- Automatic retry with validation error feedback to the LLM
-- No change to model weights or sampling — works with any API provider
-- Active maintenance, large community (6K+ GitHub stars)
+### 18.3 Approaches Evaluated
 
-**What this would replace:**
-```python
-# Current: manual JSON parsing with fallbacks
-text = response.content[0].text
-text = strip_markdown_fences(text)
-data = json.JSONDecoder().raw_decode(text)
-# ... manual field extraction with get() defaults
+| Approach | Library | Compatibility | Chosen? |
+|----------|---------|-------------|---------|
+| **SDK `output_format`** | None (built-in) | Native to `claude_agent_sdk` | **Yes** |
+| **`instructor`** | `instructor` | Requires direct API client — incompatible | No |
+| **Constrained generation** | `outlines` | Local models only — not API-based | No |
+| **Grammar-guided** | `guidance` | Local models only | No |
+| **Prompting only** | None | Works but no guarantees | Previous approach |
 
-# With instructor:
-class ColumnResult(BaseModel):
-    answer: str
-    confidence: Literal["HIGH", "MEDIUM", "LOW"]
-    citations: list[Citation]
-    explanation: str = ""
+### 18.4 Constrained Decoding Technical Details
 
-class AnalysisResponse(BaseModel):
-    columns: dict[str, ColumnResult]
-
-result = client.chat.completions.create(
-    response_model=AnalysisResponse,
-    ...
-)
-# result is guaranteed to be a valid AnalysisResponse
-```
-
-**Benefits for dd-agents:**
-- Eliminates all JSON parsing bugs (Bug D confidence casing solved at
-  schema level: `Literal["HIGH", "MEDIUM", "LOW"]`)
-- Eliminates empty `{}` responses (Pydantic rejects them)
-- Eliminates missing column detection (schema requires all columns)
-- Eliminates verbose NOT_ADDRESSED parsing (could use enum or validator)
-- Automatic retries with the validation error as context for the LLM
-
-### 18.4 Constrained Generation: `outlines`
-
-**For local model scenarios (not our current use case but worth noting):**
-
-`outlines` constrains the token sampling process itself, guaranteeing
-that every generated token is part of a valid JSON structure. This is
-impossible with API-based models (we don't control token sampling) but
-is relevant if we ever switch to local models for cost optimization.
-
-### 18.5 Integration Complexity
-
-| Approach | Lines of Code Change | Risk | Benefit |
-|----------|---------------------|------|---------|
-| `instructor` + Pydantic | ~200 LOC across analyzer.py | Medium (changes core analysis loop) | Eliminates entire class of parsing bugs |
-| Anthropic `tool_use` native | ~150 LOC | Low (already using Anthropic SDK) | Schema validation without new dependency |
-| Keep current + add validation | ~50 LOC | Lowest | Catches errors but doesn't prevent them |
-
-The pragmatic path: first add Pydantic validation as a post-parse check
-(50 LOC, catches errors), then migrate to `instructor` for guaranteed
-output (200 LOC, prevents errors).
+- Schema compiled into grammar, cached for 24 hours by the backend
+- First request with a new schema: ~100-300ms compilation overhead
+- Schema complexity limits: max 24 optional params, max 16 union-type
+  params (our schema has 0 optional, 0 union — well within limits)
+- Safety refusals (`stop_reason: "refusal"`) override schema compliance
+- `max_tokens` truncation can produce incomplete JSON — mitigated by
+  adequate token budget and retry logic in `_analyze_single`
 
 ---
 
@@ -1963,7 +1932,7 @@ citation fidelity):
 | **P0** | Add PDF pre-inspection and control-char detection (Bug L) | Low | Medium — catches missing ToUnicode CMaps | **High** — eliminates garbled text | None |
 | **P0** | Replace pytesseract with PaddleOCR (109 languages) | Medium | High — solves Korean/Japanese/Chinese | Medium | None |
 | **P0** | Add layout-aware PDF extraction (MinerU or PP-StructureV3) | High | Low (most PDFs already work) | **High** — tables, reading order, formulas | Medium — page coordinates |
-| **P1** | Adopt `instructor` for structured LLM output | Medium | Medium — eliminates empty/malformed responses | Medium — schema-enforced confidence | Low |
+| ~~P1~~ | ~~Adopt structured LLM output~~ | ~~Medium~~ | — | — | **DONE** — Issue #4, `output_format` on `ClaudeAgentOptions`, constrained decoding |
 | ~~P1~~ | ~~Add citation verification~~ | ~~Medium~~ | — | — | **DONE** — Issue #5, progressive 4-scope search, 99.6% verification rate |
 | **P1** | Replace markitdown for Office docs with Docling | Medium | Low | **High** — preserves table structure in XLSX/DOCX | Medium — element-level page refs |
 | **P2** | Add visual grounding (bounding boxes) | High | None | Low | **High** — pixel-precise citations |
@@ -2171,8 +2140,9 @@ cost and does not support CJK languages.
 
 7. **Synthesis retry** — Phase 3 (synthesis) has no retry logic. If the
    synthesis call fails, merged results are kept as-is. Adding retries
-   would improve conflict resolution reliability. → `instructor` (§18.3)
-   provides built-in retry with validation error feedback.
+   would improve conflict resolution reliability. Structured output
+   (§18.1, Issue #4) now guarantees schema-valid JSON, reducing the
+   likelihood of parse failures that previously required retries.
 
 ### 20.2 Potential Quality Improvements
 

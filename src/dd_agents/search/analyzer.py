@@ -6,6 +6,10 @@ Implements lessons from the Addleshaw Goddard RAG Report (2024):
 - Targeted system prompt that doesn't unduly increase context length
 - Full audit trail of all files processed, skipped, and every column answered
 - 4-phase analysis: map (per chunk) → merge → synthesis → validation
+
+Structured output (Issue #4): All LLM calls use ``output_format`` on
+``ClaudeAgentOptions`` with a dynamically-built JSON Schema.  Constrained
+decoding guarantees schema-valid JSON — no fragile regex/fallback parsing.
 """
 
 from __future__ import annotations
@@ -436,11 +440,12 @@ class SearchAnalyzer:
         """Run the retry loop for a single chunk. Returns a parsed result."""
         user_prompt = self._build_chunk_prompt(chunk, customer)
         system_prompt = self._build_system_prompt()
+        schema = self._build_analysis_schema([col.name for col in self._prompts.columns])
         last_error: str = ""
 
         for attempt in range(1, self._max_retries + 1):
             try:
-                raw_text = await self._call_claude(system_prompt, user_prompt)
+                raw_text = await self._call_claude(system_prompt, user_prompt, output_schema=schema)
             except Exception as exc:
                 error_str = str(exc)
                 is_non_transient = any(msg in error_str for msg in _NON_TRANSIENT_ERRORS)
@@ -496,17 +501,99 @@ class SearchAnalyzer:
         )
 
     # ------------------------------------------------------------------
+    # Structured output schema builder (Issue #4)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _build_analysis_schema(column_names: list[str]) -> dict[str, Any]:
+        """Build a JSON Schema for structured LLM output.
+
+        The schema enforces:
+        - Every column name as a required top-level key
+        - ``confidence`` restricted to ``HIGH``, ``MEDIUM``, or ``LOW`` via enum
+        - All citation fields (``file_path``, ``page``, ``section_ref``,
+          ``exact_quote``) required on every citation object
+        - ``additionalProperties: false`` on all objects for strict validation
+
+        Parameters
+        ----------
+        column_names:
+            Column names to include as top-level keys.  Varies by phase:
+            Phase 1 uses all columns, Phase 3 uses only conflicted columns,
+            Phase 4 uses only NOT_ADDRESSED columns.
+
+        Returns
+        -------
+        dict[str, Any]
+            A JSON Schema dict suitable for ``output_format`` on
+            ``ClaudeAgentOptions``.
+        """
+        citation_schema: dict[str, Any] = {
+            "type": "object",
+            "properties": {
+                "file_path": {"type": "string", "description": "Source document path"},
+                "page": {"type": "string", "description": "Page number or empty string"},
+                "section_ref": {"type": "string", "description": "Section reference (e.g. Section 12.3)"},
+                "exact_quote": {"type": "string", "description": "Verbatim quote from the document"},
+            },
+            "required": ["file_path", "page", "section_ref", "exact_quote"],
+            "additionalProperties": False,
+        }
+
+        column_schema: dict[str, Any] = {
+            "type": "object",
+            "properties": {
+                "answer": {"type": "string", "description": "YES, NO, NOT_ADDRESSED, or free-text summary"},
+                "confidence": {
+                    "type": "string",
+                    "enum": ["HIGH", "MEDIUM", "LOW"],
+                    "description": "Confidence level of the answer",
+                },
+                "citations": {
+                    "type": "array",
+                    "items": citation_schema,
+                    "description": "Supporting citations from the documents",
+                },
+            },
+            "required": ["answer", "confidence", "citations"],
+            "additionalProperties": False,
+        }
+
+        return {
+            "type": "object",
+            "properties": {name: column_schema for name in column_names},
+            "required": list(column_names),
+            "additionalProperties": False,
+        }
+
+    # ------------------------------------------------------------------
     # Claude Agent SDK call
     # ------------------------------------------------------------------
 
-    async def _call_claude(self, system_prompt: str, user_prompt: str) -> str:
+    async def _call_claude(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        output_schema: dict[str, Any] | None = None,
+    ) -> str:
         """Send a prompt to Claude via the Agent SDK and return the text response.
 
         The SDK respects the same environment configuration as Claude Code
         (``CLAUDE_CODE_USE_BEDROCK``, AWS credentials, etc.), so no
         API keys need to be managed by this code.
 
-        Isolated as a method for testability.
+        Parameters
+        ----------
+        system_prompt:
+            The system prompt for the LLM.
+        user_prompt:
+            The user prompt for the LLM.
+        output_schema:
+            Optional JSON Schema dict.  When provided, the SDK uses
+            constrained decoding to guarantee the response conforms to
+            the schema.  Passed as
+            ``output_format={"type": "json_schema", "schema": schema}``
+            on ``ClaudeAgentOptions``.
 
         Raises
         ------
@@ -526,6 +613,7 @@ class SearchAnalyzer:
             max_turns=1,
             permission_mode="bypassPermissions",
             disallowed_tools=["Read", "Edit", "Write", "Bash", "Glob", "Grep", "WebFetch", "Task", "NotebookEdit"],
+            output_format={"type": "json_schema", "schema": output_schema} if output_schema else None,
         )
 
         text_parts: list[str] = []
@@ -574,7 +662,7 @@ class SearchAnalyzer:
             "You are a meticulous legal due-diligence analyst reviewing customer contracts.\n\n"
             "## Critical Requirements\n\n"
             "You MUST answer EVERY question listed below. Do not skip any question.\n"
-            f"Your JSON response MUST contain exactly these keys: {column_names_list}.\n"
+            f"Your response MUST contain exactly these keys: {column_names_list}.\n"
             "If a question is not addressed in any document, you MUST still include the key "
             'with answer "NOT_ADDRESSED" — do NOT omit it.\n\n'
             "## Instructions\n\n"
@@ -600,25 +688,7 @@ class SearchAnalyzer:
             "8. Double-check your work: re-read the questions and verify you have not "
             "missed any relevant clause in any document.\n\n"
             "## Questions to Answer\n\n"
-            f"{column_descriptions}\n\n"
-            "## Output Format\n\n"
-            "Return ONLY raw JSON (no markdown fences, no explanation, no preamble). "
-            f"You MUST include ALL {len(self._prompts.columns)} questions as top-level keys. "
-            "Use exactly this structure:\n\n"
-            "{\n"
-            '  "<column_name>": {\n'
-            '    "answer": "<YES|NO|NOT_ADDRESSED or free-text summary>",\n'
-            '    "confidence": "<HIGH|MEDIUM|LOW>",\n'
-            '    "citations": [\n'
-            "      {\n"
-            '        "file_path": "<source document path as shown in the Document header>",\n'
-            '        "page": "<page number if identifiable, otherwise empty string>",\n'
-            '        "section_ref": "<section reference, e.g. Section 12.3>",\n'
-            '        "exact_quote": "<verbatim quote from the document>"\n'
-            "      }\n"
-            "    ]\n"
-            "  }\n"
-            "}\n"
+            f"{column_descriptions}\n"
         )
 
     def _gather_file_texts(self, customer: CustomerEntry) -> tuple[list[FileText], list[str]]:
@@ -871,8 +941,6 @@ class SearchAnalyzer:
                     }
                 )
 
-        column_names_list = ", ".join(f'"{c}"' for c in conflicted_columns)
-
         synthesis_system = (
             "You are a meticulous legal due-diligence analyst resolving conflicting "
             "findings from a chunked document analysis.\n\n"
@@ -881,11 +949,7 @@ class SearchAnalyzer:
             "- More recent documents generally take precedence over older ones\n"
             "- Look at the doc_type and citation evidence to determine which answer is correct\n"
             "- Combine partial information from multiple chunks into a unified answer\n"
-            "- Preserve ALL relevant citations from chunks that support the winning answer\n\n"
-            "## Output Format\n"
-            "Return ONLY raw JSON with these keys: " + column_names_list + "\n"
-            "Use the same structure as the original analysis:\n"
-            '  {"<column>": {"answer": "...", "confidence": "...", "citations": [...]}}\n'
+            "- Preserve ALL relevant citations from chunks that support the winning answer\n"
         )
 
         synthesis_user = (
@@ -895,10 +959,11 @@ class SearchAnalyzer:
             f"## Conflicting Findings\n\n```json\n{json.dumps(findings, indent=2)}\n```\n"
         )
 
+        schema = self._build_analysis_schema(conflicted_columns)
+
         try:
-            raw_text = await self._call_claude(synthesis_system, synthesis_user)
-            cleaned = self._extract_json_text(raw_text)
-            data: dict[str, Any] = json.loads(cleaned) if cleaned else {}
+            raw_text = await self._call_claude(synthesis_system, synthesis_user, output_schema=schema)
+            data: dict[str, Any] = json.loads(raw_text)
         except Exception as exc:
             logger.warning("Synthesis pass failed for %s: %s — keeping merged results", customer.name, exc)
             return merged
@@ -971,26 +1036,22 @@ class SearchAnalyzer:
         column_descriptions = "\n".join(
             f"- **{col.name}**: {col.prompt}" for col in self._prompts.columns if col.name in not_addressed
         )
-        column_names_list = ", ".join(f'"{c}"' for c in not_addressed)
 
         validation_system = (
             "You are a meticulous legal due-diligence analyst performing a follow-up review.\n\n"
             "Previous analysis could NOT find answers to the questions below.\n"
             "Pay special attention to schedules, exhibits, annexes, and definitions sections.\n"
             "Previous analysis did not find answers to these questions — re-examine carefully.\n\n"
-            f"## Questions to Answer\n\n{column_descriptions}\n\n"
-            "## Output Format\n\n"
-            "Return ONLY raw JSON with these keys: " + column_names_list + "\n"
-            "Use the same structure as the original analysis:\n"
-            '  {"<column>": {"answer": "...", "confidence": "...", "citations": [...]}}\n'
+            f"## Questions to Answer\n\n{column_descriptions}\n"
         )
 
         validation_user = f"# Customer: {customer.name}\n\n" + "\n".join(doc_parts)
 
+        schema = self._build_analysis_schema(not_addressed)
+
         try:
-            raw_text = await self._call_claude(validation_system, validation_user)
-            cleaned = self._extract_json_text(raw_text)
-            data: dict[str, Any] = json.loads(cleaned) if cleaned else {}
+            raw_text = await self._call_claude(validation_system, validation_user, output_schema=schema)
+            data: dict[str, Any] = json.loads(raw_text)
         except Exception as exc:
             logger.warning("Validation pass failed for %s: %s — keeping current results", customer.name, exc)
             return result
@@ -1140,17 +1201,20 @@ class SearchAnalyzer:
 
     @staticmethod
     def _extract_json_text(raw: str) -> str:
-        """Best-effort extraction of a JSON object from *raw*.
+        """Extract a JSON object from *raw* model output.
 
-        Handles:
-        - Raw JSON (``{ ... }``)
-        - Markdown fenced blocks (````json ... ``` ``)
-        - Preamble text before the opening ``{``
-        - Multiple JSON objects concatenated (extracts the first complete one)
+        With structured output (``output_format``), the model is constrained
+        to produce valid JSON.  This method provides a lightweight safety net:
+
+        - Strip markdown code fences (```json ... ```)
+        - Skip any preamble text before the first ``{``
+
+        The ``raw_decode`` / ``rfind`` fallback chain was removed in Issue #4
+        because constrained decoding guarantees schema-valid JSON.
         """
         cleaned = raw.strip()
 
-        # Strip markdown code fences.
+        # Strip markdown code fences (safety net).
         if cleaned.startswith("```"):
             first_nl = cleaned.find("\n")
             if first_nl != -1:
@@ -1159,34 +1223,12 @@ class SearchAnalyzer:
             cleaned = cleaned[: cleaned.rfind("```")]
         cleaned = cleaned.strip()
 
-        # Find the first { in the text.
+        # Skip any preamble text before the JSON object.
         brace_pos = cleaned.find("{")
         if brace_pos == -1:
             return cleaned
 
-        candidate = cleaned[brace_pos:]
-
-        # Use raw_decode to extract exactly the first complete JSON object.
-        # This handles the case where the model returns two JSON objects
-        # back-to-back (e.g. it started answering, then restarted).
-        try:
-            decoder = json.JSONDecoder()
-            _, end_idx = decoder.raw_decode(candidate)
-            return candidate[:end_idx]
-        except json.JSONDecodeError:
-            # raw_decode failed — fall back to last-brace heuristic.
-            # Validate the result with json.loads() to avoid returning
-            # malformed substrings.  Issue #23.
-            last_brace = candidate.rfind("}")
-            if last_brace != -1:
-                fallback = candidate[: last_brace + 1]
-                try:
-                    json.loads(fallback)
-                    return fallback
-                except json.JSONDecodeError:
-                    pass  # Fallback also invalid — return cleaned.
-
-        return cleaned
+        return cleaned[brace_pos:]
 
     def _get_text_path(self, source_path: str) -> Path:
         """Convert original file path to extracted text path.
