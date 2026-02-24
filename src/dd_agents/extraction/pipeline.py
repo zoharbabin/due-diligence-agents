@@ -3,7 +3,7 @@
 The pipeline converts every data-room file to a single canonical
 markdown representation.  The fallback chain is:
 
-    markitdown -> pdftotext (CLI) -> pytesseract -> direct text read
+    markitdown -> pdftotext (CLI) -> GLM-OCR (optional) -> pytesseract -> direct text read
 
 Extracted files are written as ``<safe_name>.md`` into the output
 directory.  Unchanged files (SHA-256 match) are skipped.
@@ -15,13 +15,18 @@ import hashlib
 import logging
 import re
 import subprocess
+from collections import Counter
 from pathlib import Path
+from typing import TYPE_CHECKING, Literal
 
 from dd_agents.extraction.cache import ExtractionCache
 from dd_agents.extraction.markitdown import MarkitdownExtractor
 from dd_agents.extraction.ocr import OCRExtractor
 from dd_agents.extraction.quality import ExtractionQualityTracker
 from dd_agents.models.inventory import ExtractionQualityEntry
+
+if TYPE_CHECKING:
+    from dd_agents.extraction.glm_ocr import GlmOcrExtractor
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +52,27 @@ _MIN_EXTRACTION_CHARS = 500
 
 # PDF magic bytes — cached outputs starting with this are raw binary, not text.
 _PDF_MAGIC = b"%PDF-"
+
+# Threshold for control-character corruption detection (Issue #27 Phase 1).
+# ASCII 0x00-0x1F excluding whitespace (\n\r\t\x0c).
+_CONTROL_CHAR_THRESHOLD = 0.01
+
+# Expected text-to-file-size ratios per format for confidence scaling
+# (Issue #27 Phase 3).  Used by _scale_confidence() to penalize sparse
+# extractions that technically pass quality gates but contain far less
+# text than expected for the file size.
+_EXPECTED_TEXT_RATIOS: dict[str, float] = {
+    ".pdf": 0.5,
+    ".docx": 0.3,
+    ".doc": 0.3,
+    ".xlsx": 0.2,
+    ".xls": 0.2,
+    ".pptx": 0.2,
+    ".ppt": 0.2,
+    ".rtf": 0.4,
+    ".html": 0.6,
+    ".htm": 0.6,
+}
 
 # Extensions read directly without extraction.
 _PLAINTEXT_EXTENSIONS: frozenset[str] = frozenset(
@@ -97,15 +123,19 @@ class ExtractionPipeline:
         instance).
     ocr:
         Injected :class:`OCRExtractor` (defaults to a new instance).
+    glm_ocr:
+        Optional :class:`GlmOcrExtractor` for high-quality OCR.
     """
 
     def __init__(
         self,
         markitdown: MarkitdownExtractor | None = None,
         ocr: OCRExtractor | None = None,
+        glm_ocr: GlmOcrExtractor | None = None,
     ) -> None:
         self._markitdown = markitdown or MarkitdownExtractor()
         self._ocr = ocr or OCRExtractor()
+        self._glm_ocr = glm_ocr
 
     # ------------------------------------------------------------------
     # Public API
@@ -249,6 +279,179 @@ class ExtractionPipeline:
         return self._extract_generic(filepath, out_file)
 
     # ------------------------------------------------------------------
+    # PDF pre-inspection (Issue #27 Phase 1)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _inspect_pdf(filepath: Path) -> Literal["normal", "missing_tounicode", "scanned", "encrypted"]:
+        """Classify a PDF before extraction to route the fallback chain.
+
+        Returns one of:
+        - ``"encrypted"`` — document is password-protected.
+        - ``"scanned"`` — first page has < 100 text characters.
+        - ``"missing_tounicode"`` — fonts use Identity-H encoding without
+          a /ToUnicode CMap, producing garbled control bytes.
+        - ``"normal"`` — text-based PDF suitable for pymupdf/pdftotext.
+
+        All pymupdf calls are wrapped in try/except; returns ``"normal"``
+        on any error (graceful degradation).
+        """
+        try:
+            import fitz  # pymupdf
+        except ImportError:
+            return "normal"
+
+        try:
+            doc = fitz.open(str(filepath))
+        except Exception:
+            return "normal"
+
+        try:
+            if doc.is_encrypted:
+                return "encrypted"
+
+            if len(doc) == 0:
+                return "scanned"
+
+            page = doc[0]
+            page_text = page.get_text()
+            text_len = len(page_text.strip()) if page_text else 0
+
+            if text_len < _SCANNED_PDF_THRESHOLD:
+                return "scanned"
+
+            # Check for Identity-H fonts without /ToUnicode CMap.
+            fonts = page.get_fonts(full=True)
+            for font in fonts:
+                # font tuple: (xref, ext, type, basefont, name, encoding, ...)
+                encoding = font[5] if len(font) > 5 else ""
+                if isinstance(encoding, str) and "Identity-H" in encoding:
+                    return "missing_tounicode"
+
+            return "normal"
+        except Exception:
+            return "normal"
+        finally:
+            doc.close()
+
+    @staticmethod
+    def _has_control_char_corruption(text: str, threshold: float = _CONTROL_CHAR_THRESHOLD) -> bool:
+        """Return *True* if *text* has excessive ASCII control characters.
+
+        Counts bytes 0x00-0x1F excluding whitespace (``\\n\\r\\t\\x0c``).
+        A ratio above *threshold* (default 1%) indicates garbled output
+        from PDFs with missing /ToUnicode CMap entries.
+        """
+        if not text:
+            return False
+        allowed = frozenset("\n\r\t\x0c")
+        control = sum(1 for ch in text if "\x00" <= ch <= "\x1f" and ch not in allowed)
+        return control / len(text) > threshold
+
+    # ------------------------------------------------------------------
+    # Unified try-method helper (Issue #27 Phase 2)
+    # ------------------------------------------------------------------
+
+    def _try_method(
+        self,
+        name: str,
+        text: str | None,
+        confidence: float,
+        out_file: Path,
+        filepath: Path,
+        chain: list[str],
+        failure_reasons: list[str],
+        method_label: str,
+        *,
+        min_chars: int = _MIN_TEXT_LEN,
+        check_density: bool = False,
+        check_readability: bool = False,
+        check_watermark: bool = False,
+        check_control_chars: bool = False,
+    ) -> ExtractionQualityEntry | None:
+        """Try an extraction method, applying quality gates uniformly.
+
+        Appends *name* to *chain* BEFORE gate checks so failed methods
+        appear in ``fallback_chain``.  Appends diagnostic strings to
+        *failure_reasons* on gate failure.
+
+        Returns an :class:`ExtractionQualityEntry` on success, *None* on
+        gate failure.
+        """
+        chain.append(name)
+
+        if not text or len(text.strip()) < min_chars:
+            failure_reasons.append(f"{name}: too short ({len(text.strip()) if text else 0} < {min_chars})")
+            return None
+
+        stripped_len = len(text.strip())
+
+        if check_density:
+            page_count = self._count_pages_in_text(text)
+            is_dense = stripped_len >= _MIN_EXTRACTION_CHARS and (
+                page_count <= 1 or stripped_len / page_count >= _MIN_CHARS_PER_PAGE
+            )
+            if not is_dense:
+                failure_reasons.append(f"{name}: low density ({stripped_len} chars, {page_count} pages)")
+                return None
+
+        if check_readability and not self._is_readable_text(text):
+            failure_reasons.append(f"{name}: failed readability check")
+            return None
+
+        if check_watermark and self._is_watermark_only(text):
+            failure_reasons.append(f"{name}: watermark-only content")
+            return None
+
+        if check_control_chars and self._has_control_char_corruption(text):
+            failure_reasons.append(f"{name}: control-char corruption detected")
+            return None
+
+        # All gates passed — write output and return entry.
+        out_file.write_text(text, encoding="utf-8")
+        scaled = self._scale_confidence(confidence, stripped_len, filepath)
+        return ExtractionQualityEntry(
+            file_path=str(filepath),
+            method=method_label,
+            bytes_extracted=len(text.encode("utf-8")),
+            confidence=scaled,
+            fallback_chain=list(chain),
+            failure_reasons=list(failure_reasons),
+        )
+
+    # ------------------------------------------------------------------
+    # Confidence scaling (Issue #27 Phase 3)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _scale_confidence(base: float, actual_chars: int, filepath: Path) -> float:
+        """Scale *base* confidence by how much text was extracted vs expected.
+
+        Uses file-size-to-text ratios per format.  Returns *base* unchanged
+        if the file does not exist, has unknown extension, or actual text
+        meets or exceeds expectations.
+        """
+        suffix = filepath.suffix.lower()
+        ratio = _EXPECTED_TEXT_RATIOS.get(suffix)
+        if ratio is None:
+            return base
+
+        try:
+            file_size = filepath.stat().st_size
+        except OSError:
+            return base
+
+        if file_size == 0:
+            return base
+
+        expected_chars = int(file_size * ratio)
+        if expected_chars == 0:
+            return base
+
+        scale = min(1.0, actual_chars / expected_chars)
+        return round(base * scale, 4)
+
+    # ------------------------------------------------------------------
     # Extraction strategies
     # ------------------------------------------------------------------
 
@@ -268,117 +471,173 @@ class ExtractionPipeline:
         return self._failed_entry(filepath, chain)
 
     def _extract_pdf(self, filepath: Path, out_file: Path) -> ExtractionQualityEntry:
-        """PDF fallback chain: pymupdf (page-aware) -> pdftotext -> markitdown -> OCR -> read."""
+        """PDF fallback chain with pre-inspection routing.
+
+        Pre-inspection classifies the PDF; scanned/missing_tounicode PDFs
+        skip pymupdf+pdftotext to avoid garbled output.
+        """
         chain: list[str] = []
+        failure_reasons: list[str] = []
+        pdf_type = self._inspect_pdf(filepath)
+
+        # Skip text extractors for PDFs that would produce garbage.
+        skip_text_extractors = pdf_type in ("scanned", "missing_tounicode")
 
         # 1. pymupdf — per-page extraction with explicit page markers.
-        chain.append("pymupdf")
-        text = self._run_pymupdf(filepath)
-        text_len = len(text.strip()) if text else 0
-        page_count = self._count_pages_in_text(text) if text else 1
-        is_dense_enough = text_len >= _MIN_EXTRACTION_CHARS and (
-            page_count <= 1 or text_len / page_count >= _MIN_CHARS_PER_PAGE
-        )
-        if text and is_dense_enough:
-            out_file.write_text(text, encoding="utf-8")
-            return ExtractionQualityEntry(
-                file_path=str(filepath),
-                method="primary",
-                bytes_extracted=len(text.encode("utf-8")),
-                confidence=0.9,
-                fallback_chain=chain,
+        if not skip_text_extractors:
+            text = self._run_pymupdf(filepath)
+            entry = self._try_method(
+                "pymupdf",
+                text,
+                0.9,
+                out_file,
+                filepath,
+                chain,
+                failure_reasons,
+                method_label="primary",
+                min_chars=_MIN_EXTRACTION_CHARS,
+                check_density=True,
+                check_watermark=True,
+                check_control_chars=True,
             )
+            if entry is not None:
+                return entry
 
-        # 2. pdftotext (poppler CLI) — convert form-feeds to page markers.
-        chain.append("pdftotext")
-        text = self._run_pdftotext(filepath)
-        pdftotext_len = len(text.strip()) if text else 0
-        pdftotext_pages = self._count_pages_in_text(text) if text else 1
-        pdftotext_dense = pdftotext_len >= _MIN_EXTRACTION_CHARS and (
-            pdftotext_pages <= 1 or pdftotext_len / pdftotext_pages >= _MIN_CHARS_PER_PAGE
-        )
-        if text and pdftotext_dense:
-            out_file.write_text(text, encoding="utf-8")
-            return ExtractionQualityEntry(
-                file_path=str(filepath),
-                method="fallback_pdftotext",
-                bytes_extracted=len(text.encode("utf-8")),
-                confidence=0.7,
-                fallback_chain=chain,
+            # 2. pdftotext (poppler CLI).
+            text = self._run_pdftotext(filepath)
+            entry = self._try_method(
+                "pdftotext",
+                text,
+                0.7,
+                out_file,
+                filepath,
+                chain,
+                failure_reasons,
+                method_label="fallback_pdftotext",
+                min_chars=_MIN_EXTRACTION_CHARS,
+                check_density=True,
+                check_watermark=True,
+                check_control_chars=True,
             )
+            if entry is not None:
+                return entry
 
         # 3. markitdown (no page markers, but may handle edge cases).
-        #    Readability check rejects raw PDF binary that markitdown
-        #    dumps for image-only scanned PDFs (Bug G).
-        chain.append("markitdown")
         text, conf = self._markitdown.extract(filepath)
-        if text and len(text.strip()) >= _SCANNED_PDF_THRESHOLD and self._is_readable_text(text):
-            out_file.write_text(text, encoding="utf-8")
-            return ExtractionQualityEntry(
-                file_path=str(filepath),
-                method="fallback_markitdown",
-                bytes_extracted=len(text.encode("utf-8")),
-                confidence=conf,
-                fallback_chain=chain,
-            )
+        entry = self._try_method(
+            "markitdown",
+            text,
+            conf,
+            out_file,
+            filepath,
+            chain,
+            failure_reasons,
+            method_label="fallback_markitdown",
+            min_chars=_SCANNED_PDF_THRESHOLD,
+            check_readability=True,
+        )
+        if entry is not None:
+            return entry
 
-        # 4. pytesseract OCR
-        chain.append("ocr")
+        # 4. GLM-OCR (optional, higher quality than pytesseract).
+        if self._glm_ocr is not None:
+            text, conf = self._glm_ocr.extract(filepath)
+            entry = self._try_method(
+                "glm_ocr",
+                text,
+                conf,
+                out_file,
+                filepath,
+                chain,
+                failure_reasons,
+                method_label="fallback_glm_ocr",
+            )
+            if entry is not None:
+                return entry
+
+        # 5. pytesseract OCR.
         text, conf = self._ocr.extract(filepath)
-        if text and len(text.strip()) >= _MIN_TEXT_LEN:
-            out_file.write_text(text, encoding="utf-8")
-            return ExtractionQualityEntry(
-                file_path=str(filepath),
-                method="fallback_ocr",
-                bytes_extracted=len(text.encode("utf-8")),
-                confidence=conf,
-                fallback_chain=chain,
-            )
+        entry = self._try_method(
+            "ocr",
+            text,
+            conf,
+            out_file,
+            filepath,
+            chain,
+            failure_reasons,
+            method_label="fallback_ocr",
+        )
+        if entry is not None:
+            return entry
 
-        # 5. Raw read (last resort)
-        chain.append("direct_read")
+        # 6. Raw read (last resort).
         text, conf = self._read_text(filepath)
-        if text and len(text.strip()) >= _MIN_TEXT_LEN:
-            out_file.write_text(text, encoding="utf-8")
-            return ExtractionQualityEntry(
-                file_path=str(filepath),
-                method="fallback_read",
-                bytes_extracted=len(text.encode("utf-8")),
-                confidence=conf,
-                fallback_chain=chain,
-            )
+        entry = self._try_method(
+            "direct_read",
+            text,
+            conf,
+            out_file,
+            filepath,
+            chain,
+            failure_reasons,
+            method_label="fallback_read",
+        )
+        if entry is not None:
+            return entry
 
-        return self._failed_entry(filepath, chain)
+        return self._failed_entry(filepath, chain, failure_reasons=failure_reasons)
 
     def _extract_image(self, filepath: Path, out_file: Path) -> ExtractionQualityEntry:
-        """Image fallback chain: markitdown (OCR) -> pytesseract."""
+        """Image fallback chain: markitdown -> GLM-OCR -> pytesseract."""
         chain: list[str] = []
+        failure_reasons: list[str] = []
 
-        # 1. markitdown
-        chain.append("markitdown")
+        # 1. markitdown — readability gate rejects binary image data.
         text, conf = self._markitdown.extract(filepath)
-        if text and len(text.strip()) >= _MIN_TEXT_LEN:
-            out_file.write_text(text, encoding="utf-8")
-            return ExtractionQualityEntry(
-                file_path=str(filepath),
-                method="primary",
-                bytes_extracted=len(text.encode("utf-8")),
-                confidence=conf,
-                fallback_chain=chain,
-            )
+        entry = self._try_method(
+            "markitdown",
+            text,
+            conf,
+            out_file,
+            filepath,
+            chain,
+            failure_reasons,
+            method_label="primary",
+            check_readability=True,
+        )
+        if entry is not None:
+            return entry
 
-        # 2. pytesseract
-        chain.append("ocr")
-        text, conf = self._ocr.extract(filepath)
-        if text and len(text.strip()) >= _MIN_TEXT_LEN:
-            out_file.write_text(text, encoding="utf-8")
-            return ExtractionQualityEntry(
-                file_path=str(filepath),
-                method="fallback_ocr",
-                bytes_extracted=len(text.encode("utf-8")),
-                confidence=conf,
-                fallback_chain=chain,
+        # 2. GLM-OCR (optional).
+        if self._glm_ocr is not None:
+            text, conf = self._glm_ocr.extract(filepath)
+            entry = self._try_method(
+                "glm_ocr",
+                text,
+                conf,
+                out_file,
+                filepath,
+                chain,
+                failure_reasons,
+                method_label="fallback_glm_ocr",
             )
+            if entry is not None:
+                return entry
+
+        # 3. pytesseract.
+        text, conf = self._ocr.extract(filepath)
+        entry = self._try_method(
+            "ocr",
+            text,
+            conf,
+            out_file,
+            filepath,
+            chain,
+            failure_reasons,
+            method_label="fallback_ocr",
+        )
+        if entry is not None:
+            return entry
 
         # Write a diagram placeholder.
         placeholder = (
@@ -394,39 +653,45 @@ class ExtractionPipeline:
             bytes_extracted=len(placeholder.encode("utf-8")),
             confidence=0.3,
             fallback_chain=chain,
+            failure_reasons=failure_reasons,
         )
 
     def _extract_generic(self, filepath: Path, out_file: Path) -> ExtractionQualityEntry:
         """Generic (Office/other) fallback chain: markitdown -> direct read."""
         chain: list[str] = []
+        failure_reasons: list[str] = []
 
-        # 1. markitdown
-        chain.append("markitdown")
+        # 1. markitdown.
         text, conf = self._markitdown.extract(filepath)
-        if text and len(text.strip()) >= _MIN_TEXT_LEN:
-            out_file.write_text(text, encoding="utf-8")
-            return ExtractionQualityEntry(
-                file_path=str(filepath),
-                method="primary",
-                bytes_extracted=len(text.encode("utf-8")),
-                confidence=conf,
-                fallback_chain=chain,
-            )
+        entry = self._try_method(
+            "markitdown",
+            text,
+            conf,
+            out_file,
+            filepath,
+            chain,
+            failure_reasons,
+            method_label="primary",
+        )
+        if entry is not None:
+            return entry
 
-        # 2. Direct text read
-        chain.append("direct_read")
+        # 2. Direct text read.
         text, conf = self._read_text(filepath)
-        if text and len(text.strip()) >= _MIN_TEXT_LEN:
-            out_file.write_text(text, encoding="utf-8")
-            return ExtractionQualityEntry(
-                file_path=str(filepath),
-                method="fallback_read",
-                bytes_extracted=len(text.encode("utf-8")),
-                confidence=conf,
-                fallback_chain=chain,
-            )
+        entry = self._try_method(
+            "direct_read",
+            text,
+            conf,
+            out_file,
+            filepath,
+            chain,
+            failure_reasons,
+            method_label="fallback_read",
+        )
+        if entry is not None:
+            return entry
 
-        return self._failed_entry(filepath, chain)
+        return self._failed_entry(filepath, chain, failure_reasons=failure_reasons)
 
     # ------------------------------------------------------------------
     # Helpers
@@ -544,6 +809,29 @@ class ExtractionPipeline:
             return False
 
     @staticmethod
+    def _is_watermark_only(text: str) -> bool:
+        """Return *True* if extracted PDF text is dominated by repeated watermarks.
+
+        Detects scanned PDFs where pymupdf/pdftotext can only read a
+        transparent overlay (e.g. DocuSign envelope IDs) but not the
+        actual page content underneath.  Heuristic: if >50 % of
+        non-blank, non-marker lines are identical repeated strings the
+        extraction is almost certainly a watermark artifact.
+        """
+        if not text:
+            return False
+        lines = [
+            ln.strip() for ln in text.split("\n") if ln.strip() and not re.match(r"^--- Page \d+ ---$", ln.strip())
+        ]
+        if len(lines) < 4:
+            return False
+
+        counts = Counter(lines)
+        _line, most_common_count = counts.most_common(1)[0]
+        # If a single line accounts for >50% of content lines, it's a watermark
+        return most_common_count / len(lines) > 0.5
+
+    @staticmethod
     def _is_readable_text(text: str, *, sample_size: int = 10_000) -> bool:
         """Return *True* if *text* looks like human-readable content.
 
@@ -573,7 +861,12 @@ class ExtractionPipeline:
         return "", 0.0
 
     @staticmethod
-    def _failed_entry(filepath: Path, chain: list[str]) -> ExtractionQualityEntry:
+    def _failed_entry(
+        filepath: Path,
+        chain: list[str],
+        *,
+        failure_reasons: list[str] | None = None,
+    ) -> ExtractionQualityEntry:
         """Return a failed quality entry."""
         return ExtractionQualityEntry(
             file_path=str(filepath),
@@ -581,4 +874,5 @@ class ExtractionPipeline:
             bytes_extracted=0,
             confidence=0.0,
             fallback_chain=chain,
+            failure_reasons=failure_reasons or [],
         )
