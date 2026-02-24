@@ -100,11 +100,18 @@ class TestIsReferenceUrl:
     def test_dpa_url(self) -> None:
         assert is_reference_url("https://example.com/dpa") is True
 
-    def test_social_media_excluded(self) -> None:
-        assert is_reference_url("https://twitter.com/terms") is False
+    def test_no_domain_exclusion(self) -> None:
+        """URLs with legal keywords in path are accepted regardless of domain.
 
-    def test_linkedin_excluded(self) -> None:
-        assert is_reference_url("https://linkedin.com/legal/terms") is False
+        If a URL is referenced in a contract and its path matches a legal
+        keyword, it should be downloaded.  The analyzer controls which files
+        are included in each customer's analysis — not the downloader.
+        """
+        # These were previously excluded but are now accepted.
+        assert is_reference_url("https://twitter.com/terms") is True
+        assert is_reference_url("https://linkedin.com/legal/terms") is True
+        assert is_reference_url("https://github.com/org/repo/blob/main/LICENSE") is True
+        assert is_reference_url("https://aws.amazon.com/agreement") is True
 
     def test_generic_url_rejected(self) -> None:
         assert is_reference_url("https://example.com/products/widget") is False
@@ -320,3 +327,22 @@ class TestReferenceDownloader:
 
         # Should only attempt max_downloads (3).
         assert len(results) == 3
+
+    def test_scan_skips_external_files(self, tmp_path: Path) -> None:
+        """Scanner skips __external__*.md files to prevent recursive discovery."""
+        text_dir = tmp_path / "text"
+        text_dir.mkdir()
+
+        # Customer file references a URL.
+        (text_dir / "customer_msa.md").write_text("Terms at https://vendor.com/terms")
+        # Previously downloaded external file references another URL.
+        (text_dir / "__external__vendor_com_terms.md").write_text(
+            "See also https://other-vendor.com/privacy-policy for details."
+        )
+
+        downloader = ReferenceDownloader(text_dir=text_dir)
+        url_map = downloader._scan_for_urls()
+
+        # Only the URL from the customer file should be found.
+        assert "https://vendor.com/terms" in url_map
+        assert "https://other-vendor.com/privacy-policy" not in url_map

@@ -2105,3 +2105,40 @@ class TestNonTransientErrors:
 
         assert mock_call.call_count == 1
         assert "context length" in results[0].error
+
+
+# ===================================================================
+# External reference isolation — guardrail test
+# ===================================================================
+
+
+class TestExternalReferenceIsolation:
+    """Verify external reference files never leak into customer analysis.
+
+    External T&C downloads (``__external__*.md``) live in the same text
+    directory as customer extractions.  The analyzer must only load files
+    from ``customer.files`` — never by globbing the text directory.
+    """
+
+    @pytest.mark.asyncio
+    async def test_external_files_not_included_in_analysis(self, tmp_path: Path) -> None:
+        """__external__ files in text_dir are invisible to the analyzer."""
+        analyzer = _make_analyzer(tmp_path)
+        customer = _make_customer()
+
+        # Write the customer's actual file.
+        _write_text_file(tmp_path, "GroupA/Acme Corp/msa.pdf", "Customer contract text.")
+
+        # Write an external reference to the same text directory.
+        text_dir = tmp_path / "data_room" / "_dd" / "forensic-dd" / "index" / "text"
+        (text_dir / "__external__aws_amazon_com_agreement.md").write_text(
+            "# External Reference: https://aws.amazon.com/agreement\n\n"
+            "AWS Customer Agreement with assignment restrictions."
+        )
+
+        file_texts, skipped = analyzer._gather_file_texts(customer)
+
+        # Only the customer file should be loaded, not the external reference.
+        assert len(file_texts) == 1
+        assert file_texts[0].file_path == "GroupA/Acme Corp/msa.pdf"
+        assert "aws" not in file_texts[0].text.lower()

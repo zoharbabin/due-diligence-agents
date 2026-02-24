@@ -1,9 +1,17 @@
 """Download external T&Cs referenced by URL in extracted documents.
 
 Contracts frequently incorporate external Terms & Conditions by URL
-reference.  This module detects those URLs, downloads the content,
-extracts text via ``markitdown``, and caches the result alongside
-other extracted files so the search analyzer can include them.
+reference (e.g. ``https://vendor.com/general-terms-and-conditions/``).
+This module detects those URLs, downloads the content, extracts text
+via ``markitdown``, and caches the result in the text index with an
+``__external__`` prefix.
+
+**Important**: Downloaded references are stored alongside customer
+extractions but are NOT automatically included in any customer's
+analysis context.  The search analyzer only reads files listed in
+``customer.files`` from the customer registry — never by globbing
+the text directory.  External references are available for future
+vendor/infrastructure analysis but must be explicitly opted-in.
 
 This step is **non-blocking**: download failures are logged as
 warnings but never halt the pipeline.
@@ -54,24 +62,6 @@ _TC_PATH_KEYWORDS: frozenset[str] = frozenset(
         "data-processing",
         "dpa",
         "subprocessor",
-    }
-)
-
-# Domain patterns to exclude (not document sources).
-_EXCLUDED_DOMAINS: frozenset[str] = frozenset(
-    {
-        "facebook.com",
-        "twitter.com",
-        "x.com",
-        "linkedin.com",
-        "instagram.com",
-        "youtube.com",
-        "google.com/analytics",
-        "googleapis.com",
-        "cloudfront.net",
-        "amazonaws.com",
-        "github.com",
-        "bit.ly",
     }
 )
 
@@ -171,6 +161,8 @@ class ReferenceDownloader:
         """Scan .md files and return URL → list of referencing file names.
 
         Deduplicates URLs across files: each URL is downloaded once.
+        Skips ``__external__*`` files to avoid recursive URL discovery
+        from previously downloaded references.
         """
         url_map: dict[str, list[str]] = {}
 
@@ -178,6 +170,10 @@ class ReferenceDownloader:
             return url_map
 
         for md_file in sorted(self._text_dir.glob("*.md")):
+            # Skip previously downloaded external references.
+            if md_file.name.startswith("__external__"):
+                continue
+
             try:
                 text = md_file.read_text(encoding="utf-8", errors="replace")
             except OSError:
@@ -269,17 +265,16 @@ def is_reference_url(url: str) -> bool:
     """Return True if the URL likely points to a T&C or legal document.
 
     Heuristic: the URL path must contain at least one keyword from
-    :data:`_TC_PATH_KEYWORDS` and the domain must not be in the
-    exclusion list.
+    :data:`_TC_PATH_KEYWORDS`.
+
+    No domain exclusion is applied — if a URL appears in a legal
+    contract and its path matches a legal keyword (``agreement``,
+    ``terms``, ``policy``, etc.), it was put there for a reason and
+    should be downloaded.  The downstream analyzer controls which
+    files are actually included in each customer's analysis context.
     """
     lower = url.lower()
 
-    # Exclude known non-document domains.
-    for domain in _EXCLUDED_DOMAINS:
-        if domain in lower:
-            return False
-
-    # Check path keywords.
     # Extract the path portion (after the domain).
     path_start = lower.find("/", lower.find("//") + 2)
     if path_start == -1:

@@ -195,15 +195,25 @@ Contracts frequently incorporate external Terms & Conditions by URL
 reference (e.g. `https://vendor.com/general-terms-and-conditions/`).
 After text extraction, the pipeline automatically:
 
-1. **Scans** all extracted text for URLs matching T&C-like patterns
-   (terms, conditions, policy, SLA, EULA, privacy, etc.)
-2. **Downloads** referenced documents via HTTP
+1. **Scans** customer-extracted text for URLs matching T&C-like patterns
+   (terms, conditions, policy, SLA, EULA, privacy, agreement, etc.)
+2. **Downloads** referenced documents via HTTP (any domain accepted —
+   if a URL appears in a contract with a legal keyword in its path, it
+   was put there for a reason)
 3. **Extracts** text content using markitdown
 4. **Caches** results in the text index with an `__external__` prefix
 
 This step is non-blocking: download failures are logged as warnings
-but never halt the pipeline. Downloaded references are included in
-subsequent analysis alongside the original data room files.
+but never halt the pipeline.
+
+**Important**: Downloaded external references are cached for future use
+but are **not** automatically included in the customer contract analysis.
+The search analyzer only reads files listed in each customer's registry
+entry — never by scanning the text directory. This prevents external
+documents (e.g. a cloud provider's customer agreement) from being
+confused with the customer's own contract terms. External references
+may be relevant for vendor/infrastructure analysis but must be
+explicitly opted-in for that use case.
 
 ## Citation Verification
 
