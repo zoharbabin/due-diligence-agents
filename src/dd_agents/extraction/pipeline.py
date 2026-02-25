@@ -245,7 +245,26 @@ class ExtractionPipeline:
             future_to_filepath = {executor.submit(_process_file, fp): fp for fp in files}
 
             for future in as_completed(future_to_filepath):
-                result = future.result()
+                try:
+                    result = future.result()
+                except Exception:
+                    fp = future_to_filepath[future]
+                    logger.exception("Worker thread crashed processing %s", fp)
+                    result = _FileResult(
+                        filepath_str=fp,
+                        is_missing=False,
+                        is_cache_hit=False,
+                        is_plaintext=Path(fp).suffix.lower() in PLAINTEXT_EXTENSIONS,
+                        current_hash=None,
+                        entry=ExtractionQualityEntry(
+                            file_path=fp,
+                            method="failed",
+                            bytes_extracted=0,
+                            confidence=0.0,
+                            fallback_chain=["crashed"],
+                            failure_reasons=["Worker thread crashed"],
+                        ),
+                    )
 
                 if result.is_missing:
                     with tracker_lock:

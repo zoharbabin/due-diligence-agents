@@ -612,32 +612,36 @@ class TestNumericalAuditor:
             == 1
         )
 
-    def test_rederive_n008_counts_gaps(self, tmp_path: Path) -> None:
-        """N008 rederivation counts total gaps from gaps dir."""
+    def test_rederive_n008_counts_clean_results(self, tmp_path: Path) -> None:
+        """N008 rederivation counts findings with category=domain_reviewed_no_issues."""
+        merged_dir = tmp_path / "findings" / "merged"
+        merged_dir.mkdir(parents=True)
+        (merged_dir / "customer_a.json").write_text(
+            json.dumps(
+                {
+                    "findings": [
+                        {"severity": "P3", "category": "domain_reviewed_no_issues"},
+                        {"severity": "P2", "category": "contractual_risk"},
+                        {"severity": "P3", "category": "domain_reviewed_no_issues"},
+                    ]
+                }
+            )
+        )
+        auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
+        entry = ManifestEntry(
+            id="N008", label="Clean Results", value=0, source_file="findings/*.json", derivation="count_clean"
+        )
+        assert auditor._rederive(entry) == 2
+
+    def test_rederive_n009_counts_total_gaps(self, tmp_path: Path) -> None:
+        """N009 rederivation counts total gaps from gaps dir."""
         gaps_dir = tmp_path / "findings" / "merged" / "gaps"
         gaps_dir.mkdir(parents=True)
         (gaps_dir / "customer_a.json").write_text(json.dumps([{"gap": "missing clause"}, {"gap": "no termination"}]))
         (gaps_dir / "customer_b.json").write_text(json.dumps({"gaps": [{"gap": "no renewal"}]}))
         auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
-        entry = ManifestEntry(id="N008", label="Total Gaps", value=0, source_file="gaps/*.json", derivation="count")
+        entry = ManifestEntry(id="N009", label="Total Gaps", value=0, source_file="gaps/*.json", derivation="count")
         assert auditor._rederive(entry) == 3
-
-    def test_rederive_n009_counts_ghost_customers(self, tmp_path: Path) -> None:
-        """N009 rederivation counts ghost customer mentions."""
-        (tmp_path / "customer_mentions.json").write_text(
-            json.dumps(
-                [
-                    {"name": "Customer A", "ghost": True},
-                    {"name": "Customer B", "ghost": False},
-                    {"name": "Customer C", "ghost": True},
-                ]
-            )
-        )
-        auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
-        entry = ManifestEntry(
-            id="N009", label="Ghost Customers", value=0, source_file="customer_mentions.json", derivation="count_ghost"
-        )
-        assert auditor._rederive(entry) == 2
 
     def test_rederive_n010_counts_reference_files(self, tmp_path: Path) -> None:
         """N010 rederivation counts reference files."""
@@ -650,10 +654,18 @@ class TestNumericalAuditor:
         )
         assert auditor._rederive(entry) == 5
 
-    def test_rederive_n008_no_gaps_dir_returns_zero(self, tmp_path: Path) -> None:
-        """N008 returns 0 when gaps directory does not exist."""
+    def test_rederive_n008_no_merged_dir_returns_zero(self, tmp_path: Path) -> None:
+        """N008 returns 0 when merged dir does not exist."""
         auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
-        entry = ManifestEntry(id="N008", label="Total Gaps", value=0, source_file="gaps/*.json", derivation="count")
+        entry = ManifestEntry(
+            id="N008", label="Clean Results", value=0, source_file="findings/*.json", derivation="count_clean"
+        )
+        assert auditor._rederive(entry) == 0
+
+    def test_rederive_n009_no_gaps_dir_returns_zero(self, tmp_path: Path) -> None:
+        """N009 returns 0 when gaps directory does not exist."""
+        auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
+        entry = ManifestEntry(id="N009", label="Total Gaps", value=0, source_file="gaps/*.json", derivation="count")
         assert auditor._rederive(entry) == 0
 
     def test_rederive_n003_no_merged_dir_returns_zero(self, tmp_path: Path) -> None:
@@ -1283,6 +1295,67 @@ class TestDoDHardcodedPassesRemoved:
         )
         check = checker.check_16_entity_resolution_log()
         assert check.passed is False
+
+    def test_check_16_fails_with_unmatched_aliases(self, tmp_path: Path) -> None:
+        """check_16 should fail when unmatched entities have aliases available."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+        (run_dir / "entity_matches.json").write_text(
+            json.dumps(
+                {
+                    "entries": [
+                        {"name": "Customer A", "matched": True},
+                        {"name": "Customer B", "matched": False, "aliases": ["Cust B Inc"]},
+                    ]
+                }
+            )
+        )
+        checker = DefinitionOfDoneChecker(run_dir=run_dir, inventory_dir=inventory_dir, customer_safe_names=CUSTOMERS)
+        check = checker.check_16_entity_resolution_log()
+        assert check.passed is False
+        assert check.details["unmatched_with_aliases"] == 1
+
+    def test_check_16_passes_with_all_matched(self, tmp_path: Path) -> None:
+        """check_16 should pass when all entities are matched."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+        (run_dir / "entity_matches.json").write_text(json.dumps({"entries": [{"name": "Customer A", "matched": True}]}))
+        checker = DefinitionOfDoneChecker(run_dir=run_dir, inventory_dir=inventory_dir, customer_safe_names=CUSTOMERS)
+        check = checker.check_16_entity_resolution_log()
+        assert check.passed is True
+
+    def test_check_10_passes_when_all_processed(self, tmp_path: Path) -> None:
+        """check_10 should pass when all reference files appear in agent manifests."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+        (inventory_dir / "reference_files.json").write_text(json.dumps(["ref_a.pdf", "ref_b.pdf"]))
+        agents_dir = run_dir / "findings" / "agents" / "legal"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "reference_files_processed.json").write_text(json.dumps(["ref_a.pdf", "ref_b.pdf"]))
+        checker = DefinitionOfDoneChecker(run_dir=run_dir, inventory_dir=inventory_dir, customer_safe_names=CUSTOMERS)
+        check = checker.check_10_reference_files_processed()
+        assert check.passed is True
+
+    def test_check_10_fails_when_file_unprocessed(self, tmp_path: Path) -> None:
+        """check_10 should fail when a reference file is not processed by any agent."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+        (inventory_dir / "reference_files.json").write_text(json.dumps(["ref_a.pdf", "ref_b.pdf"]))
+        agents_dir = run_dir / "findings" / "agents" / "legal"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "reference_files_processed.json").write_text(json.dumps(["ref_a.pdf"]))
+        checker = DefinitionOfDoneChecker(run_dir=run_dir, inventory_dir=inventory_dir, customer_safe_names=CUSTOMERS)
+        check = checker.check_10_reference_files_processed()
+        assert check.passed is False
+        assert check.details["unprocessed_count"] == 1
 
     def test_check_25_passes_when_no_carried_forward(self, tmp_path: Path) -> None:
         """check_25 passes when merged findings have no _carried_forward metadata."""

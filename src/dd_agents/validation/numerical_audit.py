@@ -299,9 +299,9 @@ class NumericalAuditor:
             case "N007":
                 return self._count_findings_by_severity("P3")
             case "N008":
-                return self._count_total_gaps()
+                return self._count_clean_results()
             case "N009":
-                return self._count_ghost_customers()
+                return self._count_total_gaps()
             case "N010":
                 return self._count_reference_files()
             case _:
@@ -336,8 +336,23 @@ class NumericalAuditor:
         """N004-N007: count findings matching a specific severity level."""
         return sum(1 for f in self._load_merged_findings() if f.get("severity") == severity)
 
+    def _count_clean_results(self) -> int:
+        """N008: count findings with category='domain_reviewed_no_issues'."""
+        merged_dir = self.run_dir / "findings" / "merged"
+        if not merged_dir.exists():
+            return 0
+        total = 0
+        for jf in sorted(merged_dir.glob("*.json")):
+            try:
+                data = json.loads(jf.read_text())
+                findings = data.get("findings", [])
+                total += sum(1 for f in findings if f.get("category") == "domain_reviewed_no_issues")
+            except (json.JSONDecodeError, OSError):
+                continue
+        return total
+
     def _count_total_gaps(self) -> int:
-        """N008: count total gaps from the gaps directory."""
+        """N009: count total gaps from the gaps directory."""
         gaps_dir = self.run_dir / "findings" / "merged" / "gaps"
         if not gaps_dir.exists():
             return 0

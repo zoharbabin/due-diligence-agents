@@ -288,11 +288,45 @@ class DefinitionOfDoneChecker:
     def check_10_reference_files_processed(self) -> AuditCheck:
         """All reference files processed by at least one agent."""
         ref_path = self.inventory_dir / "reference_files.json"
-        exists = ref_path.exists()
+        if not ref_path.exists():
+            return AuditCheck(
+                passed=False,
+                dod_checks=[10],
+                details={"reference_files_json_exists": False},
+            )
+        try:
+            raw = json.loads(ref_path.read_text())
+            ref_files = raw if isinstance(raw, list) else raw.get("files", [])
+        except (json.JSONDecodeError, OSError):
+            return AuditCheck(
+                passed=False,
+                dod_checks=[10],
+                details={"error": "reference_files.json is invalid"},
+            )
+        if not ref_files:
+            # No reference files to process — vacuously true.
+            return AuditCheck(passed=True, dod_checks=[10], details={"total_reference_files": 0})
+        # Check that each ref file appears in at least one agent's output.
+        agents_dir = self.run_dir / "findings" / "agents"
+        ref_basenames = {Path(f if isinstance(f, str) else f.get("path", "")).name for f in ref_files}
+        unprocessed = set(ref_basenames)
+        if agents_dir.exists():
+            for agent_dir in agents_dir.iterdir():
+                manifest = agent_dir / "reference_files_processed.json"
+                if manifest.exists():
+                    try:
+                        processed = json.loads(manifest.read_text())
+                        processed_names = {Path(p).name for p in (processed if isinstance(processed, list) else [])}
+                        unprocessed -= processed_names
+                    except (json.JSONDecodeError, OSError):
+                        continue
         return AuditCheck(
-            passed=exists,
+            passed=len(unprocessed) == 0,
             dod_checks=[10],
-            details={"reference_files_json_exists": exists},
+            details={
+                "total_reference_files": len(ref_basenames),
+                "unprocessed_count": len(unprocessed),
+            },
         )
 
     def check_11_audit_logs_exist(self) -> AuditCheck:
@@ -384,11 +418,37 @@ class DefinitionOfDoneChecker:
     def check_16_entity_resolution_log(self) -> AuditCheck:
         """Entity resolution log exists with zero unmatched that have aliases."""
         log_path = self.run_dir / "entity_matches.json"
-        exists = log_path.exists()
+        if not log_path.exists():
+            return AuditCheck(
+                passed=False,
+                dod_checks=[16],
+                details={"entity_matches_exists": False},
+            )
+        try:
+            data = json.loads(log_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            return AuditCheck(
+                passed=False,
+                dod_checks=[16],
+                details={"error": "entity_matches.json is invalid"},
+            )
+        # Count unmatched entities that have aliases available.
+        unmatched_with_aliases = 0
+        entries = data if isinstance(data, list) else data.get("entries", [])
+        for entry in entries:
+            if (
+                isinstance(entry, dict)
+                and not entry.get("matched", True)
+                and (entry.get("aliases") or entry.get("alias_count", 0) > 0)
+            ):
+                unmatched_with_aliases += 1
         return AuditCheck(
-            passed=exists,
+            passed=unmatched_with_aliases == 0,
             dod_checks=[16],
-            details={"entity_matches_exists": exists},
+            details={
+                "entity_matches_exists": True,
+                "unmatched_with_aliases": unmatched_with_aliases,
+            },
         )
 
     def check_17_numerical_manifest_valid(self) -> AuditCheck:

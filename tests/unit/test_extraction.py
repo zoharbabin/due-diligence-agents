@@ -2106,6 +2106,45 @@ class TestExtractionSummary:
                 max_workers=2,
             )
 
+    def test_worker_thread_crash_does_not_terminate_pipeline(self, tmp_path: Path) -> None:
+        """A worker that raises an exception should be recorded as failed, not crash pipeline."""
+        from unittest.mock import patch
+
+        src = tmp_path / "sources"
+        src.mkdir()
+        good1 = src / "good1.txt"
+        good1.write_text("This file should extract successfully with enough content.\n", encoding="utf-8")
+        good2 = src / "good2.txt"
+        good2.write_text("Another good file with enough content for extraction test.\n", encoding="utf-8")
+        bad = src / "crash.txt"
+        bad.write_text("This file will trigger a simulated crash during extraction.\n", encoding="utf-8")
+
+        output_dir = tmp_path / "output"
+        cache_path = tmp_path / "checksums.sha256"
+
+        _real = (
+            ExtractionPipeline.extract_single.__wrapped__
+            if hasattr(ExtractionPipeline.extract_single, "__wrapped__")
+            else ExtractionPipeline.extract_single
+        )  # noqa: B009
+
+        def _crashing_extract(inst: ExtractionPipeline, filepath: Path, out_dir: Path) -> ExtractionQualityEntry:
+            if "crash" in filepath.name:
+                raise RuntimeError("Simulated native library crash")
+            return _real(inst, filepath, out_dir)
+
+        pipeline = ExtractionPipeline()
+        with patch.object(ExtractionPipeline, "extract_single", _crashing_extract):
+            entries = pipeline.extract_all([str(good1), str(good2), str(bad)], output_dir, cache_path, max_workers=1)
+
+        methods = {e.file_path: e.method for e in entries}
+        assert methods[str(good1)] == "direct_read"
+        assert methods[str(good2)] == "direct_read"
+        assert methods[str(bad)] == "failed"
+        crashed_entry = next(e for e in entries if e.file_path == str(bad))
+        assert crashed_entry.confidence == 0.0
+        assert "crashed" in crashed_entry.fallback_chain
+
 
 # ===================================================================== #
 # Priority 4: Thread safety tests for parallel extraction

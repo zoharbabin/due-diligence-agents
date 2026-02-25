@@ -1616,17 +1616,17 @@ class PipelineEngine:
                 },
                 {
                     "id": "N008",
+                    "label": "Clean Results",
+                    "value": 0,
+                    "source_file": "{RUN_DIR}/findings/merged/*.json",
+                    "derivation": "count_clean",
+                },
+                {
+                    "id": "N009",
                     "label": "Total Gaps",
                     "value": 0,
                     "source_file": "{RUN_DIR}/findings/merged/gaps/*.json",
                     "derivation": "count",
-                },
-                {
-                    "id": "N009",
-                    "label": "Ghost Customers",
-                    "value": 0,
-                    "source_file": str(inv_dir / "customer_mentions.json"),
-                    "derivation": "count_ghost",
                 },
                 {
                     "id": "N010",
@@ -1642,17 +1642,21 @@ class PipelineEngine:
         merged_dir = state.run_dir / "findings" / "merged"
         if merged_dir.exists():
             total_findings = 0
+            clean_result_count = 0
             sev_counts = {"P0": 0, "P1": 0, "P2": 0, "P3": 0}
             total_gaps = 0
             for jf in merged_dir.glob("*.json"):
                 try:
                     data = json.loads(jf.read_text())
                     findings = data.get("findings", [])
-                    total_findings += len(findings)
                     for f in findings:
-                        sev = f.get("severity", "P3")
-                        if sev in sev_counts:
-                            sev_counts[sev] += 1
+                        if f.get("category") == "domain_reviewed_no_issues":
+                            clean_result_count += 1
+                        else:
+                            total_findings += 1
+                            sev = f.get("severity", "P3")
+                            if sev in sev_counts:
+                                sev_counts[sev] += 1
                 except (json.JSONDecodeError, OSError):
                     continue
 
@@ -1673,7 +1677,8 @@ class PipelineEngine:
             manifest["numbers"][4]["value"] = sev_counts["P1"]
             manifest["numbers"][5]["value"] = sev_counts["P2"]
             manifest["numbers"][6]["value"] = sev_counts["P3"]
-            manifest["numbers"][7]["value"] = total_gaps
+            manifest["numbers"][7]["value"] = clean_result_count
+            manifest["numbers"][8]["value"] = total_gaps
 
         manifest_path = state.run_dir / "numerical_manifest.json"
         manifest_path.write_text(json.dumps(manifest, indent=2))
