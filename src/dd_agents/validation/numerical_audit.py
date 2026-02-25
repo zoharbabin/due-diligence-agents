@@ -288,9 +288,104 @@ class NumericalAuditor:
                 return self._count_csv_rows("customers.csv")
             case "N002":
                 return self._count_file_lines("files.txt")
+            case "N003":
+                return self._count_merged_findings()
+            case "N004":
+                return self._count_findings_by_severity("P0")
+            case "N005":
+                return self._count_findings_by_severity("P1")
+            case "N006":
+                return self._count_findings_by_severity("P2")
+            case "N007":
+                return self._count_findings_by_severity("P3")
+            case "N008":
+                return self._count_total_gaps()
+            case "N009":
+                return self._count_ghost_customers()
+            case "N010":
+                return self._count_reference_files()
             case _:
-                # For entries beyond N001-N002, accept the manifest value
+                # For entries beyond N001-N010, accept the manifest value
                 return None
+
+    def _load_merged_findings(self) -> list[dict[str, Any]]:
+        """Load all findings from the merged findings directory.
+
+        Excludes entries whose category is ``domain_reviewed_no_issues``.
+        """
+        merged_dir = self.run_dir / "findings" / "merged"
+        if not merged_dir.exists():
+            return []
+        all_findings: list[dict[str, Any]] = []
+        for jf in sorted(merged_dir.glob("*.json")):
+            try:
+                data = json.loads(jf.read_text())
+                findings = data.get("findings", [])
+                for f in findings:
+                    if f.get("category") != "domain_reviewed_no_issues":
+                        all_findings.append(f)
+            except (json.JSONDecodeError, OSError):
+                continue
+        return all_findings
+
+    def _count_merged_findings(self) -> int:
+        """N003: count total findings from merged dir, excluding domain_reviewed_no_issues."""
+        return len(self._load_merged_findings())
+
+    def _count_findings_by_severity(self, severity: str) -> int:
+        """N004-N007: count findings matching a specific severity level."""
+        return sum(1 for f in self._load_merged_findings() if f.get("severity") == severity)
+
+    def _count_total_gaps(self) -> int:
+        """N008: count total gaps from the gaps directory."""
+        gaps_dir = self.run_dir / "findings" / "merged" / "gaps"
+        if not gaps_dir.exists():
+            return 0
+        total = 0
+        for gf in sorted(gaps_dir.glob("*.json")):
+            try:
+                gdata = json.loads(gf.read_text())
+                if isinstance(gdata, list):
+                    total += len(gdata)
+                elif isinstance(gdata, dict):
+                    total += len(gdata.get("gaps", []))
+            except (json.JSONDecodeError, OSError):
+                continue
+        return total
+
+    def _count_ghost_customers(self) -> int | None:
+        """N009: count ghost customer mentions from customer_mentions.json."""
+        path = self.inventory_dir / "customer_mentions.json"
+        if not path.exists():
+            return None
+        try:
+            data = json.loads(path.read_text())
+            if isinstance(data, list):
+                return sum(1 for item in data if item.get("ghost", False))
+            if isinstance(data, dict):
+                ghost_count = data.get("ghost_count")
+                if ghost_count is not None:
+                    return int(ghost_count)
+                ghost_list: list[Any] = data.get("ghost_customers", [])
+                return len(ghost_list)
+        except (json.JSONDecodeError, OSError):
+            return None
+        return None
+
+    def _count_reference_files(self) -> int | None:
+        """N010: count reference files from reference_files.json."""
+        path = self.inventory_dir / "reference_files.json"
+        if not path.exists():
+            return None
+        try:
+            data = json.loads(path.read_text())
+            if isinstance(data, list):
+                return len(data)
+            if isinstance(data, dict):
+                return len(data.get("files", []))
+        except (json.JSONDecodeError, OSError):
+            return None
+        return None
 
     def _count_csv_rows(self, filename: str) -> int | None:
         """Count data rows (excluding header) in a CSV file."""

@@ -151,15 +151,17 @@ class TestRunManager:
     """Tests for run initialization and finalization."""
 
     def test_initialize_creates_run_id(self, tmp_path: Path) -> None:
-        """initialize_run should produce a timestamp-formatted run_id."""
+        """initialize_run should produce a run_id with timestamp and random suffix."""
         mgr = RunManager(tmp_path)
         meta = mgr.initialize_run(tmp_path)
 
-        # run_id format: YYYYMMDD_HHMMSS
-        assert len(meta.run_id) == 15
-        assert meta.run_id[8] == "_"
-        assert meta.run_id[:8].isdigit()
-        assert meta.run_id[9:].isdigit()
+        # run_id format: run_YYYYMMDD_HHMMSS_<6hex>  (Issue #63)
+        assert meta.run_id.startswith("run_")
+        parts = meta.run_id.split("_")
+        assert len(parts) == 4
+        assert parts[1].isdigit() and len(parts[1]) == 8  # YYYYMMDD
+        assert parts[2].isdigit() and len(parts[2]) == 6  # HHMMSS
+        assert len(parts[3]) == 6  # hex suffix
 
     def test_initialize_creates_directory_structure(self, tmp_path: Path) -> None:
         """initialize_run should create the full VERSIONED directory tree."""
@@ -462,3 +464,141 @@ class TestIncrementalClassifier:
             staleness_threshold=3,
         )
         assert result.execution_mode == "incremental"
+
+    def test_files_modified_detected_correctly(self) -> None:
+        """files_modified should use filename-based comparison, not index-based.
+
+        Regression (Issue #66): the old code used ``list.index()`` which
+        compared positions instead of content, and returned [] when list
+        lengths differed.
+        """
+        classifier = IncrementalClassifier()
+        # Common files: file_a.pdf, file_b.pdf.
+        # file_c.pdf added, file_d.pdf removed.
+        result = classifier.classify_customers(
+            current_files={"acme": ["file_a.pdf", "file_b.pdf", "file_c.pdf"]},
+            prior_files={"acme": ["file_a.pdf", "file_b.pdf", "file_d.pdf"]},
+            staleness_threshold=3,
+        )
+        entry = result.customers[0]
+        assert entry.classification == CustomerClassificationStatus.CHANGED
+        assert "file_c.pdf" in entry.files_added
+        assert "file_d.pdf" in entry.files_removed
+        # Common files (file_a, file_b) should appear as potentially modified.
+        assert "file_a.pdf" in entry.files_modified
+        assert "file_b.pdf" in entry.files_modified
+
+    def test_files_modified_with_different_list_lengths(self) -> None:
+        """files_modified should work even when current and prior have different lengths.
+
+        Regression (Issue #66): old code returned [] when len(current) != len(prior).
+        """
+        classifier = IncrementalClassifier()
+        result = classifier.classify_customers(
+            current_files={"acme": ["file_a.pdf", "file_b.pdf", "file_c.pdf"]},
+            prior_files={"acme": ["file_a.pdf", "file_b.pdf"]},
+            staleness_threshold=3,
+        )
+        entry = result.customers[0]
+        assert entry.classification == CustomerClassificationStatus.CHANGED
+        assert "file_c.pdf" in entry.files_added
+        # Common files still detected
+        assert "file_a.pdf" in entry.files_modified
+        assert "file_b.pdf" in entry.files_modified
+
+
+# =========================================================================
+# Issue #62: archive_versioned with empty inventory_snapshot
+# =========================================================================
+
+
+class TestArchiveVersionedEmptySnapshot:
+    """Test that archiving works even when inventory_snapshot is an empty placeholder."""
+
+    def test_archive_versioned_overwrites_empty_snapshot(self, tmp_path: Path) -> None:
+        """archive_versioned should archive even if an empty inventory_snapshot exists.
+
+        Regression (Issue #62): ensure_run_dirs creates an empty
+        inventory_snapshot dir, which caused archive_versioned to skip
+        archiving because ``snapshot_dir.exists()`` was True.
+        """
+        mgr = TierManager(tmp_path)
+        runs_dir = tmp_path / "_dd" / "forensic-dd" / "runs"
+        prior_dir = runs_dir / "20260214_090000"
+        prior_dir.mkdir(parents=True)
+        latest_link = runs_dir / "latest"
+        latest_link.symlink_to("20260214_090000")
+
+        # Create the empty placeholder (as ensure_run_dirs would)
+        snapshot = prior_dir / "inventory_snapshot"
+        snapshot.mkdir(parents=True)
+        assert not any(snapshot.iterdir())  # empty
+
+        # Create inventory with content
+        inv_dir = tmp_path / "_dd" / "forensic-dd" / "inventory"
+        inv_dir.mkdir(parents=True)
+        (inv_dir / "tree.txt").write_text("tree data")
+        mgr.inventory_dir = inv_dir
+
+        new_run_dir = runs_dir / "20260215_100000"
+        new_run_dir.mkdir()
+        mgr.archive_versioned(new_run_dir, runs_dir)
+
+        # Snapshot should now have content
+        assert (snapshot / "tree.txt").exists()
+        assert (snapshot / "tree.txt").read_text() == "tree data"
+
+
+# =========================================================================
+# Issue #63: RunManager run_id collision and atomic writes
+# =========================================================================
+
+
+class TestRunManagerCollisionAndAtomicWrites:
+    """Tests for run_id uniqueness and atomic file writes."""
+
+    def test_run_id_has_random_suffix(self, tmp_path: Path) -> None:
+        """run_id should contain a random suffix to prevent collisions.
+
+        Regression (Issue #63): old format was just YYYYMMDD_HHMMSS which
+        could collide if two runs started in the same second.
+        """
+        mgr = RunManager(tmp_path)
+        meta = mgr.initialize_run(tmp_path)
+
+        # New format: run_YYYYMMDD_HHMMSS_<6hex>
+        assert meta.run_id.startswith("run_")
+        parts = meta.run_id.split("_")
+        assert len(parts) == 4  # run, YYYYMMDD, HHMMSS, hex
+        assert len(parts[3]) == 6  # 6-char hex suffix
+
+    def test_consecutive_run_ids_differ(self, tmp_path: Path) -> None:
+        """Two consecutive initializations should produce different run_ids."""
+        mgr1 = RunManager(tmp_path)
+        meta1 = mgr1.initialize_run(tmp_path)
+
+        mgr2 = RunManager(tmp_path)
+        meta2 = mgr2.initialize_run(tmp_path)
+
+        assert meta1.run_id != meta2.run_id
+
+    def test_atomic_write_metadata(self, tmp_path: Path) -> None:
+        """metadata.json should be written atomically (no .tmp residue)."""
+        mgr = RunManager(tmp_path)
+        meta = mgr.initialize_run(tmp_path)
+
+        run_dir = tmp_path / "_dd" / "forensic-dd" / "runs" / meta.run_id
+        # metadata.json exists
+        assert (run_dir / "metadata.json").exists()
+        # No .tmp file left behind
+        assert not (run_dir / "metadata.tmp").exists()
+
+    def test_atomic_write_history(self, tmp_path: Path) -> None:
+        """run_history.json should be written atomically (no .tmp residue)."""
+        mgr = RunManager(tmp_path)
+        meta = mgr.initialize_run(tmp_path)
+        mgr.finalize_run(meta)
+
+        history_path = tmp_path / "_dd" / "run_history.json"
+        assert history_path.exists()
+        assert not history_path.with_suffix(".tmp").exists()

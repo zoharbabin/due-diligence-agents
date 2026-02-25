@@ -86,6 +86,7 @@ class QAAuditor:
             self.check_contract_date_reconciliation,  # -> DoD 18
             self.check_report_consistency,  # 8k -> DoD 28, 29, 30
             self.check_finding_format,  # format validation
+            self.check_p0_p1_citation_quality,  # Issue #48: P0/P1 must have real citations
         ]
 
         for method in check_methods:
@@ -306,8 +307,21 @@ class QAAuditor:
     # ------------------------------------------------------------------ #
 
     def check_gap_completeness(self) -> tuple[str, AuditCheck]:
-        gaps_dir = self.run_dir / "findings" / "merged" / "gaps"
+        # Collect gaps from merged customer files (primary source after step 6)
         gap_count = 0
+        merged_dir = self.run_dir / "findings" / "merged"
+        if merged_dir.exists():
+            for jf in merged_dir.glob("*.json"):
+                if jf.name == "gaps":
+                    continue
+                try:
+                    data = json.loads(jf.read_text())
+                    gap_count += len(data.get("gaps", []))
+                except (json.JSONDecodeError, OSError):
+                    continue
+
+        # Also check legacy gaps directory
+        gaps_dir = self.run_dir / "findings" / "merged" / "gaps"
         if gaps_dir.exists():
             for gap_file in gaps_dir.glob("*.json"):
                 try:
@@ -319,15 +333,26 @@ class QAAuditor:
                 except (json.JSONDecodeError, OSError):
                     continue
 
+        # Check for ghost customers: customers in inventory but missing from merged
+        ghost_customers: list[str] = []
+        if merged_dir.exists():
+            merged_customers = {jf.stem for jf in merged_dir.glob("*.json")}
+            for customer in self.customer_safe_names:
+                if customer not in merged_customers:
+                    ghost_customers.append(customer)
+
+        # Fail if there are ghost customers without gap entries
+        passed = len(ghost_customers) == 0
+
         return "gap_completeness", AuditCheck(
-            passed=True,  # Pass unless specific gap tracking failures found
+            passed=passed,
             dod_checks=[6, 9],
             details={
                 "total_gaps": gap_count,
-                "referenced_missing_docs_logged": True,
-                "ghost_customers_logged": True,
-                "ghost_count": 0,
+                "ghost_customers": ghost_customers[:50],
+                "ghost_count": len(ghost_customers),
             },
+            rule="All ghost customers must be logged as gaps; all referenced-but-missing docs must be tracked.",
         )
 
     # ------------------------------------------------------------------ #
@@ -338,14 +363,37 @@ class QAAuditor:
         reconciliation_path = self.run_dir / "contract_date_reconciliation.json"
         reconciliation_exists = reconciliation_path.exists()
 
+        # Check that merged customer files exist and have cross_references data
+        merged_dir = self.run_dir / "findings" / "merged"
+        customers_without_xrefs: list[str] = []
+        total_xrefs = 0
+
+        if merged_dir.exists():
+            for customer in self.customer_safe_names:
+                merged_path = merged_dir / f"{customer}.json"
+                if not merged_path.exists():
+                    customers_without_xrefs.append(customer)
+                    continue
+                try:
+                    data = json.loads(merged_path.read_text())
+                    xrefs = data.get("cross_references", [])
+                    total_xrefs += len(xrefs)
+                except (json.JSONDecodeError, OSError):
+                    customers_without_xrefs.append(customer)
+
+        # Pass if all customers have merged files (cross-references may be empty
+        # for customers with no reference data)
+        passed = len(customers_without_xrefs) == 0
+
         return "cross_reference_completeness", AuditCheck(
-            passed=True,
+            passed=passed,
             dod_checks=[7, 8],
             details={
-                "cross_customer_patterns_checked": True,
+                "customers_without_merged_xrefs": customers_without_xrefs[:50],
+                "total_cross_references": total_xrefs,
                 "reconciliation_complete": reconciliation_exists,
-                "phantom_count": 0,
             },
+            rule="All customers must have merged output files with cross-reference data.",
         )
 
     # ------------------------------------------------------------------ #
@@ -630,6 +678,50 @@ class QAAuditor:
                 "total_checked": total_checked,
                 "invalid_findings": invalid_findings[:50],
             },
+        )
+
+    # ------------------------------------------------------------------ #
+    # P0/P1 Citation Quality (Issue #48)
+    # ------------------------------------------------------------------ #
+
+    def check_p0_p1_citation_quality(self) -> tuple[str, AuditCheck]:
+        """Reject P0/P1 findings with dropped or synthetic citations.
+
+        Every P0 or P1 finding must have at least one citation with:
+        - A real source_path (not synthetic, not empty)
+        - A non-empty exact_quote
+        """
+        merged_findings = self._load_all_merged_findings()
+        violations: list[dict[str, str]] = []
+
+        for finding in merged_findings:
+            severity = finding.get("severity", "")
+            if severity not in ("P0", "P1"):
+                continue
+            citations = finding.get("citations", [])
+            finding_id = finding.get("id", "unknown")
+
+            if not citations:
+                violations.append({"finding_id": finding_id, "error": "no citations"})
+                continue
+
+            for cit in citations:
+                source_path = cit.get("source_path", "")
+                if not source_path or source_path.startswith("[synthetic:"):
+                    violations.append(
+                        {"finding_id": finding_id, "error": f"synthetic/empty source_path: {source_path!r}"}
+                    )
+                if not cit.get("exact_quote"):
+                    violations.append({"finding_id": finding_id, "error": "missing exact_quote"})
+
+        return "p0_p1_citation_quality", AuditCheck(
+            passed=len(violations) == 0,
+            dod_checks=[5],
+            details={
+                "p0_p1_findings_checked": len([f for f in merged_findings if f.get("severity") in ("P0", "P1")]),
+                "violations": violations[:50],
+            },
+            rule="ALL P0/P1 findings must have non-empty, non-synthetic citations with exact_quote.",
         )
 
     # ------------------------------------------------------------------ #

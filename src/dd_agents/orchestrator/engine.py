@@ -17,6 +17,7 @@ import json
 import logging
 import time
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from dd_agents.orchestrator.checkpoints import (
@@ -890,6 +891,7 @@ class PipelineEngine:
         inv_dir = self._inventory_dir(state)
         manifest: dict[str, Any] = {
             "run_id": state.run_id,
+            "generated_at": datetime.now(UTC).isoformat(),
             "numbers": [
                 {
                     "id": "N001",
@@ -1019,26 +1021,28 @@ class PipelineEngine:
 
         # Load numerical manifest
         manifest_path = state.run_dir / "numerical_manifest.json"
-        if manifest_path.exists():
-            try:
-                from dd_agents.models.numerical import NumericalManifest
+        if not manifest_path.exists():
+            state.validation_results["numerical_audit"] = False
+            raise BlockingGateError("Numerical manifest not found")
 
-                manifest_data = json.loads(manifest_path.read_text())
-                manifest = NumericalManifest.model_validate(manifest_data)
-                checks = auditor.run_full_audit(manifest)
+        from dd_agents.models.numerical import NumericalManifest
 
-                failures = [c for c in checks if not c.passed]
-                if failures:
-                    logger.warning(
-                        "Numerical audit: %d/%d checks failed",
-                        len(failures),
-                        len(checks),
-                    )
-                else:
-                    logger.info("Numerical audit: all %d checks passed", len(checks))
-            except Exception as exc:
-                logger.warning("Numerical audit could not run: %s", exc)
+        manifest_data = json.loads(manifest_path.read_text())
+        manifest = NumericalManifest.model_validate(manifest_data)
+        checks = auditor.run_full_audit(manifest)
 
+        failures = [c for c in checks if not c.passed]
+        if failures:
+            failed_layers = [c.rule or f"check {i}" for i, c in enumerate(checks) if not c.passed]
+            logger.warning(
+                "Numerical audit: %d/%d checks failed",
+                len(failures),
+                len(checks),
+            )
+            state.validation_results["numerical_audit"] = False
+            raise BlockingGateError(f"Numerical audit failed: {', '.join(failed_layers)}")
+
+        logger.info("Numerical audit: all %d checks passed", len(checks))
         state.validation_results["numerical_audit"] = True
         return state
 
@@ -1065,6 +1069,7 @@ class PipelineEngine:
         else:
             failed = [name for name, check in report.checks.items() if not check.passed]
             logger.warning("QA audit: %d checks failed: %s", len(failed), failed)
+            raise BlockingGateError(f"QA audit failed: {', '.join(failed)}")
 
         return state
 
@@ -1159,11 +1164,13 @@ class PipelineEngine:
             checks = validator.validate_report(excel_files[0])
             failures = [c for c in checks if not c.passed]
             if failures:
+                failed_rules = [c.rule or f"check {i}" for i, c in enumerate(checks) if not c.passed]
                 logger.warning(
                     "Schema validation: %d/%d checks failed",
                     len(failures),
                     len(checks),
                 )
+                raise BlockingGateError(f"Post-generation schema validation failed: {', '.join(failed_rules)}")
             else:
                 logger.info("Schema validation passed")
 
@@ -1173,6 +1180,7 @@ class PipelineEngine:
 
     async def _step_32_finalize_metadata(self, state: PipelineState) -> PipelineState:
         """Write metadata.json, update 'latest' symlink."""
+        from dd_agents.models.enums import CompletionStatus, ExecutionMode
         from dd_agents.models.persistence import RunMetadata
         from dd_agents.persistence.run_manager import RunManager
 
@@ -1182,10 +1190,10 @@ class PipelineEngine:
             run_id=state.run_id,
             timestamp=state.run_dir.name if state.run_dir else state.run_id,
             skill="forensic-dd",
-            execution_mode=state.execution_mode,
+            execution_mode=ExecutionMode(state.execution_mode),
             config_hash=state.config_hash,
             framework_version=state.framework_version,
-            completion_status="completed",
+            completion_status=CompletionStatus.COMPLETED,
         )
 
         run_mgr.finalize_run(metadata)
@@ -1228,6 +1236,17 @@ class PipelineEngine:
         passed = sum(1 for c in dod_results if c.passed)
         total = len(dod_results)
         logger.info("DoD: %d/%d checks passed", passed, total)
+
+        # Persist DoD results
+        dod_output = {
+            "passed": passed,
+            "total": total,
+            "checks": [c.model_dump() for c in dod_results],
+        }
+        dod_path = state.run_dir / "dod_results.json"
+        dod_path.parent.mkdir(parents=True, exist_ok=True)
+        dod_path.write_text(json.dumps(dod_output, indent=2))
+        logger.info("DoD results written to %s", dod_path)
 
         self.team = None
         logger.info("Pipeline shutdown complete")

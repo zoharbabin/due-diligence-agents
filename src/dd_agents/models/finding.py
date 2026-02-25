@@ -237,6 +237,9 @@ class MergedCustomerOutput(BaseModel):
     findings: list[Finding] = Field(
         default_factory=list, description="Fully transformed findings conforming to finding.schema.json"
     )
+    gaps: list[Gap] = Field(
+        default_factory=list, description="Collected gaps from all specialist agents (step 6 of merge protocol)"
+    )
     cross_references: list[CrossReference] = Field(default_factory=list)
     cross_reference_summary: CrossReferenceSummary | None = None
     governance_graph: GovernanceGraph = Field(default_factory=GovernanceGraph)

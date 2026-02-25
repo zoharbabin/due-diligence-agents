@@ -133,4 +133,6 @@ class OCRExtractor:
             logger.warning("Pillow is not installed -- cannot load images for OCR.  Install with: pip install Pillow")
             return []
 
-        return [Image.open(str(filepath))]
+        img = Image.open(str(filepath))
+        img.load()  # type: ignore[no-untyped-call]  # Force read so the file handle is released.
+        return [img]

@@ -117,19 +117,22 @@ def _render_pdf_pages(filepath: Path, work_dir: Path) -> list[Path]:
         return []
 
     paths: list[Path] = []
-    num_pages = min(len(doc), _MAX_PAGES)
-    for i in range(num_pages):
-        try:
-            page = doc[i]
-            bitmap = page.render(scale=DPI / 72)
-            img = bitmap.to_pil()
-            img = _resize_image(img)
+    try:
+        num_pages = min(len(doc), _MAX_PAGES)
+        for i in range(num_pages):
+            try:
+                page = doc[i]
+                bitmap = page.render(scale=DPI / 72)
+                img = bitmap.to_pil()
+                img = _resize_image(img)
 
-            out_path = work_dir / f"page_{i + 1:03d}.png"
-            img.save(str(out_path), optimize=True)
-            paths.append(out_path)
-        except Exception:
-            logger.warning("Failed to render page %d of %s", i + 1, filepath)
+                out_path = work_dir / f"page_{i + 1:03d}.png"
+                img.save(str(out_path), optimize=True)
+                paths.append(out_path)
+            except Exception:
+                logger.warning("Failed to render page %d of %s", i + 1, filepath)
+    finally:
+        doc.close()
 
     return paths
 
@@ -148,11 +151,14 @@ def _render_image_for_ocr(filepath: Path, work_dir: Path) -> list[Path]:
 
     try:
         img: Any = Image.open(str(filepath))
-        img = _resize_image(img)
+        try:
+            img = _resize_image(img)
 
-        out_path = work_dir / "page_001.png"
-        img.save(str(out_path), optimize=True)
-        return [out_path]
+            out_path = work_dir / "page_001.png"
+            img.save(str(out_path), optimize=True)
+            return [out_path]
+        finally:
+            img.close()
     except Exception:
         logger.exception("Failed to prepare image %s for GLM-OCR", filepath)
         return []

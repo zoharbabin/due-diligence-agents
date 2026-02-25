@@ -22,6 +22,7 @@ from dd_agents.models.finding import (
     CrossReference,
     CrossReferenceSummary,
     Finding,
+    Gap,
     MergedCustomerOutput,
 )
 from dd_agents.models.governance import GovernanceEdge, GovernanceGraph
@@ -96,6 +97,9 @@ class FindingMerger:
         # Step 5 -- Consolidate governance
         governance = self._consolidate_governance(agent_outputs)
 
+        # Step 6 -- Merge gap files from all agents
+        merged_gaps = self._collect_gaps(agent_outputs, customer_name)
+
         # Cross-references
         cross_refs = self._union_cross_refs(agent_outputs)
         xref_summary = self._merge_xref_summaries(agent_outputs)
@@ -103,10 +107,14 @@ class FindingMerger:
         # Governance resolved %
         gov_pct = self._compute_gov_pct(governance, agent_outputs)
 
+        # Pre-generation validation: warn about P0/P1 findings with empty citations
+        self._validate_finding_citations(promoted)
+
         return MergedCustomerOutput(
             customer=customer_name,
             customer_safe_name=customer_safe_name,
             findings=promoted,
+            gaps=merged_gaps,
             cross_references=cross_refs,
             cross_reference_summary=xref_summary,
             governance_graph=governance,
@@ -164,16 +172,28 @@ class FindingMerger:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _match_key(finding: dict[str, Any]) -> tuple[str, str]:
-        """Dedup key: (citation source_path, citation location)."""
+    def _match_key(finding: dict[str, Any]) -> tuple[str, ...]:
+        """Dedup key: (citation source_path, citation location).
+
+        When citation fields are empty, include finding_id or agent_name + title
+        so that distinct findings are not collapsed into one.
+        """
         cit = (finding.get("citations") or [{}])[0] if "citations" in finding else {}
-        # Support both nested dict (agent output) and flat keys
+        source_path = ""
+        location = ""
         if isinstance(cit, dict):
-            return (cit.get("source_path", ""), cit.get("location", ""))
-        return ("", "")
+            source_path = cit.get("source_path", "")
+            location = cit.get("location", "")
+
+        # When both citation fields are empty, add discriminator to avoid
+        # collapsing distinct findings into a single group.
+        if not source_path and not location:
+            discriminator = finding.get("id", "") or f"{finding.get('agent', '')}:{finding.get('title', '')}"
+            return (source_path, location, discriminator)
+        return (source_path, location)
 
     def _deduplicate(self, findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        groups: dict[tuple[str, ...], list[dict[str, Any]]] = {}
         for f in findings:
             key = self._match_key(f)
             groups.setdefault(key, []).append(f)
@@ -352,12 +372,17 @@ class FindingMerger:
                 else:
                     citations.append(c)
 
-            # Ensure at least one citation
+            # Ensure at least one citation -- mark as synthetic so QA can flag it
             if not citations:
+                logger.warning(
+                    "Finding '%s' (agent=%s) has no citations; adding synthetic placeholder",
+                    f.get("title", "untitled"),
+                    agent,
+                )
                 citations = [
                     Citation(
                         source_type=SourceType("file"),
-                        source_path="unknown",
+                        source_path="[synthetic:no_citation_provided]",
                         location="",
                     )
                 ]
@@ -382,3 +407,71 @@ class FindingMerger:
             except Exception:  # noqa: BLE001
                 logger.warning("Skipping finding that failed validation: %s", f.get("title"))
         return results
+
+    # ------------------------------------------------------------------
+    # Step 6 -- Gap collection
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _collect_gaps(
+        agent_outputs: dict[str, dict[str, Any]],
+        customer_name: str,
+    ) -> list[Gap]:
+        """Collect and deduplicate gaps from all specialist agents.
+
+        Each agent may produce a ``gaps`` list in its output.  This method
+        unions them, deduplicating by ``(missing_item, gap_type)`` and keeping
+        the highest-priority entry when duplicates exist.
+        """
+        seen: dict[tuple[str, str], dict[str, Any]] = {}
+
+        for agent, data in agent_outputs.items():
+            for gap_raw in data.get("gaps", []):
+                gap_dict = dict(gap_raw)  # shallow copy
+                gap_dict.setdefault("agent", agent)
+                gap_dict.setdefault("customer", customer_name)
+                dedup_key = (gap_dict.get("missing_item", ""), gap_dict.get("gap_type", ""))
+                existing = seen.get(dedup_key)
+                if existing is None:
+                    seen[dedup_key] = gap_dict
+                else:
+                    # Keep higher priority
+                    existing_prio = SEVERITY_ORDER.get(existing.get("priority", "P3"), 9)
+                    new_prio = SEVERITY_ORDER.get(gap_dict.get("priority", "P3"), 9)
+                    if new_prio < existing_prio:
+                        seen[dedup_key] = gap_dict
+
+        gaps: list[Gap] = []
+        for gap_dict in seen.values():
+            try:
+                gaps.append(Gap.model_validate(gap_dict))
+            except Exception:  # noqa: BLE001
+                logger.warning("Skipping invalid gap during merge: %s", gap_dict.get("missing_item", ""))
+        return gaps
+
+    # ------------------------------------------------------------------
+    # Pre-generation citation validation (Issue #48)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _validate_finding_citations(findings: list[Finding]) -> None:
+        """Warn when P0/P1 findings have empty or synthetic citations.
+
+        This is a pre-generation quality gate.  It does not reject findings
+        outright (the Finding model validator already does that for missing
+        exact_quote on P0/P1), but it logs warnings for synthetic citations
+        so they surface in audit logs.
+        """
+        for finding in findings:
+            if finding.severity in ("P0", "P1"):
+                for cit in finding.citations:
+                    if not cit.source_path or cit.source_path.startswith("[synthetic:"):
+                        logger.warning(
+                            "P0/P1 finding %s has synthetic/empty citation — this will be flagged by QA audit",
+                            finding.id,
+                        )
+                    if not cit.exact_quote:
+                        logger.warning(
+                            "P0/P1 finding %s is missing exact_quote in citation — this will be flagged by QA audit",
+                            finding.id,
+                        )

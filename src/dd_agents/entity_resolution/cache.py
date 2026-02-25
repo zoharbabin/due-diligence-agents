@@ -11,6 +11,7 @@ Cache file: ``_dd/entity_resolution_cache.json``
 from __future__ import annotations
 
 import json
+import os
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -183,6 +184,9 @@ class EntityResolutionCache:
 
         Returns the cache entry dict if found and valid, ``None`` otherwise.
         Validates that the canonical name still exists in *target_names*.
+
+        This method is read-only; it does **not** mutate cache state.
+        Use :meth:`invalidate_entry` to explicitly remove stale entries.
         """
         if source_name in self._invalidated_entries:
             return None
@@ -194,12 +198,21 @@ class EntityResolutionCache:
         # Validate: canonical must still exist in customers.csv
         canonical_preprocessed = preprocess_name(entry["canonical"])
         if canonical_preprocessed not in target_names:
-            # Canonical no longer in customers.csv -- invalidate
-            del self.data["entries"][source_name]
             return None
 
         result: dict[str, Any] = entry
         return result
+
+    def invalidate_entry(self, source_name: str) -> bool:
+        """Explicitly remove a cache entry by *source_name*.
+
+        Returns ``True`` if an entry was removed, ``False`` if no entry
+        existed for the given name.
+        """
+        if source_name in self.data.get("entries", {}):
+            del self.data["entries"][source_name]
+            return True
+        return False
 
     # ------------------------------------------------------------------
     # Mutations
@@ -243,17 +256,22 @@ class EntityResolutionCache:
     # ------------------------------------------------------------------
 
     def save(self, run_id: str) -> None:
-        """Persist cache to disk."""
+        """Persist cache to disk using atomic write (temp + os.replace)."""
         self.data["last_updated"] = datetime.now(UTC).isoformat()
         self.data["last_updated_by"] = "forensic-dd"
         self.data["last_updated_run_id"] = run_id
 
-        # Read-then-write with validation (for shared resource safety)
         self.cache_path.parent.mkdir(parents=True, exist_ok=True)
-        self.cache_path.write_text(
-            json.dumps(self.data, indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
+        tmp_path = self.cache_path.with_suffix(".tmp")
+        try:
+            tmp_path.write_text(
+                json.dumps(self.data, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            os.replace(str(tmp_path), str(self.cache_path))
+        except Exception:
+            tmp_path.unlink(missing_ok=True)
+            raise
 
         # Verify write
         verification = json.loads(self.cache_path.read_text(encoding="utf-8"))

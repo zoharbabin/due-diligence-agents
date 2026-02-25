@@ -485,7 +485,7 @@ class ExtractionPipeline:
         pdf_type = self._inspect_pdf(filepath)
 
         # Skip text extractors for PDFs that would produce garbage.
-        skip_text_extractors = pdf_type in ("scanned", "missing_tounicode")
+        skip_text_extractors = pdf_type in ("scanned", "missing_tounicode", "encrypted")
 
         # 1. pymupdf — per-page extraction with explicit page markers.
         if not skip_text_extractors:

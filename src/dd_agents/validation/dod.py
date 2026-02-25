@@ -163,52 +163,126 @@ class DefinitionOfDoneChecker:
 
     def check_4_governance_resolved(self) -> AuditCheck:
         """Every customer has governance resolved for all files OR explicit gaps."""
+        audit_path = self.run_dir / "audit.json"
+        if audit_path.exists():
+            try:
+                data = json.loads(audit_path.read_text())
+                checks = data.get("checks", {})
+                gov_check = checks.get("governance_completeness", {})
+                passed = gov_check.get("passed", False)
+                return AuditCheck(
+                    passed=passed,
+                    dod_checks=[4],
+                    details={"governance_check": "from_qa_audit", "qa_result": gov_check},
+                )
+            except (json.JSONDecodeError, OSError):
+                pass
         return AuditCheck(
-            passed=True,
+            passed=False,
             dod_checks=[4],
-            details={"governance_check": "delegated_to_qa_audit"},
+            details={"governance_check": "qa_audit_not_run_yet"},
         )
 
     def check_5_citations_valid(self) -> AuditCheck:
         """Every finding has a valid citation."""
+        audit_path = self.run_dir / "audit.json"
+        if audit_path.exists():
+            try:
+                data = json.loads(audit_path.read_text())
+                checks = data.get("checks", {})
+                cit_check = checks.get("citation_integrity", {})
+                passed = cit_check.get("passed", False)
+                return AuditCheck(
+                    passed=passed,
+                    dod_checks=[5],
+                    details={"citation_check": "from_qa_audit", "qa_result": cit_check},
+                )
+            except (json.JSONDecodeError, OSError):
+                pass
         return AuditCheck(
-            passed=True,
+            passed=False,
             dod_checks=[5],
-            details={"citation_check": "delegated_to_qa_audit"},
+            details={"citation_check": "qa_audit_not_run_yet"},
         )
 
     def check_6_gaps_tracked(self) -> AuditCheck:
         """Every referenced-but-missing document is logged as a gap."""
+        # Check merged customer files for gaps (step 6 of merge protocol)
+        merged_dir = self.run_dir / "findings" / "merged"
+        has_merged = merged_dir.exists() and any(merged_dir.glob("*.json"))
+        # Also check legacy gaps directory
         gaps_dir = self.run_dir / "findings" / "merged" / "gaps"
         has_gaps_dir = gaps_dir.exists()
         return AuditCheck(
-            passed=has_gaps_dir or True,  # Pass if gaps dir exists or no gaps needed
+            passed=has_merged,
             dod_checks=[6],
-            details={"gaps_directory_exists": has_gaps_dir},
+            details={"gaps_directory_exists": has_gaps_dir, "merged_dir_exists": has_merged},
         )
 
     def check_7_cross_customer_patterns(self) -> AuditCheck:
         """Cross-customer pattern check has run."""
+        audit_path = self.run_dir / "audit.json"
+        if audit_path.exists():
+            try:
+                data = json.loads(audit_path.read_text())
+                checks = data.get("checks", {})
+                xref_check = checks.get("cross_reference_completeness", {})
+                passed = xref_check.get("passed", False)
+                return AuditCheck(
+                    passed=passed,
+                    dod_checks=[7],
+                    details={"cross_customer_check": "from_qa_audit", "qa_result": xref_check},
+                )
+            except (json.JSONDecodeError, OSError):
+                pass
         return AuditCheck(
-            passed=True,
+            passed=False,
             dod_checks=[7],
-            details={"cross_customer_check": "delegated_to_qa_audit"},
+            details={"cross_customer_check": "qa_audit_not_run_yet"},
         )
 
     def check_8_cross_reference_reconciliation(self) -> AuditCheck:
         """Completed for ALL customers with reference data."""
+        audit_path = self.run_dir / "audit.json"
+        if audit_path.exists():
+            try:
+                data = json.loads(audit_path.read_text())
+                checks = data.get("checks", {})
+                xref_check = checks.get("cross_reference_completeness", {})
+                passed = xref_check.get("passed", False)
+                return AuditCheck(
+                    passed=passed,
+                    dod_checks=[8],
+                    details={"reconciliation_check": "from_qa_audit", "qa_result": xref_check},
+                )
+            except (json.JSONDecodeError, OSError):
+                pass
         return AuditCheck(
-            passed=True,
+            passed=False,
             dod_checks=[8],
-            details={"reconciliation_check": "delegated_to_qa_audit"},
+            details={"reconciliation_check": "qa_audit_not_run_yet"},
         )
 
     def check_9_ghost_customers(self) -> AuditCheck:
         """All ghost customers logged as P0 gaps."""
+        audit_path = self.run_dir / "audit.json"
+        if audit_path.exists():
+            try:
+                data = json.loads(audit_path.read_text())
+                checks = data.get("checks", {})
+                gap_check = checks.get("gap_completeness", {})
+                passed = gap_check.get("passed", False)
+                return AuditCheck(
+                    passed=passed,
+                    dod_checks=[9],
+                    details={"ghost_check": "from_qa_audit", "qa_result": gap_check},
+                )
+            except (json.JSONDecodeError, OSError):
+                pass
         return AuditCheck(
-            passed=True,
+            passed=False,
             dod_checks=[9],
-            details={"ghost_check": "delegated_to_qa_audit"},
+            details={"ghost_check": "qa_audit_not_run_yet"},
         )
 
     def check_10_reference_files_processed(self) -> AuditCheck:
@@ -216,7 +290,7 @@ class DefinitionOfDoneChecker:
         ref_path = self.inventory_dir / "reference_files.json"
         exists = ref_path.exists()
         return AuditCheck(
-            passed=exists or True,
+            passed=exists,
             dod_checks=[10],
             details={"reference_files_json_exists": exists},
         )
@@ -237,10 +311,24 @@ class DefinitionOfDoneChecker:
 
     def check_12_domain_coverage(self) -> AuditCheck:
         """Every enabled analysis domain has findings OR clean-result per customer."""
+        audit_path = self.run_dir / "audit.json"
+        if audit_path.exists():
+            try:
+                data = json.loads(audit_path.read_text())
+                checks = data.get("checks", {})
+                dom_check = checks.get("domain_coverage", {})
+                passed = dom_check.get("passed", False)
+                return AuditCheck(
+                    passed=passed,
+                    dod_checks=[12],
+                    details={"domain_coverage_check": "from_qa_audit", "qa_result": dom_check},
+                )
+            except (json.JSONDecodeError, OSError):
+                pass
         return AuditCheck(
-            passed=True,
+            passed=False,
             dod_checks=[12],
-            details={"domain_coverage_check": "delegated_to_qa_audit"},
+            details={"domain_coverage_check": "qa_audit_not_run_yet"},
         )
 
     # ------------------------------------------------------------------ #
@@ -298,7 +386,7 @@ class DefinitionOfDoneChecker:
         log_path = self.run_dir / "entity_matches.json"
         exists = log_path.exists()
         return AuditCheck(
-            passed=exists or True,
+            passed=exists,
             dod_checks=[16],
             details={"entity_matches_exists": exists},
         )
@@ -409,10 +497,19 @@ class DefinitionOfDoneChecker:
             data = json.loads(path.read_text())
             spot_checks = data.get("spot_checks", [])
             p0_checks = [sc for sc in spot_checks if sc.get("severity") == "P0"]
+            # Pass if there are P0 spot checks OR if there are no P0 findings at all
+            has_p0_findings = any(sc.get("severity") == "P0" for sc in data.get("spot_checks", [])) or any(
+                f.get("severity") == "P0"
+                for scores in data.get("agent_scores", {}).values()
+                for f in (scores if isinstance(scores, list) else [])
+            )
+            # If no P0 findings exist in the data, the check passes
+            # If P0 findings exist, we need spot checks for them
+            passed = len(p0_checks) > 0 or not has_p0_findings
             return AuditCheck(
-                passed=len(p0_checks) > 0 or True,  # pass if no P0 findings exist
+                passed=passed,
                 dod_checks=[21],
-                details={"p0_spot_checks": len(p0_checks)},
+                details={"p0_spot_checks": len(p0_checks), "has_p0_findings": has_p0_findings},
             )
         except (json.JSONDecodeError, OSError):
             return AuditCheck(
@@ -493,10 +590,29 @@ class DefinitionOfDoneChecker:
 
     def check_25_carried_forward_metadata(self) -> AuditCheck:
         """Every carried-forward finding has _carried_forward and _original_run_id."""
+        merged_dir = self.run_dir / "findings" / "merged"
+        if not merged_dir.exists():
+            return AuditCheck(
+                passed=False,
+                dod_checks=[25],
+                details={"error": "merged findings directory missing"},
+            )
+        missing_metadata: list[str] = []
+        for jf in merged_dir.glob("*.json"):
+            try:
+                data = json.loads(jf.read_text())
+            except (json.JSONDecodeError, OSError):
+                continue
+            for finding in data.get("findings", []):
+                meta = finding.get("metadata", {})
+                if meta.get("_carried_forward") and not meta.get("_original_run_id"):
+                    missing_metadata.append(finding.get("id", "unknown"))
         return AuditCheck(
-            passed=True,
+            passed=len(missing_metadata) == 0,
             dod_checks=[25],
-            details={"carry_forward_check": "delegated_to_incremental_audit"},
+            details={
+                "findings_missing_original_run_id": missing_metadata[:50],
+            },
         )
 
     def check_26_run_history_updated(self) -> AuditCheck:
@@ -541,12 +657,24 @@ class DefinitionOfDoneChecker:
     def check_30_report_diff(self) -> AuditCheck:
         """If prior run exists: report_diff.json exists."""
         diff_path = self.run_dir / "report_diff.json"
-        # If no prior run, this check passes by default
+        prior_run_id = self.deal_config.get("execution", {}).get("prior_run_id", "")
+        if not prior_run_id:
+            # No prior run -- check passes by default
+            return AuditCheck(
+                passed=True,
+                dod_checks=[30],
+                details={
+                    "report_diff_exists": diff_path.exists(),
+                    "prior_run_id": "",
+                    "note": "No prior run configured; check passes by default",
+                },
+            )
+        # Prior run is set -- report_diff.json must exist
         return AuditCheck(
-            passed=True,
+            passed=diff_path.exists(),
             dod_checks=[30],
             details={
                 "report_diff_exists": diff_path.exists(),
-                "note": "Passes by default if no prior run",
+                "prior_run_id": prior_run_id,
             },
         )

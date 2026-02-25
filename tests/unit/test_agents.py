@@ -699,6 +699,115 @@ class TestParseAgentOutput:
         assert len(result) >= 1
         assert result[0]["severity"] == "P0"
 
+    def test_parse_empty_output_returns_empty(self) -> None:
+        """Empty and whitespace-only inputs return an empty list."""
+        assert BaseAgentRunner._parse_agent_output("") == []
+        assert BaseAgentRunner._parse_agent_output("   ") == []
+        assert BaseAgentRunner._parse_agent_output("\n\t\n") == []
+
+    def test_parse_valid_json_array(self) -> None:
+        """A valid JSON array is parsed into a list of dicts."""
+        data = [{"finding": "A"}, {"finding": "B"}]
+        result = BaseAgentRunner._parse_agent_output(json.dumps(data))
+        assert result == data
+        assert len(result) == 2
+
+    def test_parse_valid_json_object(self) -> None:
+        """A valid JSON object is wrapped in a list."""
+        data = {"severity": "P1", "title": "Test finding"}
+        result = BaseAgentRunner._parse_agent_output(json.dumps(data))
+        assert result == [data]
+
+    def test_parse_markdown_wrapped_json(self) -> None:
+        """JSON wrapped in ```json fences is extracted correctly."""
+        inner = {"customer_safe_name": "acme", "risk": "high"}
+        raw = "Here is the output:\n```json\n" + json.dumps(inner) + "\n```\nDone."
+        result = BaseAgentRunner._parse_agent_output(raw)
+        assert result == [inner]
+
+    def test_parse_trailing_comma_json(self) -> None:
+        """Trailing commas in JSON are auto-repaired."""
+        raw = '{"key": "value", "items": [1, 2, 3,],}'
+        result = BaseAgentRunner._parse_agent_output(raw)
+        assert len(result) == 1
+        assert result[0]["key"] == "value"
+        assert result[0]["items"] == [1, 2, 3]
+
+    def test_parse_bom_prefix(self) -> None:
+        """UTF-8 BOM prefix is stripped before parsing."""
+        import json as _json
+
+        data = {"status": "ok"}
+        raw = "\ufeff" + _json.dumps(data)
+        result = BaseAgentRunner._parse_agent_output(raw)
+        assert result == [data]
+
+    def test_parse_no_json_logs_error(self, caplog: pytest.LogCaptureFixture) -> None:
+        """When no JSON is found in non-empty output, an ERROR is logged."""
+        import logging as _logging
+
+        with caplog.at_level(_logging.WARNING, logger="dd_agents.agents.base"):
+            result = BaseAgentRunner._parse_agent_output("This is plain text with no JSON at all")
+
+        assert result == []
+        # Check that an ERROR-level record was emitted.
+        error_messages = [r.message for r in caplog.records if r.levelno >= _logging.ERROR]
+        assert len(error_messages) >= 1
+        assert "no parseable JSON" in error_messages[0]
+        assert "38 chars" in error_messages[0]  # length of the input
+
+    def test_parse_preserves_raw_on_failure(self, tmp_path: Path) -> None:
+        """When raw_output_path is provided and parse fails, raw output is saved."""
+        import pathlib
+
+        raw_path = pathlib.Path(str(tmp_path)) / "debug" / "raw_output.txt"
+        raw_text = "This output has no valid JSON whatsoever."
+        result = BaseAgentRunner._parse_agent_output(
+            raw_text,
+            raw_output_path=raw_path,
+        )
+        assert result == []
+        assert raw_path.exists()
+        assert raw_path.read_text(encoding="utf-8") == raw_text
+
+    def test_parse_no_file_written_on_success(self, tmp_path: Path) -> None:
+        """When parsing succeeds, no raw output file is written even if path given."""
+        import pathlib
+
+        raw_path = pathlib.Path(str(tmp_path)) / "debug" / "raw_output.txt"
+        data = {"key": "value"}
+        result = BaseAgentRunner._parse_agent_output(
+            json.dumps(data),
+            raw_output_path=raw_path,
+        )
+        assert result == [data]
+        assert not raw_path.exists()
+
+
+# =========================================================================
+# BaseAgentRunner._repair_json_text tests
+# =========================================================================
+
+
+class TestRepairJsonText:
+    """Tests for BaseAgentRunner._repair_json_text static method."""
+
+    def test_strips_bom(self) -> None:
+        assert BaseAgentRunner._repair_json_text('\ufeff{"a": 1}') == '{"a": 1}'
+
+    def test_strips_markdown_fences(self) -> None:
+        raw = '```json\n{"a": 1}\n```'
+        assert BaseAgentRunner._repair_json_text(raw) == '{"a": 1}'
+
+    def test_removes_trailing_commas(self) -> None:
+        raw = '{"a": 1, "b": [2,],}'
+        expected = '{"a": 1, "b": [2]}'
+        assert BaseAgentRunner._repair_json_text(raw) == expected
+
+    def test_no_change_for_valid_json(self) -> None:
+        raw = '{"a": 1}'
+        assert BaseAgentRunner._repair_json_text(raw) == raw
+
 
 # =========================================================================
 # BaseAgentRunner.run async tests

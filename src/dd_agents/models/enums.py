@@ -147,6 +147,12 @@ class ExecutionMode(StrEnum):
     INCREMENTAL = "incremental"
 
 
+class CompletionStatus(StrEnum):
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class ReferenceFileCategory(StrEnum):
     FINANCIAL = "Financial"
     PRICING = "Pricing"

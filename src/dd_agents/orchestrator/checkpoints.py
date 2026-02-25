@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import TYPE_CHECKING, Any
 
 from dd_agents.orchestrator.state import PipelineState
@@ -58,7 +59,7 @@ def save_checkpoint(state: PipelineState, checkpoint_dir: Path) -> Path:
     data = state.to_checkpoint_dict()
     try:
         tmp_path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
-        tmp_path.rename(path)
+        os.replace(str(tmp_path), str(path))
     except Exception:
         # Clean up temp file on serialization or write failure.
         tmp_path.unlink(missing_ok=True)

@@ -347,13 +347,13 @@ class TestPass5ParentChild:
         match = _pass_5_parent_child("Unknown Corp", pp, parent_child, target_names)
         assert match is None
 
-    def test_parent_not_in_targets(self) -> None:
-        """If parent is not in targets, return parent name directly."""
+    def test_parent_not_in_targets_returns_none(self) -> None:
+        """If parent is not in targets, return None (no phantom matches)."""
         parent_child = {"NonExistent Parent": ["DataFlow"]}
         targets: dict[str, str] = {}  # empty
         pp = preprocess_name("DataFlow")
         match = _pass_5_parent_child("DataFlow", pp, parent_child, targets)
-        assert match == "NonExistent Parent"
+        assert match is None
 
 
 # =====================================================================
@@ -447,8 +447,8 @@ class TestEntityResolutionCache:
         assert "GAG" in cache2.data["entries"]
         assert cache2.data["last_updated_run_id"] == "run_001"
 
-    def test_lookup_invalidates_missing_canonical(self, tmp_path: Path) -> None:
-        """If canonical is no longer in targets, entry is removed."""
+    def test_lookup_returns_none_for_missing_canonical(self, tmp_path: Path) -> None:
+        """If canonical is no longer in targets, lookup returns None without mutation."""
         cache = EntityResolutionCache(tmp_path / "cache.json")
         cache.add_entry("GAG", "Global Analytics Group", 2, "alias_lookup", 1.0, "run_001")
 
@@ -456,7 +456,17 @@ class TestEntityResolutionCache:
         targets: dict[str, str] = {preprocess_name("Other Company"): "Other Company"}
         entry = cache.lookup("GAG", "", targets)
         assert entry is None
+        # lookup() should NOT have mutated the cache
+        assert "GAG" in cache.data["entries"]
+
+    def test_invalidate_entry_removes_from_cache(self, tmp_path: Path) -> None:
+        """invalidate_entry() explicitly removes a cache entry."""
+        cache = EntityResolutionCache(tmp_path / "cache.json")
+        cache.add_entry("GAG", "Global Analytics Group", 2, "alias_lookup", 1.0, "run_001")
+        assert cache.invalidate_entry("GAG") is True
         assert "GAG" not in cache.data["entries"]
+        # Second call returns False (already gone)
+        assert cache.invalidate_entry("GAG") is False
 
     def test_config_change_full_invalidation_no_prior(self, tmp_path: Path) -> None:
         """Config change with no prior snapshot -> full invalidation."""
@@ -669,3 +679,46 @@ class TestEntityResolver:
         match = log["matches"][0]
         assert match["match_method"] in ("fuzzy", "tfidf")
         assert match["confidence"] > 0.8
+
+    def test_parent_child_phantom_match_rejected(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Parent names that are not in the known entity set should not be returned."""
+        customers = [{"customer_name": "Alpha Corp"}]
+        aliases: dict[str, Any] = {
+            "parent_child": {"Phantom Parent": ["Alpha Child"]},
+        }
+        resolver = EntityResolver(
+            customers_csv=customers,
+            entity_aliases=aliases,
+            cache_path=tmp_path / "cache.json",
+            run_id="run_001",
+        )
+        result = resolver.resolve_name("Alpha Child")
+        # "Phantom Parent" is NOT in customers_csv so must not be returned
+        assert result is None
+
+    def test_resolve_all_calls_cache_lifecycle(
+        self,
+        tmp_path: Path,
+        customers_csv: list[dict[str, Any]],
+        entity_aliases: dict[str, Any],
+    ) -> None:
+        """resolve_all must call compute_invalidation before and save after."""
+        cache_path = tmp_path / "cache.json"
+        resolver = EntityResolver(customers_csv, entity_aliases, cache_path, "run_001")
+        results = resolver.resolve_all(["Apex Digital Inc."])
+        assert results["Apex Digital Inc."] == "Apex Digital"
+        # Cache file should have been written to disk by save()
+        assert cache_path.exists()
+
+    def test_cache_save_atomic_no_tmp_leftover(self, tmp_path: Path) -> None:
+        """After cache.save(), no .tmp files should remain."""
+        cache_path = tmp_path / "cache.json"
+        cache = EntityResolutionCache(cache_path)
+        cache.add_entry("TestCo", "Test Company", 1, "exact", 1.0, "run_001")
+        cache.save("run_001")
+        tmp_files = list(tmp_path.glob("*.tmp"))
+        assert tmp_files == []
+        assert cache_path.exists()

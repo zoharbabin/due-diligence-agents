@@ -311,3 +311,48 @@ class TestEstimateChunks:
         # 3 files of 100K each = 300K total.  With 150K target -> 2 chunks.
         result = estimate_chunks([100_000, 100_000, 100_000], target_chars=150_000)
         assert result == 2
+
+
+# ===================================================================
+# Page marker preservation (Issue #61)
+# ===================================================================
+
+
+class TestPageMarkerPreservation:
+    def test_page_markers_preserved_in_chunks(self) -> None:
+        """Page markers must survive chunking -- they must appear in segment text.
+
+        Regression: markers at chunk boundaries were being stripped because
+        split_by_pages started each page's text *after* the marker.
+        """
+        text = _make_page_text(5, chars_per_page=200)
+        segments = split_by_pages(text, "file_1.pdf", target_chars=TARGET_CHUNK_CHARS)
+
+        assert len(segments) == 1
+        # Every page marker in the original text must appear in the segment.
+        for page_num in range(1, 6):
+            assert f"--- Page {page_num} ---" in segments[0].text
+
+    def test_page_markers_preserved_across_multiple_segments(self) -> None:
+        """When a file is split into multiple segments, each segment should
+        contain the page markers for the pages it covers."""
+        text = _make_page_text(10, chars_per_page=1000)
+        segments = split_by_pages(text, "file_1.pdf", target_chars=3000, overlap_ratio=0.0)
+
+        assert len(segments) > 1
+        # Concatenation of all segments' text should contain all page markers.
+        combined = "".join(seg.text for seg in segments)
+        for page_num in range(1, 11):
+            assert f"--- Page {page_num} ---" in combined
+
+    def test_page_markers_preserved_in_analysis_chunks(self) -> None:
+        """End-to-end: create_analysis_chunks should produce chunks whose
+        segment text contains page markers."""
+        text = _make_page_text(3, chars_per_page=200)
+        ft = _make_file_text("contract.pdf", text)
+        chunks = create_analysis_chunks([ft])
+
+        assert len(chunks) == 1
+        chunk_text = "".join(seg.text for seg in chunks[0].file_segments)
+        for page_num in range(1, 4):
+            assert f"--- Page {page_num} ---" in chunk_text

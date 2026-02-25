@@ -88,7 +88,7 @@ class TestSearchResults:
             columns={
                 "Q1": SearchColumnResult(
                     answer="YES",
-                    confidence="HIGH",
+                    confidence="high",
                     citations=[
                         SearchCitation(
                             file_path="msa.pdf",
@@ -122,20 +122,24 @@ class TestSearchResults:
 
 
 class TestConfidenceValidator:
-    """Tests for the Pydantic confidence normalization validator (Issue #4 Phase A)."""
+    """Tests for the Pydantic confidence normalization validator (Issue #4 Phase A).
+
+    Confidence values are normalized to lowercase to match the Confidence enum
+    in dd_agents.models.enums (high/medium/low).
+    """
 
     def test_mixed_case_normalized(self) -> None:
-        """Mixed-case confidence is normalized to uppercase on construction."""
+        """Mixed-case confidence is normalized to lowercase on construction."""
         result = SearchColumnResult(answer="YES", confidence="High")
-        assert result.confidence == "HIGH"
+        assert result.confidence == "high"
 
-    def test_lowercase_normalized(self) -> None:
+    def test_lowercase_unchanged(self) -> None:
         result = SearchColumnResult(answer="NO", confidence="low")
-        assert result.confidence == "LOW"
+        assert result.confidence == "low"
 
-    def test_uppercase_unchanged(self) -> None:
+    def test_uppercase_normalized(self) -> None:
         result = SearchColumnResult(answer="YES", confidence="HIGH")
-        assert result.confidence == "HIGH"
+        assert result.confidence == "high"
 
     def test_empty_string_preserved(self) -> None:
         result = SearchColumnResult(answer="YES", confidence="")
@@ -143,7 +147,7 @@ class TestConfidenceValidator:
 
     def test_whitespace_stripped(self) -> None:
         result = SearchColumnResult(answer="YES", confidence="  Medium  ")
-        assert result.confidence == "MEDIUM"
+        assert result.confidence == "medium"
 
     def test_default_empty(self) -> None:
         result = SearchColumnResult(answer="YES")
@@ -207,7 +211,7 @@ class TestParseColumnResult:
         }
         result = parse_column_result(data)
         assert result.answer == "YES"
-        assert result.confidence == "HIGH"  # Normalized
+        assert result.confidence == "high"  # Normalized
         assert len(result.citations) == 1
         assert result.citations[0].file_path == "msa.pdf"
 
@@ -225,7 +229,7 @@ class TestParseColumnResult:
 
         data = {"answer": "NO", "confidence": "  Medium  "}
         result = parse_column_result(data)
-        assert result.confidence == "MEDIUM"
+        assert result.confidence == "medium"
 
     def test_none_confidence(self) -> None:
         from dd_agents.models.search import parse_column_result

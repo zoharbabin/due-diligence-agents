@@ -11,15 +11,29 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from dd_agents.models.enums import CompletionStatus, ExecutionMode
 from dd_agents.models.persistence import RunHistoryEntry, RunMetadata
 from dd_agents.persistence.tiers import TierManager
 from dd_agents.utils.constants import DD_DIR, SKILL_DIR
 
 logger = logging.getLogger(__name__)
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    """Write *content* to *path* atomically using write-to-temp-then-replace.
+
+    This prevents partial/corrupt files if the process is interrupted
+    mid-write.  Issue #63.
+    """
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(content)
+    os.replace(str(tmp), str(path))
 
 
 class RunManager:
@@ -61,8 +75,9 @@ class RunManager:
         self.project_dir = Path(project_dir)
         self.tier_mgr = TierManager(self.project_dir)
 
-        # 1. Generate run_id from current UTC time
-        run_id = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        # 1. Generate run_id from current UTC time with microseconds and a
+        #    random suffix to avoid collisions.  Issue #63.
+        run_id = f"run_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
 
         # 2. Ensure PERMANENT dirs exist
         self.tier_mgr.ensure_permanent_dirs()
@@ -81,7 +96,7 @@ class RunManager:
 
         # 6. Build RunMetadata
         config_hash = ""
-        execution_mode = "full"
+        exec_mode: ExecutionMode = ExecutionMode.FULL
         framework_version = "unknown"
 
         if deal_config:
@@ -89,7 +104,10 @@ class RunManager:
 
             config_hash = hashlib.sha256(json.dumps(deal_config, sort_keys=True).encode()).hexdigest()
             execution = deal_config.get("execution", {})
-            execution_mode = execution.get("execution_mode", "full")
+            raw_mode = execution.get("execution_mode", "full")
+            exec_mode = (
+                ExecutionMode(raw_mode) if raw_mode in ExecutionMode.__members__.values() else ExecutionMode.FULL
+            )
 
         fw_path = self.project_dir / DD_DIR / "framework_version.txt"
         if fw_path.exists():
@@ -99,15 +117,15 @@ class RunManager:
             run_id=run_id,
             timestamp=datetime.now(UTC).isoformat(),
             skill="forensic-dd",
-            execution_mode=execution_mode,
+            execution_mode=exec_mode,
             config_hash=config_hash,
             framework_version=framework_version,
-            completion_status="in_progress",
+            completion_status=CompletionStatus.IN_PROGRESS,
         )
 
-        # Write initial metadata.json
+        # Write initial metadata.json atomically.  Issue #63.
         meta_path = run_dir / "metadata.json"
-        meta_path.write_text(json.dumps(metadata.model_dump(), indent=2))
+        _atomic_write_text(meta_path, json.dumps(metadata.model_dump(), indent=2))
 
         logger.info("Initialized run %s at %s", run_id, run_dir)
         return metadata
@@ -133,9 +151,10 @@ class RunManager:
         run_dir = skill_dir / "runs" / run_metadata.run_id
 
         # Mark metadata as completed
-        run_metadata.completion_status = "completed"
+
+        run_metadata.completion_status = CompletionStatus.COMPLETED
         meta_path = run_dir / "metadata.json"
-        meta_path.write_text(json.dumps(run_metadata.model_dump(), indent=2))
+        _atomic_write_text(meta_path, json.dumps(run_metadata.model_dump(), indent=2))
 
         # Build RunHistoryEntry
         history_entry = RunHistoryEntry(
@@ -157,7 +176,7 @@ class RunManager:
                 history = []
 
         history.append(history_entry.model_dump())
-        history_path.write_text(json.dumps(history, indent=2))
+        _atomic_write_text(history_path, json.dumps(history, indent=2))
 
         # Update latest symlink (use missing_ok to avoid TOCTOU race)
         latest_link = skill_dir / "runs" / "latest"

@@ -189,23 +189,19 @@ def _pass_5_parent_child(
     # exhaust the chain.
     visited: set[str] = set()
     current = preprocessed_source
-    last_parent_raw: str | None = None
 
     while current in child_to_parent and current not in visited:
         visited.add(current)
         parent_raw = child_to_parent[current]
-        last_parent_raw = parent_raw
         preprocessed_parent = preprocess_name(parent_raw)
         if preprocessed_parent in target_names:
             return target_names[preprocessed_parent]
         current = preprocessed_parent
 
-    # If we found at least one parent but it was not in targets, return
-    # the most immediate parent (spec behaviour for direct child match
-    # when parent is not a canonical target).
-    if last_parent_raw is not None:
-        return last_parent_raw
-
+    # If we found a parent but it was not in targets, do NOT return it.
+    # Returning a constructed parent name that doesn't exist in the known
+    # entity set produces phantom matches.  Only target-validated parents
+    # are returned (handled inside the loop above).
     return None
 
 
@@ -286,6 +282,7 @@ class EntityResolver:
 
         # Load cache
         self.cache = EntityResolutionCache(cache_path)
+        self._entity_aliases = entity_aliases
         self.config_hash = self._compute_config_hash(entity_aliases)
 
         # Match logger
@@ -562,11 +559,19 @@ class EntityResolver:
     ) -> dict[str, str | None]:
         """Resolve a list of names.
 
+        Calls :meth:`cache.compute_invalidation` before resolution and
+        :meth:`cache.save` after resolution completes so that the
+        PERMANENT cache is always up to date.
+
         Returns ``{source_name: canonical_name | None}``.
         """
+        self.cache.compute_invalidation(self._entity_aliases, self.config_hash)
+
         results: dict[str, str | None] = {}
         for name in names:
             results[name] = self.resolve_name(name, source_type)
+
+        self.cache.save(self.run_id)
         return results
 
     # ------------------------------------------------------------------

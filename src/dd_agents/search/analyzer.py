@@ -76,19 +76,20 @@ _MIN_QUOTE_CHARS = 200
 _MAX_QUOTE_CHARS = 1000
 
 # Confidence ranking for _max_confidence (higher = stronger).
-_CONFIDENCE_RANK: dict[str, int] = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
+# Uses lowercase values to match the Confidence enum in dd_agents.models.enums.
+_CONFIDENCE_RANK: dict[str, int] = {"high": 3, "medium": 2, "low": 1}
 
 
 def _max_confidence(a: str, b: str) -> str:
-    """Return the stronger of two confidence levels (HIGH > MEDIUM > LOW).
+    """Return the stronger of two confidence levels (high > medium > low).
 
-    Always returns normalized uppercase (e.g. ``"HIGH"``).
-    Unknown values rank below LOW.  Issue #22.
+    Always returns normalized lowercase (e.g. ``"high"``) to match
+    the ``Confidence`` enum.  Unknown values rank below low.  Issue #22.
     """
-    rank_a = _CONFIDENCE_RANK.get(a.upper().strip(), 0) if a else 0
-    rank_b = _CONFIDENCE_RANK.get(b.upper().strip(), 0) if b else 0
+    rank_a = _CONFIDENCE_RANK.get(a.lower().strip(), 0) if a else 0
+    rank_b = _CONFIDENCE_RANK.get(b.lower().strip(), 0) if b else 0
     winner = a if rank_a >= rank_b else b
-    return winner.upper().strip() if winner else ""
+    return winner.lower().strip() if winner else ""
 
 
 def _extract_yes_no(answer_upper: str) -> str:
@@ -363,15 +364,18 @@ class SearchAnalyzer:
 
         # PHASE 1: Map — analyse each chunk independently and concurrently.
         # Each chunk is an independent unit; no state is shared between calls.
-        # The customer-level semaphore in analyze_all() already bounds total
-        # concurrency, so we don't need an additional semaphore here.  Issue #21.
+        # A per-customer semaphore limits concurrent API calls so a customer
+        # with many chunks doesn't monopolise the concurrency budget.  Issue #61.
+        chunk_sem = asyncio.Semaphore(self._concurrency)
+
+        async def _bounded_chunk(chunk: AnalysisChunk) -> SearchCustomerResult:
+            async with chunk_sem:
+                return await self._analyze_single(chunk, customer, files_with_text, skipped_files)
+
         if len(chunks) == 1:
             chunk_results = [await self._analyze_single(chunks[0], customer, files_with_text, skipped_files)]
         else:
-            chunk_tasks = [
-                asyncio.create_task(self._analyze_single(chunk, customer, files_with_text, skipped_files))
-                for chunk in chunks
-            ]
+            chunk_tasks = [asyncio.create_task(_bounded_chunk(chunk)) for chunk in chunks]
             raw_results = await asyncio.gather(*chunk_tasks, return_exceptions=True)
 
             # Convert stray exceptions into NOT_ADDRESSED fallback results so a
@@ -396,7 +400,7 @@ class SearchAnalyzer:
                             columns={
                                 col.name: SearchColumnResult(
                                     answer="NOT_ADDRESSED",
-                                    confidence="LOW",
+                                    confidence="low",
                                     citations=[],
                                 )
                                 for col in self._prompts.columns
@@ -546,7 +550,7 @@ class SearchAnalyzer:
                 "answer": {"type": "string", "description": "YES, NO, NOT_ADDRESSED, or free-text summary"},
                 "confidence": {
                     "type": "string",
-                    "enum": ["HIGH", "MEDIUM", "LOW"],
+                    "enum": ["high", "medium", "low"],
                     "description": "Confidence level of the answer",
                 },
                 "citations": {

@@ -3,6 +3,8 @@
 Tests cover:
 - CoverageValidator: correct count passes, missing customer fails, empty dir
 - NumericalAuditor: source traceability, cross-source consistency, semantic reasonableness
+- NumericalManifest: generated_at field validation
+- NumericalAuditor._rederive: N003-N010 rederivation from source files
 - QAAuditor: basic audit with sample data
 - DefinitionOfDoneChecker: check count, conditional check grouping
 - SchemaValidator: validate matching Excel passes, mismatched fails
@@ -88,6 +90,8 @@ def _make_merged_json(customer: str) -> dict:
                 "agent": "legal",
             }
         ],
+        "gaps": [],
+        "cross_references": [],
         "governance_graph": {"edges": []},
     }
 
@@ -479,6 +483,187 @@ class TestNumericalAuditor:
         layers = [c.details["layer"] for c in checks]
         assert sorted(layers) == [1, 2, 3, 5]
 
+    def test_manifest_with_generated_at_validates(self) -> None:
+        """A manifest dict that includes generated_at validates successfully."""
+        from pydantic import ValidationError
+
+        manifest_dict = {
+            "generated_at": "2025-02-18T00:00:00Z",
+            "numbers": [
+                {
+                    "id": f"N{str(i).zfill(3)}",
+                    "label": f"metric_{i}",
+                    "value": i,
+                    "source_file": f"file_{i}.csv",
+                    "derivation": "count",
+                }
+                for i in range(1, 11)
+            ],
+        }
+        try:
+            m = NumericalManifest.model_validate(manifest_dict)
+        except ValidationError:
+            pytest.fail("NumericalManifest should validate when generated_at is present")
+        assert m.generated_at == "2025-02-18T00:00:00Z"
+        assert len(m.numbers) == 10
+
+    def test_manifest_without_generated_at_raises_validation_error(self) -> None:
+        """A manifest dict missing generated_at raises ValidationError."""
+        from pydantic import ValidationError
+
+        manifest_dict = {
+            "numbers": [
+                {
+                    "id": f"N{str(i).zfill(3)}",
+                    "label": f"metric_{i}",
+                    "value": i,
+                    "source_file": f"file_{i}.csv",
+                    "derivation": "count",
+                }
+                for i in range(1, 11)
+            ],
+        }
+        with pytest.raises(ValidationError, match="generated_at"):
+            NumericalManifest.model_validate(manifest_dict)
+
+    def test_rederive_n003_counts_merged_findings(self, tmp_path: Path) -> None:
+        """N003 rederivation counts total findings from merged dir."""
+        merged_dir = tmp_path / "findings" / "merged"
+        merged_dir.mkdir(parents=True)
+        (merged_dir / "customer_a.json").write_text(
+            json.dumps(
+                {
+                    "findings": [
+                        {"severity": "P0", "category": "risk"},
+                        {"severity": "P1", "category": "risk"},
+                    ]
+                }
+            )
+        )
+        (merged_dir / "customer_b.json").write_text(json.dumps({"findings": [{"severity": "P2", "category": "risk"}]}))
+        auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
+        entry = ManifestEntry(
+            id="N003", label="Total Findings", value=0, source_file="findings/*.json", derivation="count"
+        )
+        assert auditor._rederive(entry) == 3
+
+    def test_rederive_n003_excludes_domain_reviewed_no_issues(self, tmp_path: Path) -> None:
+        """N003 rederivation excludes findings with category domain_reviewed_no_issues."""
+        merged_dir = tmp_path / "findings" / "merged"
+        merged_dir.mkdir(parents=True)
+        (merged_dir / "customer_a.json").write_text(
+            json.dumps(
+                {
+                    "findings": [
+                        {"severity": "P0", "category": "risk"},
+                        {"severity": "P1", "category": "domain_reviewed_no_issues"},
+                    ]
+                }
+            )
+        )
+        auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
+        entry = ManifestEntry(
+            id="N003", label="Total Findings", value=0, source_file="findings/*.json", derivation="count"
+        )
+        assert auditor._rederive(entry) == 1
+
+    def test_rederive_n004_n007_counts_by_severity(self, tmp_path: Path) -> None:
+        """N004-N007 rederivation counts findings by severity P0-P3."""
+        merged_dir = tmp_path / "findings" / "merged"
+        merged_dir.mkdir(parents=True)
+        (merged_dir / "customer_a.json").write_text(
+            json.dumps(
+                {
+                    "findings": [
+                        {"severity": "P0", "category": "risk"},
+                        {"severity": "P0", "category": "risk"},
+                        {"severity": "P1", "category": "risk"},
+                        {"severity": "P2", "category": "risk"},
+                        {"severity": "P2", "category": "risk"},
+                        {"severity": "P2", "category": "risk"},
+                        {"severity": "P3", "category": "risk"},
+                    ]
+                }
+            )
+        )
+        auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
+        assert (
+            auditor._rederive(
+                ManifestEntry(id="N004", label="P0", value=0, source_file="x", derivation="count_by_severity")
+            )
+            == 2
+        )
+        assert (
+            auditor._rederive(
+                ManifestEntry(id="N005", label="P1", value=0, source_file="x", derivation="count_by_severity")
+            )
+            == 1
+        )
+        assert (
+            auditor._rederive(
+                ManifestEntry(id="N006", label="P2", value=0, source_file="x", derivation="count_by_severity")
+            )
+            == 3
+        )
+        assert (
+            auditor._rederive(
+                ManifestEntry(id="N007", label="P3", value=0, source_file="x", derivation="count_by_severity")
+            )
+            == 1
+        )
+
+    def test_rederive_n008_counts_gaps(self, tmp_path: Path) -> None:
+        """N008 rederivation counts total gaps from gaps dir."""
+        gaps_dir = tmp_path / "findings" / "merged" / "gaps"
+        gaps_dir.mkdir(parents=True)
+        (gaps_dir / "customer_a.json").write_text(json.dumps([{"gap": "missing clause"}, {"gap": "no termination"}]))
+        (gaps_dir / "customer_b.json").write_text(json.dumps({"gaps": [{"gap": "no renewal"}]}))
+        auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
+        entry = ManifestEntry(id="N008", label="Total Gaps", value=0, source_file="gaps/*.json", derivation="count")
+        assert auditor._rederive(entry) == 3
+
+    def test_rederive_n009_counts_ghost_customers(self, tmp_path: Path) -> None:
+        """N009 rederivation counts ghost customer mentions."""
+        (tmp_path / "customer_mentions.json").write_text(
+            json.dumps(
+                [
+                    {"name": "Customer A", "ghost": True},
+                    {"name": "Customer B", "ghost": False},
+                    {"name": "Customer C", "ghost": True},
+                ]
+            )
+        )
+        auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
+        entry = ManifestEntry(
+            id="N009", label="Ghost Customers", value=0, source_file="customer_mentions.json", derivation="count_ghost"
+        )
+        assert auditor._rederive(entry) == 2
+
+    def test_rederive_n010_counts_reference_files(self, tmp_path: Path) -> None:
+        """N010 rederivation counts reference files."""
+        (tmp_path / "reference_files.json").write_text(
+            json.dumps(["file_1.pdf", "file_2.pdf", "file_3.pdf", "file_4.pdf", "file_5.pdf"])
+        )
+        auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
+        entry = ManifestEntry(
+            id="N010", label="Reference Files", value=0, source_file="reference_files.json", derivation="count"
+        )
+        assert auditor._rederive(entry) == 5
+
+    def test_rederive_n008_no_gaps_dir_returns_zero(self, tmp_path: Path) -> None:
+        """N008 returns 0 when gaps directory does not exist."""
+        auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
+        entry = ManifestEntry(id="N008", label="Total Gaps", value=0, source_file="gaps/*.json", derivation="count")
+        assert auditor._rederive(entry) == 0
+
+    def test_rederive_n003_no_merged_dir_returns_zero(self, tmp_path: Path) -> None:
+        """N003 returns 0 when merged dir does not exist."""
+        auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
+        entry = ManifestEntry(
+            id="N003", label="Total Findings", value=0, source_file="findings/*.json", derivation="count"
+        )
+        assert auditor._rederive(entry) == 0
+
 
 # ===================================================================== #
 # QAAuditor Tests
@@ -510,8 +695,8 @@ class TestQAAuditor:
 
         assert isinstance(report, AuditReport)
         assert report.run_id == "test_run"
-        # Should have 17 check entries
-        assert len(report.checks) == 17
+        # Should have 18 check entries (17 original + p0_p1_citation_quality)
+        assert len(report.checks) == 18
 
     def test_customer_coverage_fails_when_missing(self, tmp_path: Path) -> None:
         """Customer coverage check fails when a customer file is missing."""
@@ -919,3 +1104,441 @@ class TestSchemaValidator:
 
         sort_check = next(c for c in checks if c.details.get("check") == "sort_orders")
         assert sort_check.passed is False
+
+    def test_sheet_activation_never(self, tmp_path: Path) -> None:
+        """A sheet with activation_condition='never' should not be required."""
+        from dd_agents.models.reporting import (
+            ColumnDef,
+            ReportSchema,
+            SheetDef,
+        )
+
+        schema = ReportSchema(
+            schema_version="1.0",
+            sheets=[
+                SheetDef(
+                    name="Summary",
+                    required=True,
+                    columns=[
+                        ColumnDef(name="Customer", key="customer", type="string"),
+                    ],
+                ),
+                SheetDef(
+                    name="Conditional_Sheet",
+                    required=True,
+                    activation_condition="never",
+                    columns=[
+                        ColumnDef(name="Data", key="data", type="string"),
+                    ],
+                ),
+            ],
+        )
+
+        import openpyxl
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Summary"
+        ws.append(["Customer"])
+        # Conditional_Sheet is NOT present but should not be required
+        excel_path = tmp_path / "report.xlsx"
+        wb.save(excel_path)
+
+        validator = SchemaValidator(schema)
+        checks = validator.validate_report(excel_path)
+
+        sheets_check = next(c for c in checks if c.details.get("check") == "sheets_exist")
+        assert sheets_check.passed is True
+
+    def test_column_activation_never(self, tmp_path: Path) -> None:
+        """A column with activation_condition='never' should not be checked."""
+        from dd_agents.models.reporting import (
+            ColumnDef,
+            ReportSchema,
+            SheetDef,
+        )
+
+        schema = ReportSchema(
+            schema_version="1.0",
+            sheets=[
+                SheetDef(
+                    name="Summary",
+                    required=True,
+                    columns=[
+                        ColumnDef(name="Customer", key="customer", type="string"),
+                        ColumnDef(
+                            name="Optional_Col",
+                            key="optional",
+                            type="string",
+                            activation_condition="never",
+                        ),
+                    ],
+                ),
+            ],
+        )
+
+        import openpyxl
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Summary"
+        ws.append(["Customer"])  # Only "Customer", no "Optional_Col"
+        ws.append(["Acme Corp"])
+        excel_path = tmp_path / "report.xlsx"
+        wb.save(excel_path)
+
+        validator = SchemaValidator(schema)
+        checks = validator.validate_report(excel_path)
+
+        col_check = next(c for c in checks if c.details.get("check") == "columns_match")
+        assert col_check.passed is True
+
+
+# ===================================================================== #
+# Issue #50 -- DoD hardcoded passes removed
+# ===================================================================== #
+
+
+class TestDoDHardcodedPassesRemoved:
+    """Tests verifying that DoD checks no longer use hardcoded passed=True."""
+
+    def test_check_4_fails_without_audit_json(self, tmp_path: Path) -> None:
+        """check_4 should fail when audit.json doesn't exist."""
+        run_dir = tmp_path / "run"
+        inventory_dir = tmp_path / "inventory"
+        _populate_run_dir(run_dir, inventory_dir)
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+        )
+        check = checker.check_4_governance_resolved()
+        assert check.passed is False
+        assert check.details.get("governance_check") == "qa_audit_not_run_yet"
+
+    def test_check_5_fails_without_audit_json(self, tmp_path: Path) -> None:
+        """check_5 should fail when audit.json doesn't exist."""
+        run_dir = tmp_path / "run"
+        inventory_dir = tmp_path / "inventory"
+        _populate_run_dir(run_dir, inventory_dir)
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+        )
+        check = checker.check_5_citations_valid()
+        assert check.passed is False
+
+    def test_check_6_fails_without_merged_dir(self, tmp_path: Path) -> None:
+        """check_6 should fail when merged directory has no JSON files."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+        )
+        check = checker.check_6_gaps_tracked()
+        assert check.passed is False
+
+    def test_check_10_fails_without_reference_files(self, tmp_path: Path) -> None:
+        """check_10 should fail when reference_files.json is missing."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+        )
+        check = checker.check_10_reference_files_processed()
+        assert check.passed is False
+
+    def test_check_16_fails_without_entity_matches(self, tmp_path: Path) -> None:
+        """check_16 should fail when entity_matches.json is missing."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+        )
+        check = checker.check_16_entity_resolution_log()
+        assert check.passed is False
+
+    def test_check_25_passes_when_no_carried_forward(self, tmp_path: Path) -> None:
+        """check_25 passes when merged findings have no _carried_forward metadata."""
+        run_dir = tmp_path / "run"
+        inventory_dir = tmp_path / "inventory"
+        _populate_run_dir(run_dir, inventory_dir)
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+            deal_config={"execution": {"mode": "incremental"}},
+        )
+        check = checker.check_25_carried_forward_metadata()
+        assert check.passed is True
+
+    def test_check_30_fails_with_prior_run_no_diff(self, tmp_path: Path) -> None:
+        """check_30 should fail when prior_run_id is set but report_diff.json is missing."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+            deal_config={"execution": {"prior_run_id": "run_previous"}},
+        )
+        check = checker.check_30_report_diff()
+        assert check.passed is False
+
+    def test_check_30_passes_without_prior_run(self, tmp_path: Path) -> None:
+        """check_30 should pass when no prior_run_id is configured."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+            deal_config={},
+        )
+        check = checker.check_30_report_diff()
+        assert check.passed is True
+
+
+# ===================================================================== #
+# Issue #48 -- P0/P1 citation quality check
+# ===================================================================== #
+
+
+class TestP0P1CitationQuality:
+    """Tests for the P0/P1 citation quality QA check."""
+
+    def test_p0_p1_with_valid_citations_passes(self, tmp_path: Path) -> None:
+        """P0/P1 findings with real citations should pass."""
+        run_dir = tmp_path / "run"
+        inventory_dir = tmp_path / "inventory"
+        _populate_run_dir(run_dir, inventory_dir)
+
+        # Overwrite merged files with P1 findings that have real citations
+        merged_dir = run_dir / "findings" / "merged"
+        for customer in CUSTOMERS:
+            data = _make_merged_json(customer)
+            data["findings"][0]["severity"] = "P1"
+            (merged_dir / f"{customer}.json").write_text(json.dumps(data))
+
+        auditor = QAAuditor(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+        )
+        _name, check = auditor.check_p0_p1_citation_quality()
+        assert check.passed is True
+
+    def test_p0_with_synthetic_citation_fails(self, tmp_path: Path) -> None:
+        """P0 finding with synthetic citation should fail."""
+        run_dir = tmp_path / "run"
+        inventory_dir = tmp_path / "inventory"
+        _populate_run_dir(run_dir, inventory_dir)
+
+        merged_dir = run_dir / "findings" / "merged"
+        data = _make_merged_json("acme_corp")
+        data["findings"][0]["severity"] = "P0"
+        data["findings"][0]["citations"] = [
+            {
+                "source_type": "file",
+                "source_path": "[synthetic:no_citation_provided]",
+                "exact_quote": "some quote",
+            }
+        ]
+        (merged_dir / "acme_corp.json").write_text(json.dumps(data))
+
+        auditor = QAAuditor(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+        )
+        _name, check = auditor.check_p0_p1_citation_quality()
+        assert check.passed is False
+        assert len(check.details["violations"]) > 0
+
+    def test_p0_missing_exact_quote_fails(self, tmp_path: Path) -> None:
+        """P0 finding missing exact_quote should fail."""
+        run_dir = tmp_path / "run"
+        inventory_dir = tmp_path / "inventory"
+        _populate_run_dir(run_dir, inventory_dir)
+
+        merged_dir = run_dir / "findings" / "merged"
+        data = _make_merged_json("acme_corp")
+        data["findings"][0]["severity"] = "P0"
+        data["findings"][0]["citations"] = [
+            {
+                "source_type": "file",
+                "source_path": "acme_corp/contract.pdf",
+                # No exact_quote
+            }
+        ]
+        (merged_dir / "acme_corp.json").write_text(json.dumps(data))
+
+        auditor = QAAuditor(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+        )
+        _name, check = auditor.check_p0_p1_citation_quality()
+        assert check.passed is False
+
+
+# ===================================================================== #
+# Issue #47 -- Merge/dedup empty citation collision
+# ===================================================================== #
+
+
+class TestMergeDedupEmptyCitation:
+    """Tests for the merge dedup fix with empty citations."""
+
+    def test_distinct_findings_not_collapsed_when_citations_empty(self) -> None:
+        """Two findings with empty citations should NOT be deduped into one."""
+        from dd_agents.reporting.merge import FindingMerger
+
+        f1 = {
+            "severity": "P2",
+            "category": "test",
+            "title": "Finding A",
+            "description": "Description A",
+            "citations": [],
+            "confidence": "medium",
+            "agent": "legal",
+        }
+        f2 = {
+            "severity": "P2",
+            "category": "test",
+            "title": "Finding B",
+            "description": "Description B",
+            "citations": [],
+            "confidence": "medium",
+            "agent": "finance",
+        }
+        merger = FindingMerger(run_id="test_run", timestamp="2025-01-01T00:00:00Z")
+        deduped = merger._deduplicate([f1, f2])
+        assert len(deduped) == 2, "Distinct findings with empty citations must NOT be collapsed"
+
+    def test_same_citation_findings_still_deduped(self) -> None:
+        """Two findings pointing to the same citation should still be deduped."""
+        from dd_agents.reporting.merge import FindingMerger
+
+        cit = [{"source_type": "file", "source_path": "contract.pdf", "location": "Section 5"}]
+        f1 = {
+            "severity": "P1",
+            "category": "test",
+            "title": "Finding A",
+            "description": "A",
+            "citations": cit,
+            "confidence": "high",
+            "agent": "legal",
+        }
+        f2 = {
+            "severity": "P2",
+            "category": "test",
+            "title": "Finding B",
+            "description": "B",
+            "citations": cit,
+            "confidence": "medium",
+            "agent": "finance",
+        }
+        merger = FindingMerger(run_id="test_run", timestamp="2025-01-01T00:00:00Z")
+        deduped = merger._deduplicate([f1, f2])
+        assert len(deduped) == 1, "Findings with same citation should be deduped"
+
+
+# ===================================================================== #
+# Issue #60 -- Gaps collected through merge pipeline
+# ===================================================================== #
+
+
+class TestGapsMerge:
+    """Tests for gap collection through merge pipeline."""
+
+    def test_gaps_collected_from_agent_outputs(self) -> None:
+        """Gaps from specialist agents should appear in merged output."""
+        from dd_agents.reporting.merge import FindingMerger
+
+        agent_outputs = {
+            "legal": {
+                "customer": "Customer A",
+                "customer_safe_name": "customer_a",
+                "findings": [],
+                "gaps": [
+                    {
+                        "customer": "Customer A",
+                        "priority": "P1",
+                        "gap_type": "Missing_Doc",
+                        "missing_item": "Renewal terms",
+                        "why_needed": "Required for term analysis",
+                        "risk_if_missing": "Cannot assess renewal risk",
+                        "request_to_company": "Please provide renewal terms",
+                        "evidence": "Referenced in MSA Section 12",
+                        "detection_method": "cross_reference",
+                    }
+                ],
+            },
+            "finance": {
+                "customer": "Customer A",
+                "customer_safe_name": "customer_a",
+                "findings": [],
+                "gaps": [
+                    {
+                        "customer": "Customer A",
+                        "priority": "P2",
+                        "gap_type": "Missing_Data",
+                        "missing_item": "Revenue schedule",
+                        "why_needed": "Financial analysis",
+                        "risk_if_missing": "Incomplete financial picture",
+                        "request_to_company": "Please provide revenue data",
+                        "evidence": "Not found in data room",
+                        "detection_method": "checklist",
+                    }
+                ],
+            },
+        }
+
+        merger = FindingMerger(run_id="test_run", timestamp="2025-01-01T00:00:00Z")
+        result = merger.merge_customer(
+            agent_outputs,
+            customer_name="Customer A",
+            customer_safe_name="customer_a",
+        )
+
+        assert len(result.gaps) == 2, "Both gaps should be collected"
+        gap_items = {g.missing_item for g in result.gaps}
+        assert "Renewal terms" in gap_items
+        assert "Revenue schedule" in gap_items
+
+    def test_merged_output_model_has_gaps_field(self) -> None:
+        """MergedCustomerOutput should have a gaps field."""
+        from dd_agents.models.finding import MergedCustomerOutput
+
+        mco = MergedCustomerOutput(
+            customer="Test",
+            customer_safe_name="test",
+        )
+        assert hasattr(mco, "gaps")
+        assert mco.gaps == []
