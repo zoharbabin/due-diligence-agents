@@ -183,6 +183,10 @@ class ExtractionPipeline:
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # --- cache ---
+        # Thread-safety note: cache.is_cached() (read) is called from
+        # worker threads, while cache.update() (write) is called only
+        # in the main thread's as_completed() loop below.  Python's GIL
+        # guarantees dict reads are atomic, so no lock is needed.
         cache = ExtractionCache(cache_path)
         cache.load()
 

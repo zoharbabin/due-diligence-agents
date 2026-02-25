@@ -370,7 +370,7 @@ class NumericalAuditor:
                 return len(ghost_list)
         except (json.JSONDecodeError, OSError):
             return None
-        return None
+        return 0
 
     def _count_reference_files(self) -> int | None:
         """N010: count reference files from reference_files.json."""

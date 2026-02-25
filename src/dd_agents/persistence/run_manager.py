@@ -29,11 +29,15 @@ def _atomic_write_text(path: Path, content: str) -> None:
     """Write *content* to *path* atomically using write-to-temp-then-replace.
 
     This prevents partial/corrupt files if the process is interrupted
-    mid-write.  Issue #63.
+    mid-write.  Cleans up the .tmp file on failure.  Issue #63.
     """
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(content)
-    os.replace(str(tmp), str(path))
+    try:
+        tmp.write_text(content)
+        os.replace(str(tmp), str(path))
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def _run_history_append(history_path: Path, entry: dict[str, Any]) -> None:

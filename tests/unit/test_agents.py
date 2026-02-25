@@ -1405,3 +1405,206 @@ class TestDomainRobustness:
             text = agent.domain_robustness()
             assert isinstance(text, str)
             assert len(text) > 100  # Non-trivial content
+
+
+# =========================================================================
+# Priority 3: Judge scoring edge cases
+# =========================================================================
+
+
+class TestJudgeBlendEdgeCases:
+    """Edge-case tests for the judge blend formula."""
+
+    def test_blend_with_zero_scores(self) -> None:
+        """Blending two zero scores should return zero."""
+        assert blend_round_scores(0, 0) == 0
+
+    def test_blend_with_zero_round1(self) -> None:
+        """Blending with round1=0, round2=100 should give 70."""
+        # 0.70 * 100 + 0.30 * 0 = 70
+        assert blend_round_scores(round1_score=0, round2_score=100) == 70
+
+    def test_blend_with_zero_round2(self) -> None:
+        """Blending with round1=100, round2=0 should give 30."""
+        # 0.70 * 0 + 0.30 * 100 = 30
+        assert blend_round_scores(round1_score=100, round2_score=0) == 30
+
+    def test_blend_with_equal_prior_and_current(self) -> None:
+        """When both scores are equal, blend should return the same score."""
+        for score in [0, 50, 70, 85, 100]:
+            assert blend_round_scores(score, score) == score
+
+    def test_blend_rounding_behavior(self) -> None:
+        """Blend formula rounds correctly for non-integer intermediates."""
+        # 0.70 * 73 + 0.30 * 61 = 51.1 + 18.3 = 69.4 => 69
+        assert blend_round_scores(round1_score=61, round2_score=73) == 69
+
+    def test_blend_with_large_improvement(self) -> None:
+        """Large improvement from round 1 to round 2."""
+        # 0.70 * 95 + 0.30 * 20 = 66.5 + 6 = 72.5 => 72
+        result = blend_round_scores(round1_score=20, round2_score=95)
+        assert result == round(0.70 * 95 + 0.30 * 20)
+
+
+class TestJudgeDimensionParsingNonNumeric:
+    """Tests for dimension parsing with non-numeric values (post-bugfix)."""
+
+    def test_dimension_parsing_with_string_values_casts_to_int(self) -> None:
+        """String dimension values should be cast to int without crashing."""
+        result: dict[str, object] = {
+            "run_id": "test",
+            "output": [
+                {
+                    "agent_scores": {
+                        "legal": {
+                            "score": "85",
+                            "findings_reviewed": "10",
+                            "findings_total": "12",
+                            "pass": "8",
+                            "partial": "1",
+                            "fail": "1",
+                            "dimensions": {
+                                "citation_verification": "90",
+                                "contextual_validation": "85",
+                                "financial_accuracy": "80",
+                                "cross_agent_consistency": "85",
+                                "completeness": "80",
+                            },
+                        },
+                    },
+                }
+            ],
+        }
+        scores = JudgeAgent._build_scores_from_result(result, round_num=1)
+        assert scores.agent_scores["legal"].score == 85
+        assert scores.agent_scores["legal"].dimensions.citation_verification == 90
+
+    def test_dimension_parsing_with_zero_values(self) -> None:
+        """Zero dimensions should produce a zero score."""
+        result: dict[str, object] = {
+            "run_id": "test",
+            "output": [
+                {
+                    "agent_scores": {
+                        "legal": {
+                            "dimensions": {
+                                "citation_verification": 0,
+                                "contextual_validation": 0,
+                                "financial_accuracy": 0,
+                                "cross_agent_consistency": 0,
+                                "completeness": 0,
+                            },
+                        },
+                    },
+                }
+            ],
+        }
+        scores = JudgeAgent._build_scores_from_result(result, round_num=1)
+        assert scores.agent_scores["legal"].score == 0
+        assert scores.overall_quality == 0
+
+    def test_dimension_parsing_with_missing_dimensions_defaults_to_zero(self) -> None:
+        """Missing dimension keys should default to 0."""
+        result: dict[str, object] = {
+            "run_id": "test",
+            "output": [
+                {
+                    "agent_scores": {
+                        "legal": {
+                            "dimensions": {
+                                "citation_verification": 90,
+                                # All other dimensions missing -- should default to 0
+                            },
+                        },
+                    },
+                }
+            ],
+        }
+        scores = JudgeAgent._build_scores_from_result(result, round_num=1)
+        # Only citation_verification contributes: 0.30 * 90 = 27
+        assert scores.agent_scores["legal"].score == round(0.30 * 90)
+
+    def test_score_extraction_with_empty_agent_scores(self) -> None:
+        """Empty agent_scores dict should result in overall_quality = 0."""
+        result: dict[str, object] = {
+            "run_id": "test",
+            "output": [
+                {
+                    "agent_scores": {},
+                    "overall_quality": 42,
+                }
+            ],
+        }
+        scores = JudgeAgent._build_scores_from_result(result, round_num=1)
+        # No agents => falls back to overall_quality from data
+        assert scores.overall_quality == 42
+        assert scores.agent_scores == {}
+
+
+class TestJudgeScoreExtractionMalformedJSON:
+    """Tests for score extraction with malformed or missing JSON structures."""
+
+    def test_output_with_no_agent_scores_key(self) -> None:
+        """Output without agent_scores key should produce empty QualityScores."""
+        result: dict[str, object] = {
+            "run_id": "test",
+            "output": [{"some_other_key": "value"}],
+        }
+        scores = JudgeAgent._build_scores_from_result(result, round_num=1)
+        assert scores.overall_quality == 0
+        assert scores.agent_scores == {}
+
+    def test_output_with_multiple_items_picks_first_with_agent_scores(self) -> None:
+        """When output has multiple items, the first with agent_scores is used."""
+        result: dict[str, object] = {
+            "run_id": "test",
+            "output": [
+                {"some_other_key": "value"},
+                {"agent_scores": {"legal": {"score": 75}}},
+                {"agent_scores": {"legal": {"score": 99}}},
+            ],
+        }
+        scores = JudgeAgent._build_scores_from_result(result, round_num=1)
+        # First match should be picked (score=75)
+        assert scores.agent_scores["legal"].score == 75
+
+    def test_agent_score_with_non_dict_value_is_skipped(self) -> None:
+        """Non-dict agent score values should be skipped gracefully."""
+        result: dict[str, object] = {
+            "run_id": "test",
+            "output": [
+                {
+                    "agent_scores": {
+                        "legal": "not a dict",
+                        "finance": {"score": 80},
+                    },
+                }
+            ],
+        }
+        scores = JudgeAgent._build_scores_from_result(result, round_num=1)
+        # "legal" should be skipped since it's a string, not a dict
+        assert "legal" not in scores.agent_scores
+        assert "finance" in scores.agent_scores
+        assert scores.agent_scores["finance"].score == 80
+
+    def test_score_extraction_with_pass_count_alias(self) -> None:
+        """pass_count alias should work alongside pass."""
+        result: dict[str, object] = {
+            "run_id": "test",
+            "output": [
+                {
+                    "agent_scores": {
+                        "legal": {
+                            "score": 85,
+                            "pass_count": 7,
+                            "partial": 2,
+                            "fail": 1,
+                            "findings_reviewed": 10,
+                            "findings_total": 10,
+                        },
+                    },
+                }
+            ],
+        }
+        scores = JudgeAgent._build_scores_from_result(result, round_num=1)
+        assert scores.agent_scores["legal"].pass_count == 7

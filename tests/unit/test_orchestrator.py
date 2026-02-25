@@ -2365,3 +2365,414 @@ class TestIdempotentRunHistory:
         history = json.loads(history_path.read_text())
         assert len(history) == 2
         assert {e["run_id"] for e in history} == {"run_a", "run_b"}
+
+
+# ======================================================================
+# Priority 2: Additional orchestrator step tests
+# ======================================================================
+
+
+class TestStep15ErrorHandlingMissingReferenceFiles:
+    """Tests for step 15 error handling when reference files are missing."""
+
+    def _make_engine(self, tmp_path: Path) -> PipelineEngine:
+        config_path = tmp_path / "deal-config.json"
+        config_path.write_text("{}")
+        return PipelineEngine(tmp_path, config_path)
+
+    def _make_state(self, tmp_path: Path) -> PipelineState:
+        run_dir = tmp_path / "_dd" / "forensic-dd" / "runs" / "test_run"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        text_dir = tmp_path / "_dd" / "forensic-dd" / "index" / "text"
+        text_dir.mkdir(parents=True, exist_ok=True)
+        return PipelineState(
+            run_id="test_run",
+            project_dir=tmp_path,
+            run_dir=run_dir,
+        )
+
+    @pytest.mark.asyncio
+    async def test_step_15_skips_reference_with_no_text_file_on_disk(self, tmp_path: Path) -> None:
+        """References whose text_path does not resolve to a file are skipped."""
+        from unittest.mock import MagicMock
+
+        engine = self._make_engine(tmp_path)
+        state = self._make_state(tmp_path)
+
+        mock_ref = MagicMock()
+        mock_ref.file_path = "references/nonexistent.pdf"
+        mock_ref.text_path = "does_not_exist.md"
+        mock_ref.category = "Other"
+        mock_ref.assigned_to_agents = ["legal"]
+
+        state._reference_files = [mock_ref]  # type: ignore[attr-defined]
+
+        result = await engine._step_15_route_references(state)
+
+        manifest_path = state.run_dir / "reference_routing.json"
+        assert manifest_path.exists()
+        manifest = json.loads(manifest_path.read_text())
+        assert len(manifest) == 0
+        assert result is state
+
+    @pytest.mark.asyncio
+    async def test_step_15_routes_to_all_agents_when_assigned_to_is_none(self, tmp_path: Path) -> None:
+        """When assigned_to_agents is empty/None, routes to all 4 specialists."""
+        from unittest.mock import MagicMock
+
+        engine = self._make_engine(tmp_path)
+        state = self._make_state(tmp_path)
+
+        text_dir = tmp_path / "_dd" / "forensic-dd" / "index" / "text"
+        ref_text = text_dir / "policy.md"
+        ref_text.write_text("# Company Policy\nAll employees must comply.")
+
+        mock_ref = MagicMock()
+        mock_ref.file_path = "references/policy.pdf"
+        mock_ref.text_path = "policy.md"
+        mock_ref.category = "General"
+        mock_ref.assigned_to_agents = None  # None => all agents
+
+        state._reference_files = [mock_ref]  # type: ignore[attr-defined]
+
+        result = await engine._step_15_route_references(state)
+
+        manifest_path = state.run_dir / "reference_routing.json"
+        manifest = json.loads(manifest_path.read_text())
+        assert len(manifest) == 1
+        assert len(manifest[0]["agents"]) == 4
+        assert result is state
+
+    @pytest.mark.asyncio
+    async def test_step_15_derives_text_path_from_file_stem(self, tmp_path: Path) -> None:
+        """When text_path is None but a .md file exists matching stem, it is found."""
+        from unittest.mock import MagicMock
+
+        engine = self._make_engine(tmp_path)
+        state = self._make_state(tmp_path)
+
+        text_dir = tmp_path / "_dd" / "forensic-dd" / "index" / "text"
+        # Create text file with stem matching the reference file stem
+        (text_dir / "report.md").write_text("# Report content")
+
+        mock_ref = MagicMock()
+        mock_ref.file_path = "data/report.xlsx"
+        mock_ref.text_path = None  # No explicit text_path
+        mock_ref.category = "Financial"
+        mock_ref.assigned_to_agents = ["finance"]
+
+        state._reference_files = [mock_ref]  # type: ignore[attr-defined]
+
+        result = await engine._step_15_route_references(state)
+
+        manifest_path = state.run_dir / "reference_routing.json"
+        manifest = json.loads(manifest_path.read_text())
+        assert len(manifest) == 1
+        assert "report.md" in manifest[0]["text_source"]
+        assert result is state
+
+
+class TestStep18WithEmptyUnchangedCustomers:
+    """Tests for step 18 when there are no unchanged customers."""
+
+    def _make_engine(self, tmp_path: Path) -> PipelineEngine:
+        config_path = tmp_path / "deal-config.json"
+        config_path.write_text("{}")
+        return PipelineEngine(tmp_path, config_path)
+
+    @pytest.mark.asyncio
+    async def test_step_18_no_unchanged_customers(self, tmp_path: Path) -> None:
+        """Step 18 should return state unchanged when all customers are CHANGED."""
+        engine = self._make_engine(tmp_path)
+
+        prior_run_dir = tmp_path / "_dd" / "forensic-dd" / "runs" / "prior"
+        prior_run_dir.mkdir(parents=True, exist_ok=True)
+        run_dir = tmp_path / "_dd" / "forensic-dd" / "runs" / "current"
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+        state = PipelineState(
+            run_id="current",
+            project_dir=tmp_path,
+            run_dir=run_dir,
+            execution_mode="incremental",
+            prior_run_id="prior",
+            prior_run_dir=prior_run_dir,
+            classification={
+                "customers": [
+                    {"customer_safe_name": "customer_a", "classification": "CHANGED"},
+                    {"customer_safe_name": "customer_b", "classification": "CHANGED"},
+                ]
+            },
+        )
+
+        result = await engine._step_18_incremental_merge(state)
+        assert result is state
+
+    @pytest.mark.asyncio
+    async def test_step_18_empty_classification_customers(self, tmp_path: Path) -> None:
+        """Step 18 should handle empty classification customers list."""
+        engine = self._make_engine(tmp_path)
+
+        prior_run_dir = tmp_path / "_dd" / "forensic-dd" / "runs" / "prior"
+        prior_run_dir.mkdir(parents=True, exist_ok=True)
+        run_dir = tmp_path / "_dd" / "forensic-dd" / "runs" / "current"
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+        state = PipelineState(
+            run_id="current",
+            project_dir=tmp_path,
+            run_dir=run_dir,
+            execution_mode="incremental",
+            prior_run_id="prior",
+            prior_run_dir=prior_run_dir,
+            classification={"customers": []},
+        )
+
+        result = await engine._step_18_incremental_merge(state)
+        assert result is state
+
+    @pytest.mark.asyncio
+    async def test_step_18_none_classification(self, tmp_path: Path) -> None:
+        """Step 18 should handle None classification gracefully."""
+        engine = self._make_engine(tmp_path)
+
+        prior_run_dir = tmp_path / "_dd" / "forensic-dd" / "runs" / "prior"
+        prior_run_dir.mkdir(parents=True, exist_ok=True)
+        run_dir = tmp_path / "_dd" / "forensic-dd" / "runs" / "current"
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+        state = PipelineState(
+            run_id="current",
+            project_dir=tmp_path,
+            run_dir=run_dir,
+            execution_mode="incremental",
+            prior_run_id="prior",
+            prior_run_dir=prior_run_dir,
+            classification=None,
+        )
+
+        result = await engine._step_18_incremental_merge(state)
+        assert result is state
+
+
+class TestStep20To22JudgeCycleDegradedMode:
+    """Tests for the judge cycle (steps 20-22) with degraded mode."""
+
+    def _make_engine(self, tmp_path: Path) -> PipelineEngine:
+        config_path = tmp_path / "deal-config.json"
+        config_path.write_text("{}")
+        return PipelineEngine(tmp_path, config_path)
+
+    def _make_state(self, tmp_path: Path) -> PipelineState:
+        run_dir = tmp_path / "_dd" / "forensic-dd" / "runs" / "test_run"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        (run_dir / "findings").mkdir(parents=True, exist_ok=True)
+        return PipelineState(
+            run_id="test_run",
+            project_dir=tmp_path,
+            run_dir=run_dir,
+            judge_enabled=True,
+            customer_safe_names=["customer_a"],
+        )
+
+    @pytest.mark.asyncio
+    async def test_step_20_degraded_then_step_21_skips(self, tmp_path: Path) -> None:
+        """When step 20 degrades, step 21 should skip due to degraded flag."""
+        engine = self._make_engine(tmp_path)
+        state = self._make_state(tmp_path)
+
+        # Simulate degraded step 20
+        with patch(
+            "dd_agents.agents.judge.JudgeAgent.run_with_iteration",
+            side_effect=RuntimeError("Judge crashed"),
+        ):
+            await engine._step_20_judge_review(state)
+
+        assert state.judge_scores.get("degraded") is True
+
+        # Step 21 should skip
+        result = await engine._step_21_judge_respawn(state)
+        assert result is state
+        # No round2 agents should be added
+        assert not any(k.endswith("_round2") for k in state.agent_results)
+
+    @pytest.mark.asyncio
+    async def test_step_20_degraded_then_step_22_skips(self, tmp_path: Path) -> None:
+        """When step 20 degrades, step 22 should also skip."""
+        engine = self._make_engine(tmp_path)
+        state = self._make_state(tmp_path)
+
+        with patch(
+            "dd_agents.agents.judge.JudgeAgent.run_with_iteration",
+            side_effect=RuntimeError("Judge crashed"),
+        ):
+            await engine._step_20_judge_review(state)
+
+        result = await engine._step_22_judge_round2(state)
+        assert result is state
+        # No quality_caveats should be set since we had degradation at step 20
+        assert "quality_caveats" not in state.judge_scores
+
+    @pytest.mark.asyncio
+    async def test_step_20_returns_none_scores_graceful(self, tmp_path: Path) -> None:
+        """When judge returns None scores, step 20 degrades gracefully."""
+        engine = self._make_engine(tmp_path)
+        state = self._make_state(tmp_path)
+
+        with patch(
+            "dd_agents.agents.judge.JudgeAgent.run_with_iteration",
+            return_value=None,
+        ):
+            result = await engine._step_20_judge_review(state)
+
+        # Should not crash, and scores should be empty (not degraded since it was a clean None)
+        assert result is state
+
+    @pytest.mark.asyncio
+    async def test_full_judge_cycle_all_pass(self, tmp_path: Path) -> None:
+        """Full judge cycle: all agents pass, steps 21 and 22 are no-ops."""
+        from dd_agents.models.audit import AgentScore, QualityScores
+
+        engine = self._make_engine(tmp_path)
+        state = self._make_state(tmp_path)
+
+        mock_scores = QualityScores(
+            run_id="test_run",
+            overall_quality=90,
+            iteration_round=1,
+            agent_scores={
+                "legal": AgentScore(score=90),
+                "finance": AgentScore(score=85),
+                "commercial": AgentScore(score=88),
+                "producttech": AgentScore(score=92),
+            },
+            agents_below_threshold=[],
+        )
+
+        with patch(
+            "dd_agents.agents.judge.JudgeAgent.run_with_iteration",
+            return_value=mock_scores,
+        ):
+            await engine._step_20_judge_review(state)
+
+        assert state.judge_scores["agents_below_threshold"] == []
+
+        # Step 21: no agents to re-spawn
+        result21 = await engine._step_21_judge_respawn(state)
+        assert result21 is state
+
+        # Step 22: no agents below threshold
+        result22 = await engine._step_22_judge_round2(state)
+        assert result22 is state
+
+
+class TestStep35WithMixedCriticalAndNonCriticalFailures:
+    """Tests for step 35 with mixed critical/non-critical DoD failures."""
+
+    def _make_engine(self, tmp_path: Path) -> PipelineEngine:
+        config_path = tmp_path / "deal-config.json"
+        config_path.write_text("{}")
+        return PipelineEngine(tmp_path, config_path)
+
+    def _make_state(self, tmp_path: Path) -> PipelineState:
+        run_dir = tmp_path / "runs" / "test_run"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        inv_dir = tmp_path / "_dd" / "forensic-dd" / "inventory"
+        inv_dir.mkdir(parents=True, exist_ok=True)
+        return PipelineState(
+            run_id="test_run",
+            project_dir=tmp_path,
+            run_dir=run_dir,
+            customer_safe_names=["customer_a"],
+        )
+
+    @pytest.mark.asyncio
+    async def test_step_35_mixed_failures_critical_sets_dod_false(self, tmp_path: Path) -> None:
+        """When both critical and non-critical checks fail, dod should be False."""
+        from dd_agents.models.audit import AuditCheck
+
+        engine = self._make_engine(tmp_path)
+        state = self._make_state(tmp_path)
+
+        mock_checks = [
+            AuditCheck(passed=True, rule="Some passing check", dod_checks=[5]),
+            AuditCheck(passed=False, rule="Customer outputs incomplete", dod_checks=[1]),  # Critical
+            AuditCheck(passed=False, rule="Governance not resolved", dod_checks=[4]),  # Non-critical
+            AuditCheck(passed=False, rule="Excel missing", dod_checks=[14]),  # Critical
+            AuditCheck(passed=True, rule="Entity resolution ok", dod_checks=[16]),
+        ]
+        with patch(
+            "dd_agents.validation.dod.DefinitionOfDoneChecker.check_all",
+            return_value=mock_checks,
+        ):
+            result = await engine._step_35_shutdown(state)
+
+        assert result.validation_results["dod"] is False
+
+        dod_path = state.run_dir / "dod_results.json"
+        data = json.loads(dod_path.read_text())
+        assert data["passed"] == 2
+        assert data["total"] == 5
+        assert len(data["critical_failures"]) == 2
+
+    @pytest.mark.asyncio
+    async def test_step_35_only_non_critical_failures_keeps_dod_true(self, tmp_path: Path) -> None:
+        """When only non-critical checks fail, dod should remain True."""
+        from dd_agents.models.audit import AuditCheck
+
+        engine = self._make_engine(tmp_path)
+        state = self._make_state(tmp_path)
+
+        # Checks 4, 5, 7 are non-critical
+        mock_checks = [
+            AuditCheck(passed=True, rule="Customer outputs ok", dod_checks=[1]),
+            AuditCheck(passed=False, rule="Governance not resolved", dod_checks=[4]),
+            AuditCheck(passed=False, rule="Citations not validated", dod_checks=[5]),
+            AuditCheck(passed=False, rule="Cross-customer not run", dod_checks=[7]),
+        ]
+        with patch(
+            "dd_agents.validation.dod.DefinitionOfDoneChecker.check_all",
+            return_value=mock_checks,
+        ):
+            result = await engine._step_35_shutdown(state)
+
+        assert result.validation_results["dod"] is True
+
+        dod_path = state.run_dir / "dod_results.json"
+        data = json.loads(dod_path.read_text())
+        assert data["passed"] == 1
+        assert data["total"] == 4
+        assert len(data["critical_failures"]) == 0
+
+    @pytest.mark.asyncio
+    async def test_step_35_all_checks_pass(self, tmp_path: Path) -> None:
+        """When all checks pass, dod should be True with zero critical failures."""
+        from dd_agents.models.audit import AuditCheck
+
+        engine = self._make_engine(tmp_path)
+        state = self._make_state(tmp_path)
+
+        mock_checks = [
+            AuditCheck(passed=True, rule="Check A", dod_checks=[1]),
+            AuditCheck(passed=True, rule="Check B", dod_checks=[14]),
+            AuditCheck(passed=True, rule="Check C", dod_checks=[4]),
+        ]
+        with patch(
+            "dd_agents.validation.dod.DefinitionOfDoneChecker.check_all",
+            return_value=mock_checks,
+        ):
+            result = await engine._step_35_shutdown(state)
+
+        assert result.validation_results["dod"] is True
+
+        dod_path = state.run_dir / "dod_results.json"
+        data = json.loads(dod_path.read_text())
+        assert data["passed"] == 3
+        assert data["total"] == 3
+        assert data["critical_failures"] == []
+
+    @pytest.mark.asyncio
+    async def test_step_35_critical_dod_numbers_match_spec(self, tmp_path: Path) -> None:
+        """Verify that CRITICAL_DOD_CHECKS matches the expected set from the spec."""
+        _engine = self._make_engine(tmp_path)
+        assert frozenset({1, 2, 3, 11, 13, 14, 15, 17, 19}) == PipelineEngine.CRITICAL_DOD_CHECKS

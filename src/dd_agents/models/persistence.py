@@ -130,10 +130,18 @@ class FindingCounts(BaseModel):
     def _validate_total_consistency(cls, v: int, info: Any) -> int:
         """Validate that total equals sum of p0+p1+p2+p3 when explicitly set.
 
-        When total is 0 (default), it is accepted as-is to allow
-        incremental construction where severity counts may be set first.
+        When total is 0 (default), it is accepted as-is only if all
+        severity counts are also 0 (to allow incremental construction).
+        Raises ValueError if total=0 but severity counts are non-zero.
         """
         if v == 0:
+            p0 = info.data.get("p0", 0)
+            p1 = info.data.get("p1", 0)
+            p2 = info.data.get("p2", 0)
+            p3 = info.data.get("p3", 0)
+            if p0 + p1 + p2 + p3 > 0:
+                msg = f"FindingCounts total=0 but severity counts sum to {p0 + p1 + p2 + p3}"
+                raise ValueError(msg)
             return v
         data = info.data
         expected = data.get("p0", 0) + data.get("p1", 0) + data.get("p2", 0) + data.get("p3", 0)

@@ -1550,3 +1550,457 @@ class TestGapsMerge:
         )
         assert hasattr(mco, "gaps")
         assert mco.gaps == []
+
+
+# ===================================================================== #
+# Priority 1: DoD checks 7, 8, 9, 12, 21, 30 -- pass and fail
+# ===================================================================== #
+
+
+class TestDoDCheck7CrossCustomerPatterns:
+    """Tests for DoD check 7 (cross-customer pattern check)."""
+
+    def test_check_7_passes_when_audit_json_has_passing_cross_reference(self, tmp_path: Path) -> None:
+        """check_7 should pass when audit.json has a passing cross_reference_completeness check."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+
+        audit_data = {
+            "checks": {
+                "cross_reference_completeness": {"passed": True, "details": {}},
+            }
+        }
+        (run_dir / "audit.json").write_text(json.dumps(audit_data))
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+        )
+        check = checker.check_7_cross_customer_patterns()
+        assert check.passed is True
+        assert 7 in check.dod_checks
+
+    def test_check_7_fails_when_audit_json_missing(self, tmp_path: Path) -> None:
+        """check_7 should fail when audit.json does not exist."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+        )
+        check = checker.check_7_cross_customer_patterns()
+        assert check.passed is False
+        assert check.details.get("cross_customer_check") == "qa_audit_not_run_yet"
+
+    def test_check_7_fails_when_cross_reference_not_passed(self, tmp_path: Path) -> None:
+        """check_7 should fail when cross_reference_completeness is false."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+
+        audit_data = {
+            "checks": {
+                "cross_reference_completeness": {"passed": False, "details": {"issues": ["gap"]}},
+            }
+        }
+        (run_dir / "audit.json").write_text(json.dumps(audit_data))
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+        )
+        check = checker.check_7_cross_customer_patterns()
+        assert check.passed is False
+
+    def test_check_7_fails_on_malformed_audit_json(self, tmp_path: Path) -> None:
+        """check_7 should fail gracefully when audit.json is malformed."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+
+        (run_dir / "audit.json").write_text("NOT VALID JSON {{")
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+        )
+        check = checker.check_7_cross_customer_patterns()
+        assert check.passed is False
+
+
+class TestDoDCheck8CrossReferenceReconciliation:
+    """Tests for DoD check 8 (cross-reference reconciliation)."""
+
+    def test_check_8_passes_when_audit_json_has_passing_check(self, tmp_path: Path) -> None:
+        """check_8 should pass when cross_reference_completeness is true."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+
+        audit_data = {
+            "checks": {
+                "cross_reference_completeness": {"passed": True},
+            }
+        }
+        (run_dir / "audit.json").write_text(json.dumps(audit_data))
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+        )
+        check = checker.check_8_cross_reference_reconciliation()
+        assert check.passed is True
+        assert 8 in check.dod_checks
+
+    def test_check_8_fails_when_audit_json_missing(self, tmp_path: Path) -> None:
+        """check_8 should fail when audit.json does not exist."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+        )
+        check = checker.check_8_cross_reference_reconciliation()
+        assert check.passed is False
+        assert check.details.get("reconciliation_check") == "qa_audit_not_run_yet"
+
+    def test_check_8_fails_when_reconciliation_not_passed(self, tmp_path: Path) -> None:
+        """check_8 should fail when cross_reference_completeness is false."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+
+        audit_data = {
+            "checks": {
+                "cross_reference_completeness": {"passed": False},
+            }
+        }
+        (run_dir / "audit.json").write_text(json.dumps(audit_data))
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+        )
+        check = checker.check_8_cross_reference_reconciliation()
+        assert check.passed is False
+
+
+class TestDoDCheck9GhostCustomers:
+    """Tests for DoD check 9 (ghost customers logged as P0 gaps)."""
+
+    def test_check_9_passes_when_gap_completeness_passes(self, tmp_path: Path) -> None:
+        """check_9 should pass when audit.json gap_completeness is true."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+
+        audit_data = {
+            "checks": {
+                "gap_completeness": {"passed": True},
+            }
+        }
+        (run_dir / "audit.json").write_text(json.dumps(audit_data))
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+        )
+        check = checker.check_9_ghost_customers()
+        assert check.passed is True
+        assert 9 in check.dod_checks
+
+    def test_check_9_fails_when_audit_json_missing(self, tmp_path: Path) -> None:
+        """check_9 should fail when audit.json does not exist."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+        )
+        check = checker.check_9_ghost_customers()
+        assert check.passed is False
+        assert check.details.get("ghost_check") == "qa_audit_not_run_yet"
+
+    def test_check_9_fails_when_gap_completeness_false(self, tmp_path: Path) -> None:
+        """check_9 should fail when gap_completeness.passed is false."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+
+        audit_data = {
+            "checks": {
+                "gap_completeness": {"passed": False, "ghost_customers": 3},
+            }
+        }
+        (run_dir / "audit.json").write_text(json.dumps(audit_data))
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+        )
+        check = checker.check_9_ghost_customers()
+        assert check.passed is False
+
+
+class TestDoDCheck12DomainCoverage:
+    """Tests for DoD check 12 (domain coverage)."""
+
+    def test_check_12_passes_when_domain_coverage_passes(self, tmp_path: Path) -> None:
+        """check_12 should pass when audit.json domain_coverage is true."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+
+        audit_data = {
+            "checks": {
+                "domain_coverage": {"passed": True},
+            }
+        }
+        (run_dir / "audit.json").write_text(json.dumps(audit_data))
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+        )
+        check = checker.check_12_domain_coverage()
+        assert check.passed is True
+        assert 12 in check.dod_checks
+
+    def test_check_12_fails_when_audit_json_missing(self, tmp_path: Path) -> None:
+        """check_12 should fail when audit.json does not exist."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+        )
+        check = checker.check_12_domain_coverage()
+        assert check.passed is False
+        assert check.details.get("domain_coverage_check") == "qa_audit_not_run_yet"
+
+    def test_check_12_fails_when_domain_coverage_false(self, tmp_path: Path) -> None:
+        """check_12 should fail when domain_coverage.passed is false."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+
+        audit_data = {
+            "checks": {
+                "domain_coverage": {"passed": False, "missing_domains": ["legal"]},
+            }
+        }
+        (run_dir / "audit.json").write_text(json.dumps(audit_data))
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+        )
+        check = checker.check_12_domain_coverage()
+        assert check.passed is False
+
+
+class TestDoDCheck21P0SpotChecked:
+    """Tests for DoD check 21 (P0 findings spot-checked by Judge)."""
+
+    def test_check_21_passes_with_p0_spot_checks(self, tmp_path: Path) -> None:
+        """check_21 passes when quality_scores.json has P0 spot checks."""
+        run_dir = tmp_path / "run"
+        judge_dir = run_dir / "judge"
+        judge_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+
+        scores_data = {
+            "agent_scores": {
+                "legal": {"score": 85},
+            },
+            "spot_checks": [
+                {"severity": "P0", "finding_id": "F1", "result": "pass"},
+                {"severity": "P1", "finding_id": "F2", "result": "pass"},
+            ],
+        }
+        (judge_dir / "quality_scores.json").write_text(json.dumps(scores_data))
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+            deal_config={"judge": {"enabled": True}},
+        )
+        check = checker.check_21_p0_spot_checked()
+        assert check.passed is True
+        assert 21 in check.dod_checks
+
+    def test_check_21_passes_when_no_p0_findings_exist(self, tmp_path: Path) -> None:
+        """check_21 passes when there are no P0 findings at all."""
+        run_dir = tmp_path / "run"
+        judge_dir = run_dir / "judge"
+        judge_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+
+        # No P0 findings or spot checks
+        scores_data = {
+            "agent_scores": {
+                "legal": {"score": 85},
+            },
+            "spot_checks": [
+                {"severity": "P2", "finding_id": "F1", "result": "pass"},
+            ],
+        }
+        (judge_dir / "quality_scores.json").write_text(json.dumps(scores_data))
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+            deal_config={"judge": {"enabled": True}},
+        )
+        check = checker.check_21_p0_spot_checked()
+        assert check.passed is True
+
+    def test_check_21_fails_when_quality_scores_missing(self, tmp_path: Path) -> None:
+        """check_21 fails when quality_scores.json does not exist."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+            deal_config={"judge": {"enabled": True}},
+        )
+        check = checker.check_21_p0_spot_checked()
+        assert check.passed is False
+        assert check.details.get("error") == "quality_scores.json missing"
+
+    def test_check_21_fails_on_malformed_quality_scores(self, tmp_path: Path) -> None:
+        """check_21 fails gracefully on invalid JSON."""
+        run_dir = tmp_path / "run"
+        judge_dir = run_dir / "judge"
+        judge_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+
+        (judge_dir / "quality_scores.json").write_text("INVALID JSON")
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+            deal_config={"judge": {"enabled": True}},
+        )
+        check = checker.check_21_p0_spot_checked()
+        assert check.passed is False
+        assert "invalid" in check.details.get("error", "")
+
+
+class TestDoDCheck30ReportDiff:
+    """Tests for DoD check 30 (report diff)."""
+
+    def test_check_30_passes_when_prior_run_and_diff_exist(self, tmp_path: Path) -> None:
+        """check_30 passes when prior_run_id is set and report_diff.json exists."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+
+        (run_dir / "report_diff.json").write_text("{}")
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+            deal_config={"execution": {"prior_run_id": "run_prev"}},
+        )
+        check = checker.check_30_report_diff()
+        assert check.passed is True
+        assert 30 in check.dod_checks
+        assert check.details["prior_run_id"] == "run_prev"
+
+    def test_check_30_fails_when_prior_run_but_no_diff(self, tmp_path: Path) -> None:
+        """check_30 fails when prior_run_id is set but report_diff.json is missing."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+            deal_config={"execution": {"prior_run_id": "run_prev"}},
+        )
+        check = checker.check_30_report_diff()
+        assert check.passed is False
+        assert check.details["prior_run_id"] == "run_prev"
+
+    def test_check_30_passes_when_no_prior_run(self, tmp_path: Path) -> None:
+        """check_30 passes by default when no prior_run_id is configured."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+            deal_config={},
+        )
+        check = checker.check_30_report_diff()
+        assert check.passed is True
+        assert check.details["prior_run_id"] == ""
+
+    def test_check_30_passes_when_empty_prior_run_id(self, tmp_path: Path) -> None:
+        """check_30 passes when prior_run_id is an empty string."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+            deal_config={"execution": {"prior_run_id": ""}},
+        )
+        check = checker.check_30_report_diff()
+        assert check.passed is True

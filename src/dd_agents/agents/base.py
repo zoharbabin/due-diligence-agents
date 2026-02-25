@@ -285,6 +285,7 @@ class BaseAgentRunner(ABC):
         Returns a list of dicts.  If no valid JSON is found, returns ``[]``.
         """
         if not raw_output or not raw_output.strip():
+            logger.debug("Agent output is empty or whitespace-only")
             return []
 
         # Pre-process: strip BOM so all downstream strategies see clean text.

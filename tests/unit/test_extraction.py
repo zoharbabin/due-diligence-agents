@@ -2105,3 +2105,152 @@ class TestExtractionSummary:
                 cache_path,
                 max_workers=2,
             )
+
+
+# ===================================================================== #
+# Priority 4: Thread safety tests for parallel extraction
+# ===================================================================== #
+
+
+class TestParallelExtractionThreadSafety:
+    """Tests for thread safety in extract_all with multiple workers."""
+
+    def test_extract_all_multiple_workers_no_tracker_corruption(self, tmp_path: Path) -> None:
+        """Multiple workers extracting concurrently should not corrupt the tracker."""
+        src = tmp_path / "src"
+        src.mkdir()
+
+        # Create 20 text files to exercise parallelism
+        file_paths = []
+        for i in range(20):
+            f = src / f"file_{i}.txt"
+            f.write_text(f"Content for file number {i}. " * 50)
+            file_paths.append(str(f))
+
+        output_dir = tmp_path / "output"
+        cache_path = tmp_path / "checksums.sha256"
+
+        pipeline = ExtractionPipeline()
+        entries = pipeline.extract_all(file_paths, output_dir, cache_path, max_workers=4)
+
+        # Every file should have produced an entry
+        assert len(entries) == 20
+
+        # No duplicate file entries
+        filepaths_in_entries = [e.file_path for e in entries]
+        assert len(filepaths_in_entries) == len(set(filepaths_in_entries))
+
+        # All entries should have non-zero bytes_extracted for text files
+        for entry in entries:
+            assert entry.bytes_extracted > 0, f"File {entry.file_path} had zero bytes"
+
+        # extraction_quality.json should exist and be valid JSON
+        quality_path = output_dir / "extraction_quality.json"
+        assert quality_path.exists()
+        import json as _json
+
+        quality_data = _json.loads(quality_path.read_text())
+        assert len(quality_data) == 20
+
+    def test_extract_all_mixed_fast_and_slow_files(self, tmp_path: Path) -> None:
+        """Mix of fast (small) and slow (large) files should all be tracked correctly."""
+        src = tmp_path / "src"
+        src.mkdir()
+
+        file_paths = []
+        # Fast files: small text
+        for i in range(5):
+            f = src / f"fast_{i}.txt"
+            f.write_text(f"Quick file {i}")
+            file_paths.append(str(f))
+
+        # Slow files: larger text
+        for i in range(5):
+            f = src / f"slow_{i}.txt"
+            f.write_text(f"Large content for file {i}. " * 5000)
+            file_paths.append(str(f))
+
+        output_dir = tmp_path / "output"
+        cache_path = tmp_path / "checksums.sha256"
+
+        pipeline = ExtractionPipeline()
+        entries = pipeline.extract_all(file_paths, output_dir, cache_path, max_workers=4)
+
+        assert len(entries) == 10
+
+        # Every output file should exist
+        for entry in entries:
+            filepath_str = entry.file_path
+            safe_name = ExtractionPipeline._safe_text_name(filepath_str)
+            out_file = output_dir / safe_name
+            assert out_file.exists(), f"Output missing for {filepath_str}"
+
+    def test_extract_all_with_missing_and_valid_files_concurrent(self, tmp_path: Path) -> None:
+        """Missing files mixed with valid files should not cause errors in the tracker."""
+        src = tmp_path / "src"
+        src.mkdir()
+
+        file_paths = []
+        # Valid files
+        for i in range(5):
+            f = src / f"valid_{i}.txt"
+            f.write_text(f"Valid content {i}. " * 100)
+            file_paths.append(str(f))
+
+        # Missing files
+        for i in range(3):
+            file_paths.append(str(src / f"missing_{i}.txt"))
+
+        output_dir = tmp_path / "output"
+        cache_path = tmp_path / "checksums.sha256"
+
+        pipeline = ExtractionPipeline()
+        entries = pipeline.extract_all(file_paths, output_dir, cache_path, max_workers=4)
+
+        # 5 valid + 3 missing = 8 entries
+        assert len(entries) == 8
+
+        # Check that missing files are recorded as failed
+        missing_entries = [e for e in entries if e.method == "failed"]
+        assert len(missing_entries) == 3
+
+        # Check that valid files are recorded successfully
+        valid_entries = [e for e in entries if e.method != "failed"]
+        assert len(valid_entries) == 5
+        for entry in valid_entries:
+            assert entry.bytes_extracted > 0
+
+    def test_extract_all_single_worker_produces_same_results(self, tmp_path: Path) -> None:
+        """Single worker and multiple workers should produce identical results."""
+        src = tmp_path / "src"
+        src.mkdir()
+
+        file_paths = []
+        for i in range(8):
+            f = src / f"file_{i}.txt"
+            f.write_text(f"Content for file {i}. " * 100)
+            file_paths.append(str(f))
+
+        # Run with 1 worker
+        output_dir_1 = tmp_path / "output_1"
+        cache_path_1 = tmp_path / "checksums_1.sha256"
+        pipeline1 = ExtractionPipeline()
+        entries_1 = pipeline1.extract_all(file_paths, output_dir_1, cache_path_1, max_workers=1)
+
+        # Run with 4 workers
+        output_dir_4 = tmp_path / "output_4"
+        cache_path_4 = tmp_path / "checksums_4.sha256"
+        pipeline4 = ExtractionPipeline()
+        entries_4 = pipeline4.extract_all(file_paths, output_dir_4, cache_path_4, max_workers=4)
+
+        assert len(entries_1) == len(entries_4) == 8
+
+        # Sort by filepath for comparison
+        entries_1_sorted = sorted(entries_1, key=lambda e: e.file_path)
+        entries_4_sorted = sorted(entries_4, key=lambda e: e.file_path)
+
+        for e1, e4 in zip(entries_1_sorted, entries_4_sorted, strict=True):
+            assert e1.file_path == e4.file_path
+            assert e1.method == e4.method
+            assert e1.bytes_extracted == e4.bytes_extracted
+            assert e1.confidence == e4.confidence

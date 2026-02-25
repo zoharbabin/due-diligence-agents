@@ -16,6 +16,14 @@ from dd_agents.models.audit import AgentScoreDimensions, QualityScores
 logger = logging.getLogger(__name__)
 
 
+def _safe_int(v: Any, default: int = 0) -> int:
+    """Convert *v* to int, returning *default* on failure."""
+    try:
+        return int(v)
+    except (ValueError, TypeError):
+        return default
+
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -164,7 +172,7 @@ class JudgeAgent(BaseAgentRunner):
                 # Recompute overall quality from blended agent scores.
                 if scores.agent_scores:
                     scores.overall_quality = round(
-                        sum(a.score for a in scores.agent_scores.values()) / len(scores.agent_scores)
+                        sum(a.score for a in scores.agent_scores.values()) / max(len(scores.agent_scores), 1)
                     )
 
             # Save current scores for potential next-round blending.
@@ -243,26 +251,28 @@ class JudgeAgent(BaseAgentRunner):
                 # Build dimensions from nested dict if present.
                 raw_dims = raw_score.get("dimensions", {})
                 dims = AgentScoreDimensions(
-                    citation_verification=int(raw_dims.get("citation_verification", 0)),
-                    contextual_validation=int(raw_dims.get("contextual_validation", 0)),
-                    financial_accuracy=int(raw_dims.get("financial_accuracy", 0)),
-                    cross_agent_consistency=int(raw_dims.get("cross_agent_consistency", 0)),
-                    completeness=int(raw_dims.get("completeness", 0)),
+                    citation_verification=_safe_int(raw_dims.get("citation_verification", 0)),
+                    contextual_validation=_safe_int(raw_dims.get("contextual_validation", 0)),
+                    financial_accuracy=_safe_int(raw_dims.get("financial_accuracy", 0)),
+                    cross_agent_consistency=_safe_int(raw_dims.get("cross_agent_consistency", 0)),
+                    completeness=_safe_int(raw_dims.get("completeness", 0)),
                 )
                 # Use explicit score if provided, otherwise compute from dims.
                 explicit_score = raw_score.get("score")
-                computed_score = int(explicit_score) if explicit_score is not None else calculate_agent_score(dims)
+                computed_score = (
+                    _safe_int(explicit_score) if explicit_score is not None else calculate_agent_score(dims)
+                )
                 # Resolve pass count: JSON may use "pass" (alias) or "pass_count".
                 pass_val = raw_score.get("pass", raw_score.get("pass_count", 0))
-                pass_count = int(pass_val) if pass_val is not None else 0
+                pass_count = _safe_int(pass_val) if pass_val is not None else 0
                 agent_scores[agent_name] = _AgentScore.model_validate(
                     {
                         "score": computed_score,
-                        "findings_reviewed": int(raw_score.get("findings_reviewed", 0)),
-                        "findings_total": int(raw_score.get("findings_total", 0)),
+                        "findings_reviewed": _safe_int(raw_score.get("findings_reviewed", 0)),
+                        "findings_total": _safe_int(raw_score.get("findings_total", 0)),
                         "pass": pass_count,
-                        "partial": int(raw_score.get("partial", 0)),
-                        "fail": int(raw_score.get("fail", 0)),
+                        "partial": _safe_int(raw_score.get("partial", 0)),
+                        "fail": _safe_int(raw_score.get("fail", 0)),
                         "dimensions": dims.model_dump(),
                     }
                 )
@@ -270,9 +280,9 @@ class JudgeAgent(BaseAgentRunner):
         # Compute overall quality as average of agent scores.
         overall: int = 0
         if agent_scores:
-            overall = round(sum(a.score for a in agent_scores.values()) / len(agent_scores))
+            overall = round(sum(a.score for a in agent_scores.values()) / max(len(agent_scores), 1))
         else:
-            overall = int(scores_data.get("overall_quality", 0))
+            overall = _safe_int(scores_data.get("overall_quality", 0))
 
         return QualityScores(
             run_id=run_id or scores_data.get("run_id", ""),

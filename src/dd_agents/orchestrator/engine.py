@@ -326,6 +326,17 @@ class PipelineEngine:
     # Helper: resolve common paths
     # ------------------------------------------------------------------
 
+    def _ensure_team(self, state: PipelineState) -> AgentTeam:
+        """Return the agent team, creating it lazily if needed.
+
+        Step 13 is the canonical creation point, but downstream steps
+        must tolerate a missing team when the pipeline resumes past
+        step 13 from a checkpoint.
+        """
+        if self.team is None:
+            self.team = AgentTeam(state)
+        return self.team
+
     def _inventory_dir(self, state: PipelineState) -> Path:
         """Return the PERMANENT inventory directory."""
         return state.project_dir / state.skill_dir / "inventory"
@@ -776,8 +787,7 @@ class PipelineEngine:
         """
         from dd_agents.agents.prompt_builder import PromptBuilder
 
-        if self.team is None:
-            self.team = AgentTeam(state)
+        self._ensure_team(state)
 
         customers: list[Any] = getattr(state, "_customer_entries", [])
         reference_files: list[Any] = getattr(state, "_reference_files", [])
@@ -844,8 +854,7 @@ class PipelineEngine:
         """
         from pathlib import Path as _Path
 
-        if self.team is None:
-            self.team = AgentTeam(state)
+        self._ensure_team(state)
 
         ref_files: list[Any] = getattr(state, "_reference_files", [])
         if not ref_files:
@@ -915,10 +924,9 @@ class PipelineEngine:
 
     async def _step_16_spawn_specialists(self, state: PipelineState) -> PipelineState:
         """Spawn 4 specialist agents in parallel."""
-        if self.team is None:
-            self.team = AgentTeam(state)
+        team = self._ensure_team(state)
 
-        results = await self.team.spawn_specialists()
+        results = await team.spawn_specialists()
         for name, result in results.items():
             state.agent_results[name] = result
             state.agent_sessions[name] = result.get("session_id", "")
@@ -975,7 +983,7 @@ class PipelineEngine:
 
         # --- Respawn for agents below 90 % coverage ------------------------
         for agent, missing_custs in per_agent_missing.items():
-            coverage_pct = (total_customers - len(missing_custs)) / total_customers
+            coverage_pct = (total_customers - len(missing_custs)) / max(total_customers, 1)
             if coverage_pct < 0.90 and missing_custs:
                 logger.warning(
                     "Agent %s coverage %.1f%% < 90%% -- respawning for %d missing customers",
@@ -1001,7 +1009,7 @@ class PipelineEngine:
                 if not path.exists():
                     still_missing.append(customer)
 
-            coverage_pct = (total_customers - len(still_missing)) / total_customers
+            coverage_pct = (total_customers - len(still_missing)) / max(total_customers, 1)
 
             if coverage_pct < worst_coverage:
                 worst_coverage = coverage_pct
@@ -1094,10 +1102,9 @@ class PipelineEngine:
 
         # In production this would spawn the agent with the reduced prompt.
         # For now, the team placeholder handles it.
-        if self.team is None:
-            self.team = AgentTeam(state)
+        team = self._ensure_team(state)
         try:
-            result = await self.team._run_specialist(agent_name, {"respawn": True})
+            result = await team._run_specialist(agent_name, {"respawn": True})
             logger.info(
                 "Respawn for %s completed: status=%s",
                 agent_name,
@@ -1290,10 +1297,9 @@ class PipelineEngine:
             logger.info("Skipping step 19 -- judge not enabled")
             return state
 
-        if self.team is None:
-            self.team = AgentTeam(state)
+        team = self._ensure_team(state)
 
-        result = await self.team.spawn_judge()
+        result = await team.spawn_judge()
         state.agent_results["judge"] = result
         state.agent_sessions["judge"] = result.get("session_id", "")
         state.agent_costs["judge"] = result.get("cost_usd", 0.0)
@@ -1315,8 +1321,7 @@ class PipelineEngine:
             logger.info("Skipping step 20 -- judge not enabled")
             return state
 
-        if self.team is None:
-            self.team = AgentTeam(state)
+        self._ensure_team(state)
 
         from dd_agents.agents.judge import (
             DEFAULT_SCORE_THRESHOLD,
@@ -1389,8 +1394,7 @@ class PipelineEngine:
             logger.info("Skipping step 21 -- judge not enabled")
             return state
 
-        if self.team is None:
-            self.team = AgentTeam(state)
+        team = self._ensure_team(state)
 
         judge_data = state.judge_scores
         if not judge_data or judge_data.get("degraded"):
@@ -1410,7 +1414,7 @@ class PipelineEngine:
                 continue
 
             try:
-                result = await self.team._run_specialist(agent_name, {})
+                result = await team._run_specialist(agent_name, {})
                 state.agent_results[f"{agent_name}_round2"] = result
                 logger.info("Re-spawned agent %s for round 2", agent_name)
             except Exception as exc:
@@ -1435,8 +1439,7 @@ class PipelineEngine:
             logger.info("Skipping step 22 -- judge not enabled")
             return state
 
-        if self.team is None:
-            self.team = AgentTeam(state)
+        self._ensure_team(state)
 
         judge_data = state.judge_scores
         if not judge_data or judge_data.get("degraded"):
@@ -1502,10 +1505,9 @@ class PipelineEngine:
 
     async def _step_23_spawn_reporting_lead(self, state: PipelineState) -> PipelineState:
         """Spawn the Reporting Lead agent."""
-        if self.team is None:
-            self.team = AgentTeam(state)
+        team = self._ensure_team(state)
 
-        result = await self.team.spawn_reporting_lead()
+        result = await team.spawn_reporting_lead()
         state.agent_results["reporting_lead"] = result
         state.agent_sessions["reporting_lead"] = result.get("session_id", "")
         state.agent_costs["reporting_lead"] = result.get("cost_usd", 0.0)
