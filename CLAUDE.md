@@ -6,7 +6,7 @@ Python application for forensic M&A due diligence. 6 AI agents analyze contract 
 
 **Package**: `dd_agents` under `src/dd_agents/`
 **SDK**: `claude-agent-sdk` v0.1.39+ (Python 3.12+)
-**Spec**: 22 plan docs in `docs/plan/`. Start with `docs/plan/PLAN.md`.
+**Spec**: 24 plan docs in `docs/plan/`. Start with `docs/plan/PLAN.md`.
 
 ## Commands
 
@@ -151,8 +151,10 @@ openpyxl>=3.1              # Excel report generation
 networkx>=3.0              # Governance graph (cycle detection, topological sort)
 rapidfuzz>=3.0             # Entity resolution fuzzy matching
 markitdown>=0.1            # PDF/Office document extraction
+pymupdf>=1.23              # Primary PDF extraction with page markers
+scikit-learn>=1.3          # TF-IDF vectorization for entity resolution
 click>=8.0                 # CLI interface
 rich>=13.0                 # Terminal output formatting
 ```
 
-Optional: `chromadb>=0.4` (vector search), `pytesseract>=0.3` (OCR)
+Optional: `chromadb>=0.4` (vector search), `pytesseract>=0.3` (OCR), `mlx-vlm>=0.1` (GLM-OCR)

@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.1] - 2026-02-25
+
+### Added
+
+- Structured LLM output across all agent `query()` calls — Pydantic-validated JSON schemas via `output_schema` parameter.
+- Ontology and reasoning module (`reasoning/`) with contract ontology, risk scoring, and graph-based reasoning.
+- Vector store embeddings module (`vector_store/embeddings.py`) with document chunker.
+- Contract search command (`dd-agents search`) with 4-phase analysis, citation verification, and Excel report output.
+- Auto-config command (`dd-agents auto-config`) for AI-driven deal configuration generation.
+
+### Fixed
+
+- Engine staleness threshold config key (`staleness_threshold_runs` → `staleness_threshold`).
+- Entity resolution empty-string preprocessing collision causing false-positive matches.
+- Vector store unsafe dict access in search results parsing.
+- Entity resolution pre-computes preprocessed guard list once in `__init__()` instead of per-call.
+- Tool parameter naming consistency (`customer_name` → `customer_safe_name` in `get_customer_files`).
+- 18 additional bug fixes from comprehensive codebase-wide review (PR #30).
+
 ## [0.2.0] - 2026-02-24
 
 ### Added
@@ -42,7 +61,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - 6-pass cascading entity resolution with rapidfuzz token-sort-ratio matching, abbreviation expansion, cache learning, and configurable thresholds.
 - Document extraction pipeline with markitdown, pdftotext fallback chain, checksum-based caching, and optional Tesseract OCR for scanned PDFs.
 - 35-step deterministic orchestrator with 5 blocking quality gates, step dependencies, state machine, and checkpoint/resume support.
-- 4 specialist agents (Contract, Financial, Operational, Compliance) plus optional Judge agent and Reporting Lead, all driven by claude-agent-sdk v0.1.39+.
+- 4 specialist agents (Legal, Finance, Commercial, ProductTech) plus optional Judge agent and Reporting Lead, all driven by claude-agent-sdk v0.1.39+.
 - Schema-driven 14-sheet Excel report generation via openpyxl, with configurable report_schema.json governing sheet layout, column definitions, and formatting.
 - 5-layer numerical audit system: extraction-time validation, cross-document reconciliation, agent-output verification, report-level totals check, and final sign-off gate.
 - 30 Definition of Done (DoD) checks enforced as fail-closed quality gates across the pipeline.

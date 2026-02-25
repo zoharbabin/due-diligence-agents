@@ -5,7 +5,7 @@
 
 **Quality gate command** (run after every module):
 ```bash
-pytest tests/unit/ -x -q && mypy src/ --strict --ignore-missing-imports && ruff check src/ tests/ && ruff format --check src/ tests/
+pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/ && ruff format --check src/ tests/
 ```
 
 ---
@@ -23,7 +23,7 @@ pytest tests/unit/ -x -q && mypy src/ --strict --ignore-missing-imports && ruff 
 
 ### 1.2 Utility Modules
 **Status**: Complete
-- [x] Write `tests/unit/test_naming.py` — 28 parametrized tests
+- [x] Write `tests/unit/test_naming.py` — 43 parametrized tests
 - [x] Implement `src/dd_agents/utils/naming.py` — `customer_safe_name()`, `preprocess_name()`
 - [x] Write `tests/unit/test_constants.py` — 10 tests
 - [x] Implement `src/dd_agents/utils/constants.py` — tier names, agent names, severity levels, paths
@@ -53,7 +53,7 @@ pytest tests/unit/ -x -q && mypy src/ --strict --ignore-missing-imports && ruff 
 - [x] Write `tests/unit/test_entity_resolution.py` — 59 tests across 12 test classes
 
 ### 1.5 Extraction Pipeline
-**Status**: Complete — 120+ tests (originally 40, expanded in Issue #27)
+**Status**: Complete — 115 tests (originally 40, expanded in Issues #27, #28, #30)
 - [x] Implement `src/dd_agents/extraction/cache.py` — SHA-256 checksum cache
 - [x] Implement `src/dd_agents/extraction/quality.py` — ExtractionQualityTracker
 - [x] Implement `src/dd_agents/extraction/markitdown.py` — MarkitdownExtractor
@@ -62,7 +62,7 @@ pytest tests/unit/ -x -q && mypy src/ --strict --ignore-missing-imports && ruff 
 - [x] Implement `src/dd_agents/extraction/glm_ocr.py` — GLM-OCR vision-language model extractor
 - [x] Implement `src/dd_agents/extraction/_constants.py` — Shared extension sets and confidence constants
 - [x] Implement `src/dd_agents/extraction/_helpers.py` — Shared `read_text()` helper
-- [x] Write `tests/unit/test_extraction.py` — 120+ tests (pre-inspection, quality gates, Claude vision, shared constants)
+- [x] Write `tests/unit/test_extraction.py` — 115 tests (pre-inspection, quality gates, Claude vision, shared constants)
 - [x] Write `tests/unit/test_glm_ocr.py` — 24 tests
 
 ### 1.6 Config & CLI
@@ -221,7 +221,7 @@ pytest tests/unit/ -x -q && mypy src/ --strict --ignore-missing-imports && ruff 
 
 ### 6.5 Quality Hardening
 **Status**: Complete
-- [x] `mypy src/ --strict --ignore-missing-imports` — 0 errors in 80 files
+- [x] `mypy src/ --strict` — 0 errors in 93 files
 - [x] `ruff check src/ tests/` — all checks passed
 - [x] `ruff format --check src/ tests/` — all files formatted
 - [x] All 188 mypy strict errors fixed across 25 files
@@ -238,8 +238,8 @@ pytest tests/unit/ -x -q && mypy src/ --strict --ignore-missing-imports && ruff 
 
 The project is complete when ALL of the following are true:
 - [x] All 6 phases have status "Complete"
-- [x] `pytest tests/ -x` passes — 997+ unit tests, 17 integration, 6 E2E (3 skipped without API key)
-- [x] `mypy src/ --strict` passes — 0 errors in 93 source files
+- [x] `pytest tests/ -x` passes — 1016 unit tests, 17 integration, 6 E2E (3 skipped without API key)
+- [x] `mypy src/ --strict` passes — 0 errors across 93 source files
 - [x] `ruff check src/ tests/` is clean
 - [x] `ruff format --check src/ tests/` is clean
 
@@ -247,13 +247,13 @@ The project is complete when ALL of the following are true:
 
 | Category | Count |
 |----------|-------|
-| Unit tests (models, utils, entity resolution, extraction, config, hooks, tools, orchestrator, agents, reporting, validation, search, glm_ocr) | 974 |
+| Unit tests (models, utils, entity resolution, extraction, config, hooks, tools, orchestrator, agents, reporting, validation, search, glm_ocr) | 1016 |
 | Integration tests (pipeline steps 1-11) | 17 |
 | E2E tests (pre-agent: config, tiers, discovery, registry, run manager, cache) | 6 |
 | E2E tests (API-dependent: dry run, full pipeline, incremental — skipped without key) | 3 |
-| **Total** | **997 passed, 3 skipped** |
+| **Total** | **1039 passed, 3 skipped** |
 
-## Git History (impl-01 branch)
+## Git History
 
 ```
 Phase 1.2-1.3: Implement utility modules and all 102 data models
@@ -264,4 +264,7 @@ Phase 3-4: Implement orchestrator pipeline engine and agent module
 Phase 5: Implement reporting and validation modules
 Phase 6: Vector store, pipeline wiring, integration tests, CLI
 Quality hardening: mypy strict, ruff format, E2E tests
+Issue #25: GLM-OCR vision-language model extractor
+Issue #27: Extraction pipeline optimization + Claude vision fallback
+Issue #4: Structured LLM output + 18 bug fixes from codebase-wide review
 ```

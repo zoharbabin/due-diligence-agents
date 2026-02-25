@@ -1,6 +1,6 @@
 # Due Diligence Agent SDK
 
-> **Status**: Implemented. Full pipeline, contract search, and auto-config commands operational with 997+ passing tests.
+> **Status**: Implemented. Full pipeline, contract search, and auto-config commands operational with 1,040+ passing tests.
 
 Standalone Python application for forensic M&A due diligence. Migrates a Claude Code Skill (3,100+ lines across 9 files) to a programmatic pipeline using `claude-agent-sdk` v0.1.39+. Six agents (4 specialists + optional Judge + Reporting Lead) analyze contract data rooms, extract clauses, build governance graphs, detect gaps, and produce a 14-sheet Excel report — all under deterministic Python orchestration with hook-enforced quality gates.
 
@@ -23,8 +23,10 @@ due-diligence-agents/
 │       ├── reporting/           # Merge/dedup, Excel generation, report diff
 │       ├── persistence/         # Three-tier storage, run management, incremental
 │       ├── hooks/               # SDK hooks (PreToolUse, PostToolUse, Stop)
+│       ├── reasoning/           # Ontology, contract graph, risk reasoning
 │       ├── search/              # Contract search: analyzer, Excel writer, runner
 │       ├── tools/               # Custom MCP tools (validate_finding, etc.)
+│       ├── utils/               # Naming conventions, constants, shared utilities
 │       └── vector_store/        # Optional ChromaDB integration
 ├── examples/
 │   ├── quickstart/              # Quickstart guide with sample data room
@@ -37,7 +39,7 @@ due-diligence-agents/
 ├── config/                      # Deal config templates, JSON schemas
 └── docs/
     ├── search-guide.md          # Search command guide for legal teams
-    └── plan/                    # Implementation plan (22 spec files)
+    └── plan/                    # Implementation plan (24 spec files)
 ```
 
 ## Quick Start
@@ -151,16 +153,16 @@ The full implementation plan is in [`docs/plan/`](docs/plan/). Start with the [e
 | 20 | [Cross-Document Analysis](docs/plan/20-cross-document-analysis.md) | Contract hierarchy, overrides, contradictions, missing docs, renewal chains |
 | 21 | [Ontology & Reasoning](docs/plan/21-ontology-and-reasoning.md) | Contract ontology, graph-based reasoning, explainability, hallucination prevention |
 | 22 | [LLM Robustness](docs/plan/22-llm-robustness.md) | Research-informed mitigations: chunking, context management, hallucination prevention, Excel handling |
+| -- | [Structured Output Plan](docs/plan/structured-output-plan.md) | Pydantic-validated structured LLM outputs across all agents |
 
 ## Prerequisites
 
 - Python 3.12+
-- AWS Bedrock access (for Claude API)
-- `markitdown` (pip install)
-- `pdftotext` (poppler-utils)
+- Claude API access via `claude-agent-sdk` (Anthropic API key or AWS Bedrock credentials)
+- `pdftotext` (poppler-utils) for PDF text extraction fallback
 - `tesseract-ocr` (optional, for scanned PDFs)
 
-All Python dependencies are declared in `pyproject.toml`.
+All Python dependencies (including `markitdown`, `pymupdf`, etc.) are declared in `pyproject.toml` and installed automatically via `pip install -e ".[dev]"`.
 
 ## Developer Onboarding
 
@@ -191,7 +193,7 @@ Each phase is designed to fit within a single Claude Code session. Use `/clear` 
 
 ## Key Technical Choices
 
-- **Open-source only** — All dependencies under permissive licenses (Apache 2.0, MIT, BSD). No commercial or subscription tools. LLM access via AWS Bedrock.
+- **Open-source only** — All dependencies under permissive licenses (Apache 2.0, MIT, BSD). No commercial or subscription tools. LLM access via `claude-agent-sdk` (Anthropic API or AWS Bedrock).
 - **Python 3.12+** with `src/dd_agents/` package layout
 - **claude-agent-sdk v0.1.39+** — agents are workers, Python controls flow
 - **Pydantic v2** — all data schemas, JSON Schema export for structured outputs

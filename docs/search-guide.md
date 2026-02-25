@@ -52,6 +52,10 @@ answered. Any legal professional can write one — no coding required.
 | `columns[].name` | Yes | Display name shown in the Excel report (1-100 characters) |
 | `columns[].prompt` | Yes | The actual question sent to the AI (10-2000 characters) |
 
+For a complete, production-quality example see
+[Ready-to-Use Example: Change of Control Analysis](#ready-to-use-example-change-of-control-analysis)
+below, or the file at [`examples/search/change_of_control.json`](../examples/search/change_of_control.json).
+
 ### Tips for Writing Good Prompts
 
 Based on research from the [Addleshaw Goddard RAG Report](https://www.addleshawgoddard.com/globalassets/insights/technology/llm/rag-report.pdf),
@@ -101,6 +105,7 @@ Options:
   --data-room PATH     Path to the data room folder (required)
   --output PATH        Excel output path (default: auto-named)
   --customers TEXT      Filter to specific customers (comma-separated)
+  --groups TEXT         Filter to specific groups (comma-separated, case-insensitive partial match)
   --concurrency N      Parallel API calls, 1-20 (default: 5)
   --yes / -y           Skip cost confirmation prompt
   --verbose / -v       Show detailed logging
@@ -117,6 +122,9 @@ dd-agents search prompts.json --data-room ./data_room --customers "Acme,Beta Cor
 
 # Skip confirmation and save to specific file
 dd-agents search prompts.json --data-room ./data_room -y --output results.xlsx
+
+# Filter by group folder name
+dd-agents search prompts.json --data-room ./data_room --groups Commercial
 
 # See detailed progress
 dd-agents search prompts.json --data-room ./data_room -v
@@ -282,6 +290,65 @@ is unacceptable:
 - **Files Analyzed** shows "X/Y" format so you can see at a glance if any
   files were missed
 - **Errors** are recorded per customer, never silently dropped
+
+## Ready-to-Use Example: Change of Control Analysis
+
+A production-quality prompts file is included at
+[`examples/search/change_of_control.json`](../examples/search/change_of_control.json).
+It covers the most common M&A due-diligence scenario — identifying contracts
+that require consent, notice, or that carry termination-for-convenience risk
+when ownership of the service provider changes.
+
+```bash
+dd-agents search examples/search/change_of_control.json --data-room ./data_room
+```
+
+### What it analyzes (6 columns)
+
+| Column | Purpose |
+|--------|---------|
+| Consent Required (Change of Control) | YES/NO — does the contract require customer consent on a change of control? |
+| Consent Clause Summary | The relevant clause text, section reference, and page number |
+| Notice Required (Change of Control) | YES/NO — does the contract require customer notice on a change of control? |
+| Notice Clause Summary | The relevant clause text, section reference, and page number |
+| Termination for Convenience | YES/NO — can the customer terminate without cause (revenue risk even without a CoC trigger)? |
+| Termination for Convenience Summary | Who holds the right, notice period, fees/penalties, and section reference |
+
+### Prompt design choices
+
+This example demonstrates several best practices for accurate results:
+
+- **Explicit exclusions** — Each prompt instructs the AI to exclude
+  assignment/transfer-only clauses, which is the most common source of
+  false positives in change-of-control analysis. A share acquisition does
+  not trigger assignment provisions, so conflating the two overstates risk.
+- **Paired YES/NO + summary columns** — The first column in each pair
+  forces a categorical answer; the second extracts the supporting clause.
+  This makes the Summary sheet scannable while preserving full evidence
+  in the Details sheet.
+- **Termination for convenience** — Often overlooked in CoC analyses.
+  A customer with a termination-for-convenience right can exit regardless
+  of whether a change-of-control clause exists, making it critical for
+  acquirer revenue projections.
+- **Section and page pinpointing** — Every prompt asks for the section
+  reference and page number, enabling quick manual verification.
+
+### Customizing
+
+Copy the file and adapt it to your deal:
+
+```bash
+cp examples/search/change_of_control.json my_prompts.json
+# Edit my_prompts.json — add/remove columns, adjust prompts
+dd-agents search my_prompts.json --data-room ./data_room
+```
+
+Common additions for M&A deals:
+
+- **Non-compete / non-solicit** — Do restrictions survive a change of control?
+- **IP ownership / license grants** — Are license rights affected by ownership changes?
+- **Most Favored Nation (MFN)** — Does the customer have MFN pricing protections?
+- **Auto-renewal terms** — What is the renewal date and notice period to prevent auto-renewal?
 
 ## Troubleshooting
 

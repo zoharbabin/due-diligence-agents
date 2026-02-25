@@ -11,7 +11,7 @@
 ## Development Setup
 
 ```bash
-git clone https://github.com/<org>/due-diligence-agents.git
+git clone https://github.com/zoharbabin/due-diligence-agents.git
 cd due-diligence-agents
 pip install -e ".[dev]"
 pre-commit install

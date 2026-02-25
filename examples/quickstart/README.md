@@ -9,13 +9,13 @@ You will run `dd-agents` against a small data room with four contracts spread ac
 1. Discover and inventory every document.
 2. Extract clauses, financials, and governance structures.
 3. Resolve entity names across documents.
-4. Run specialist agents (Contract, Financial, Operational, Compliance).
+4. Run specialist agents (Legal, Finance, Commercial, ProductTech).
 5. Produce a consolidated Excel report.
 
 ## Prerequisites
 
 - Python 3.12+
-- An `ANTHROPIC_API_KEY` (or AWS Bedrock credentials) for the full run
+- Claude API access: `ANTHROPIC_API_KEY` or AWS Bedrock credentials (`AWS_DEFAULT_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`)
 
 ## Step 1: Install
 
@@ -127,38 +127,43 @@ After a successful run, you will find a `_dd/` directory:
 
 ```
 _dd/
-├── run_20260222_143000/
-│   ├── inventory/
-│   │   ├── file_manifest.json
-│   │   └── customer_registry.json
-│   ├── extraction/
-│   │   ├── GroupA/Acme_Corp/contract_acme.pdf.json
-│   │   ├── GroupA/Beta_Inc/agreement_beta.pdf.json
-│   │   └── ...
-│   ├── findings/
-│   │   ├── contract_agent_findings.json
-│   │   ├── financial_agent_findings.json
-│   │   ├── operational_agent_findings.json
-│   │   └── compliance_agent_findings.json
-│   ├── entity_resolution/
-│   │   ├── entity_graph.json
-│   │   └── resolution_log.json
-│   ├── validation/
-│   │   ├── numerical_audit.json
-│   │   └── dod_checks.json
-│   ├── reports/
-│   │   └── DD_Report_NovaBridge_Solutions.xlsx
-│   └── metadata/
-│       ├── run_config.json
-│       └── run_summary.json
+└── forensic-dd/
+    ├── index/
+    │   └── text/                    # Extracted text (PERMANENT, cached across runs)
+    │       ├── customer_1.md
+    │       └── ...
+    ├── inventory/                   # File discovery (FRESH, rebuilt each run)
+    │   ├── tree.txt
+    │   ├── files.txt
+    │   ├── customers.csv
+    │   ├── counts.json
+    │   └── entity_matches.json
+    ├── entity_resolution_cache.json # Entity cache (PERMANENT)
+    ├── run_history.json             # All prior runs (PERMANENT)
+    └── runs/
+        ├── latest -> 20260222_143000/
+        └── 20260222_143000/         # Per-run output (VERSIONED, immutable)
+            ├── findings/
+            │   ├── legal/           # Legal specialist findings per customer
+            │   ├── finance/         # Finance specialist findings per customer
+            │   ├── commercial/      # Commercial specialist findings per customer
+            │   ├── producttech/     # ProductTech specialist findings per customer
+            │   └── merged/          # Deduplicated findings across all agents
+            ├── report/
+            │   └── dd_report.xlsx   # 14-sheet Excel report
+            ├── audit/               # Validation logs per agent
+            ├── audit.json           # QA audit results
+            ├── numerical_manifest.json
+            ├── file_coverage.json
+            └── metadata.json
 ```
 
 Key outputs:
 
-- **`DD_Report_NovaBridge_Solutions.xlsx`** -- The 14-sheet Excel report with findings, risk matrix, entity map, financial summaries, and more.
-- **`findings/`** -- Raw JSON findings from each specialist agent.
-- **`entity_resolution/`** -- The resolved entity graph and matching log.
-- **`validation/`** -- Numerical audit trail and Definition of Done checks.
+- **`runs/latest/report/dd_report.xlsx`** -- The 14-sheet Excel report with findings, risk matrix, entity map, financial summaries, and more.
+- **`runs/latest/findings/`** -- Per-customer JSON findings from each specialist agent (legal, finance, commercial, producttech) plus merged results.
+- **`inventory/`** -- File discovery, customer registry, and entity resolution matches.
+- **`runs/latest/audit.json`** -- QA audit trail and Definition of Done checks.
 
 ## Troubleshooting
 
@@ -179,15 +184,19 @@ The `data_room.path` in your config points to a directory that does not exist re
 - Run from the repository root, or
 - Update `data_room.path` in `deal-config.json` to an absolute path.
 
-### `ANTHROPIC_API_KEY not set`
+### API key not set
 
-The full run requires an API key. Set it in your environment:
+The full run requires Claude API access. Set one of:
 
 ```bash
+# Option 1: Anthropic API
 export ANTHROPIC_API_KEY="sk-ant-..."
-```
 
-Or use AWS Bedrock by configuring `AWS_DEFAULT_REGION` and appropriate credentials.
+# Option 2: AWS Bedrock
+export AWS_DEFAULT_REGION="us-east-1"
+export AWS_ACCESS_KEY_ID="..."
+export AWS_SECRET_ACCESS_KEY="..."
+```
 
 ### `ModuleNotFoundError: No module named 'dd_agents'`
 
