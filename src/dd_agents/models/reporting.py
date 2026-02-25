@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class SeverityColor(BaseModel):
@@ -99,6 +99,17 @@ class ReportSchema(BaseModel):
     description: str = ""
     global_formatting: GlobalFormatting = Field(default_factory=GlobalFormatting)
     sheets: list[SheetDef] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _require_at_least_one_sheet(self) -> ReportSchema:
+        """Fail-fast: a report schema with zero sheets is not valid."""
+        if not self.sheets:
+            msg = (
+                "ReportSchema must have at least one sheet definition. "
+                "Ensure report_schema.json contains a non-empty 'sheets' array."
+            )
+            raise ValueError(msg)
+        return self
 
 
 class ReportDiffChange(BaseModel):

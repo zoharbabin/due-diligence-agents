@@ -91,10 +91,25 @@ class JudgeAgent(BaseAgentRunner):
     max_turns: int = 150
     max_budget_usd: float = 3.0
 
-    # Judge-specific configuration (populated from deal config).
-    sampling_rates: dict[str, float] = dict(DEFAULT_SAMPLING_RATES)
+    # Class-level defaults for reference; instance copies are made in __init__
+    # to avoid mutable-default sharing across instances.
     score_threshold: int = DEFAULT_SCORE_THRESHOLD
     max_iteration_rounds: int = DEFAULT_MAX_ITERATION_ROUNDS
+
+    def __init__(
+        self,
+        *args: Any,
+        sampling_rates: dict[str, float] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        # Each instance gets its own copy of sampling_rates to prevent
+        # mutations from leaking between instances.
+        self.sampling_rates: dict[str, float] = (
+            dict(sampling_rates) if sampling_rates is not None else dict(DEFAULT_SAMPLING_RATES)
+        )
+        # Store prior round scores for blending across iteration rounds.
+        self._prior_scores: dict[str, int] = {}
 
     def get_agent_name(self) -> str:
         return "judge"
@@ -138,9 +153,22 @@ class JudgeAgent(BaseAgentRunner):
         for round_num in range(1, self.max_iteration_rounds + 1):
             result = await self.run(state)
 
-            # In production, we would read the written quality_scores.json.
-            # Here we return from parsed output or build a stub.
             scores = self._build_scores_from_result(result, round_num)
+
+            # Blend scores with prior round when round_num > 1.
+            if round_num > 1 and self._prior_scores:
+                for agent_name, agent_score in scores.agent_scores.items():
+                    prior = self._prior_scores.get(agent_name)
+                    if prior is not None:
+                        agent_score.score = blend_round_scores(prior, agent_score.score)
+                # Recompute overall quality from blended agent scores.
+                if scores.agent_scores:
+                    scores.overall_quality = round(
+                        sum(a.score for a in scores.agent_scores.values()) / len(scores.agent_scores)
+                    )
+
+            # Save current scores for potential next-round blending.
+            self._prior_scores = {name: agent_score.score for name, agent_score in scores.agent_scores.items()}
 
             failing = [
                 agent_name
@@ -176,15 +204,81 @@ class JudgeAgent(BaseAgentRunner):
 
     @staticmethod
     def _build_scores_from_result(result: dict[str, Any], round_num: int) -> QualityScores:
-        """Build a :class:`QualityScores` from the run result.
+        """Build a :class:`QualityScores` from the agent run result.
 
-        This is a placeholder -- in production the Judge writes the file to
-        disk and we read it back.  For now, return a minimal valid object.
+        Parses the structured output produced by the Judge agent (a list of
+        parsed JSON dicts in ``result["output"]``).  The expected JSON format
+        matches the ``QualityScores`` schema with ``agent_scores`` containing
+        per-agent dimension scores.
+
+        Falls back to a minimal ``QualityScores`` object when parsing fails
+        (e.g. when the agent produced no output or malformed JSON).
         """
+        from dd_agents.models.audit import AgentScore as _AgentScore
+
+        run_id: str = result.get("run_id", "")
+        output: list[dict[str, Any]] = result.get("output") or []
+
+        # Try to find a quality_scores-shaped dict in the parsed output.
+        scores_data: dict[str, Any] | None = None
+        for item in output:
+            # Accept if it looks like QualityScores (has agent_scores key).
+            if "agent_scores" in item:
+                scores_data = item
+                break
+
+        if scores_data is None:
+            logger.warning("Judge output did not contain agent_scores -- returning empty QualityScores")
+            return QualityScores(
+                run_id=run_id,
+                overall_quality=0,
+                iteration_round=round_num,
+            )
+
+        # Parse agent scores with dimension-level detail.
+        agent_scores: dict[str, _AgentScore] = {}
+        raw_agent_scores = scores_data.get("agent_scores", {})
+        for agent_name, raw_score in raw_agent_scores.items():
+            if isinstance(raw_score, dict):
+                # Build dimensions from nested dict if present.
+                raw_dims = raw_score.get("dimensions", {})
+                dims = AgentScoreDimensions(
+                    citation_verification=int(raw_dims.get("citation_verification", 0)),
+                    contextual_validation=int(raw_dims.get("contextual_validation", 0)),
+                    financial_accuracy=int(raw_dims.get("financial_accuracy", 0)),
+                    cross_agent_consistency=int(raw_dims.get("cross_agent_consistency", 0)),
+                    completeness=int(raw_dims.get("completeness", 0)),
+                )
+                # Use explicit score if provided, otherwise compute from dims.
+                explicit_score = raw_score.get("score")
+                computed_score = int(explicit_score) if explicit_score is not None else calculate_agent_score(dims)
+                # Resolve pass count: JSON may use "pass" (alias) or "pass_count".
+                pass_val = raw_score.get("pass", raw_score.get("pass_count", 0))
+                pass_count = int(pass_val) if pass_val is not None else 0
+                agent_scores[agent_name] = _AgentScore.model_validate(
+                    {
+                        "score": computed_score,
+                        "findings_reviewed": int(raw_score.get("findings_reviewed", 0)),
+                        "findings_total": int(raw_score.get("findings_total", 0)),
+                        "pass": pass_count,
+                        "partial": int(raw_score.get("partial", 0)),
+                        "fail": int(raw_score.get("fail", 0)),
+                        "dimensions": dims.model_dump(),
+                    }
+                )
+
+        # Compute overall quality as average of agent scores.
+        overall: int = 0
+        if agent_scores:
+            overall = round(sum(a.score for a in agent_scores.values()) / len(agent_scores))
+        else:
+            overall = int(scores_data.get("overall_quality", 0))
+
         return QualityScores(
-            run_id=result.get("run_id", ""),
-            overall_quality=0,
+            run_id=run_id or scores_data.get("run_id", ""),
+            overall_quality=overall,
             iteration_round=round_num,
+            agent_scores=agent_scores,
         )
 
     @staticmethod

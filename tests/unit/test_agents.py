@@ -41,7 +41,7 @@ from dd_agents.agents.specialists import (
     LegalAgent,
     ProductTechAgent,
 )
-from dd_agents.models.audit import AgentScoreDimensions
+from dd_agents.models.audit import AgentScoreDimensions, QualityScores
 from dd_agents.models.inventory import CustomerEntry, ReferenceFile
 
 if TYPE_CHECKING:
@@ -872,3 +872,536 @@ class TestAgentType:
     def test_judge_and_reporting_not_in_specialist_focus(self) -> None:
         assert AgentType.JUDGE not in SPECIALIST_FOCUS
         assert AgentType.REPORTING_LEAD not in SPECIALIST_FOCUS
+
+
+# =========================================================================
+# Issue #33: _spawn_agent SDK wiring tests
+# =========================================================================
+
+
+class TestSpawnAgentSDKWiring:
+    """Tests for BaseAgentRunner._spawn_agent with/without claude_agent_sdk."""
+
+    @pytest.mark.asyncio
+    async def test_spawn_agent_returns_empty_when_sdk_unavailable(
+        self,
+        tmp_project: Path,
+        tmp_run_dir: Path,
+        run_id: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When _HAS_SDK is False, _spawn_agent returns empty string."""
+        import dd_agents.agents.base as base_mod
+
+        monkeypatch.setattr(base_mod, "_HAS_SDK", False)
+        agent = LegalAgent(tmp_project, tmp_run_dir, run_id)
+        result = await agent._spawn_agent("test prompt")
+        assert result == ""
+
+    @pytest.mark.asyncio
+    async def test_spawn_agent_returns_text_when_sdk_available(
+        self,
+        tmp_project: Path,
+        tmp_run_dir: Path,
+        run_id: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When SDK is available, _spawn_agent calls query() and returns text."""
+        import dd_agents.agents.base as base_mod
+
+        # Create mock SDK types.
+        class MockTextBlock:
+            def __init__(self, text: str) -> None:
+                self.text = text
+
+        class MockAssistantMessage:
+            def __init__(self, text: str) -> None:
+                self.content = [MockTextBlock(text)]
+
+        class MockResultMessage:
+            is_error = False
+            result = ""
+
+        # Create an async generator that yields mock messages.
+        async def mock_query(prompt: str, options: object) -> object:  # type: ignore[misc]
+            yield MockAssistantMessage("Hello from agent")
+            yield MockAssistantMessage(" part two")
+
+        monkeypatch.setattr(base_mod, "_HAS_SDK", True)
+        monkeypatch.setattr(base_mod, "_query", mock_query)
+        monkeypatch.setattr(base_mod, "_AssistantMessage", MockAssistantMessage)
+        monkeypatch.setattr(base_mod, "_TextBlock", MockTextBlock)
+        monkeypatch.setattr(base_mod, "_ResultMessage", MockResultMessage)
+
+        # Need to also mock _ClaudeAgentOptions.
+        class MockOptions:
+            def __init__(self, **kwargs: object) -> None:
+                pass
+
+        monkeypatch.setattr(base_mod, "_ClaudeAgentOptions", MockOptions)
+
+        agent = LegalAgent(tmp_project, tmp_run_dir, run_id)
+        result = await agent._spawn_agent("analyze contracts")
+        assert "Hello from agent" in result
+        assert "part two" in result
+
+    @pytest.mark.asyncio
+    async def test_spawn_agent_handles_sdk_error(
+        self,
+        tmp_project: Path,
+        tmp_run_dir: Path,
+        run_id: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When SDK returns an error message, _spawn_agent breaks and returns what it has."""
+        import dd_agents.agents.base as base_mod
+
+        class MockTextBlock:
+            def __init__(self, text: str) -> None:
+                self.text = text
+
+        class MockAssistantMessage:
+            def __init__(self, text: str) -> None:
+                self.content = [MockTextBlock(text)]
+
+        class MockResultMessage:
+            is_error = True
+            result = "Rate limit exceeded"
+
+        async def mock_query(prompt: str, options: object) -> object:  # type: ignore[misc]
+            yield MockAssistantMessage("partial output")
+            yield MockResultMessage()
+
+        monkeypatch.setattr(base_mod, "_HAS_SDK", True)
+        monkeypatch.setattr(base_mod, "_query", mock_query)
+        monkeypatch.setattr(base_mod, "_AssistantMessage", MockAssistantMessage)
+        monkeypatch.setattr(base_mod, "_TextBlock", MockTextBlock)
+        monkeypatch.setattr(base_mod, "_ResultMessage", MockResultMessage)
+
+        class MockOptions:
+            def __init__(self, **kwargs: object) -> None:
+                pass
+
+        monkeypatch.setattr(base_mod, "_ClaudeAgentOptions", MockOptions)
+
+        agent = LegalAgent(tmp_project, tmp_run_dir, run_id)
+        result = await agent._spawn_agent("test")
+        # Should have partial output collected before the error.
+        assert result == "partial output"
+
+    @pytest.mark.asyncio
+    async def test_spawn_agent_signature_compatible_with_mocks(
+        self,
+        tmp_project: Path,
+        tmp_run_dir: Path,
+        run_id: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """_spawn_agent can still be monkey-patched to return a string directly (test compat)."""
+        agent = LegalAgent(tmp_project, tmp_run_dir, run_id)
+
+        async def mock_spawn(prompt: str) -> str:
+            return '{"findings": []}'
+
+        monkeypatch.setattr(agent, "_spawn_agent", mock_spawn)
+        result = await agent._spawn_agent("test")
+        assert result == '{"findings": []}'
+
+
+# =========================================================================
+# Issue #58: Judge score extraction and threshold tests
+# =========================================================================
+
+
+class TestJudgeScoreExtraction:
+    """Tests for JudgeAgent._build_scores_from_result."""
+
+    def test_extract_scores_from_valid_output(self) -> None:
+        """_build_scores_from_result correctly parses agent output with scores."""
+        result: dict[str, object] = {
+            "run_id": "test_run",
+            "output": [
+                {
+                    "agent_scores": {
+                        "legal": {
+                            "score": 85,
+                            "findings_reviewed": 10,
+                            "findings_total": 12,
+                            "pass": 8,
+                            "partial": 1,
+                            "fail": 1,
+                            "dimensions": {
+                                "citation_verification": 90,
+                                "contextual_validation": 85,
+                                "financial_accuracy": 80,
+                                "cross_agent_consistency": 85,
+                                "completeness": 80,
+                            },
+                        },
+                        "finance": {
+                            "score": 60,
+                            "findings_reviewed": 8,
+                            "findings_total": 10,
+                            "pass": 5,
+                            "partial": 2,
+                            "fail": 1,
+                            "dimensions": {
+                                "citation_verification": 70,
+                                "contextual_validation": 60,
+                                "financial_accuracy": 50,
+                                "cross_agent_consistency": 55,
+                                "completeness": 65,
+                            },
+                        },
+                    },
+                    "overall_quality": 72,
+                }
+            ],
+        }
+
+        scores = JudgeAgent._build_scores_from_result(result, round_num=1)
+
+        assert "legal" in scores.agent_scores
+        assert "finance" in scores.agent_scores
+        assert scores.agent_scores["legal"].score == 85
+        assert scores.agent_scores["finance"].score == 60
+        assert scores.agent_scores["legal"].findings_reviewed == 10
+        assert scores.agent_scores["finance"].pass_count == 5
+        assert scores.agent_scores["legal"].dimensions.citation_verification == 90
+        # Overall should be average of 85 and 60 = 72 (rounded).
+        assert scores.overall_quality == 72
+
+    def test_extract_scores_no_output(self) -> None:
+        """When output is empty, returns zeroed QualityScores."""
+        result: dict[str, object] = {"run_id": "test", "output": []}
+        scores = JudgeAgent._build_scores_from_result(result, round_num=1)
+        assert scores.overall_quality == 0
+        assert scores.agent_scores == {}
+
+    def test_extract_scores_none_output(self) -> None:
+        """When output is None, returns zeroed QualityScores."""
+        result: dict[str, object] = {"run_id": "test", "output": None}
+        scores = JudgeAgent._build_scores_from_result(result, round_num=1)
+        assert scores.overall_quality == 0
+        assert scores.agent_scores == {}
+
+    def test_extract_scores_computes_from_dimensions(self) -> None:
+        """When no explicit score is given, score is computed from dimensions."""
+        result: dict[str, object] = {
+            "run_id": "test",
+            "output": [
+                {
+                    "agent_scores": {
+                        "legal": {
+                            "dimensions": {
+                                "citation_verification": 90,
+                                "contextual_validation": 85,
+                                "financial_accuracy": 80,
+                                "cross_agent_consistency": 85,
+                                "completeness": 80,
+                            },
+                        },
+                    },
+                }
+            ],
+        }
+        scores = JudgeAgent._build_scores_from_result(result, round_num=1)
+        expected = round(0.30 * 90 + 0.25 * 85 + 0.20 * 80 + 0.15 * 85 + 0.10 * 80)
+        assert scores.agent_scores["legal"].score == expected
+
+    def test_round_num_propagated(self) -> None:
+        """iteration_round in the returned QualityScores matches round_num."""
+        result: dict[str, object] = {
+            "run_id": "test",
+            "output": [{"agent_scores": {"legal": {"score": 90}}}],
+        }
+        scores = JudgeAgent._build_scores_from_result(result, round_num=2)
+        assert scores.iteration_round == 2
+
+
+class TestJudgeThresholdCheck:
+    """Tests for JudgeAgent threshold checks."""
+
+    def test_threshold_identifies_failing_agents(self) -> None:
+        """Agents below score_threshold are correctly identified as failing."""
+        from dd_agents.models.audit import AgentScore
+
+        scores = QualityScores(
+            run_id="test",
+            overall_quality=65,
+            iteration_round=1,
+            agent_scores={
+                "legal": AgentScore(score=85),
+                "finance": AgentScore(score=60),
+                "commercial": AgentScore(score=45),
+                "producttech": AgentScore(score=72),
+            },
+        )
+
+        threshold = DEFAULT_SCORE_THRESHOLD  # 70
+        failing = [name for name, agent_score in scores.agent_scores.items() if agent_score.score < threshold]
+        assert "finance" in failing
+        assert "commercial" in failing
+        assert "legal" not in failing
+        assert "producttech" not in failing
+
+    def test_threshold_all_pass(self) -> None:
+        """When all agents meet threshold, no failing agents."""
+        from dd_agents.models.audit import AgentScore
+
+        scores = QualityScores(
+            run_id="test",
+            overall_quality=80,
+            iteration_round=1,
+            agent_scores={
+                "legal": AgentScore(score=85),
+                "finance": AgentScore(score=75),
+            },
+        )
+        failing = [name for name, agent_score in scores.agent_scores.items() if agent_score.score < 70]
+        assert failing == []
+
+    def test_threshold_zero_scores_fail(self) -> None:
+        """Zero scores should be below the default threshold of 70."""
+        from dd_agents.models.audit import AgentScore
+
+        scores = QualityScores(
+            run_id="test",
+            overall_quality=0,
+            iteration_round=1,
+            agent_scores={
+                "legal": AgentScore(score=0),
+                "finance": AgentScore(score=0),
+            },
+        )
+        failing = [name for name, agent_score in scores.agent_scores.items() if agent_score.score < 70]
+        assert len(failing) == 2
+
+
+class TestJudgeMutableDefault:
+    """Tests that judge sampling_rates mutable default is fixed."""
+
+    def test_instances_have_independent_sampling_rates(
+        self,
+        tmp_project: Path,
+        tmp_run_dir: Path,
+        run_id: str,
+    ) -> None:
+        """Mutating sampling_rates on one instance must not affect another."""
+        agent1 = JudgeAgent(tmp_project, tmp_run_dir, run_id)
+        agent2 = JudgeAgent(tmp_project, tmp_run_dir, run_id)
+
+        # Mutate agent1's sampling_rates.
+        agent1.sampling_rates["p0"] = 0.5
+
+        # agent2 should still have the default.
+        assert agent2.sampling_rates["p0"] == 1.0
+
+    def test_default_sampling_rates_not_mutated(
+        self,
+        tmp_project: Path,
+        tmp_run_dir: Path,
+        run_id: str,
+    ) -> None:
+        """Module-level DEFAULT_SAMPLING_RATES should not be affected by instance mutations."""
+        agent = JudgeAgent(tmp_project, tmp_run_dir, run_id)
+        agent.sampling_rates["p0"] = 0.0
+
+        # Module constant must remain unchanged.
+        assert DEFAULT_SAMPLING_RATES["p0"] == 1.0
+
+    def test_custom_sampling_rates_via_init(
+        self,
+        tmp_project: Path,
+        tmp_run_dir: Path,
+        run_id: str,
+    ) -> None:
+        """JudgeAgent accepts custom sampling_rates via __init__."""
+        custom = {"p0": 0.5, "p1": 0.3, "p2": 0.2, "p3": 0.1}
+        agent = JudgeAgent(tmp_project, tmp_run_dir, run_id, sampling_rates=custom)
+        assert agent.sampling_rates == custom
+        # Must be a copy, not the same object.
+        assert agent.sampling_rates is not custom
+
+
+class TestJudgeBlendFormula:
+    """Tests for round-score blending in the judge iteration loop."""
+
+    @pytest.mark.asyncio
+    async def test_blend_applied_on_second_round(
+        self,
+        tmp_project: Path,
+        tmp_run_dir: Path,
+        run_id: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Score blending is applied when judge runs a second round."""
+        agent = JudgeAgent(tmp_project, tmp_run_dir, run_id)
+        agent.max_iteration_rounds = 2
+        agent.score_threshold = 80  # Set high so first round fails
+
+        call_count = 0
+        round_outputs = [
+            # Round 1: finance fails with score 60
+            [
+                {
+                    "agent_scores": {
+                        "legal": {"score": 85},
+                        "finance": {"score": 60},
+                    }
+                }
+            ],
+            # Round 2: finance improves to 90
+            [
+                {
+                    "agent_scores": {
+                        "legal": {"score": 90},
+                        "finance": {"score": 90},
+                    }
+                }
+            ],
+        ]
+
+        async def mock_run(state: dict[str, object]) -> dict[str, object]:
+            nonlocal call_count
+            output = round_outputs[call_count]
+            call_count += 1
+            return {"status": "success", "output": output, "run_id": "test"}
+
+        monkeypatch.setattr(agent, "run", mock_run)
+
+        scores = await agent.run_with_iteration({})
+        assert scores is not None
+
+        # Finance round 2: blend(60, 90) = 0.7*90 + 0.3*60 = 63+18 = 81
+        assert scores.agent_scores["finance"].score == blend_round_scores(60, 90)
+        # Legal round 2: blend(85, 90) = 0.7*90 + 0.3*85 = 63+25.5 = 89
+        assert scores.agent_scores["legal"].score == blend_round_scores(85, 90)
+
+
+# =========================================================================
+# Issue #52: LLM robustness instructions in prompts
+# =========================================================================
+
+
+class TestRobustnessInstructions:
+    """Tests that robustness mitigations from spec doc 22 appear in prompts."""
+
+    def test_robustness_instructions_returns_non_empty(self) -> None:
+        """The static method must return a non-empty string."""
+        text = PromptBuilder.robustness_instructions()
+        assert isinstance(text, str)
+        assert len(text) > 0
+
+    def test_robustness_includes_structured_output(self) -> None:
+        text = PromptBuilder.robustness_instructions()
+        assert "Structured Output" in text
+        assert "customer_safe_name" in text
+        assert "severity" in text
+
+    def test_robustness_includes_answer_normalization(self) -> None:
+        text = PromptBuilder.robustness_instructions()
+        assert "YES, NO, or NOT_ADDRESSED" in text
+
+    def test_robustness_includes_citation_format(self) -> None:
+        text = PromptBuilder.robustness_instructions()
+        assert "file_path" in text
+        assert "page" in text
+        assert "section_ref" in text
+        assert "exact_quote" in text
+
+    def test_robustness_includes_anti_hallucination(self) -> None:
+        text = PromptBuilder.robustness_instructions()
+        assert "VERBATIM" in text
+        assert "Do NOT generate quotes from memory" in text
+        assert "Do NOT fabricate" in text
+
+    def test_robustness_includes_context_window_awareness(self) -> None:
+        text = PromptBuilder.robustness_instructions()
+        assert "truncated" in text
+        assert "120KB" in text
+
+    def test_robustness_includes_conflict_handling(self) -> None:
+        text = PromptBuilder.robustness_instructions()
+        assert "Conflict Handling" in text
+        assert "Cite BOTH" in text
+
+    def test_robustness_includes_completeness_checklist(self) -> None:
+        text = PromptBuilder.robustness_instructions()
+        assert "Completeness Checklist" in text
+        assert "ALL customers" in text
+        assert "ALL files" in text
+        assert "YOU MAY HAVE MISSED CRITICAL INFORMATION" in text
+
+    def test_robustness_includes_not_found_protocol(self) -> None:
+        text = PromptBuilder.robustness_instructions()
+        assert "Not-Found Protocol" in text
+        assert "gap_type" in text
+        assert "Not_Found" in text
+
+    def test_robustness_in_specialist_prompt(
+        self,
+        builder: PromptBuilder,
+        sample_customers: list[CustomerEntry],
+    ) -> None:
+        """Robustness instructions are appended to every specialist prompt."""
+        for agent_name in ("legal", "finance", "commercial", "producttech"):
+            prompt = builder.build_specialist_prompt(
+                agent_name=agent_name,
+                customers=sample_customers,
+            )
+            assert "ROBUSTNESS INSTRUCTIONS" in prompt
+            assert "Anti-Hallucination" in prompt
+            assert "Completeness Checklist" in prompt
+
+    def test_robustness_not_in_judge_prompt(self, builder: PromptBuilder) -> None:
+        """Judge prompt does NOT include specialist robustness instructions."""
+        prompt = builder.build_judge_prompt()
+        # Judge has its own protocol; robustness instructions are specialist-specific.
+        assert "ROBUSTNESS INSTRUCTIONS" not in prompt
+
+
+class TestDomainRobustness:
+    """Tests for domain-specific robustness instructions per specialist."""
+
+    def test_legal_domain_robustness(self) -> None:
+        text = LegalAgent.domain_robustness()
+        assert "Change of Control" in text
+        assert "Anti-Assignment" in text
+        assert "Cap on Liability" in text
+        assert "Exclusivity" in text
+        assert "Not_Found" in text
+
+    def test_finance_domain_robustness(self) -> None:
+        text = FinanceAgent.domain_robustness()
+        assert "Cap on Liability" in text
+        assert "Insurance" in text
+        assert "Excel date serial" in text
+        assert "currency units" in text
+        assert "cite BOTH" in text.upper() or "Cite BOTH" in text or "cite BOTH" in text
+
+    def test_commercial_domain_robustness(self) -> None:
+        text = CommercialAgent.domain_robustness()
+        assert "Most Favored Nation" in text
+        assert "Exclusivity" in text
+        assert "Termination for Convenience" in text
+        assert "Not_Found" in text
+
+    def test_producttech_domain_robustness(self) -> None:
+        text = ProductTechAgent.domain_robustness()
+        assert "Data Processing Agreement" in text or "DPA" in text
+        assert "SOC 2" in text or "SOC2" in text
+        assert "Not_Found" in text or "not_found" in text.lower()
+
+    def test_all_specialists_have_domain_robustness(
+        self,
+        tmp_project: Path,
+        tmp_run_dir: Path,
+        run_id: str,
+    ) -> None:
+        """Every specialist class must expose a domain_robustness() method."""
+        for cls in (LegalAgent, FinanceAgent, CommercialAgent, ProductTechAgent):
+            agent = cls(tmp_project, tmp_run_dir, run_id)
+            text = agent.domain_robustness()
+            assert isinstance(text, str)
+            assert len(text) > 100  # Non-trivial content

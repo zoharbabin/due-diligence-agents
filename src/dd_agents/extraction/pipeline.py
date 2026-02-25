@@ -15,11 +15,15 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import re
 import subprocess
+import threading
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from dd_agents.extraction._constants import IMAGE_EXTENSIONS, PLAINTEXT_EXTENSIONS
 from dd_agents.extraction._helpers import read_text
@@ -96,6 +100,21 @@ _EXPECTED_TEXT_RATIOS: dict[str, float] = {
 # Extensions that trigger the PDF branch of the fallback chain.
 _PDF_EXTENSIONS: frozenset[str] = frozenset({".pdf"})
 
+# Default number of parallel extraction workers (Issue #36).
+_DEFAULT_WORKERS: int = min(8, os.cpu_count() or 4)
+
+
+@dataclass
+class _FileResult:
+    """Result of processing a single file in a worker thread."""
+
+    filepath_str: str
+    current_hash: str | None = None
+    entry: ExtractionQualityEntry | None = None
+    is_missing: bool = False
+    is_cache_hit: bool = False
+    is_plaintext: bool = False
+
 
 class ExtractionPipelineError(Exception):
     """Raised when >50 % of non-plaintext files fail extraction."""
@@ -134,6 +153,8 @@ class ExtractionPipeline:
         files: list[str],
         output_dir: Path,
         cache_path: Path,
+        *,
+        max_workers: int | None = None,
     ) -> list[ExtractionQualityEntry]:
         """Extract all *files*, writing markdown output to *output_dir*.
 
@@ -145,6 +166,9 @@ class ExtractionPipeline:
             Directory for extracted ``.md`` files.
         cache_path:
             Path to ``checksums.sha256`` for caching.
+        max_workers:
+            Number of parallel extraction threads.  Defaults to
+            ``min(8, os.cpu_count())``.
 
         Returns
         -------
@@ -162,25 +186,29 @@ class ExtractionPipeline:
         cache = ExtractionCache(cache_path)
         cache.load()
 
-        # --- quality tracker ---
+        # --- quality tracker (protected by lock for thread safety) ---
         tracker = ExtractionQualityTracker()
         quality_json_path = output_dir / "extraction_quality.json"
         tracker.load(quality_json_path)
+        tracker_lock = threading.Lock()
 
         primary_failures = 0
         total_non_plaintext = 0
 
-        for filepath_str in files:
+        workers = max_workers if max_workers is not None else _DEFAULT_WORKERS
+        total_files = len(files)
+        # Progress logging interval: every 10 files or 10%, whichever is larger.
+        progress_interval = max(10, total_files // 10) if total_files > 0 else 10
+        completed = 0
+
+        def _process_file(filepath_str: str) -> _FileResult:
+            """Process a single file in a worker thread."""
             filepath = Path(filepath_str)
             if not filepath.exists():
-                tracker.record(
-                    filepath=filepath_str,
-                    method="failed",
-                    bytes_extracted=0,
-                    confidence=0.0,
-                    fallback_chain=["missing"],
+                return _FileResult(
+                    filepath_str=filepath_str,
+                    is_missing=True,
                 )
-                continue
 
             # Check cache
             current_hash = ExtractionCache.compute_checksum(filepath)
@@ -193,28 +221,67 @@ class ExtractionPipeline:
                 and self._is_cached_output_readable(out_file)
             ):
                 # Cache hit -- keep existing quality entry.
-                cache.update(filepath_str, current_hash)
-                continue
+                return _FileResult(
+                    filepath_str=filepath_str,
+                    current_hash=current_hash,
+                    is_cache_hit=True,
+                )
 
             # Not cached -- run extraction
             is_plaintext = filepath.suffix.lower() in PLAINTEXT_EXTENSIONS
-            if not is_plaintext:
-                total_non_plaintext += 1
-
             entry = self.extract_single(filepath, output_dir)
-            tracker.record(
-                filepath=filepath_str,
-                method=entry.method,
-                bytes_extracted=entry.bytes_extracted,
-                confidence=entry.confidence,
-                fallback_chain=entry.fallback_chain,
-                failure_reasons=entry.failure_reasons,
+            return _FileResult(
+                filepath_str=filepath_str,
+                current_hash=current_hash,
+                entry=entry,
+                is_plaintext=is_plaintext,
             )
 
-            if entry.confidence == 0.0 and not is_plaintext:
-                primary_failures += 1
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            future_to_filepath = {executor.submit(_process_file, fp): fp for fp in files}
 
-            cache.update(filepath_str, current_hash)
+            for future in as_completed(future_to_filepath):
+                result = future.result()
+
+                if result.is_missing:
+                    with tracker_lock:
+                        tracker.record(
+                            filepath=result.filepath_str,
+                            method="failed",
+                            bytes_extracted=0,
+                            confidence=0.0,
+                            fallback_chain=["missing"],
+                        )
+                elif result.is_cache_hit:
+                    cache.update(result.filepath_str, result.current_hash or "")
+                elif result.entry is not None:
+                    if not result.is_plaintext:
+                        total_non_plaintext += 1
+
+                    with tracker_lock:
+                        tracker.record(
+                            filepath=result.filepath_str,
+                            method=result.entry.method,
+                            bytes_extracted=result.entry.bytes_extracted,
+                            confidence=result.entry.confidence,
+                            fallback_chain=result.entry.fallback_chain,
+                            failure_reasons=result.entry.failure_reasons,
+                        )
+
+                    if result.entry.confidence == 0.0 and not result.is_plaintext:
+                        primary_failures += 1
+
+                    cache.update(result.filepath_str, result.current_hash or "")
+
+                completed += 1
+                if completed % progress_interval == 0 or completed == total_files:
+                    pct = (completed / total_files * 100) if total_files > 0 else 100
+                    logger.info(
+                        "Extraction progress: %d/%d files (%.0f%%)",
+                        completed,
+                        total_files,
+                        pct,
+                    )
 
         # Remove stale cache entries for deleted files.
         cache.remove_stale(files)
@@ -222,6 +289,16 @@ class ExtractionPipeline:
 
         # Persist quality.
         tracker.save(quality_json_path)
+
+        # Log extraction summary.
+        summary = self.get_extraction_summary(tracker.entries)
+        logger.info(
+            "Extraction complete: %d/%d files succeeded (%.0f%%), methods: %s",
+            summary["succeeded"],
+            summary["total"],
+            (1.0 - summary["failure_rate"]) * 100 if summary["total"] > 0 else 100,
+            ", ".join(f"{m}={c}" for m, c in sorted(summary["by_method"].items())),
+        )
 
         # Systemic failure gate.
         if total_non_plaintext > 0:
@@ -234,6 +311,50 @@ class ExtractionPipeline:
                 )
 
         return tracker.entries
+
+    @staticmethod
+    def get_extraction_summary(
+        entries: list[ExtractionQualityEntry],
+    ) -> dict[str, Any]:
+        """Return a summary dict with method counts and failure rate.
+
+        Parameters
+        ----------
+        entries:
+            Quality entries from an extraction run.
+
+        Returns
+        -------
+        dict
+            Keys: ``total``, ``succeeded``, ``failed``,
+            ``failure_rate``, ``by_method``.
+        """
+        total = len(entries)
+        by_method: dict[str, int] = {}
+        failed = 0
+        total_non_plaintext = 0
+
+        for entry in entries:
+            by_method[entry.method] = by_method.get(entry.method, 0) + 1
+            # Count non-plaintext failures: method == "failed" or confidence < 0.1
+            # Plaintext files (direct_read with confidence > 0) are excluded.
+            is_failure = entry.method == "failed" or entry.confidence < 0.1
+            # Heuristic: direct_read with decent confidence are plaintext files.
+            is_likely_plaintext = entry.method == "direct_read" and entry.confidence >= 0.1
+            if not is_likely_plaintext:
+                total_non_plaintext += 1
+                if is_failure:
+                    failed += 1
+
+        failure_rate = (failed / total_non_plaintext) if total_non_plaintext > 0 else 0.0
+
+        return {
+            "total": total,
+            "succeeded": total - by_method.get("failed", 0),
+            "failed": failed,
+            "failure_rate": round(failure_rate, 4),
+            "by_method": by_method,
+        }
 
     def extract_single(
         self,

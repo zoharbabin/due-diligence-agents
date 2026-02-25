@@ -149,6 +149,16 @@ class PipelineEngine:
             else:
                 logger.info("Resuming from step 1 -- no prior checkpoint needed")
 
+            # Issue #45: Rebuild FRESH tier on resume so inventory is not stale.
+            # When resuming from step > 2, the FRESH wipe in step 2 is skipped,
+            # leaving stale inventory data from the prior interrupted run.
+            if resume_from_step > 2:
+                from dd_agents.persistence.tiers import TierManager
+
+                tier_mgr = TierManager(self.project_dir)
+                tier_mgr.wipe_fresh()
+                logger.info("Wiped FRESH tier for resumed run (prevents stale inventory)")
+
         ordered_steps = list(PipelineStep)
 
         for step_enum in ordered_steps:
@@ -207,7 +217,19 @@ class PipelineEngine:
                 logger.error("  BLOCKING GATE FAILED at step %d: %s", step_num, exc)
                 raise
 
-        logger.info("Pipeline completed successfully")
+        # Issue #56: include DoD summary in completion message and set exit status
+        dod_passed = self.state.validation_results.get("dod", True)
+        if dod_passed:
+            logger.info("Pipeline completed successfully -- all critical DoD checks passed")
+        else:
+            dod_path = self.state.run_dir / "dod_results.json"
+            logger.warning(
+                "Pipeline completed with critical DoD failures -- see %s",
+                dod_path,
+            )
+            # Set exit_code on state so callers can detect the failure.
+            self.state.exit_code = 1
+
         clean_checkpoints(self.checkpoint_dir)
         return self.state
 
@@ -359,7 +381,12 @@ class PipelineEngine:
         return state
 
     async def _step_02_init_persistence(self, state: PipelineState) -> PipelineState:
-        """Generate run_id, create directory structure, wipe FRESH tier."""
+        """Generate run_id, create directory structure, wipe FRESH tier.
+
+        Also populates ``prior_run_id`` and ``prior_run_dir`` from:
+        1. Explicit ``prior_run_id`` in deal config, or
+        2. Automatic lookup of the latest completed run in run history.
+        """
         from dd_agents.persistence.run_manager import RunManager
 
         run_mgr = RunManager(state.project_dir)
@@ -372,8 +399,45 @@ class PipelineEngine:
         skill_dir = state.project_dir / state.skill_dir
         state.run_dir = skill_dir / "runs" / state.run_id
 
+        # --- Populate prior_run_id (Issue #45) ---
+        explicit_prior = (state.deal_config or {}).get("execution", {}).get("prior_run_id")
+        if explicit_prior and isinstance(explicit_prior, str):
+            prior_dir = run_mgr.get_run_dir(explicit_prior)
+            if prior_dir.is_dir():
+                state.prior_run_id = explicit_prior
+                state.prior_run_dir = prior_dir
+                logger.info("Prior run (from config): %s", explicit_prior)
+            else:
+                logger.warning("Configured prior_run_id %s not found on disk", explicit_prior)
+        else:
+            # Auto-detect from run history: latest completed run
+            prior_id = self._find_latest_completed_run(run_mgr)
+            if prior_id:
+                prior_dir = run_mgr.get_run_dir(prior_id)
+                if prior_dir.is_dir():
+                    state.prior_run_id = prior_id
+                    state.prior_run_dir = prior_dir
+                    logger.info("Prior run (auto-detected): %s", prior_id)
+
         logger.info("Initialized run %s at %s", state.run_id, state.run_dir)
         return state
+
+    @staticmethod
+    def _find_latest_completed_run(run_mgr: Any) -> str | None:
+        """Return the run_id of the most recent completed run from history.
+
+        Falls back to the ``latest`` symlink if run_history.json is empty or
+        unavailable.
+        """
+        history = run_mgr.load_run_history()
+        # Walk backwards to find the latest completed entry
+        for entry in reversed(history):
+            if entry.get("completion_status") == "completed":
+                return str(entry["run_id"])
+
+        # Fallback: latest symlink
+        prior: str | None = run_mgr.get_prior_run_id()
+        return prior
 
     async def _step_03_cross_skill_check(self, state: PipelineState) -> PipelineState:
         """Scan for outputs from other DD skill runs (cross-skill data)."""
@@ -703,19 +767,150 @@ class PipelineEngine:
         return state
 
     async def _step_14_prepare_prompts(self, state: PipelineState) -> PipelineState:
-        """Prepare agent prompts with size estimation and batching."""
+        """Prepare agent prompts with size estimation and batching.
+
+        Uses :class:`PromptBuilder` to split customers into context-sized
+        batches, then builds one prompt string per batch per specialist agent.
+        Results are stored in ``state.agent_prompts`` (agent_name -> list of
+        prompt strings) and ``state.batch_counts`` (agent_name -> int).
+        """
+        from dd_agents.agents.prompt_builder import PromptBuilder
+
         if self.team is None:
             self.team = AgentTeam(state)
-        # Placeholder -- wire to agents.prompt_builder when available
-        logger.info("Prepare prompts (placeholder -- wire to agents.prompt_builder)")
+
+        customers: list[Any] = getattr(state, "_customer_entries", [])
+        reference_files: list[Any] = getattr(state, "_reference_files", [])
+        deal_config_raw = state.deal_config
+
+        # Lazy import to build typed DealConfig only when available
+        deal_config_obj: Any = None
+        if deal_config_raw:
+            try:
+                from dd_agents.config import load_deal_config
+
+                deal_config_obj = load_deal_config(self.deal_config_path)
+            except Exception:
+                deal_config_obj = None
+
+        run_dir = state.run_dir or (state.project_dir / state.skill_dir / "runs" / state.run_id)
+        builder = PromptBuilder(
+            project_dir=state.project_dir,
+            run_dir=run_dir,
+            run_id=state.run_id,
+        )
+
+        text_dir_str = str(self._text_dir(state))
+
+        for agent_name in ALL_SPECIALIST_AGENTS:
+            batches = PromptBuilder.batch_customers(customers)
+            prompts: list[str] = []
+            for batch in batches:
+                prompt = builder.build_specialist_prompt(
+                    agent_name=agent_name,
+                    customers=batch,
+                    reference_files=reference_files or None,
+                    deal_config=deal_config_obj,
+                    text_dir=text_dir_str,
+                )
+                prompts.append(prompt)
+
+            state.agent_prompts[agent_name] = prompts
+            state.batch_counts[agent_name] = len(batches)
+
+            logger.info(
+                "Agent %s: %d batch(es), %d customers total",
+                agent_name,
+                len(batches),
+                len(customers),
+            )
+
+        logger.info(
+            "Prepared prompts for %d agents with batching (1-based naming)",
+            len(ALL_SPECIALIST_AGENTS),
+        )
         return state
 
     async def _step_15_route_references(self, state: PipelineState) -> PipelineState:
-        """Route reference files to agent prompts."""
+        """Route reference files to customer analysis directories.
+
+        Reads reference files classified in step 8 and copies their extracted
+        text into each customer's analysis folder so specialist agents can
+        access them during analysis.  Each reference file is routed according
+        to its ``assigned_to_agents`` list from the classification step.
+
+        The routing manifest is written to ``{RUN_DIR}/reference_routing.json``
+        for audit traceability.
+        """
+        from pathlib import Path as _Path
+
         if self.team is None:
             self.team = AgentTeam(state)
-        # Placeholder -- wire to agents.prompt_builder when available
-        logger.info("Route references (placeholder -- wire to inventory.reference_files)")
+
+        ref_files: list[Any] = getattr(state, "_reference_files", [])
+        if not ref_files:
+            logger.info("No reference files to route")
+            return state
+
+        text_dir = self._text_dir(state)
+        findings_dir = state.run_dir / "findings"
+        routing_manifest: list[dict[str, Any]] = []
+
+        for ref in ref_files:
+            # Resolve the extracted text path
+            source_text: _Path | None = None
+            if ref.text_path:
+                candidate = _Path(ref.text_path)
+                if candidate.is_absolute() and candidate.exists():
+                    source_text = candidate
+                else:
+                    # Relative to text_dir
+                    candidate = text_dir / ref.text_path
+                    if candidate.exists():
+                        source_text = candidate
+
+            if source_text is None:
+                # Try to derive from file_path
+                stem = _Path(ref.file_path).stem
+                candidate = text_dir / f"{stem}.md"
+                if candidate.exists():
+                    source_text = candidate
+
+            if source_text is None:
+                logger.debug("No extracted text for reference %s -- skipping", ref.file_path)
+                continue
+
+            agents_routed: list[str] = ref.assigned_to_agents or list(ALL_SPECIALIST_AGENTS)
+
+            for agent_name in agents_routed:
+                agent_ref_dir = findings_dir / agent_name / "_references"
+                agent_ref_dir.mkdir(parents=True, exist_ok=True)
+                dest = agent_ref_dir / source_text.name
+
+                if not dest.exists():
+                    try:
+                        # Use symlink for efficiency; fall back to copy
+                        dest.symlink_to(source_text)
+                    except OSError:
+                        import shutil
+
+                        shutil.copy2(str(source_text), str(dest))
+
+            routing_manifest.append(
+                {
+                    "file_path": ref.file_path,
+                    "category": ref.category,
+                    "agents": agents_routed,
+                    "text_source": str(source_text),
+                }
+            )
+
+        # Write routing manifest for audit
+        manifest_path = state.run_dir / "reference_routing.json"
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        manifest_path.write_text(json.dumps(routing_manifest, indent=2))
+
+        logger.info("Routed %d reference files to agent directories", len(routing_manifest))
         return state
 
     async def _step_16_spawn_specialists(self, state: PipelineState) -> PipelineState:
@@ -741,40 +936,352 @@ class PipelineEngine:
         return state
 
     async def _step_17_coverage_gate(self, state: PipelineState) -> PipelineState:
-        """Validate specialist output coverage.  BLOCKING GATE."""
-        # Check that all 4 agents produced output for all customers
-        findings_dir = state.run_dir / "findings"
-        missing: list[str] = []
+        """Validate specialist output coverage.  BLOCKING GATE.
 
-        for customer in state.customer_safe_names:
-            for agent in ALL_SPECIALIST_AGENTS:
+        For each agent, checks which customers have output files.  If
+        coverage < 90 %, attempts a respawn for missing customers.  After
+        respawn, generates P1 gap findings for any still-missing customers.
+        If coverage remains < 50 % for any agent after respawn, raises
+        :class:`BlockingGateError`.
+        """
+        findings_dir = state.run_dir / "findings"
+        total_customers = len(state.customer_safe_names)
+        if total_customers == 0:
+            logger.info("Coverage gate: no customers to check")
+            return state
+
+        # --- First pass: per-agent coverage ---------------------------------
+        per_agent_missing: dict[str, list[str]] = {}
+        for agent in ALL_SPECIALIST_AGENTS:
+            missing: list[str] = []
+            for customer in state.customer_safe_names:
                 path = findings_dir / agent / f"{customer}.json"
                 if not path.exists():
-                    missing.append(f"{agent}/{customer}")
+                    missing.append(customer)
+            per_agent_missing[agent] = missing
 
-        if missing:
-            logger.warning(
-                "Coverage gate: %d missing outputs: %s",
-                len(missing),
-                missing[:10],
+            # Run context exhaustion detection (Issue #39)
+            exhaustion = self._detect_context_exhaustion(
+                agent_name=agent,
+                findings_dir=findings_dir,
+                expected_customers=state.customer_safe_names,
             )
-            # Do not block during early wiring -- allow pipeline to continue
-            # raise BlockingGateError(f"Coverage gate failed: {len(missing)} missing outputs")
+            if exhaustion.get("likely_exhaustion"):
+                logger.warning(
+                    "Context exhaustion detected for agent %s: %s",
+                    agent,
+                    exhaustion.get("reason", "unknown"),
+                )
 
+        # --- Respawn for agents below 90 % coverage ------------------------
+        for agent, missing_custs in per_agent_missing.items():
+            coverage_pct = (total_customers - len(missing_custs)) / total_customers
+            if coverage_pct < 0.90 and missing_custs:
+                logger.warning(
+                    "Agent %s coverage %.1f%% < 90%% -- respawning for %d missing customers",
+                    agent,
+                    coverage_pct * 100,
+                    len(missing_custs),
+                )
+                await self._respawn_for_missing_customers(
+                    agent_name=agent,
+                    missing_customers=missing_custs,
+                    state=state,
+                )
+
+        # --- Second pass: re-check coverage after respawn -------------------
+        all_gap_findings: list[dict[str, Any]] = []
+        worst_coverage: float = 1.0
+        worst_agent: str = ""
+
+        for agent in ALL_SPECIALIST_AGENTS:
+            still_missing: list[str] = []
+            for customer in state.customer_safe_names:
+                path = findings_dir / agent / f"{customer}.json"
+                if not path.exists():
+                    still_missing.append(customer)
+
+            coverage_pct = (total_customers - len(still_missing)) / total_customers
+
+            if coverage_pct < worst_coverage:
+                worst_coverage = coverage_pct
+                worst_agent = agent
+
+            # Generate P1 gap findings for still-missing customers
+            for customer in still_missing:
+                gap = self._generate_coverage_gap_finding(
+                    customer_safe_name=customer,
+                    agent_name=agent,
+                    run_id=state.run_id,
+                )
+                all_gap_findings.append(gap)
+
+            if still_missing:
+                logger.warning(
+                    "Agent %s post-respawn coverage: %.1f%% (%d still missing)",
+                    agent,
+                    coverage_pct * 100,
+                    len(still_missing),
+                )
+
+        # --- Persist gap findings -------------------------------------------
+        if all_gap_findings:
+            gaps_dir = findings_dir / "coverage_gaps"
+            gaps_dir.mkdir(parents=True, exist_ok=True)
+            gap_path = gaps_dir / "coverage_gap_findings.json"
+            gap_path.write_text(json.dumps(all_gap_findings, indent=2))
+            logger.info(
+                "Generated %d coverage gap findings at %s",
+                len(all_gap_findings),
+                gap_path,
+            )
+
+        # --- Block if coverage < 50 % after respawn ------------------------
+        if worst_coverage < 0.50:
+            raise BlockingGateError(
+                f"Coverage gate failed: agent {worst_agent!r} has "
+                f"{worst_coverage * 100:.1f}% coverage (< 50% threshold) "
+                f"after respawn attempt"
+            )
+
+        logger.info(
+            "Coverage gate passed: worst coverage %.1f%% (agent %s)",
+            worst_coverage * 100,
+            worst_agent or "n/a",
+        )
         return state
+
+    # ------------------------------------------------------------------
+    # Coverage helpers
+    # ------------------------------------------------------------------
+
+    async def _respawn_for_missing_customers(
+        self,
+        agent_name: str,
+        missing_customers: list[str],
+        state: PipelineState,
+    ) -> None:
+        """Attempt to respawn an agent for a reduced set of customers.
+
+        Builds a minimal prompt containing only *missing_customers* and
+        invokes the agent.  This is a best-effort recovery -- failures
+        are logged but do not raise.
+        """
+        from dd_agents.agents.prompt_builder import PromptBuilder
+
+        customers_all: list[Any] = getattr(state, "_customer_entries", [])
+        missing_set = set(missing_customers)
+        subset = [c for c in customers_all if c.safe_name in missing_set]
+
+        if not subset:
+            logger.warning(
+                "Respawn for %s: could not find customer entries for %s",
+                agent_name,
+                missing_customers[:5],
+            )
+            return
+
+        run_dir = state.run_dir or (state.project_dir / state.skill_dir / "runs" / state.run_id)
+        builder = PromptBuilder(
+            project_dir=state.project_dir,
+            run_dir=run_dir,
+            run_id=state.run_id,
+        )
+        _prompt = builder.build_specialist_prompt(
+            agent_name=agent_name,
+            customers=subset,
+        )
+
+        # In production this would spawn the agent with the reduced prompt.
+        # For now, the team placeholder handles it.
+        if self.team is None:
+            self.team = AgentTeam(state)
+        try:
+            result = await self.team._run_specialist(agent_name, {"respawn": True})
+            logger.info(
+                "Respawn for %s completed: status=%s",
+                agent_name,
+                result.get("status", "unknown"),
+            )
+        except Exception as exc:
+            logger.warning("Respawn for %s failed: %s", agent_name, exc)
+
+    @staticmethod
+    def _detect_context_exhaustion(
+        agent_name: str,
+        findings_dir: Any,
+        expected_customers: list[str],
+    ) -> dict[str, Any]:
+        """Detect silent context exhaustion in agent output.
+
+        Compares produced output files against *expected_customers*.  If
+        coverage is incomplete, checks whether the last files produced are
+        significantly smaller than the average -- a sign that the agent was
+        truncated mid-analysis.
+
+        Returns a dict with keys:
+
+        - ``agent``: the agent name
+        - ``produced``: number of output files
+        - ``expected``: number of expected customers
+        - ``coverage_pct``: float 0--1
+        - ``likely_exhaustion``: bool
+        - ``reason``: str (empty if no exhaustion detected)
+        - ``file_sizes``: list of (filename, size) tuples sorted by name
+        """
+        from pathlib import Path as _Path
+
+        agent_dir = _Path(str(findings_dir)) / agent_name
+        result: dict[str, Any] = {
+            "agent": agent_name,
+            "produced": 0,
+            "expected": len(expected_customers),
+            "coverage_pct": 0.0,
+            "likely_exhaustion": False,
+            "reason": "",
+            "file_sizes": [],
+        }
+
+        if not agent_dir.is_dir():
+            if expected_customers:
+                result["likely_exhaustion"] = True
+                result["reason"] = "No output directory found"
+            return result
+
+        # Collect file sizes (only customer JSON files)
+        file_sizes: list[tuple[str, int]] = []
+        for fp in sorted(agent_dir.glob("*.json")):
+            if fp.name == "coverage_manifest.json":
+                continue
+            file_sizes.append((fp.name, fp.stat().st_size))
+
+        result["produced"] = len(file_sizes)
+        result["file_sizes"] = file_sizes
+        result["coverage_pct"] = len(file_sizes) / len(expected_customers) if expected_customers else 1.0
+
+        if not expected_customers or len(file_sizes) >= len(expected_customers):
+            return result
+
+        # Incomplete coverage -- check for truncation pattern
+        if len(file_sizes) < 2:
+            result["likely_exhaustion"] = True
+            result["reason"] = f"Only {len(file_sizes)} of {len(expected_customers)} files produced"
+            return result
+
+        sizes = [s for _, s in file_sizes]
+        avg_size = sum(sizes) / len(sizes)
+
+        # Check last N files (up to 3) against average
+        check_count = min(3, len(sizes))
+        tail_sizes = sizes[-check_count:]
+        tail_avg = sum(tail_sizes) / len(tail_sizes)
+
+        # If the tail average is less than 30 % of overall average, flag it
+        if avg_size > 0 and tail_avg < avg_size * 0.30:
+            result["likely_exhaustion"] = True
+            result["reason"] = (
+                f"Last {check_count} files avg {tail_avg:.0f} bytes vs "
+                f"overall avg {avg_size:.0f} bytes ({tail_avg / avg_size * 100:.0f}%)"
+            )
+            return result
+
+        # Also check if the very last file is significantly smaller
+        last_size = sizes[-1]
+        if avg_size > 0 and last_size < avg_size * 0.20:
+            result["likely_exhaustion"] = True
+            result["reason"] = (
+                f"Last file {last_size} bytes vs avg {avg_size:.0f} bytes ({last_size / avg_size * 100:.0f}%)"
+            )
+            return result
+
+        # Incomplete but no truncation pattern detected
+        result["reason"] = (
+            f"{len(file_sizes)} of {len(expected_customers)} files produced, no truncation pattern detected"
+        )
+        return result
+
+    @staticmethod
+    def _generate_coverage_gap_finding(
+        customer_safe_name: str,
+        agent_name: str,
+        run_id: str,
+    ) -> dict[str, Any]:
+        """Generate a P1 gap finding for a customer missing from agent output.
+
+        Returns a Finding-compatible dict suitable for persisting to the
+        ``coverage_gaps/`` directory.
+        """
+        return {
+            "finding_id": f"COVERAGE_GAP_{agent_name}_{customer_safe_name}",
+            "customer_safe_name": customer_safe_name,
+            "agent": agent_name,
+            "run_id": run_id,
+            "severity": "P1",
+            "finding_type": "coverage_gap",
+            "title": f"Missing {agent_name} analysis for {customer_safe_name}",
+            "description": (
+                f"The {agent_name} agent did not produce output for customer "
+                f"{customer_safe_name!r}.  This may indicate context exhaustion, "
+                f"agent failure, or a prompt assembly error.  Manual review is "
+                f"required."
+            ),
+            "timestamp": datetime.now(UTC).isoformat(),
+            "source": "coverage_gate",
+            "auto_generated": True,
+        }
 
     # Phase 5: Quality Review -----------------------------------------------
 
     async def _step_18_incremental_merge(self, state: PipelineState) -> PipelineState:
-        """Merge new findings with carried-forward findings.  CONDITIONAL."""
+        """Merge new findings with carried-forward findings.  CONDITIONAL.
+
+        For customers classified as UNCHANGED in step 12, copies their findings
+        from the prior run into the current run directory with carry-forward
+        metadata annotations.  Only runs when ``execution_mode == "incremental"``
+        and a valid prior run directory is available.
+        """
         if state.execution_mode != "incremental":
             logger.info("Skipping step 18 -- not incremental mode")
             return state
 
-        if self.team is None:
-            self.team = AgentTeam(state)
-        # Placeholder -- handled by agent team
-        logger.info("Incremental merge (placeholder -- wire to persistence.incremental)")
+        if not state.prior_run_dir or not state.prior_run_id:
+            logger.warning("Skipping step 18 -- no prior run available for incremental merge")
+            return state
+
+        from dd_agents.persistence.incremental import IncrementalClassifier
+
+        classifier = IncrementalClassifier()
+
+        # Determine unchanged customers from classification (set in step 12)
+        unchanged_customers: list[str] = []
+        classification_data = state.classification
+        if classification_data:
+            for entry in classification_data.get("customers", []):
+                status = entry.get("classification", "")
+                if status in ("UNCHANGED",):
+                    name = entry.get("customer_safe_name", "")
+                    if name:
+                        unchanged_customers.append(name)
+
+        if not unchanged_customers:
+            logger.info("No unchanged customers to carry forward")
+            return state
+
+        prior_findings_dir = state.prior_run_dir / "findings"
+        current_findings_dir = state.run_dir / "findings"
+        current_findings_dir.mkdir(parents=True, exist_ok=True)
+
+        carried = classifier.carry_forward_findings(
+            unchanged_customers=unchanged_customers,
+            prior_findings_dir=prior_findings_dir,
+            current_findings_dir=current_findings_dir,
+        )
+
+        logger.info(
+            "Incremental merge: carried forward %d finding files for %d unchanged customers",
+            carried,
+            len(unchanged_customers),
+        )
         return state
 
     async def _step_19_spawn_judge(self, state: PipelineState) -> PipelineState:
@@ -793,39 +1300,202 @@ class PipelineEngine:
         return state
 
     async def _step_20_judge_review(self, state: PipelineState) -> PipelineState:
-        """Judge reviews, samples, spot-checks, scores.  CONDITIONAL."""
+        """Judge reviews, samples, spot-checks, scores.  CONDITIONAL.
+
+        Runs the Judge agent's quality review on specialist findings.  The Judge
+        performs risk-based sampling, citation verification, contextual validation,
+        financial accuracy checks, cross-agent consistency, and completeness review.
+
+        Results are stored in ``state.judge_scores`` and written to
+        ``{RUN_DIR}/judge/quality_scores.json``.
+
+        Gracefully degrades if the Judge agent is not configured or fails.
+        """
         if not state.judge_enabled:
             logger.info("Skipping step 20 -- judge not enabled")
             return state
 
         if self.team is None:
             self.team = AgentTeam(state)
-        # Placeholder -- handled by agent team
-        logger.info("Judge review (placeholder -- wire to agents.judge)")
+
+        from dd_agents.agents.judge import (
+            DEFAULT_SCORE_THRESHOLD,
+            JudgeAgent,
+        )
+
+        judge_config = (state.deal_config or {}).get("judge", {})
+
+        try:
+            judge = JudgeAgent(
+                project_dir=state.project_dir,
+                run_dir=state.run_dir,
+                run_id=state.run_id,
+            )
+            # Apply deal-config overrides
+            judge.score_threshold = judge_config.get("score_threshold", DEFAULT_SCORE_THRESHOLD)
+            if "sampling_rates" in judge_config:
+                judge.sampling_rates.update(judge_config["sampling_rates"])
+
+            judge_state: dict[str, Any] = {
+                "findings_dir": str(state.run_dir / "findings"),
+                "customers": state.customer_safe_names,
+                "run_id": state.run_id,
+            }
+
+            scores = await judge.run_with_iteration(judge_state)
+
+            if scores is not None:
+                # Persist quality scores
+                judge_dir = state.run_dir / "judge"
+                judge_dir.mkdir(parents=True, exist_ok=True)
+                scores_path = judge_dir / "quality_scores.json"
+                scores_path.write_text(scores.model_dump_json(indent=2))
+
+                # Store in state for steps 21-22
+                state.judge_scores = {
+                    "overall_quality": scores.overall_quality,
+                    "iteration_round": scores.iteration_round,
+                    "agent_scores": {
+                        name: agent_score.model_dump() for name, agent_score in scores.agent_scores.items()
+                    },
+                    "agents_below_threshold": scores.agents_below_threshold,
+                    "score_threshold": judge.score_threshold,
+                }
+
+                logger.info(
+                    "Judge review complete: overall=%d, round=%d, below_threshold=%s",
+                    scores.overall_quality,
+                    scores.iteration_round,
+                    scores.agents_below_threshold,
+                )
+            else:
+                logger.info("Judge returned no scores (graceful degradation)")
+
+        except Exception as exc:
+            logger.warning("Judge review failed (graceful degradation): %s", exc)
+            state.judge_scores = {"error": str(exc), "degraded": True}
+
         return state
 
     async def _step_21_judge_respawn(self, state: PipelineState) -> PipelineState:
-        """Re-spawn agents below Judge threshold.  CONDITIONAL."""
+        """Re-spawn agents below Judge threshold.  CONDITIONAL.
+
+        Reads the Judge scores from step 20 and identifies agents scoring below
+        the configured threshold.  Those agents are re-spawned to re-analyze
+        the customers they were responsible for.  Gracefully degrades if Judge
+        data is unavailable.
+        """
         if not state.judge_enabled:
             logger.info("Skipping step 21 -- judge not enabled")
             return state
 
         if self.team is None:
             self.team = AgentTeam(state)
-        # Placeholder -- handled by agent team
-        logger.info("Judge respawn (placeholder -- wire to agents.judge)")
+
+        judge_data = state.judge_scores
+        if not judge_data or judge_data.get("degraded"):
+            logger.info("Skipping step 21 -- no judge scores available (degraded)")
+            return state
+
+        failing_agents: list[str] = judge_data.get("agents_below_threshold", [])
+        if not failing_agents:
+            logger.info("All agents passed judge threshold -- no re-spawn needed")
+            return state
+
+        logger.info("Re-spawning agents below threshold: %s", failing_agents)
+
+        # Re-spawn only the failing specialist agents
+        for agent_name in failing_agents:
+            if agent_name not in ALL_SPECIALIST_AGENTS:
+                continue
+
+            try:
+                result = await self.team._run_specialist(agent_name, {})
+                state.agent_results[f"{agent_name}_round2"] = result
+                logger.info("Re-spawned agent %s for round 2", agent_name)
+            except Exception as exc:
+                logger.warning("Failed to re-spawn agent %s: %s", agent_name, exc)
+                state.agent_results[f"{agent_name}_round2"] = {
+                    "agent": agent_name,
+                    "status": "failed",
+                    "error": str(exc),
+                    "is_error": True,
+                }
+
         return state
 
     async def _step_22_judge_round2(self, state: PipelineState) -> PipelineState:
-        """Judge Round 2 review of re-analyzed findings.  CONDITIONAL."""
+        """Judge Round 2 review of re-analyzed findings.  CONDITIONAL.
+
+        Merges round-2 findings with round-1 findings using the 70/30 blend
+        formula (70% new + 30% prior).  Updates quality scores and writes
+        final results.  Gracefully degrades if round-2 data is unavailable.
+        """
         if not state.judge_enabled:
             logger.info("Skipping step 22 -- judge not enabled")
             return state
 
         if self.team is None:
             self.team = AgentTeam(state)
-        # Placeholder -- handled by agent team
-        logger.info("Judge Round 2 (placeholder -- wire to agents.judge)")
+
+        judge_data = state.judge_scores
+        if not judge_data or judge_data.get("degraded"):
+            logger.info("Skipping step 22 -- no judge scores available (degraded)")
+            return state
+
+        failing_agents: list[str] = judge_data.get("agents_below_threshold", [])
+        if not failing_agents:
+            logger.info("No agents below threshold -- round 2 not needed")
+            return state
+
+        # Check if round-2 results exist
+        has_round2 = any(f"{a}_round2" in state.agent_results for a in failing_agents)
+        if not has_round2:
+            logger.info("No round-2 results available -- applying quality caveats")
+            judge_data["quality_caveats"] = [
+                f"Agent {a} below threshold, round-2 re-analysis unavailable" for a in failing_agents
+            ]
+            state.judge_scores = judge_data
+            return state
+
+        from dd_agents.agents.judge import blend_round_scores
+
+        # Blend round-1 and round-2 scores for agents that were re-spawned
+        agent_scores = judge_data.get("agent_scores", {})
+        for agent_name in failing_agents:
+            round2_key = f"{agent_name}_round2"
+            if round2_key not in state.agent_results:
+                continue
+
+            r1_score_data = agent_scores.get(agent_name, {})
+            r1_score = r1_score_data.get("score", 0)
+            # Round-2 score placeholder (in production, the Judge would score it)
+            r2_score = r1_score  # Placeholder until real Judge scoring is wired
+            blended = blend_round_scores(r1_score, r2_score)
+
+            if agent_name in agent_scores:
+                agent_scores[agent_name]["score"] = blended
+                agent_scores[agent_name]["blended"] = True
+
+            logger.info(
+                "Agent %s: round1=%d, round2=%d, blended=%d",
+                agent_name,
+                r1_score,
+                r2_score,
+                blended,
+            )
+
+        judge_data["agent_scores"] = agent_scores
+        judge_data["iteration_round"] = 2
+        state.judge_scores = judge_data
+
+        # Update persisted quality scores
+        judge_dir = state.run_dir / "judge"
+        judge_dir.mkdir(parents=True, exist_ok=True)
+        scores_path = judge_dir / "quality_scores.json"
+        scores_path.write_text(json.dumps(judge_data, indent=2))
+
+        logger.info("Judge Round 2 complete: blended scores for %d agents", len(failing_agents))
         return state
 
     # Phase 6: Reporting ----------------------------------------------------
@@ -1098,7 +1768,13 @@ class PipelineEngine:
         return state
 
     async def _step_30_generate_excel(self, state: PipelineState) -> PipelineState:
-        """Generate Excel workbook from report_schema.json."""
+        """Generate Excel workbook from report_schema.json.
+
+        Schema resolution order (Issue #35):
+        1. ``{run_dir}/report_schema.json`` -- written by earlier pipeline steps
+        2. ``{project_root}/config/report_schema.json`` -- shipped with the project
+        3. Built-in minimal schema with a single Summary sheet
+        """
         from dd_agents.models.reporting import ReportSchema
         from dd_agents.reporting.excel import ExcelReportGenerator
 
@@ -1113,17 +1789,70 @@ class PipelineEngine:
                 except (json.JSONDecodeError, OSError):
                     continue
 
-        # Load or generate report schema
-        schema_path = state.run_dir / "report_schema.json"
-        if schema_path.exists():
+        # ------------------------------------------------------------------
+        # Schema resolution with config/ fallback (Issue #35)
+        # ------------------------------------------------------------------
+        schema: ReportSchema | None = None
+
+        # 1. Try run_dir
+        run_schema_path = state.run_dir / "report_schema.json"
+        if run_schema_path.exists():
             try:
-                schema = ReportSchema.model_validate_json(schema_path.read_text())
+                schema = ReportSchema.model_validate_json(run_schema_path.read_text())
+                logger.info("Loaded report schema from run dir: %s", run_schema_path)
             except Exception:
-                logger.warning("Invalid report_schema.json -- using default")
-                schema = ReportSchema(schema_version="1.0.0")
-        else:
-            schema = ReportSchema(schema_version="1.0.0")
-            schema_path.write_text(schema.model_dump_json(indent=2))
+                logger.warning("Invalid report_schema.json in run dir -- trying config/")
+
+        # 2. Fallback: project config/ directory
+        if schema is None:
+            config_schema_path = self.project_dir / "config" / "report_schema.json"
+            if config_schema_path.exists():
+                try:
+                    schema = ReportSchema.model_validate_json(config_schema_path.read_text())
+                    logger.info("Loaded report schema from config/: %s", config_schema_path)
+                    # Copy to run_dir so step 31 can find it
+                    run_schema_path.parent.mkdir(parents=True, exist_ok=True)
+                    run_schema_path.write_text(config_schema_path.read_text())
+                except Exception:
+                    logger.warning("Invalid report_schema.json in config/ -- using built-in minimal schema")
+
+        # 3. Fallback: built-in minimal schema
+        if schema is None:
+            logger.warning(
+                "No valid report_schema.json found in run dir or config/. "
+                "Using built-in minimal schema with a Summary sheet."
+            )
+            schema = ReportSchema.model_validate(
+                {
+                    "schema_version": "1.0.0",
+                    "description": "Built-in minimal schema (fallback)",
+                    "sheets": [
+                        {
+                            "name": "Summary",
+                            "required": True,
+                            "activation_condition": "always",
+                            "columns": [
+                                {"name": "Customer", "key": "customer", "type": "string", "width": 30},
+                                {
+                                    "name": "Overall Risk Rating",
+                                    "key": "overall_risk_rating",
+                                    "type": "string",
+                                    "width": 20,
+                                },
+                                {
+                                    "name": "Total Findings",
+                                    "key": "total_findings",
+                                    "type": "integer",
+                                    "width": 14,
+                                },
+                                {"name": "Gap Count", "key": "gap_count", "type": "integer", "width": 12},
+                            ],
+                        },
+                    ],
+                }
+            )
+            run_schema_path.parent.mkdir(parents=True, exist_ok=True)
+            run_schema_path.write_text(schema.model_dump_json(indent=2))
 
         generator = ExcelReportGenerator()
         report_dir = state.run_dir / "report"
@@ -1219,8 +1948,16 @@ class PipelineEngine:
             logger.info("No entity resolver -- skipping cache save")
         return state
 
+    # Critical DoD check numbers per spec (Issue #56).
+    # Failures in these checks cause a non-zero pipeline exit status.
+    CRITICAL_DOD_CHECKS: frozenset[int] = frozenset({1, 2, 3, 11, 13, 14, 15, 17, 19})
+
     async def _step_35_shutdown(self, state: PipelineState) -> PipelineState:
-        """Shutdown all agents and clean up resources."""
+        """Shutdown all agents, run DoD checks, set exit status.
+
+        Issue #56: DoD results are stored in ``state.validation_results["dod"]``
+        and the pipeline exit status reflects critical DoD failures.
+        """
         # Run Definition of Done checks
         from dd_agents.validation.dod import DefinitionOfDoneChecker
 
@@ -1237,16 +1974,38 @@ class PipelineEngine:
         total = len(dod_results)
         logger.info("DoD: %d/%d checks passed", passed, total)
 
+        # Identify critical DoD failures (Issue #56)
+        critical_failures: list[str] = []
+        for check in dod_results:
+            if not check.passed:
+                # A check is critical if any of its dod_checks numbers
+                # are in the CRITICAL_DOD_CHECKS set.
+                check_nums = set(check.dod_checks)
+                if check_nums & self.CRITICAL_DOD_CHECKS:
+                    label = check.rule or f"DoD checks {check.dod_checks}"
+                    critical_failures.append(label)
+
         # Persist DoD results
-        dod_output = {
+        dod_output: dict[str, object] = {
             "passed": passed,
             "total": total,
+            "critical_failures": critical_failures,
             "checks": [c.model_dump() for c in dod_results],
         }
         dod_path = state.run_dir / "dod_results.json"
         dod_path.parent.mkdir(parents=True, exist_ok=True)
         dod_path.write_text(json.dumps(dod_output, indent=2))
         logger.info("DoD results written to %s", dod_path)
+
+        # Store in state for pipeline exit status (Issue #56)
+        state.validation_results["dod"] = len(critical_failures) == 0
+
+        if critical_failures:
+            logger.warning(
+                "DoD CRITICAL FAILURES (%d): %s",
+                len(critical_failures),
+                critical_failures,
+            )
 
         self.team = None
         logger.info("Pipeline shutdown complete")

@@ -107,6 +107,16 @@ class ExcelReportGenerator:
         deal_config = deal_config or {}
         run_metadata = run_metadata or {}
 
+        # ------------------------------------------------------------------
+        # Guard: reject schemas with zero sheet definitions (Issue #35).
+        # ------------------------------------------------------------------
+        if not report_schema.sheets:
+            raise ValueError(
+                "Cannot generate Excel report: report_schema has zero sheet "
+                "definitions. Provide a valid report_schema.json with at "
+                "least one sheet."
+            )
+
         self._wb = Workbook()
         # Remove default sheet
         default_ws = self._wb.active
@@ -114,6 +124,9 @@ class ExcelReportGenerator:
             self._wb.remove(default_ws)
 
         fmt = report_schema.global_formatting
+
+        # Track per-sheet row counts to warn about empty sheets later
+        sheet_row_counts: dict[str, int] = {}
 
         for sheet_def in report_schema.sheets:
             if not self._is_activated(sheet_def, deal_config):
@@ -131,8 +144,20 @@ class ExcelReportGenerator:
                 run_metadata,
             )
 
+            sheet_row_counts[sheet_def.name] = len(data_rows)
+
             self._write_sheet(ws, sheet_def, active_cols, data_rows, fmt)
             self._apply_formatting(ws, sheet_def, active_cols, fmt)
+
+        # ------------------------------------------------------------------
+        # Warn about empty non-Summary sheets (Issue #53).
+        # ------------------------------------------------------------------
+        for sheet_name, row_count in sheet_row_counts.items():
+            if row_count == 0 and sheet_name != "Summary":
+                logger.warning(
+                    "Sheet '%s' has only headers and zero data rows",
+                    sheet_name,
+                )
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         self._wb.save(str(output_path))
@@ -172,9 +197,11 @@ class ExcelReportGenerator:
         for row_idx, row_data in enumerate(data_rows, start=2):
             for col_idx, col_def in enumerate(columns, start=1):
                 value = row_data.get(col_def.key, "")
-                # Handle list values
+                # Handle list values -- join with "; " so that
+                # Excel cells never contain raw Python repr strings
+                # like ['item1', 'item2'] (Issue #53).
                 if isinstance(value, list):
-                    value = ", ".join(str(v) for v in value)
+                    value = "; ".join(str(v) for v in value)
                 cell = ws.cell(row=row_idx, column=col_idx, value=value)
                 cell.font = Font(size=fmt.body_font_size)
 

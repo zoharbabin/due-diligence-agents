@@ -127,6 +127,9 @@ class PipelineState:
     # --- Judge scores -------------------------------------------------------
     judge_scores: dict[str, Any] = field(default_factory=dict)
 
+    # --- Exit status (Issue #56) --------------------------------------------
+    exit_code: int = 0
+
     # ------------------------------------------------------------------
     # Serialisation helpers
     # ------------------------------------------------------------------
@@ -175,6 +178,7 @@ class PipelineState:
             "customers_to_analyze": self.customers_to_analyze,
             "cross_skill_run_ids": self.cross_skill_run_ids,
             "judge_scores": self.judge_scores,
+            "exit_code": self.exit_code,
         }
 
     @classmethod
@@ -222,5 +226,6 @@ class PipelineState:
             customers_to_analyze=data.get("customers_to_analyze", []),
             cross_skill_run_ids=data.get("cross_skill_run_ids", {}),
             judge_scores=data.get("judge_scores", {}),
+            exit_code=data.get("exit_code", 0),
         )
         return state

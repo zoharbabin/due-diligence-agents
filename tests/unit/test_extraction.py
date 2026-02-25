@@ -1899,3 +1899,209 @@ class TestSharedConstants:
         """_check_text_quality accepts clean readable text."""
         sample = "This is perfectly clean readable text with normal characters.\n" * 10
         assert ExtractionPipeline._check_text_quality(sample) is True
+
+
+# ======================================================================
+# TestParallelExtraction — Issue #36: ThreadPoolExecutor in extract_all
+# ======================================================================
+
+
+class TestParallelExtraction:
+    """Tests for parallel extraction via ThreadPoolExecutor."""
+
+    def test_extract_all_uses_thread_pool_executor(self, tmp_path: Path) -> None:
+        """extract_all should use ThreadPoolExecutor for file processing."""
+        src = tmp_path / "sources"
+        src.mkdir()
+        f1 = src / "a.txt"
+        f1.write_text("File A content that is long enough to be extracted.\n", encoding="utf-8")
+        f2 = src / "b.txt"
+        f2.write_text("File B content that is long enough to be extracted.\n", encoding="utf-8")
+
+        output_dir = tmp_path / "output"
+        cache_path = tmp_path / "checksums.sha256"
+
+        pipeline = ExtractionPipeline()
+
+        with patch(
+            "dd_agents.extraction.pipeline.ThreadPoolExecutor",
+            wraps=__import__("concurrent.futures", fromlist=["ThreadPoolExecutor"]).ThreadPoolExecutor,
+        ) as mock_executor_cls:
+            pipeline.extract_all([str(f1), str(f2)], output_dir, cache_path)
+
+        # ThreadPoolExecutor was instantiated.
+        mock_executor_cls.assert_called_once()
+
+    def test_extract_all_default_worker_count(self) -> None:
+        """Default worker count should be min(8, os.cpu_count() or 4)."""
+        import os as _os
+
+        from dd_agents.extraction.pipeline import _DEFAULT_WORKERS
+
+        expected = min(8, _os.cpu_count() or 4)
+        assert expected == _DEFAULT_WORKERS
+
+    def test_extract_all_custom_worker_count(self, tmp_path: Path) -> None:
+        """extract_all accepts max_workers parameter."""
+        src = tmp_path / "sources"
+        src.mkdir()
+        f1 = src / "a.txt"
+        f1.write_text("File A content that is long enough to be extracted.\n", encoding="utf-8")
+
+        output_dir = tmp_path / "output"
+        cache_path = tmp_path / "checksums.sha256"
+
+        pipeline = ExtractionPipeline()
+
+        with patch(
+            "dd_agents.extraction.pipeline.ThreadPoolExecutor",
+            wraps=__import__("concurrent.futures", fromlist=["ThreadPoolExecutor"]).ThreadPoolExecutor,
+        ) as mock_executor_cls:
+            pipeline.extract_all([str(f1)], output_dir, cache_path, max_workers=3)
+
+        mock_executor_cls.assert_called_once_with(max_workers=3)
+
+    def test_extract_all_parallel_produces_correct_results(self, tmp_path: Path) -> None:
+        """Parallel extraction produces the same results as sequential would."""
+        src = tmp_path / "sources"
+        src.mkdir()
+
+        file_paths: list[str] = []
+        for i in range(20):
+            f = src / f"file_{i}.txt"
+            f.write_text(f"Content of file {i} with sufficient text length.\n", encoding="utf-8")
+            file_paths.append(str(f))
+
+        output_dir = tmp_path / "output"
+        cache_path = tmp_path / "checksums.sha256"
+
+        pipeline = ExtractionPipeline()
+        entries = pipeline.extract_all(file_paths, output_dir, cache_path, max_workers=4)
+
+        assert len(entries) == 20
+        assert all(e.method == "direct_read" for e in entries)
+        assert all(e.bytes_extracted > 0 for e in entries)
+
+        # All output files created.
+        md_files = list(output_dir.glob("*.md"))
+        # One extra file: extraction_quality.json is not .md so this should be 20.
+        assert len(md_files) == 20
+
+    def test_extract_all_handles_mixed_success_and_failure(self, tmp_path: Path) -> None:
+        """Parallel extraction correctly handles both successful and missing files."""
+        src = tmp_path / "sources"
+        src.mkdir()
+        f1 = src / "good.txt"
+        f1.write_text("Good file with enough content for extraction.\n", encoding="utf-8")
+
+        output_dir = tmp_path / "output"
+        cache_path = tmp_path / "checksums.sha256"
+
+        pipeline = ExtractionPipeline()
+        entries = pipeline.extract_all(
+            [str(f1), str(tmp_path / "missing.pdf")],
+            output_dir,
+            cache_path,
+        )
+
+        assert len(entries) == 2
+        methods = {e.method for e in entries}
+        assert "direct_read" in methods
+        assert "failed" in methods
+
+
+# ======================================================================
+# TestExtractionSummary — Issue #41: get_extraction_summary
+# ======================================================================
+
+
+class TestExtractionSummary:
+    """Tests for ExtractionPipeline.get_extraction_summary."""
+
+    def test_summary_empty_entries(self) -> None:
+        """Empty entries list produces zeroed summary."""
+        summary = ExtractionPipeline.get_extraction_summary([])
+        assert summary["total"] == 0
+        assert summary["succeeded"] == 0
+        assert summary["failed"] == 0
+        assert summary["failure_rate"] == 0.0
+        assert summary["by_method"] == {}
+
+    def test_summary_all_successful(self) -> None:
+        """All primary extractions produce 0% failure rate."""
+        entries = [
+            ExtractionQualityEntry(
+                file_path=f"file_{i}.pdf",
+                method="primary",
+                bytes_extracted=5000,
+                confidence=0.9,
+            )
+            for i in range(10)
+        ]
+        summary = ExtractionPipeline.get_extraction_summary(entries)
+        assert summary["total"] == 10
+        assert summary["succeeded"] == 10
+        assert summary["failed"] == 0
+        assert summary["failure_rate"] == 0.0
+        assert summary["by_method"]["primary"] == 10
+
+    def test_summary_mixed_methods(self) -> None:
+        """Summary correctly counts methods."""
+        entries = [
+            ExtractionQualityEntry(file_path="a.pdf", method="primary", bytes_extracted=5000, confidence=0.9),
+            ExtractionQualityEntry(file_path="b.pdf", method="fallback_ocr", bytes_extracted=2000, confidence=0.7),
+            ExtractionQualityEntry(file_path="c.pdf", method="fallback_ocr", bytes_extracted=1500, confidence=0.6),
+            ExtractionQualityEntry(file_path="d.pdf", method="failed", bytes_extracted=0, confidence=0.0),
+            ExtractionQualityEntry(file_path="e.txt", method="direct_read", bytes_extracted=500, confidence=0.5),
+        ]
+        summary = ExtractionPipeline.get_extraction_summary(entries)
+        assert summary["total"] == 5
+        assert summary["by_method"]["primary"] == 1
+        assert summary["by_method"]["fallback_ocr"] == 2
+        assert summary["by_method"]["failed"] == 1
+        assert summary["by_method"]["direct_read"] == 1
+
+    def test_summary_failure_rate_calculation(self) -> None:
+        """Failure rate is computed over non-plaintext files only."""
+        entries = [
+            ExtractionQualityEntry(file_path="a.pdf", method="failed", bytes_extracted=0, confidence=0.0),
+            ExtractionQualityEntry(file_path="b.pdf", method="failed", bytes_extracted=0, confidence=0.0),
+            ExtractionQualityEntry(file_path="c.pdf", method="primary", bytes_extracted=5000, confidence=0.9),
+            ExtractionQualityEntry(file_path="d.pdf", method="primary", bytes_extracted=5000, confidence=0.9),
+            # Plaintext files (direct_read with confidence >= 0.1) are excluded
+            ExtractionQualityEntry(file_path="e.txt", method="direct_read", bytes_extracted=500, confidence=0.5),
+        ]
+        summary = ExtractionPipeline.get_extraction_summary(entries)
+        # 4 non-plaintext files, 2 failed => 50%
+        assert summary["failure_rate"] == 0.5
+
+    def test_summary_low_confidence_counted_as_failure(self) -> None:
+        """Entries with confidence < 0.1 are counted as failures."""
+        entries = [
+            ExtractionQualityEntry(file_path="a.pdf", method="primary", bytes_extracted=100, confidence=0.05),
+            ExtractionQualityEntry(file_path="b.pdf", method="primary", bytes_extracted=5000, confidence=0.9),
+        ]
+        summary = ExtractionPipeline.get_extraction_summary(entries)
+        assert summary["failed"] == 1
+
+    def test_systemic_failure_gate_with_parallel(self, tmp_path: Path) -> None:
+        """Systemic failure gate still triggers with parallel extraction."""
+        src = tmp_path / "sources"
+        src.mkdir()
+
+        # Create non-plaintext files that will fail extraction (empty PDFs).
+        for i in range(4):
+            f = src / f"bad_{i}.pdf"
+            f.write_bytes(b"")
+
+        output_dir = tmp_path / "output"
+        cache_path = tmp_path / "checksums.sha256"
+
+        pipeline = ExtractionPipeline()
+        with pytest.raises(ExtractionPipelineError, match="Systemic"):
+            pipeline.extract_all(
+                [str(src / f"bad_{i}.pdf") for i in range(4)],
+                output_dir,
+                cache_path,
+                max_workers=2,
+            )

@@ -1,9 +1,12 @@
-"""Unit tests for the persistence module: TierManager, RunManager, IncrementalClassifier."""
+"""Unit tests for the persistence module: TierManager, RunManager, IncrementalClassifier, concurrency."""
 
 from __future__ import annotations
 
 import json
+import stat
 from typing import TYPE_CHECKING
+
+import pytest
 
 from dd_agents.models.enums import CustomerClassificationStatus
 from dd_agents.models.persistence import CustomerClassEntry
@@ -602,3 +605,155 @@ class TestRunManagerCollisionAndAtomicWrites:
         history_path = tmp_path / "_dd" / "run_history.json"
         assert history_path.exists()
         assert not history_path.with_suffix(".tmp").exists()
+
+
+# =========================================================================
+# Issue #43: read_validate_write concurrency utility
+# =========================================================================
+
+
+class TestReadValidateWrite:
+    """Tests for the optimistic concurrency read_validate_write utility."""
+
+    def test_basic_write_to_new_file(self, tmp_path: Path) -> None:
+        """Should create a new file when it does not exist."""
+        from dd_agents.persistence.concurrency import read_validate_write
+
+        path = tmp_path / "test.json"
+
+        def transform(data: dict[str, object]) -> dict[str, object]:
+            return {"key": "value"}
+
+        result = read_validate_write(path, transform)
+        assert result is True
+        assert path.exists()
+        data = json.loads(path.read_text())
+        assert data["key"] == "value"
+
+    def test_update_existing_file(self, tmp_path: Path) -> None:
+        """Should update an existing file."""
+        from dd_agents.persistence.concurrency import read_validate_write
+
+        path = tmp_path / "test.json"
+        path.write_text(json.dumps({"count": 0}))
+
+        def transform(data: dict[str, object]) -> dict[str, object]:
+            count = int(data.get("count", 0))  # type: ignore[arg-type]
+            return {"count": count + 1}
+
+        read_validate_write(path, transform)
+        data = json.loads(path.read_text())
+        assert data["count"] == 1
+
+    def test_concurrent_modification_detected(self, tmp_path: Path) -> None:
+        """Should detect when another process modifies the file mid-flight.
+
+        Simulates concurrent modification by changing the file inside the
+        transform function.
+        """
+        from dd_agents.persistence.concurrency import ConcurrentModificationError, read_validate_write
+
+        path = tmp_path / "test.json"
+        path.write_text(json.dumps({"version": 1}))
+
+        call_count = 0
+
+        def sneaky_transform(data: dict[str, object]) -> dict[str, object]:
+            nonlocal call_count
+            call_count += 1
+            # Simulate another process writing to the file after we read it
+            path.write_text(json.dumps({"version": 999, "writer": "other_process"}))
+            return {"version": 2}
+
+        # With max_retries=0, only one attempt -- should fail
+        with pytest.raises(ConcurrentModificationError):
+            read_validate_write(path, sneaky_transform, max_retries=0)
+        assert call_count == 1
+
+    def test_concurrent_modification_retry_succeeds(self, tmp_path: Path) -> None:
+        """Should succeed on retry when the concurrent modification is temporary."""
+        from dd_agents.persistence.concurrency import read_validate_write
+
+        path = tmp_path / "test.json"
+        path.write_text(json.dumps({"version": 1}))
+
+        call_count = 0
+
+        def sometimes_sneaky_transform(data: dict[str, object]) -> dict[str, object]:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                # First call: simulate concurrent modification
+                path.write_text(json.dumps({"version": 888}))
+            # Second call: no interference
+            return {"version": 2}
+
+        result = read_validate_write(path, sometimes_sneaky_transform, max_retries=1)
+        assert result is True
+        assert call_count == 2
+        data = json.loads(path.read_text())
+        assert data["version"] == 2
+
+    def test_no_tmp_files_left_on_success(self, tmp_path: Path) -> None:
+        """No .tmp files should remain after a successful write."""
+        from dd_agents.persistence.concurrency import read_validate_write
+
+        path = tmp_path / "test.json"
+        read_validate_write(path, lambda d: {"ok": True})
+        tmp_files = list(tmp_path.glob("*.tmp"))
+        assert tmp_files == []
+
+    def test_no_tmp_files_left_on_write_failure(self, tmp_path: Path) -> None:
+        """No .tmp files should remain if the write itself fails."""
+        from dd_agents.persistence.concurrency import read_validate_write
+
+        path = tmp_path / "test.json"
+        path.write_text(json.dumps({"initial": True}))
+
+        # Make the parent directory read-only to cause write failure
+        # (only works on Unix-like systems)
+
+        readonly_dir = tmp_path / "readonly"
+        readonly_dir.mkdir()
+        target = readonly_dir / "test.json"
+        target.write_text(json.dumps({"initial": True}))
+
+        def transform(data: dict[str, object]) -> dict[str, object]:
+            return {"updated": True}
+
+        # Make the directory read-only
+        readonly_dir.chmod(stat.S_IRUSR | stat.S_IXUSR)
+        try:
+            with pytest.raises(PermissionError):
+                read_validate_write(target, transform)
+        finally:
+            # Restore permissions for cleanup
+            readonly_dir.chmod(stat.S_IRWXU)
+
+        # No tmp files should remain
+        tmp_files = list(readonly_dir.glob("*.tmp"))
+        assert tmp_files == []
+
+    def test_creates_parent_directories(self, tmp_path: Path) -> None:
+        """Should create parent directories if they don't exist."""
+        from dd_agents.persistence.concurrency import read_validate_write
+
+        path = tmp_path / "nested" / "deep" / "test.json"
+        read_validate_write(path, lambda d: {"nested": True})
+        assert path.exists()
+
+    def test_handles_corrupt_json(self, tmp_path: Path) -> None:
+        """Should handle a corrupted JSON file gracefully (treat as empty dict)."""
+        from dd_agents.persistence.concurrency import read_validate_write
+
+        path = tmp_path / "test.json"
+        path.write_text("not valid json {{{")
+
+        def transform(data: dict[str, object]) -> dict[str, object]:
+            # Should receive empty dict since the file was corrupt
+            assert data == {}
+            return {"recovered": True}
+
+        read_validate_write(path, transform)
+        data = json.loads(path.read_text())
+        assert data["recovered"] is True

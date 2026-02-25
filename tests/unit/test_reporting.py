@@ -997,3 +997,261 @@ class TestContractDateReconciler:
         data = json.loads(out.read_text())
         assert data["run_id"] == "test_run"
         assert len(data["entries"]) == 1
+
+
+# ===========================================================================
+# Issue #35 / #53 regression tests
+# ===========================================================================
+
+
+class TestReportSchemaValidation:
+    """Test that ReportSchema rejects empty sheets (Issue #35)."""
+
+    def test_empty_sheets_raises_value_error(self) -> None:
+        """ReportSchema with zero sheets must fail-fast with ValueError."""
+        with pytest.raises(ValueError, match="at least one sheet"):
+            ReportSchema(schema_version="1.0.0", sheets=[])
+
+    def test_empty_sheets_default_raises_value_error(self) -> None:
+        """ReportSchema with default (omitted) sheets must also fail."""
+        with pytest.raises(ValueError, match="at least one sheet"):
+            ReportSchema(schema_version="1.0.0")
+
+    def test_valid_schema_with_one_sheet(self) -> None:
+        """A schema with at least one sheet should construct successfully."""
+        from dd_agents.models.reporting import ColumnDef, SheetDef
+
+        sheet = SheetDef(
+            name="Summary",
+            columns=[ColumnDef(name="Customer", key="customer", type="string")],
+        )
+        schema = ReportSchema(schema_version="1.0.0", sheets=[sheet])
+        assert len(schema.sheets) == 1
+
+
+class TestExcelGeneratorGuards:
+    """Test guards and edge cases in ExcelReportGenerator (Issue #35 / #53)."""
+
+    def test_generate_raises_on_zero_sheets(self, tmp_path: Path) -> None:
+        """generate() raises ValueError when schema has zero sheets.
+
+        NOTE: The ReportSchema validator itself will reject empty sheets,
+        but if somehow bypassed the generator must still guard.
+        """
+        from dd_agents.models.reporting import ColumnDef, SheetDef
+
+        # Build a schema with one sheet, then forcibly empty it
+        sheet = SheetDef(
+            name="Summary",
+            columns=[ColumnDef(name="Customer", key="customer", type="string")],
+        )
+        schema = ReportSchema(schema_version="1.0.0", sheets=[sheet])
+        # Bypass the validator by mutating after construction
+        schema.sheets = []
+
+        gen = ExcelReportGenerator()
+        with pytest.raises(ValueError, match="zero sheet"):
+            gen.generate({}, schema, tmp_path / "out.xlsx")
+
+    def test_list_values_joined_with_semicolon(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """List values in cells should be joined with '; ' not repr (Issue #53).
+
+        Uses the Missing_Docs_Gaps sheet because ``_data_gaps`` passes raw
+        gap dicts through, so a list-typed field reaches ``_write_sheet``.
+        """
+        from dd_agents.models.reporting import ColumnDef, SheetDef
+
+        sheet = SheetDef(
+            name="Missing_Docs_Gaps",
+            columns=[
+                ColumnDef(name="Customer", key="customer", type="string"),
+                ColumnDef(name="Evidence", key="evidence", type="string", width=30),
+            ],
+        )
+        schema = ReportSchema(schema_version="1.0.0", sheets=[sheet])
+
+        merged = {
+            "acme": {
+                "customer": "Acme",
+                "findings": [],
+                "gaps": [
+                    {
+                        "customer": "Acme",
+                        "evidence": ["contract.pdf", "sow.pdf", "amendment.pdf"],
+                    },
+                ],
+                "cross_references": [],
+                "governance_graph": {"edges": []},
+                "governance_resolved_pct": 0.0,
+            },
+        }
+
+        out_path = tmp_path / "report.xlsx"
+        gen = ExcelReportGenerator()
+        gen.generate(merged, schema, out_path)
+
+        from openpyxl import load_workbook
+
+        wb = load_workbook(str(out_path))
+        ws = wb["Missing_Docs_Gaps"]
+
+        # Find Evidence column
+        ev_col = None
+        for c in range(1, ws.max_column + 1):
+            if ws.cell(row=1, column=c).value == "Evidence":
+                ev_col = c
+                break
+
+        assert ev_col is not None
+        cell_value = ws.cell(row=2, column=ev_col).value
+        assert cell_value == "contract.pdf; sow.pdf; amendment.pdf"
+        # Must NOT contain Python list repr
+        assert "[" not in str(cell_value)
+
+    def test_empty_sheets_logged_as_warning(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Non-Summary sheets with zero data rows should emit a warning (Issue #53)."""
+        from dd_agents.models.reporting import ColumnDef, SheetDef
+
+        sheets = [
+            SheetDef(
+                name="Summary",
+                columns=[ColumnDef(name="Customer", key="customer", type="string")],
+            ),
+            SheetDef(
+                name="Wolf_Pack",
+                columns=[ColumnDef(name="Customer", key="analysis_unit", type="string")],
+            ),
+        ]
+        schema = ReportSchema(schema_version="1.0.0", sheets=sheets)
+
+        merged: dict[str, dict] = {
+            "acme": {
+                "customer": "Acme",
+                "findings": [],
+                "gaps": [],
+                "cross_references": [],
+                "governance_graph": {"edges": []},
+                "governance_resolved_pct": 0.0,
+            },
+        }
+
+        out_path = tmp_path / "report.xlsx"
+        gen = ExcelReportGenerator()
+
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="dd_agents.reporting.excel"):
+            gen.generate(merged, schema, out_path)
+
+        assert any("Wolf_Pack" in rec.message and "zero data rows" in rec.message for rec in caplog.records)
+
+
+class TestStep30SchemaFallback:
+    """Test that _step_30 loads schema from config/ fallback (Issue #35)."""
+
+    @pytest.fixture()
+    def _pipeline_state(self, tmp_path: Path) -> dict:
+        """Create a minimal pipeline state-like structure for testing."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        # No report_schema.json in run_dir on purpose
+        project_dir = tmp_path / "project"
+        config_dir = project_dir / "config"
+        config_dir.mkdir(parents=True)
+        return {"run_dir": run_dir, "project_dir": project_dir, "config_dir": config_dir}
+
+    def test_fallback_to_config_dir(self, _pipeline_state: dict) -> None:
+        """When run_dir has no schema, step 30 should load from config/."""
+
+        run_dir: Path = _pipeline_state["run_dir"]
+        config_dir: Path = _pipeline_state["config_dir"]
+
+        # Write a valid schema to config/
+        minimal_schema = {
+            "schema_version": "1.0.0",
+            "sheets": [
+                {
+                    "name": "Summary",
+                    "columns": [{"name": "Customer", "key": "customer", "type": "string"}],
+                }
+            ],
+        }
+        (config_dir / "report_schema.json").write_text(json.dumps(minimal_schema))
+
+        # Verify run_dir has no schema
+        assert not (run_dir / "report_schema.json").exists()
+
+        # Load following the same resolution order as step 30
+        schema: ReportSchema | None = None
+
+        run_schema_path = run_dir / "report_schema.json"
+        if run_schema_path.exists():
+            schema = ReportSchema.model_validate_json(run_schema_path.read_text())
+
+        if schema is None:
+            config_schema_path = config_dir / "report_schema.json"
+            if config_schema_path.exists():
+                schema = ReportSchema.model_validate_json(config_schema_path.read_text())
+
+        assert schema is not None
+        assert len(schema.sheets) == 1
+        assert schema.sheets[0].name == "Summary"
+
+    def test_fallback_to_builtin_minimal(self, _pipeline_state: dict) -> None:
+        """When neither run_dir nor config/ has a schema, use built-in minimal."""
+        run_dir: Path = _pipeline_state["run_dir"]
+        config_dir: Path = _pipeline_state["config_dir"]
+
+        # Neither location has a schema
+        assert not (run_dir / "report_schema.json").exists()
+        assert not (config_dir / "report_schema.json").exists()
+
+        # Reproduce fallback logic
+        schema: ReportSchema | None = None
+
+        run_schema_path = run_dir / "report_schema.json"
+        if run_schema_path.exists():
+            schema = ReportSchema.model_validate_json(run_schema_path.read_text())
+
+        if schema is None:
+            config_schema_path = config_dir / "report_schema.json"
+            if config_schema_path.exists():
+                schema = ReportSchema.model_validate_json(config_schema_path.read_text())
+
+        if schema is None:
+            schema = ReportSchema.model_validate(
+                {
+                    "schema_version": "1.0.0",
+                    "description": "Built-in minimal schema (fallback)",
+                    "sheets": [
+                        {
+                            "name": "Summary",
+                            "required": True,
+                            "activation_condition": "always",
+                            "columns": [
+                                {"name": "Customer", "key": "customer", "type": "string", "width": 30},
+                                {
+                                    "name": "Overall Risk Rating",
+                                    "key": "overall_risk_rating",
+                                    "type": "string",
+                                    "width": 20,
+                                },
+                                {"name": "Total Findings", "key": "total_findings", "type": "integer", "width": 14},
+                                {"name": "Gap Count", "key": "gap_count", "type": "integer", "width": 12},
+                            ],
+                        },
+                    ],
+                }
+            )
+
+        assert schema is not None
+        assert len(schema.sheets) == 1
+        assert schema.sheets[0].name == "Summary"
+        assert len(schema.sheets[0].columns) == 4

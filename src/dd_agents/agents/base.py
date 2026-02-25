@@ -20,6 +20,32 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Optional SDK import -- graceful degradation when not installed
+# ---------------------------------------------------------------------------
+
+_HAS_SDK: bool = False
+try:
+    from claude_agent_sdk import (
+        AssistantMessage as _AssistantMessage,
+    )
+    from claude_agent_sdk import (
+        ClaudeAgentOptions as _ClaudeAgentOptions,
+    )
+    from claude_agent_sdk import (
+        ResultMessage as _ResultMessage,
+    )
+    from claude_agent_sdk import (
+        TextBlock as _TextBlock,
+    )
+    from claude_agent_sdk import (
+        query as _query,
+    )
+
+    _HAS_SDK = True
+except ImportError:
+    logger.debug("claude_agent_sdk not installed -- agent spawning will return empty output")
+
 
 class BaseAgentRunner(ABC):
     """Abstract base for every agent runner.
@@ -147,25 +173,67 @@ class BaseAgentRunner(ABC):
         )
 
     # ------------------------------------------------------------------
-    # Agent spawn placeholder
+    # Agent spawn -- SDK integration
     # ------------------------------------------------------------------
 
     async def _spawn_agent(self, prompt: str) -> str:
-        """Spawn the agent via the SDK and return raw textual output.
+        """Spawn the agent via ``claude_agent_sdk.query()`` and return raw text.
 
-        This is a **placeholder** for the real ``claude_agent_sdk.query()``
-        integration.  In production this will be replaced with::
+        Collects all :class:`TextBlock` content from :class:`AssistantMessage`
+        objects yielded by the SDK's async generator.  If the SDK is not
+        installed (e.g. in unit-test environments), logs a warning and returns
+        an empty string so callers degrade gracefully.
 
-            from claude_agent_sdk import query, ClaudeAgentOptions
-            options = ClaudeAgentOptions(model=self.get_model_id(), ...)
-            result = await query(options=options, prompt=prompt)
-            return result.text
+        Parameters
+        ----------
+        prompt:
+            The fully-assembled user prompt for the agent.
 
-        For now it returns an empty string so the rest of the pipeline can be
-        tested without API calls.
+        Returns
+        -------
+        str
+            Concatenated text output from the agent, or ``""`` when the SDK
+            is unavailable or the agent produces no text.
         """
-        _ = prompt  # consumed by real SDK call
-        return ""
+        if not _HAS_SDK:
+            logger.warning(
+                "claude_agent_sdk not available -- returning empty output for agent %s",
+                self.get_agent_name(),
+            )
+            return ""
+
+        options = _ClaudeAgentOptions(
+            system_prompt=self.get_system_prompt(),
+            model=self.get_model_id(),
+            max_turns=self.max_turns,
+            permission_mode="bypassPermissions",
+            cwd=str(self.project_dir),
+            allowed_tools=self.get_tools(),
+        )
+
+        text_parts: list[str] = []
+        try:
+            async for message in _query(prompt=prompt, options=options):
+                if isinstance(message, _AssistantMessage):
+                    for block in message.content:
+                        if isinstance(block, _TextBlock):
+                            text_parts.append(block.text)
+                elif isinstance(message, _ResultMessage) and message.is_error:
+                    logger.error(
+                        "Agent %s SDK error: %s",
+                        self.get_agent_name(),
+                        message.result,
+                    )
+                    break
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "Agent %s SDK call failed: %s -- returning partial output (%d parts collected)",
+                self.get_agent_name(),
+                exc,
+                len(text_parts),
+            )
+
+        return "\n".join(text_parts)
 
     # ------------------------------------------------------------------
     # Output parsing

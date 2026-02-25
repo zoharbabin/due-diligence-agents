@@ -11,7 +11,6 @@ Cache file: ``_dd/entity_resolution_cache.json``
 from __future__ import annotations
 
 import json
-import os
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -256,24 +255,33 @@ class EntityResolutionCache:
     # ------------------------------------------------------------------
 
     def save(self, run_id: str) -> None:
-        """Persist cache to disk using atomic write (temp + os.replace)."""
+        """Persist cache to disk with optimistic concurrency control.
+
+        Uses :func:`~dd_agents.persistence.concurrency.read_validate_write`
+        to detect and retry on concurrent modifications.  Issue #43.
+        """
+        from dd_agents.persistence.concurrency import read_validate_write
+
         self.data["last_updated"] = datetime.now(UTC).isoformat()
         self.data["last_updated_by"] = "forensic-dd"
         self.data["last_updated_run_id"] = run_id
 
-        self.cache_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path = self.cache_path.with_suffix(".tmp")
-        try:
-            tmp_path.write_text(
-                json.dumps(self.data, indent=2, ensure_ascii=False),
-                encoding="utf-8",
-            )
-            os.replace(str(tmp_path), str(self.cache_path))
-        except Exception:
-            tmp_path.unlink(missing_ok=True)
-            raise
+        # Capture current in-memory data for the transform closure.
+        snapshot = json.loads(json.dumps(self.data, ensure_ascii=False, default=str))
 
-        # Verify write
-        verification = json.loads(self.cache_path.read_text(encoding="utf-8"))
-        if verification.get("last_updated_run_id") != run_id:
-            raise RuntimeError("Entity resolution cache write verification failed. Possible concurrent access.")
+        def _transform(disk_data: dict[str, object]) -> dict[str, object]:
+            # Merge strategy: our in-memory entries take priority, but we
+            # preserve any entries added to disk by another process that we
+            # don't have in memory.
+            raw_disk = disk_data.get("entries", {})
+            disk_entries: dict[str, object] = dict(raw_disk) if isinstance(raw_disk, dict) else {}
+            raw_mem = snapshot.get("entries", {})
+            mem_entries: dict[str, object] = dict(raw_mem) if isinstance(raw_mem, dict) else {}
+
+            # Start with disk entries, overlay our in-memory entries.
+            merged_entries = {**disk_entries, **mem_entries}
+            result = dict(snapshot)
+            result["entries"] = merged_entries
+            return result
+
+        read_validate_write(self.cache_path, _transform)

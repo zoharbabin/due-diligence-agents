@@ -144,6 +144,9 @@ class PromptBuilder:
         # 6. Manifest requirement
         sections.append(self._build_manifest_requirement(agent_name, customers))
 
+        # 7. Robustness instructions (Issue #52 -- spec doc 22)
+        sections.append(self.robustness_instructions())
+
         return "\n\n---\n\n".join(sections)
 
     # ------------------------------------------------------------------
@@ -403,4 +406,124 @@ class PromptBuilder:
             f"Expected customers: {len(customers)}\n"
             "coverage_pct must be >= 0.90\n"
             "Every failed file must have fallback_attempted: true"
+        )
+
+    # ------------------------------------------------------------------
+    # LLM robustness instructions (Issue #52, spec doc 22)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def robustness_instructions() -> str:
+        """Return common LLM robustness mitigations appended to every specialist prompt.
+
+        These instructions implement mitigations from ``docs/plan/22-llm-robustness.md``:
+        - Structured output enforcement (AG-4, S-3)
+        - Answer normalization (AG-8)
+        - Citation format requirements (S-1, S-4)
+        - Anti-hallucination guards (S-1, S-2)
+        - Context window awareness (C-1, C-2)
+        - Conflict handling (AG-3)
+        - Completeness self-check (AG-6)
+        - Not-Found protocol (AG-8)
+        """
+        return (
+            "## ROBUSTNESS INSTRUCTIONS\n\n"
+            "Follow these rules strictly for every finding, gap, and citation.\n\n"
+            #
+            # 1. Structured output enforcement
+            #
+            "### Structured Output\n\n"
+            "Every finding MUST be a valid JSON object matching this schema:\n"
+            "```json\n"
+            "{\n"
+            '  "customer_safe_name": "string (required)",\n'
+            '  "severity": "P0 | P1 | P2 | P3 (required)",\n'
+            '  "title": "string (required)",\n'
+            '  "description": "string (required)",\n'
+            '  "file_path": "string (required)",\n'
+            '  "page": "integer or null",\n'
+            '  "section_ref": "string or null",\n'
+            '  "exact_quote": "string (required)"\n'
+            "}\n"
+            "```\n"
+            "Do NOT omit required fields. Do NOT add fields not in the schema.\n\n"
+            #
+            # 2. Answer normalization
+            #
+            "### Answer Normalization\n\n"
+            "When a question requires a categorical answer, respond with exactly one of:\n"
+            "  YES, NO, or NOT_ADDRESSED\n"
+            "Do not use synonyms (e.g. 'N/A', 'Unknown', 'Maybe'). If the document "
+            "does not address the question, answer NOT_ADDRESSED.\n\n"
+            #
+            # 3. Citation format
+            #
+            "### Citation Format\n\n"
+            "Every citation MUST include ALL of these fields:\n"
+            "- file_path: exact path to the source file\n"
+            "- page: page number where the text appears (integer, or null if not applicable)\n"
+            "- section_ref: section heading or clause number (e.g. 'Section 12.3')\n"
+            "- exact_quote: the verbatim text from the document, copied character-for-character\n\n"
+            #
+            # 4. Anti-hallucination
+            #
+            "### Anti-Hallucination Rules\n\n"
+            "- Only cite text that appears VERBATIM in the source document.\n"
+            "- Do NOT generate quotes from memory or paraphrase them.\n"
+            "- Do NOT infer contract terms from general legal or industry knowledge.\n"
+            "- Do NOT fabricate clauses, dollar amounts, dates, or party names.\n"
+            "- If you are unsure whether text appears in the document, re-read the "
+            "relevant section before citing it.\n\n"
+            #
+            # 5. Context window awareness
+            #
+            "### Context Window Awareness\n\n"
+            "- If you encounter a file that appears truncated or cut off mid-sentence, "
+            "note this in your finding with: 'WARNING: document appears truncated at page N'.\n"
+            "- For large files (>120KB extracted text), use Grep to search for specific "
+            "terms rather than reading the entire file.\n"
+            "- Do NOT attempt to read all files into memory at once. Process one customer "
+            "at a time.\n\n"
+            #
+            # 6. Conflict handling
+            #
+            "### Conflict Handling\n\n"
+            "If two documents contain conflicting terms (e.g. different liability caps, "
+            "different renewal dates, contradictory SLA commitments):\n"
+            "- Cite BOTH documents with full citations.\n"
+            "- Note the conflict explicitly in the finding description.\n"
+            "- Do NOT silently choose one version over another.\n"
+            "- Flag which document likely takes precedence based on document hierarchy "
+            "(amendment > MSA > SOW), but note this is your assessment.\n\n"
+            #
+            # 7. Completeness self-check (AG-6)
+            #
+            "### Completeness Checklist\n\n"
+            "BEFORE writing your coverage manifest, verify:\n"
+            "1. ALL customers in your assigned list have been analyzed.\n"
+            "2. ALL files for each customer have been read or searched.\n"
+            "3. ALL required fields in every finding and gap are populated.\n"
+            "4. ALL exact_quote values have been verified against the source document.\n"
+            "5. Every P0 finding has been re-read and its severity confirmed.\n"
+            "6. Every customer with zero findings has been re-checked for missed issues.\n"
+            "7. ALL reference files assigned to you have been processed.\n\n"
+            "YOU MAY HAVE MISSED CRITICAL INFORMATION. Go back and re-examine any "
+            "customers where you produced fewer findings than expected relative to "
+            "their file count.\n\n"
+            #
+            # 8. Not-Found protocol (AG-8)
+            #
+            "### Not-Found Protocol\n\n"
+            "If you search for a specific clause or document and it genuinely does not "
+            "exist in the customer's files, you MUST record this as a gap, NOT as a finding.\n\n"
+            "DO NOT:\n"
+            "- Fabricate clauses that you cannot find\n"
+            "- Infer terms from general legal principles\n"
+            "- Assume standard industry terms apply\n"
+            "- Create findings based on what 'should' be in the contract\n\n"
+            "DO:\n"
+            "- Write a gap with gap_type: 'Not_Found'\n"
+            "- Explain what you searched for and where you looked\n"
+            "- Note which files you reviewed\n"
+            "- Suggest what the missing clause means for the deal"
         )

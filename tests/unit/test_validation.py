@@ -1055,9 +1055,17 @@ class TestSchemaValidator:
 
     def test_nonexistent_excel_fails(self, tmp_path: Path) -> None:
         """When the Excel file does not exist, validation fails immediately."""
-        from dd_agents.models.reporting import ReportSchema
+        from dd_agents.models.reporting import ColumnDef, ReportSchema, SheetDef
 
-        schema = ReportSchema(schema_version="1.0", sheets=[])
+        schema = ReportSchema(
+            schema_version="1.0",
+            sheets=[
+                SheetDef(
+                    name="Summary",
+                    columns=[ColumnDef(name="Customer", key="customer", type="string")],
+                ),
+            ],
+        )
         validator = SchemaValidator(schema)
         checks = validator.validate_report(tmp_path / "nonexistent.xlsx")
 

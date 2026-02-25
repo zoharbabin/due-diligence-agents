@@ -36,6 +36,64 @@ def _atomic_write_text(path: Path, content: str) -> None:
     os.replace(str(tmp), str(path))
 
 
+def _run_history_append(history_path: Path, entry: dict[str, Any]) -> None:
+    """Append *entry* to ``run_history.json`` with optimistic concurrency.
+
+    ``run_history.json`` stores a bare JSON array.  We use
+    :func:`~dd_agents.persistence.concurrency.read_validate_write` with a
+    wrapper that converts to/from a dict internally.  Issue #43.
+
+    Idempotent: skips the append if the ``run_id`` already exists in the
+    history.  Issue #45.
+    """
+    from dd_agents.persistence.concurrency import read_validate_write
+
+    run_id = entry.get("run_id", "")
+
+    def _transform(data: dict[str, object]) -> dict[str, object]:
+        raw_history = data.get("_history", [])
+        history: list[dict[str, Any]] = list(raw_history) if isinstance(raw_history, list) else []
+        # Issue #45: idempotent -- skip if run_id already present
+        existing_ids = {e.get("run_id") for e in history}
+        if run_id and run_id in existing_ids:
+            logger.info("Run %s already in run_history.json -- skipping duplicate append", run_id)
+            return {"_history": history}
+        history.append(entry)
+        return {"_history": history}
+
+    # Pre-process: if the file already exists as a bare array, load it
+    # and rewrite it into our wrapper format so read_validate_write can
+    # work with it.  On write, we unwrap back to the bare array.
+    _ensure_history_dict_format(history_path)
+    read_validate_write(history_path, _transform)
+    _unwrap_history_dict_format(history_path)
+
+
+def _ensure_history_dict_format(path: Path) -> None:
+    """Convert a bare-array ``run_history.json`` to ``{"_history": [...]}``."""
+    if not path.exists():
+        return
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return
+    if isinstance(raw, list):
+        wrapped = {"_history": raw}
+        _atomic_write_text(path, json.dumps(wrapped, indent=2))
+
+
+def _unwrap_history_dict_format(path: Path) -> None:
+    """Convert ``{"_history": [...]}`` back to a bare JSON array."""
+    if not path.exists():
+        return
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return
+    if isinstance(raw, dict) and "_history" in raw:
+        _atomic_write_text(path, json.dumps(raw["_history"], indent=2))
+
+
 class RunManager:
     """Manages the lifecycle of a single pipeline run.
 
@@ -165,18 +223,12 @@ class RunManager:
             agent_scores=run_metadata.agent_scores,
         )
 
-        # Append to run_history.json (shared across DD skills)
+        # Append to run_history.json (shared across DD skills) using
+        # optimistic concurrency to prevent corruption from parallel runs.
+        # Issue #43.
         history_path = self.project_dir / DD_DIR / "run_history.json"
-        history: list[dict[str, Any]] = []
-        if history_path.exists():
-            try:
-                history = json.loads(history_path.read_text())
-            except (json.JSONDecodeError, ValueError):
-                logger.warning("Corrupt run_history.json -- starting fresh")
-                history = []
-
-        history.append(history_entry.model_dump())
-        _atomic_write_text(history_path, json.dumps(history, indent=2))
+        entry_dump = history_entry.model_dump()
+        _run_history_append(history_path, entry_dump)
 
         # Update latest symlink (use missing_ok to avoid TOCTOU race)
         latest_link = skill_dir / "runs" / "latest"
