@@ -1691,6 +1691,13 @@ class TestMaxConfidence:
         assert _max_confidence("CRITICAL", "low") == "low"
         assert _max_confidence("low", "UNKNOWN") == "low"
 
+    def test_non_string_input_handled(self) -> None:
+        """Non-string values (e.g. numeric) should not crash."""
+        result = _max_confidence(42, "high")  # type: ignore[arg-type]
+        assert isinstance(result, str)
+        result2 = _max_confidence("medium", 3.14)  # type: ignore[arg-type]
+        assert isinstance(result2, str)
+
 
 # ===================================================================
 # TestExtractYesNo — Additional Edge Cases
@@ -1860,6 +1867,56 @@ class TestMergeEdgeCases:
 
         merged, _ = analyzer._merge_chunk_results([chunk1, chunk2], customer, 1, [])
         assert len(merged.columns["Consent Required"].citations) == 1
+
+    def test_yes_prefixed_free_text_beats_no(self, tmp_path: Path) -> None:
+        """'YES, consent required per Section 12' should beat 'NO' (YES priority > NO)."""
+        analyzer = _make_analyzer(tmp_path)
+        customer = _make_customer()
+
+        chunk1 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(
+                    answer="YES, consent is required per Section 12", confidence="high"
+                ),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
+        chunk2 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="NO", confidence="high"),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
+
+        merged, conflicted = analyzer._merge_chunk_results([chunk1, chunk2], customer, 1, [])
+        # YES-prefixed answer should win over bare NO (priority 3 > 2).
+        assert merged.columns["Consent Required"].answer == "YES, consent is required per Section 12"
+        # Conflict should still be detected (YES vs NO signals present).
+        assert "Consent Required" in conflicted
+
+    def test_no_prefixed_free_text_same_priority_as_bare_no(self, tmp_path: Path) -> None:
+        """'NO - amendment removed this' has same priority as bare 'NO'; longer wins."""
+        analyzer = _make_analyzer(tmp_path)
+        customer = _make_customer()
+
+        chunk1 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="NO", confidence="high"),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
+        chunk2 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(
+                    answer="NO - the amendment removed this requirement", confidence="medium"
+                ),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
+
+        merged, _ = analyzer._merge_chunk_results([chunk1, chunk2], customer, 1, [])
+        # Both are NO-priority (2), longer answer wins.
+        assert merged.columns["Consent Required"].answer == "NO - the amendment removed this requirement"
 
 
 # ===================================================================
