@@ -308,7 +308,9 @@ class DefinitionOfDoneChecker:
             return AuditCheck(passed=True, dod_checks=[10], details={"total_reference_files": 0})
         # Check that each ref file appears in at least one agent's output.
         agents_dir = self.run_dir / "findings" / "agents"
-        ref_basenames = {Path(f if isinstance(f, str) else f.get("path", "")).name for f in ref_files}
+        ref_basenames = {
+            Path(f if isinstance(f, str) else f.get("file_path", f.get("path", ""))).name for f in ref_files
+        }
         unprocessed = set(ref_basenames)
         if agents_dir.exists():
             for agent_dir in agents_dir.iterdir():

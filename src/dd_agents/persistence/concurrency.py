@@ -85,8 +85,14 @@ def read_validate_write(
                 raw_bytes = file_path.read_bytes()
                 checksum_before = hashlib.sha256(raw_bytes).hexdigest()
                 data: dict[str, object] = json.loads(raw_bytes.decode("utf-8"))
-            except (json.JSONDecodeError, OSError, UnicodeDecodeError):
-                checksum_before = _file_checksum(file_path)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                # JSON is corrupt but we already read the bytes — reuse them
+                # for the checksum to avoid a second read (TOCTOU).
+                checksum_before = hashlib.sha256(raw_bytes).hexdigest()
+                data = {}
+            except OSError:
+                # File disappeared or became unreadable after exists() check.
+                checksum_before = ""
                 data = {}
         else:
             checksum_before = ""

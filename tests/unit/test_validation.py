@@ -1342,6 +1342,22 @@ class TestDoDHardcodedPassesRemoved:
         check = checker.check_10_reference_files_processed()
         assert check.passed is True
 
+    def test_check_10_passes_with_dict_format_ref_files(self, tmp_path: Path) -> None:
+        """check_10 should handle dict-format reference_files.json (file_path key)."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+        (inventory_dir / "reference_files.json").write_text(
+            json.dumps([{"file_path": "docs/ref_a.pdf", "category": "Financial"}])
+        )
+        agents_dir = run_dir / "findings" / "agents" / "finance"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "reference_files_processed.json").write_text(json.dumps(["ref_a.pdf"]))
+        checker = DefinitionOfDoneChecker(run_dir=run_dir, inventory_dir=inventory_dir, customer_safe_names=CUSTOMERS)
+        check = checker.check_10_reference_files_processed()
+        assert check.passed is True
+
     def test_check_10_fails_when_file_unprocessed(self, tmp_path: Path) -> None:
         """check_10 should fail when a reference file is not processed by any agent."""
         run_dir = tmp_path / "run"
