@@ -269,4 +269,5 @@ class RunManager:
             result: list[dict[str, Any]] = json.loads(history_path.read_text())
             return result
         except (json.JSONDecodeError, ValueError):
+            logger.warning("Corrupt or unreadable run_history.json at %s", history_path)
             return []

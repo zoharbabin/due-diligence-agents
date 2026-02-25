@@ -77,15 +77,19 @@ def read_validate_write(
     attempts = max_retries + 1  # total attempts = retries + 1
 
     for attempt in range(attempts):
-        # Step 1: Read and checksum
-        checksum_before = _file_checksum(file_path)
-
+        # Step 1: Read file bytes ONCE and derive both checksum and
+        # parsed JSON from the same snapshot, avoiding a TOCTOU race
+        # between separate checksum and read_text calls.
         if file_path.exists():
             try:
-                data: dict[str, object] = json.loads(file_path.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
+                raw_bytes = file_path.read_bytes()
+                checksum_before = hashlib.sha256(raw_bytes).hexdigest()
+                data: dict[str, object] = json.loads(raw_bytes.decode("utf-8"))
+            except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+                checksum_before = _file_checksum(file_path)
                 data = {}
         else:
+            checksum_before = ""
             data = {}
 
         # Step 2: Apply transform

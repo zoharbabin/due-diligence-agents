@@ -757,3 +757,40 @@ class TestReadValidateWrite:
         read_validate_write(path, transform)
         data = json.loads(path.read_text())
         assert data["recovered"] is True
+
+
+# =========================================================================
+# FindingCounts validator
+# =========================================================================
+
+
+class TestFindingCountsValidator:
+    """Tests for FindingCounts._validate_total_consistency."""
+
+    def test_all_zeros_valid(self) -> None:
+        """total=0 with all severity counts=0 should be valid."""
+        from dd_agents.models.persistence import FindingCounts
+
+        fc = FindingCounts(p0=0, p1=0, p2=0, p3=0, total=0)
+        assert fc.total == 0
+
+    def test_correct_total_valid(self) -> None:
+        """total matching sum of severity counts should be valid."""
+        from dd_agents.models.persistence import FindingCounts
+
+        fc = FindingCounts(p0=2, p1=3, p2=3, p3=2, total=10)
+        assert fc.total == 10
+
+    def test_total_zero_with_nonzero_severity_raises(self) -> None:
+        """total=0 but severity counts > 0 should raise ValueError."""
+        from dd_agents.models.persistence import FindingCounts
+
+        with pytest.raises(ValueError, match="total=0 but severity counts sum to"):
+            FindingCounts(p0=1, p1=0, p2=0, p3=0, total=0)
+
+    def test_total_mismatch_raises(self) -> None:
+        """total not equal to p0+p1+p2+p3 should raise ValueError."""
+        from dd_agents.models.persistence import FindingCounts
+
+        with pytest.raises(ValueError, match="total.*must equal p0\\+p1\\+p2\\+p3"):
+            FindingCounts(p0=2, p1=3, p2=3, p3=3, total=10)
