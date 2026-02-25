@@ -17,7 +17,7 @@ from dd_agents.models.inventory import (
     ReferenceFile,
 )
 
-log = logging.getLogger("dd_agents.inventory.mentions")
+logger = logging.getLogger(__name__)
 
 
 class CustomerMentionBuilder:
@@ -70,12 +70,13 @@ class CustomerMentionBuilder:
         for safe_name, ref_paths in sorted(mentions.items()):
             if ref_paths:
                 customers_with_mentions.add(safe_name)
+                unique_paths = sorted(set(ref_paths))
                 mention_entries.append(
                     CustomerMention(
                         customer_name=customer_names[safe_name],
                         customer_safe_name=safe_name,
-                        reference_files=sorted(set(ref_paths)),
-                        mention_count=len(ref_paths),
+                        reference_files=unique_paths,
+                        mention_count=len(unique_paths),
                     )
                 )
 
@@ -100,7 +101,7 @@ class CustomerMentionBuilder:
             customers_without_reference_data=sorted(phantom_contracts),
         )
 
-        log.info(
+        logger.info(
             "Mention index: %d customers mentioned, %d ghosts, %d phantoms",
             len(mention_entries),
             len(ghost_customers),
@@ -121,7 +122,7 @@ class CustomerMentionBuilder:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(json.dumps(index.model_dump(), indent=2))
-        log.debug("Wrote customer_mentions.json")
+        logger.debug("Wrote customer_mentions.json")
 
     # ------------------------------------------------------------------
     # Internal

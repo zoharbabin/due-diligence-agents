@@ -50,6 +50,12 @@ class TestPreprocessName:
         result = preprocess_name("Ａcme")
         assert "acme" in result
 
+    def test_diacritics_transliterated(self) -> None:
+        assert preprocess_name("Müller GmbH") == "muller"
+
+    def test_non_decomposable_transliterated(self) -> None:
+        assert preprocess_name("Ørsted A/S") == "orsted a s"
+
     def test_empty_string(self) -> None:
         assert preprocess_name("") == ""
 
@@ -110,3 +116,18 @@ class TestCustomerSafeName:
         result = customer_safe_name("Smith-Jones Partners")
         assert "-" not in result
         assert result == "smith_jones_partners"
+
+    @pytest.mark.parametrize(
+        "input_name, expected",
+        [
+            ("Müller GmbH", "muller"),
+            ("Société Générale", "societe_generale"),
+            ("José García Ltd.", "jose_garcia"),
+            ("Ørsted A/S", "orsted_a_s"),
+            ("Zürich Holdings", "zurich_holdings"),
+            ("Straße Corp.", "strasse"),
+            ("Łódź Systems", "lodz_systems"),
+        ],
+    )
+    def test_unicode_transliterated_to_ascii(self, input_name: str, expected: str) -> None:
+        assert customer_safe_name(input_name) == expected

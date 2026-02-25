@@ -10,15 +10,15 @@ from typing import Any
 
 
 def get_customer_files(
-    customer_name: str,
+    customer_safe_name: str,
     customers_csv: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    """Return file list and count for *customer_name*.
+    """Return file list and count for *customer_safe_name*.
 
     Looks up the customer by ``customer_safe_name`` in *customers_csv*.
 
     Args:
-        customer_name: The ``customer_safe_name`` to look up.
+        customer_safe_name: The customer safe name to look up.
         customers_csv: List of customer dicts, each with at least
             ``customer_safe_name`` and ``file_list`` keys.
 
@@ -28,7 +28,7 @@ def get_customer_files(
     """
     for row in customers_csv:
         safe_name = row.get("customer_safe_name", "")
-        if safe_name == customer_name:
+        if safe_name == customer_safe_name:
             file_list = row.get("file_list", [])
             if isinstance(file_list, str):
                 # Handle comma-separated string
@@ -41,5 +41,5 @@ def get_customer_files(
 
     return {
         "error": "unknown_customer",
-        "name": customer_name,
+        "name": customer_safe_name,
     }

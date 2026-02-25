@@ -24,7 +24,7 @@ from dd_agents.utils.constants import (
     TEXT_DIR,
 )
 
-log = logging.getLogger("dd_agents.persistence.tiers")
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # PERMANENT tier paths (relative to project_dir)
@@ -107,7 +107,7 @@ class TierManager:
         (self.project_dir / TEXT_DIR).mkdir(parents=True, exist_ok=True)
         (self.skill_dir / "runs").mkdir(parents=True, exist_ok=True)
         (self.project_dir / INVENTORY_DIR).mkdir(parents=True, exist_ok=True)
-        log.debug("Ensured PERMANENT tier directories exist")
+        logger.debug("Ensured PERMANENT tier directories exist")
 
     def ensure_run_dirs(self, run_dir: Path) -> None:
         """Create all VERSIONED sub-directories for a new run.
@@ -122,7 +122,7 @@ class TierManager:
             (run_dir / subdir).mkdir(parents=True, exist_ok=True)
         # Also create inventory_snapshot placeholder
         (run_dir / "inventory_snapshot").mkdir(parents=True, exist_ok=True)
-        log.debug("Created VERSIONED sub-directories under %s", run_dir)
+        logger.debug("Created VERSIONED sub-directories under %s", run_dir)
 
     def ensure_dirs(self, base_path: Path, run_id: str) -> Path:
         """High-level helper: ensure all PERMANENT dirs plus a new run directory.
@@ -167,7 +167,7 @@ class TierManager:
         """
         latest_link = prior_runs_dir / "latest"
         if not latest_link.is_symlink():
-            log.debug("No latest symlink -- nothing to archive")
+            logger.debug("No latest symlink -- nothing to archive")
             return
 
         prior_run_id = latest_link.resolve().name
@@ -176,12 +176,12 @@ class TierManager:
 
         if self.inventory_dir.exists() and not snapshot_dir.exists():
             shutil.copytree(self.inventory_dir, snapshot_dir)
-            log.info(
+            logger.info(
                 "Archived VERSIONED inventory to %s",
                 snapshot_dir,
             )
         else:
-            log.debug(
+            logger.debug(
                 "Skipping archive: inventory=%s exists=%s, snapshot=%s exists=%s",
                 self.inventory_dir,
                 self.inventory_dir.exists(),
@@ -203,7 +203,7 @@ class TierManager:
         for d in targets:
             if d.exists():
                 shutil.rmtree(d)
-                log.info("Wiped FRESH tier directory: %s", d)
+                logger.info("Wiped FRESH tier directory: %s", d)
             d.mkdir(parents=True, exist_ok=True)
 
     # -- Query helpers ------------------------------------------------------

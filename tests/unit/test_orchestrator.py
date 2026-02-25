@@ -323,7 +323,7 @@ class TestCheckpoints:
 
         path = save_checkpoint(state, cp_dir)
         assert path.exists()
-        assert path.name == "checkpoint_06_06_build_inventory.json"
+        assert path.name == "checkpoint_06_build_inventory.json"
 
         loaded = load_checkpoint(cp_dir)
         assert loaded.run_id == "ckpt_test"

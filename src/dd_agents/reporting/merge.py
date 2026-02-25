@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -26,38 +25,13 @@ from dd_agents.models.finding import (
     MergedCustomerOutput,
 )
 from dd_agents.models.governance import GovernanceEdge, GovernanceGraph
+from dd_agents.utils.constants import ALL_SPECIALIST_AGENTS, SEVERITY_ORDER
+from dd_agents.utils.naming import customer_safe_name as compute_safe_name
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 logger = logging.getLogger(__name__)
-
-AGENTS: list[str] = ["legal", "finance", "commercial", "producttech"]
-
-SEVERITY_RANK: dict[str, int] = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
-
-
-def _safe_name(name: str) -> str:
-    """Produce a filesystem-safe customer name slug."""
-    slug = name.lower()
-    # Strip common legal suffixes
-    for suffix in (
-        "inc.",
-        "inc",
-        "corp.",
-        "corp",
-        "llc",
-        "ltd.",
-        "ltd",
-        "ulc",
-        "gmbh",
-        "s.a.",
-        "pty",
-    ):
-        slug = re.sub(rf"\b{re.escape(suffix)}\b", "", slug)
-    slug = re.sub(r"[^a-z0-9]+", "_", slug)
-    slug = re.sub(r"_+", "_", slug)
-    return slug.strip("_")
 
 
 class FindingMerger:
@@ -94,8 +68,8 @@ class FindingMerger:
             for data in agent_outputs.values():
                 customer_name = data.get("customer", "unknown")
                 break
-        if not customer_safe_name:
-            customer_safe_name = _safe_name(customer_name)
+        if not customer_safe_name and customer_name.strip():
+            customer_safe_name = compute_safe_name(customer_name)
 
         # Step 2 -- Merge
         all_findings: list[dict[str, Any]] = []
@@ -154,7 +128,7 @@ class FindingMerger:
         """
         # Discover all customer safe names across agents
         customer_names: set[str] = set()
-        for agent in AGENTS:
+        for agent in ALL_SPECIALIST_AGENTS:
             agent_dir = findings_dir / agent
             if agent_dir.is_dir():
                 for fp in agent_dir.glob("*.json"):
@@ -163,7 +137,7 @@ class FindingMerger:
         results: dict[str, MergedCustomerOutput] = {}
         for csn in sorted(customer_names):
             agent_outputs: dict[str, dict[str, Any]] = {}
-            for agent in AGENTS:
+            for agent in ALL_SPECIALIST_AGENTS:
                 fp = findings_dir / agent / f"{csn}.json"
                 if fp.exists():
                     agent_outputs[agent] = json.loads(fp.read_text())
@@ -218,13 +192,13 @@ class FindingMerger:
         sorted_group = sorted(
             group,
             key=lambda f: (
-                SEVERITY_RANK.get(f.get("severity", "P3"), 9),
+                SEVERITY_ORDER.get(f.get("severity", "P3"), 9),
                 -len((f.get("citations") or [{}])[0].get("exact_quote", "") if f.get("citations") else ""),
             ),
         )
         winner = dict(sorted_group[0])
         winner.setdefault("metadata", {})
-        winner["metadata"]["contributing_agents"] = list({f.get("agent", "") for f in group})
+        winner["metadata"]["contributing_agents"] = [a for a in {f.get("agent", "") for f in group} if a]
         return winner
 
     # ------------------------------------------------------------------

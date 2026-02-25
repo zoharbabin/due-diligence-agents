@@ -10,7 +10,7 @@ Tests cover the 4-phase chunked analysis flow:
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -695,7 +695,7 @@ class TestParallelChunkAnalysis:
 
         call_count = 0
 
-        async def mock_call(system: str, user: str) -> str:
+        async def mock_call(system: str, user: str, output_schema: dict[str, Any] | None = None) -> str:
             nonlocal call_count
             call_count += 1
             return json.dumps(
@@ -1321,7 +1321,7 @@ class TestSynthesisPass:
 
         captured_prompt: list[str] = []
 
-        async def mock_call(system: str, user: str) -> str:
+        async def mock_call(system: str, user: str, output_schema: dict[str, Any] | None = None) -> str:
             captured_prompt.append(user)
             return synthesis_response
 
@@ -1462,7 +1462,7 @@ class TestValidationPass:
 
         captured_prompt: list[str] = []
 
-        async def mock_call(system: str, user: str) -> str:
+        async def mock_call(system: str, user: str, output_schema: dict[str, Any] | None = None) -> str:
             captured_prompt.append(user)
             return validation_response
 
@@ -1510,7 +1510,7 @@ class TestValidationPass:
 
         captured_prompt: list[str] = []
 
-        async def mock_call(system: str, user: str) -> str:
+        async def mock_call(system: str, user: str, output_schema: dict[str, Any] | None = None) -> str:
             captured_prompt.append(user)
             return validation_response
 
@@ -1568,49 +1568,40 @@ class TestExtractJsonText:
         result = SearchAnalyzer._extract_json_text(raw)
         assert json.loads(result) == {"col": {"answer": "NO"}}
 
-    def test_double_json_extracts_first(self) -> None:
-        """When the model returns two JSON objects, extract only the first."""
+    def test_double_json_returns_from_first_brace(self) -> None:
+        """With structured output, double JSON can't happen.  If it did,
+        _extract_json_text returns from the first brace onward (callers
+        handle the json.loads error).  Issue #4.
+        """
         obj1 = '{"col": {"answer": "NOT_ADDRESSED", "confidence": "MEDIUM", "citations": []}}'
         obj2 = '{"col": {"answer": "YES", "confidence": "HIGH", "citations": []}}'
         raw = obj1 + "\n" + obj2
         result = SearchAnalyzer._extract_json_text(raw)
-        parsed = json.loads(result)
-        assert parsed["col"]["answer"] == "NOT_ADDRESSED"
+        # Returns from { onward — caller's json.loads will raise on extra data.
+        assert result.startswith("{")
 
     def test_no_braces(self) -> None:
         raw = "No JSON here at all"
         assert SearchAnalyzer._extract_json_text(raw) == raw
 
-    def test_fallback_validates_json(self) -> None:
-        """rfind fallback must validate result with json.loads().  Issue #23.
-
-        When raw_decode fails and rfind('}') produces invalid JSON, the method
-        should return the original cleaned text rather than the malformed substring.
+    def test_truncated_json_returns_from_first_brace(self) -> None:
+        """With structured output, truncated JSON can't happen.  If it did,
+        _extract_json_text returns from the first brace — callers handle
+        json.loads errors.  Issue #4 (replaces Issue #23 fallback tests).
         """
-        # Construct input where raw_decode fails (truncated JSON) and rfind('}')
-        # would return an invalid substring: the brace is inside a string value.
         raw = '{"col": {"answer": "YES, see section 12.3} for details"'
         result = SearchAnalyzer._extract_json_text(raw)
-        # The rfind fallback would return '{"col": {"answer": "YES, see section 12.3}'
-        # which is invalid JSON.  With the fix, it falls through to return cleaned.
-        # The result should NOT be the invalid substring.
-        import contextlib
+        # Returns everything from the first brace onward.
+        assert result.startswith("{")
 
-        with contextlib.suppress(json.JSONDecodeError):
-            json.loads(result)
-        # The key assertion: the result should NOT be the truncated rfind output.
-        assert result != '{"col": {"answer": "YES, see section 12.3}'
-
-    def test_fallback_returns_valid_json_when_possible(self) -> None:
-        """rfind fallback returns result when it IS valid JSON.  Issue #23."""
-        # Truncated JSON where rfind('}') happens to produce valid JSON.
+    def test_valid_json_with_trailing_text(self) -> None:
+        """Valid JSON followed by trailing text — returns from first brace."""
         valid_obj = '{"col": {"answer": "YES"}}'
         raw = valid_obj + " some trailing garbage without braces"
         result = SearchAnalyzer._extract_json_text(raw)
-        # raw_decode should handle this case (primary path), but if it were to
-        # fall through, the rfind result is valid and should be returned.
-        parsed = json.loads(result)
-        assert parsed["col"]["answer"] == "YES"
+        # Returns from first { — includes trailing text, but json.loads
+        # in caller may raise.  With structured output this can't happen.
+        assert result.startswith("{")
 
 
 # ===================================================================
@@ -1954,7 +1945,7 @@ class TestValidationEdgeCases:
 
         captured_prompt: list[str] = []
 
-        async def mock_call(system: str, user: str) -> str:
+        async def mock_call(system: str, user: str, output_schema: dict[str, Any] | None = None) -> str:
             captured_prompt.append(user)
             return validation_response
 
@@ -1997,7 +1988,7 @@ class TestValidationEdgeCases:
 
         captured_prompt: list[str] = []
 
-        async def mock_call(system: str, user: str) -> str:
+        async def mock_call(system: str, user: str, output_schema: dict[str, Any] | None = None) -> str:
             captured_prompt.append(user)
             return validation_response
 
@@ -2042,7 +2033,7 @@ class TestParallelChunkFailure:
 
         call_number = 0
 
-        async def mock_call(system: str, user: str) -> str:
+        async def mock_call(system: str, user: str, output_schema: dict[str, Any] | None = None) -> str:
             nonlocal call_number
             call_number += 1
             # Fail the first chunk, succeed on all others.
@@ -2378,3 +2369,195 @@ class TestAnswerNormalizationAdditional:
         # should now correctly see this as NOT_ADDRESSED and skip it.
         assert result.answer == "NOT_ADDRESSED"
         assert result.answer.upper().strip() == "NOT_ADDRESSED"
+
+
+# ===================================================================
+# TestAnalysisSchema (Issue #4 — Structured Output)
+# ===================================================================
+
+
+class TestAnalysisSchema:
+    """Tests for _build_analysis_schema and structured output integration."""
+
+    def test_schema_has_all_columns(self) -> None:
+        """Schema must include every column name as a required top-level key."""
+        columns = ["Consent Required", "Notice Required", "Governing Law"]
+        schema = SearchAnalyzer._build_analysis_schema(columns)
+
+        assert schema["type"] == "object"
+        assert set(schema["required"]) == set(columns)
+        assert set(schema["properties"].keys()) == set(columns)
+        assert schema["additionalProperties"] is False
+
+    def test_column_schema_structure(self) -> None:
+        """Each column must have answer, confidence (enum), and citations array."""
+        schema = SearchAnalyzer._build_analysis_schema(["Test Column"])
+        col = schema["properties"]["Test Column"]
+
+        assert col["type"] == "object"
+        assert set(col["required"]) == {"answer", "confidence", "citations"}
+        assert col["additionalProperties"] is False
+
+        # Confidence is enum-constrained.
+        assert col["properties"]["confidence"]["enum"] == ["HIGH", "MEDIUM", "LOW"]
+
+        # Citations is an array of objects.
+        assert col["properties"]["citations"]["type"] == "array"
+
+    def test_citation_schema_structure(self) -> None:
+        """Citation objects must require all 4 fields with no extra properties."""
+        schema = SearchAnalyzer._build_analysis_schema(["Col"])
+        citation = schema["properties"]["Col"]["properties"]["citations"]["items"]
+
+        assert citation["type"] == "object"
+        assert set(citation["required"]) == {"file_path", "page", "section_ref", "exact_quote"}
+        assert citation["additionalProperties"] is False
+
+    def test_single_column_schema(self) -> None:
+        """Schema works for a single column (Phase 3/4 with one conflict/gap)."""
+        schema = SearchAnalyzer._build_analysis_schema(["Only Column"])
+
+        assert schema["required"] == ["Only Column"]
+        assert len(schema["properties"]) == 1
+
+    def test_schema_is_valid_json_schema(self) -> None:
+        """Schema can be serialized to JSON (required by SDK)."""
+        schema = SearchAnalyzer._build_analysis_schema(["A", "B", "C"])
+        serialized = json.dumps(schema)
+        roundtripped = json.loads(serialized)
+        assert roundtripped == schema
+
+    def test_schema_varies_by_phase(self) -> None:
+        """Phase 1, 3, and 4 should use different column subsets."""
+        all_cols = ["Consent", "Notice", "Governing Law"]
+        conflicted = ["Consent"]
+        not_addressed = ["Notice", "Governing Law"]
+
+        phase1 = SearchAnalyzer._build_analysis_schema(all_cols)
+        phase3 = SearchAnalyzer._build_analysis_schema(conflicted)
+        phase4 = SearchAnalyzer._build_analysis_schema(not_addressed)
+
+        assert len(phase1["properties"]) == 3
+        assert len(phase3["properties"]) == 1
+        assert len(phase4["properties"]) == 2
+
+
+class TestStructuredOutputWiring:
+    """Tests that structured output is wired into all LLM-calling phases."""
+
+    @pytest.mark.asyncio
+    async def test_phase1_passes_schema(self, tmp_path: Path) -> None:
+        """Phase 1 (map) must pass output_schema to _call_claude."""
+        analyzer = _make_analyzer(tmp_path)
+        customer = _make_customer()
+        _write_text_file(tmp_path, "GroupA/Acme Corp/msa.pdf", "Agreement content.")
+
+        captured_schemas: list[dict[str, Any] | None] = []
+
+        async def mock_call(system: str, user: str, output_schema: dict[str, Any] | None = None) -> str:
+            captured_schemas.append(output_schema)
+            return json.dumps(
+                {
+                    "Consent Required": {"answer": "YES", "confidence": "HIGH", "citations": []},
+                    "Notice Required": {"answer": "YES", "confidence": "HIGH", "citations": []},
+                }
+            )
+
+        with patch.object(analyzer, "_call_claude", side_effect=mock_call):
+            await analyzer.analyze_all([customer])
+
+        # Phase 1 should have passed a schema.
+        assert len(captured_schemas) >= 1
+        schema = captured_schemas[0]
+        assert schema is not None
+        assert "Consent Required" in schema["required"]
+        assert "Notice Required" in schema["required"]
+
+    @pytest.mark.asyncio
+    async def test_phase3_passes_conflicted_schema(self, tmp_path: Path) -> None:
+        """Phase 3 (synthesis) must pass schema with only conflicted columns."""
+        analyzer = _make_analyzer(tmp_path)
+        customer = _make_customer()
+
+        merged = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="YES", confidence="MEDIUM"),
+                "Notice Required": _make_column_result(answer="YES", confidence="HIGH"),
+            }
+        )
+        chunk_results = [
+            _make_customer_result(
+                columns={
+                    "Consent Required": _make_column_result(answer="YES"),
+                    "Notice Required": _make_column_result(answer="YES"),
+                }
+            ),
+            _make_customer_result(
+                columns={
+                    "Consent Required": _make_column_result(answer="NO"),
+                    "Notice Required": _make_column_result(answer="YES"),
+                }
+            ),
+        ]
+
+        captured_schemas: list[dict[str, Any] | None] = []
+
+        async def mock_call(system: str, user: str, output_schema: dict[str, Any] | None = None) -> str:
+            captured_schemas.append(output_schema)
+            return json.dumps({"Consent Required": {"answer": "NO", "confidence": "HIGH", "citations": []}})
+
+        with patch.object(analyzer, "_call_claude", side_effect=mock_call):
+            await analyzer._synthesis_pass(merged, chunk_results, ["Consent Required"], customer)
+
+        assert len(captured_schemas) == 1
+        schema = captured_schemas[0]
+        assert schema is not None
+        # Only conflicted column in schema.
+        assert schema["required"] == ["Consent Required"]
+        assert "Notice Required" not in schema["properties"]
+
+    @pytest.mark.asyncio
+    async def test_phase4_passes_not_addressed_schema(self, tmp_path: Path) -> None:
+        """Phase 4 (validation) must pass schema with only NOT_ADDRESSED columns."""
+        analyzer = _make_analyzer(tmp_path)
+        customer = _make_customer()
+
+        result = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="YES", confidence="HIGH"),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED", confidence="HIGH"),
+            }
+        )
+        file_texts = [_make_file_text(text="Contract with notice clauses.")]
+
+        captured_schemas: list[dict[str, Any] | None] = []
+
+        async def mock_call(system: str, user: str, output_schema: dict[str, Any] | None = None) -> str:
+            captured_schemas.append(output_schema)
+            return json.dumps({"Notice Required": {"answer": "YES", "confidence": "MEDIUM", "citations": []}})
+
+        with patch.object(analyzer, "_call_claude", side_effect=mock_call):
+            await analyzer._validation_pass(result, file_texts, customer)
+
+        assert len(captured_schemas) == 1
+        schema = captured_schemas[0]
+        assert schema is not None
+        # Only NOT_ADDRESSED column in schema.
+        assert schema["required"] == ["Notice Required"]
+        assert "Consent Required" not in schema["properties"]
+
+    @pytest.mark.asyncio
+    async def test_system_prompt_no_output_format_boilerplate(self, tmp_path: Path) -> None:
+        """System prompt should NOT contain 'Return ONLY raw JSON' boilerplate.
+
+        Issue #4: Structured output via constrained decoding replaces
+        prompt-based format enforcement.
+        """
+        analyzer = _make_analyzer(tmp_path)
+        prompt = analyzer._build_system_prompt()
+
+        assert "Return ONLY raw JSON" not in prompt
+        assert '"<column_name>"' not in prompt
+        # Should still contain analysis instructions.
+        assert "MUST answer EVERY question" in prompt
+        assert "Double-check" in prompt

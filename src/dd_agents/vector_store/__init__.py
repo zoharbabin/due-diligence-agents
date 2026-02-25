@@ -12,7 +12,7 @@ from typing import Any
 
 from dd_agents.vector_store.embeddings import DocumentChunker
 
-log = logging.getLogger("dd_agents.vector_store")
+logger = logging.getLogger(__name__)
 
 # Conditional VectorStore export
 try:
@@ -24,7 +24,7 @@ except Exception:  # pragma: no cover
         """No-op stub for VectorStore when ChromaDB is unavailable."""
 
         def __init__(self, *args: Any, **kwargs: Any) -> None:
-            log.warning("VectorStore stub: chromadb is not installed. Install with: pip install chromadb")
+            logger.warning("VectorStore stub: chromadb is not installed. Install with: pip install chromadb")
 
         def add_documents(self, documents: list[dict[str, Any]]) -> int:
             return 0

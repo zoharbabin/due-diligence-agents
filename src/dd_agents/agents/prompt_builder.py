@@ -27,7 +27,7 @@ class AgentType(StrEnum):
     COMMERCIAL = "commercial"
     PRODUCTTECH = "producttech"
     JUDGE = "judge"
-    REPORTING_LEAD = "reportinglead"
+    REPORTING_LEAD = "reporting_lead"
 
 
 # ---------------------------------------------------------------------------

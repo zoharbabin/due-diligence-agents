@@ -99,9 +99,6 @@ class JudgeAgent(BaseAgentRunner):
     def get_agent_name(self) -> str:
         return "judge"
 
-    def get_model_id(self) -> str:
-        return "claude-sonnet-4-20250514"
-
     def get_system_prompt(self) -> str:
         return (
             "You are the Judge agent for forensic M&A due diligence. "

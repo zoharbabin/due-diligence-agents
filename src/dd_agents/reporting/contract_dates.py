@@ -62,8 +62,9 @@ class ContractDateReconciler:
             ``customer``, ``contract_end_date`` (YYYY-MM-DD), and ``arr``
             (numeric).
         findings:
-            ``{customer_safe_name: [finding_dicts]}`` -- used to look for
-            renewal evidence such as auto-renewal clauses, POs, etc.
+            ``{customer_name: [finding_dicts]}`` -- keyed by canonical
+            customer name (not safe_name).  Used to look for renewal
+            evidence such as auto-renewal clauses, POs, etc.
         customers:
             Optional explicit customer list.  When not supplied, all entries
             in *customer_database* are processed.
@@ -235,6 +236,7 @@ class ContractDateReconciler:
         try:
             return datetime.strptime(date_str[:10], "%Y-%m-%d").date()
         except (ValueError, TypeError):
+            logger.debug("Could not parse date %r", date_str)
             return None
 
     @staticmethod

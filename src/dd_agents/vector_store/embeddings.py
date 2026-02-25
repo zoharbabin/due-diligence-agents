@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-log = logging.getLogger("dd_agents.vector_store.embeddings")
+logger = logging.getLogger(__name__)
 
 
 class DocumentChunker:
@@ -110,7 +110,7 @@ class DocumentChunker:
             start += step
             chunk_index += 1
 
-        log.debug(
+        logger.debug(
             "Chunked document: %d chars -> %d chunks (size=%d, overlap=%d)",
             text_len,
             len(chunks),

@@ -25,7 +25,7 @@ from dd_agents.utils.constants import (
 if TYPE_CHECKING:
     from dd_agents.orchestrator.state import PipelineState
 
-log = logging.getLogger("dd_agents.team")
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Default configuration
@@ -121,7 +121,7 @@ class AgentTeam:
         import from ``dd_agents.agents.specialists`` and invoke the agent
         SDK.
         """
-        log.info("Spawning specialist agent: %s (placeholder)", agent_name)
+        logger.info("Spawning specialist agent: %s (placeholder)", agent_name)
         # Placeholder: simulate agent work
         await asyncio.sleep(0)
         return {
@@ -147,7 +147,7 @@ class AgentTeam:
         dict[str, Any]
             Result dict from the Judge agent.
         """
-        log.info("Spawning Judge agent (placeholder)")
+        logger.info("Spawning Judge agent (placeholder)")
         self._agent_start_times[AGENT_JUDGE] = time.monotonic()
         self._agent_last_activity[AGENT_JUDGE] = time.monotonic()
         await asyncio.sleep(0)
@@ -174,7 +174,7 @@ class AgentTeam:
         dict[str, Any]
             Result dict from the Reporting Lead agent.
         """
-        log.info("Spawning Reporting Lead agent (placeholder)")
+        logger.info("Spawning Reporting Lead agent (placeholder)")
         self._agent_start_times[AGENT_REPORTING_LEAD] = time.monotonic()
         self._agent_last_activity[AGENT_REPORTING_LEAD] = time.monotonic()
         await asyncio.sleep(0)
@@ -225,7 +225,7 @@ class AgentTeam:
             if task in done:
                 exc = task.exception()
                 if exc is not None:
-                    log.error("Agent %s raised: %s", agent_name, exc)
+                    logger.error("Agent %s raised: %s", agent_name, exc)
                     results[agent_name] = {
                         "agent": agent_name,
                         "status": "failed",
@@ -236,7 +236,7 @@ class AgentTeam:
                     results[agent_name] = task.result()
             else:
                 # Timed out
-                log.warning("Agent %s timed out after %ds", agent_name, timeout)
+                logger.warning("Agent %s timed out after %ds", agent_name, timeout)
                 task.cancel()
                 results[agent_name] = {
                     "agent": agent_name,

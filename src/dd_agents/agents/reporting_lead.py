@@ -31,10 +31,7 @@ class ReportingLeadAgent(BaseAgentRunner):
     max_budget_usd: float = 8.0
 
     def get_agent_name(self) -> str:
-        return "reportinglead"
-
-    def get_model_id(self) -> str:
-        return "claude-sonnet-4-20250514"
+        return "reporting_lead"
 
     def get_system_prompt(self) -> str:
         return (

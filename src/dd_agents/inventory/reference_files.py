@@ -22,7 +22,7 @@ from dd_agents.utils.constants import (
     ALL_SPECIALIST_AGENTS,
 )
 
-log = logging.getLogger("dd_agents.inventory.reference_files")
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Classification patterns: regex on lowercased filename/path
@@ -130,7 +130,7 @@ class ReferenceFileClassifier:
             ref_files.append(ref_file)
 
         ref_files.sort(key=lambda r: r.file_path)
-        log.info("Classified %d reference files", len(ref_files))
+        logger.info("Classified %d reference files", len(ref_files))
         return ref_files
 
     def route_to_agents(self, category: ReferenceFileCategory | str) -> list[str]:
@@ -167,7 +167,7 @@ class ReferenceFileClassifier:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         data = [rf.model_dump() for rf in ref_files]
         output_path.write_text(json.dumps(data, indent=2))
-        log.debug("Wrote reference_files.json with %d entries", len(ref_files))
+        logger.debug("Wrote reference_files.json with %d entries", len(ref_files))
 
     # ------------------------------------------------------------------
     # Internal

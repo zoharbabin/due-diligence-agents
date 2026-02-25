@@ -5,7 +5,9 @@ pipeline can be resumed from the last completed step after a crash.
 
 Checkpoint filename format::
 
-    checkpoint_{step_number:02d}_{step_name}.json
+    checkpoint_{step_value}.json
+
+where ``step_value`` is the ``PipelineStep.value`` string (e.g. ``"06_build_inventory"``).
 
 Writes use an atomic pattern (write to ``.tmp``, then rename) to prevent
 corruption from partial writes.
@@ -22,7 +24,7 @@ from dd_agents.orchestrator.state import PipelineState
 if TYPE_CHECKING:
     from pathlib import Path
 
-log = logging.getLogger("dd_agents.checkpoints")
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -48,17 +50,21 @@ def save_checkpoint(state: PipelineState, checkpoint_dir: Path) -> Path:
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
     step = state.current_step
-    step_num = step.step_number
     step_name = step.value  # e.g. "05_bulk_extraction"
-    filename = f"checkpoint_{step_num:02d}_{step_name}.json"
+    filename = f"checkpoint_{step_name}.json"
     path = checkpoint_dir / filename
     tmp_path = path.with_suffix(".tmp")
 
     data = state.to_checkpoint_dict()
-    tmp_path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
-    tmp_path.rename(path)
+    try:
+        tmp_path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+        tmp_path.rename(path)
+    except Exception:
+        # Clean up temp file on serialization or write failure.
+        tmp_path.unlink(missing_ok=True)
+        raise
 
-    log.debug("Checkpoint saved: %s", path.name)
+    logger.debug("Checkpoint saved: %s", path.name)
     return path
 
 
@@ -90,7 +96,7 @@ def load_checkpoint(checkpoint_dir: Path) -> PipelineState:
     latest = checkpoints[-1]  # highest step number (sorted)
     path = checkpoint_dir / latest
     data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
-    log.info("Loaded checkpoint: %s", latest)
+    logger.info("Loaded checkpoint: %s", latest)
     return PipelineState.from_checkpoint_dict(data)
 
 
@@ -119,7 +125,7 @@ def load_checkpoint_by_step(checkpoint_dir: Path, step_number: int) -> PipelineS
     if not matches:
         raise FileNotFoundError(f"No checkpoint for step {step_number} in {checkpoint_dir}")
     data: dict[str, Any] = json.loads(matches[0].read_text(encoding="utf-8"))
-    log.info("Loaded checkpoint for step %d: %s", step_number, matches[0].name)
+    logger.info("Loaded checkpoint for step %d: %s", step_number, matches[0].name)
     return PipelineState.from_checkpoint_dict(data)
 
 
@@ -161,5 +167,5 @@ def clean_checkpoints(checkpoint_dir: Path) -> int:
             f.unlink()
             removed += 1
     if removed:
-        log.info("Cleaned %d checkpoint file(s)", removed)
+        logger.info("Cleaned %d checkpoint file(s)", removed)
     return removed

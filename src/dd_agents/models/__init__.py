@@ -148,6 +148,15 @@ from dd_agents.models.reporting import (
     SummaryFormulaEntry,
 )
 
+# Search
+from dd_agents.models.search import (
+    SearchCitation,
+    SearchColumn,
+    SearchColumnResult,
+    SearchCustomerResult,
+    SearchPrompts,
+)
+
 __all__ = [
     # Enums
     "AgentName",
@@ -262,4 +271,10 @@ __all__ = [
     "SheetDef",
     "SortOrder",
     "SummaryFormulaEntry",
+    # Search
+    "SearchCitation",
+    "SearchColumn",
+    "SearchColumnResult",
+    "SearchCustomerResult",
+    "SearchPrompts",
 ]

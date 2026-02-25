@@ -24,7 +24,7 @@ from dd_agents.models.persistence import (
 if TYPE_CHECKING:
     from pathlib import Path
 
-log = logging.getLogger("dd_agents.persistence.incremental")
+logger = logging.getLogger(__name__)
 
 
 class IncrementalClassifier:
@@ -158,7 +158,7 @@ class IncrementalClassifier:
             customers=entries,
         )
 
-        log.info(
+        logger.info(
             "Classification: %d NEW, %d CHANGED, %d STALE_REFRESH, %d UNCHANGED, %d DELETED",
             summary.new,
             summary.changed,
@@ -213,7 +213,7 @@ class IncrementalClassifier:
                     target_file.write_text(json.dumps(data, indent=2))
                     carried += 1
                 except (json.JSONDecodeError, OSError) as exc:
-                    log.warning(
+                    logger.warning(
                         "Failed to carry forward %s/%s: %s",
                         agent_dir.name,
                         customer,
@@ -235,14 +235,14 @@ class IncrementalClassifier:
                             gap_data["_carried_forward"] = True
                         target_gap.write_text(json.dumps(gap_data, indent=2))
                     except (json.JSONDecodeError, OSError) as exc:
-                        log.warning(
+                        logger.warning(
                             "Failed to carry forward gap %s/%s: %s",
                             agent_dir.name,
                             customer,
                             exc,
                         )
 
-        log.info("Carried forward %d finding files for %d customers", carried, len(unchanged_customers))
+        logger.info("Carried forward %d finding files for %d customers", carried, len(unchanged_customers))
         return carried
 
 

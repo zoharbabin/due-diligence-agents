@@ -5,6 +5,44 @@ from __future__ import annotations
 import re
 import unicodedata
 
+# ---------------------------------------------------------------------------
+# Unicode → ASCII transliteration
+# ---------------------------------------------------------------------------
+
+# Non-decomposable characters that NFKD cannot reduce to ASCII base + combining
+# mark.  Covers the Latin-script letters most common in European company names.
+_TRANSLITERATION: dict[int, str] = {
+    ord("ø"): "o",
+    ord("Ø"): "O",
+    ord("æ"): "ae",
+    ord("Æ"): "AE",
+    ord("œ"): "oe",
+    ord("Œ"): "OE",
+    ord("ß"): "ss",
+    ord("ð"): "d",
+    ord("Ð"): "D",
+    ord("þ"): "th",
+    ord("Þ"): "Th",
+    ord("ł"): "l",
+    ord("Ł"): "L",
+    ord("đ"): "d",
+    ord("Đ"): "D",
+}
+
+
+def _transliterate_to_ascii(text: str) -> str:
+    """Best-effort transliteration of Unicode text to ASCII.
+
+    1. Explicit mapping for non-decomposable letters (ø→o, ß→ss, æ→ae, …).
+    2. NFKD decomposition strips combining marks (ü→u, é→e, ñ→n, …)
+       and resolves compatibility characters (full-width A→A, ﬁ→fi, …).
+    3. Any remaining non-ASCII bytes are silently dropped.
+    """
+    text = text.translate(_TRANSLITERATION)
+    text = unicodedata.normalize("NFKD", text)
+    return text.encode("ascii", "ignore").decode("ascii")
+
+
 # Legal suffixes to strip (case-insensitive, anchored to end of string)
 LEGAL_SUFFIXES: list[str] = [
     r"\bInc\.?$",
@@ -64,7 +102,7 @@ def preprocess_name(name: str) -> str:
         >>> preprocess_name("Alpine Systems, Inc.")
         'alpine systems'
     """
-    name = unicodedata.normalize("NFKC", name)
+    name = _transliterate_to_ascii(name)
     name = name.lower()
     name = _strip_legal_suffixes(name)
 
@@ -82,10 +120,10 @@ def preprocess_name(name: str) -> str:
 
 
 def customer_safe_name(name: str) -> str:
-    """Convert a customer name to a filesystem-safe identifier.
+    """Convert a customer name to a filesystem-safe ASCII identifier.
 
     Steps:
-        1. Unicode NFKC normalization
+        1. Transliterate Unicode to ASCII (ü→u, ø→o, ß→ss, …)
         2. Lowercase
         3. Strip legal suffixes
         4. Replace spaces and special chars (& ' / , . -) with _
@@ -101,13 +139,13 @@ def customer_safe_name(name: str) -> str:
         'global_analytics_group'
         >>> customer_safe_name("Alpine Systems, Inc.")
         'alpine_systems'
-        >>> customer_safe_name("R&D Global")
-        'r_d_global'
+        >>> customer_safe_name("Müller GmbH")
+        'muller'
     """
     if not name or not name.strip():
         raise ValueError("Customer name cannot be empty")
 
-    name = unicodedata.normalize("NFKC", name)
+    name = _transliterate_to_ascii(name)
     name = name.lower()
     name = _strip_legal_suffixes(name)
 

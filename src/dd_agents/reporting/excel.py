@@ -22,6 +22,7 @@ from dd_agents.models.reporting import (
     SheetDef,
     SummaryFormulaEntry,
 )
+from dd_agents.utils.constants import SEVERITY_ORDER
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -29,9 +30,6 @@ if TYPE_CHECKING:
     from openpyxl.worksheet.worksheet import Worksheet
 
 logger = logging.getLogger(__name__)
-
-# Severity → (P0 worst … P3 least severe)
-SEVERITY_RANK: dict[str, int] = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
 
 # Overall risk rating priority for sorting
 RISK_RANK: dict[str, int] = {
@@ -508,7 +506,7 @@ class ExcelReportGenerator:
                 # Handle special ranking for known columns
                 rank: int | str
                 if so.column == "severity" or so.column == "priority":
-                    rank = SEVERITY_RANK.get(str(val), 9)
+                    rank = SEVERITY_ORDER.get(str(val), 9)
                 elif so.column == "overall_risk_rating":
                     rank = RISK_RANK.get(str(val), 9)
                 else:
