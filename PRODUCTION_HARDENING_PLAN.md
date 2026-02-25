@@ -5,7 +5,7 @@
 
 **Branch**: `feat/production-hardening-plan`
 **Epic**: [#32](https://github.com/zoharbabin/due-diligence-agents/issues/32)
-**Baseline**: 1016 unit tests passing, mypy strict clean, ruff clean (v0.2.1)
+**Baseline**: 1291 unit tests passing, mypy strict clean, ruff clean (v0.2.1)
 
 ---
 

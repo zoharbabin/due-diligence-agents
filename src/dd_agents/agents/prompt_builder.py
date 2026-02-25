@@ -22,6 +22,8 @@ if TYPE_CHECKING:
 
 
 class AgentType(StrEnum):
+    """All agent roles in the pipeline: 4 specialists + judge + reporting lead."""
+
     LEGAL = "legal"
     FINANCE = "finance"
     COMMERCIAL = "commercial"

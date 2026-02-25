@@ -591,6 +591,10 @@ class ExtractionQualityEntry(BaseModel):
         default_factory=list,
         description="Methods attempted in order"
     )
+    failure_reasons: list[str] = Field(
+        default_factory=list,
+        description="Diagnostic strings for each gate failure in the chain"
+    )
 ```
 
 ---

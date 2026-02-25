@@ -1,6 +1,6 @@
 # Due Diligence Agent SDK
 
-> **Status**: Implemented. Full pipeline, contract search, and auto-config commands operational with 1,040+ passing tests.
+> **Status**: Implemented. Full pipeline, contract search, and auto-config commands operational with 1,290+ passing tests.
 
 Standalone Python application for forensic M&A due diligence. Migrates a Claude Code Skill (3,100+ lines across 9 files) to a programmatic pipeline using `claude-agent-sdk` v0.1.39+. Six agents (4 specialists + optional Judge + Reporting Lead) analyze contract data rooms, extract clauses, build governance graphs, detect gaps, and produce a 14-sheet Excel report — all under deterministic Python orchestration with hook-enforced quality gates.
 
@@ -23,7 +23,6 @@ due-diligence-agents/
 │       ├── reporting/           # Merge/dedup, Excel generation, report diff
 │       ├── persistence/         # Three-tier storage, run management, incremental
 │       ├── hooks/               # SDK hooks (PreToolUse, PostToolUse, Stop)
-│       ├── reasoning/           # Ontology, contract graph, risk reasoning
 │       ├── search/              # Contract search: analyzer, Excel writer, runner
 │       ├── tools/               # Custom MCP tools (validate_finding, etc.)
 │       ├── utils/               # Naming conventions, constants, shared utilities
@@ -125,6 +124,31 @@ The Excel output has two sheets: **Summary** (one row per customer, color-coded 
 
 See the [Search Command Guide](docs/search-guide.md) for full documentation, prompt writing tips, and troubleshooting. See [`examples/search/`](examples/search/) for ready-to-use prompt templates.
 
+## Pipeline Output
+
+After running, results appear in `_dd/forensic-dd/`:
+
+```
+_dd/forensic-dd/
+├── index/text/                     # Extracted document text (cached across runs)
+├── inventory/                      # Discovered files, customers, counts
+│   ├── customers.csv
+│   └── counts.json
+├── runs/
+│   └── 20260225_143000/            # Timestamped run directory
+│       ├── findings/
+│       │   ├── legal/              # Per-agent raw findings
+│       │   ├── finance/
+│       │   └── merged/             # Deduplicated merged findings
+│       ├── report/
+│       │   └── dd_report.xlsx      # 14-sheet Excel report (main deliverable)
+│       ├── audit.json              # QA validation results
+│       └── metadata.json           # Run metadata
+└── entity_resolution_cache.json    # Entity matching cache (reused across runs)
+```
+
+**Key files**: `dd_report.xlsx` is the main deliverable (14 sheets covering legal risks, commercial data, financials, governance graph, gaps). `audit.json` shows whether all validation gates passed.
+
 ## Implementation Plan
 
 The full implementation plan is in [`docs/plan/`](docs/plan/). Start with the [executive overview](docs/plan/PLAN.md).
@@ -159,10 +183,53 @@ The full implementation plan is in [`docs/plan/`](docs/plan/). Start with the [e
 
 - Python 3.12+
 - Claude API access via `claude-agent-sdk` (Anthropic API key or AWS Bedrock credentials)
-- `pdftotext` (poppler-utils) for PDF text extraction fallback
-- `tesseract-ocr` (optional, for scanned PDFs)
 
-All Python dependencies (including `markitdown`, `pymupdf`, etc.) are declared in `pyproject.toml` and installed automatically via `pip install -e ".[dev]"`.
+### System Dependencies
+
+| Dependency | Platform Install | Required? |
+|-----------|-----------------|-----------|
+| `poppler` (provides `pdftotext`) | `brew install poppler` (macOS) / `apt-get install poppler-utils` (Linux) | Optional — fallback for pymupdf failures |
+| `tesseract-ocr` | `brew install tesseract` (macOS) / `apt-get install tesseract-ocr` (Linux) | Optional — OCR for scanned PDFs |
+
+### Python Dependencies
+
+Core Python dependencies are installed automatically:
+
+```bash
+pip install -e "."            # Core only
+pip install -e ".[dev]"       # Core + dev tools (pytest, mypy, ruff)
+```
+
+Optional extras for additional capabilities:
+
+```bash
+pip install -e ".[vector]"    # ChromaDB for semantic cross-document search
+pip install -e ".[ocr]"       # pytesseract + Pillow for OCR fallback
+pip install -e ".[glm-ocr]"   # GLM-OCR vision-language model (Apple Silicon)
+```
+
+For full development with all extras:
+
+```bash
+pip install -e ".[dev,vector,ocr]"
+# or use the Makefile:
+make install-dev
+```
+
+### API Key Setup
+
+Set one of these environment variables before running the pipeline:
+
+```bash
+# Option A: Anthropic API (recommended)
+export ANTHROPIC_API_KEY="sk-ant-..."
+
+# Option B: AWS Bedrock
+export AWS_PROFILE=default
+export AWS_REGION=us-east-1
+```
+
+Unit and integration tests run without an API key. Only E2E tests require one.
 
 ## Developer Onboarding
 
