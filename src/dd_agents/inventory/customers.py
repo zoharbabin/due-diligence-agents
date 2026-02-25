@@ -12,7 +12,7 @@ from pathlib import Path, PurePosixPath
 from dd_agents.models.inventory import CountsJson, CustomerEntry, FileEntry
 from dd_agents.utils.naming import customer_safe_name
 
-log = logging.getLogger("dd_agents.inventory.customers")
+logger = logging.getLogger(__name__)
 
 
 class CustomerRegistryBuilder:
@@ -49,8 +49,6 @@ class CustomerRegistryBuilder:
         tuple[list[CustomerEntry], CountsJson]
             The customer list and the aggregate counts structure.
         """
-        Path(data_room_path)
-
         # Bucket files by group/customer
         customer_files: dict[tuple[str, str], list[str]] = defaultdict(list)
         reference_file_paths: list[str] = []
@@ -106,7 +104,7 @@ class CustomerRegistryBuilder:
             try:
                 safe_name = customer_safe_name(customer_name)
             except ValueError:
-                log.warning("Could not compute safe_name for %r -- skipping", customer_name)
+                logger.warning("Could not compute safe_name for %r -- skipping", customer_name)
                 continue
 
             customer_entry = CustomerEntry(
@@ -133,7 +131,7 @@ class CustomerRegistryBuilder:
             customers_by_group=dict(sorted(customers_by_group.items())),
         )
 
-        log.info(
+        logger.info(
             "Registry: %d customers in %d groups, %d reference files, %d total files",
             counts.total_customers,
             len(customers_by_group),
@@ -171,7 +169,7 @@ class CustomerRegistryBuilder:
             )
 
         output_path.write_text(buf.getvalue())
-        log.debug("Wrote customers.csv with %d rows", len(customers))
+        logger.debug("Wrote customers.csv with %d rows", len(customers))
 
     def write_counts(self, counts: CountsJson, output_path: Path) -> None:
         """Write aggregate counts to ``counts.json``.
@@ -186,4 +184,4 @@ class CustomerRegistryBuilder:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(json.dumps(counts.model_dump(), indent=2))
-        log.debug("Wrote counts.json")
+        logger.debug("Wrote counts.json")

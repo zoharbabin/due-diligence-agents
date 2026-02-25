@@ -356,6 +356,7 @@ def _extract_text(raw_bytes: bytes, url: str) -> str:
     UTF-8 decode.
     """
     # Try markitdown for HTML content.
+    tmp_path: str | None = None
     try:
         import tempfile
 
@@ -372,6 +373,13 @@ def _extract_text(raw_bytes: bytes, url: str) -> str:
             return f"# External Reference: {url}\n\n{result.text_content}"
     except Exception:
         logger.debug("markitdown failed for %s, falling back to raw decode", url)
+    finally:
+        if tmp_path is not None:
+            import contextlib
+            import os
+
+            with contextlib.suppress(OSError):
+                os.unlink(tmp_path)
 
     # Fallback: raw UTF-8 decode.
     try:

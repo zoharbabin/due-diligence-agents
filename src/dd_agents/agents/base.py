@@ -24,16 +24,17 @@ logger = logging.getLogger(__name__)
 class BaseAgentRunner(ABC):
     """Abstract base for every agent runner.
 
-    Subclasses must implement the four property methods that define the agent's
-    identity and capability surface.  The ``run`` method orchestrates a single
-    agent invocation: build prompt -> spawn (placeholder) -> parse output.
+    Subclasses must implement three abstract methods (``get_agent_name``,
+    ``get_system_prompt``, ``get_tools``).  ``get_model_id`` and
+    ``build_prompt`` have sensible defaults that can be overridden.
+    The ``run`` method orchestrates a single agent invocation:
+    build prompt -> spawn (placeholder) -> parse output.
     """
 
     # Configurable defaults -- subclasses may override via class attributes.
     timeout_seconds: int = 600
     max_turns: int = 200
     max_budget_usd: float = 5.0
-    default_tools: list[str] = ["Read", "Write", "Glob", "Grep"]
 
     def __init__(
         self,
@@ -55,9 +56,13 @@ class BaseAgentRunner(ABC):
     def get_agent_name(self) -> str:
         """Return the canonical agent name (e.g. ``'legal'``)."""
 
-    @abstractmethod
     def get_model_id(self) -> str:
-        """Return the LLM model identifier for this agent."""
+        """Return the LLM model identifier for this agent.
+
+        Defaults to ``claude-sonnet-4-20250514``.  Subclasses may override
+        if they need a different model.
+        """
+        return "claude-sonnet-4-20250514"
 
     @abstractmethod
     def get_system_prompt(self) -> str:
@@ -122,18 +127,24 @@ class BaseAgentRunner(ABC):
     def build_prompt(self, state: dict[str, Any]) -> str:
         """Delegate prompt construction to :class:`PromptBuilder`.
 
-        Subclasses may override to customise prompt assembly.
+        Default implementation calls ``build_specialist_prompt`` which is
+        correct for all four specialist agents.  Judge and ReportingLead
+        override this to call their own builder methods.
         """
         from dd_agents.agents.prompt_builder import PromptBuilder
 
-        PromptBuilder(
+        builder = PromptBuilder(
             project_dir=self.project_dir,
             run_dir=self.run_dir,
             run_id=self.run_id,
         )
-        # Default: return a minimal prompt.  Specialist / Judge / ReportingLead
-        # override this to call the appropriate builder method.
-        return f"{self.get_system_prompt()}\n\nRun ID: {self.run_id}\nProject directory: {self.project_dir}\n"
+        return builder.build_specialist_prompt(
+            agent_name=self.get_agent_name(),
+            customers=state.get("customers", []),
+            reference_files=state.get("reference_files"),
+            deal_config=state.get("deal_config") or self.deal_config,
+            text_dir=state.get("text_dir"),
+        )
 
     # ------------------------------------------------------------------
     # Agent spawn placeholder

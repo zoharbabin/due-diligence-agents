@@ -19,7 +19,7 @@ from dd_agents.models.persistence import RunHistoryEntry, RunMetadata
 from dd_agents.persistence.tiers import TierManager
 from dd_agents.utils.constants import DD_DIR, SKILL_DIR
 
-log = logging.getLogger("dd_agents.persistence.run_manager")
+logger = logging.getLogger(__name__)
 
 
 class RunManager:
@@ -109,7 +109,7 @@ class RunManager:
         meta_path = run_dir / "metadata.json"
         meta_path.write_text(json.dumps(metadata.model_dump(), indent=2))
 
-        log.info("Initialized run %s at %s", run_id, run_dir)
+        logger.info("Initialized run %s at %s", run_id, run_dir)
         return metadata
 
     # ------------------------------------------------------------------
@@ -153,19 +153,18 @@ class RunManager:
             try:
                 history = json.loads(history_path.read_text())
             except (json.JSONDecodeError, ValueError):
-                log.warning("Corrupt run_history.json -- starting fresh")
+                logger.warning("Corrupt run_history.json -- starting fresh")
                 history = []
 
         history.append(history_entry.model_dump())
         history_path.write_text(json.dumps(history, indent=2))
 
-        # Update latest symlink
+        # Update latest symlink (use missing_ok to avoid TOCTOU race)
         latest_link = skill_dir / "runs" / "latest"
-        if latest_link.is_symlink() or latest_link.exists():
-            latest_link.unlink()
+        latest_link.unlink(missing_ok=True)
         latest_link.symlink_to(run_dir.name)
 
-        log.info(
+        logger.info(
             "Finalized run %s -- history updated, latest symlink set",
             run_metadata.run_id,
         )

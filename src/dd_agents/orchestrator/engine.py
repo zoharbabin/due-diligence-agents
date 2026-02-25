@@ -27,11 +27,12 @@ from dd_agents.orchestrator.checkpoints import (
 from dd_agents.orchestrator.state import PipelineError, PipelineState, StepResult
 from dd_agents.orchestrator.steps import PipelineStep
 from dd_agents.orchestrator.team import AgentTeam
+from dd_agents.utils.constants import ALL_SPECIALIST_AGENTS
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-log = logging.getLogger("dd_agents.pipeline")
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Custom exceptions
@@ -143,9 +144,9 @@ class PipelineEngine:
             predecessor = resume_from_step - 1
             if predecessor > 0:
                 self.state = load_checkpoint_by_step(self.checkpoint_dir, predecessor)
-                log.info("Resumed from checkpoint at step %d", predecessor)
+                logger.info("Resumed from checkpoint at step %d", predecessor)
             else:
-                log.info("Resuming from step 1 -- no prior checkpoint needed")
+                logger.info("Resuming from step 1 -- no prior checkpoint needed")
 
         ordered_steps = list(PipelineStep)
 
@@ -159,7 +160,7 @@ class PipelineEngine:
 
             gate_label = " [BLOCKING GATE]" if step_enum.is_blocking_gate else ""
             cond_label = " [CONDITIONAL]" if step_enum.is_conditional else ""
-            log.info(
+            logger.info(
                 "Step %d/%d: %s%s%s",
                 step_num,
                 self.TOTAL_STEPS,
@@ -181,7 +182,7 @@ class PipelineEngine:
                 self.state.step_results[step_enum.value] = result
                 self.state.completed_steps.append(step_enum)
                 save_checkpoint(self.state, self.checkpoint_dir)
-                log.info("  Completed in %dms", duration_ms)
+                logger.info("  Completed in %dms", duration_ms)
 
             except BlockingGateError as exc:
                 duration_ms = int((time.monotonic() - t0) * 1000)
@@ -202,10 +203,10 @@ class PipelineEngine:
                     }
                 )
                 save_checkpoint(self.state, self.checkpoint_dir)
-                log.error("  BLOCKING GATE FAILED at step %d: %s", step_num, exc)
+                logger.error("  BLOCKING GATE FAILED at step %d: %s", step_num, exc)
                 raise
 
-        log.info("Pipeline completed successfully")
+        logger.info("Pipeline completed successfully")
         clean_checkpoints(self.checkpoint_dir)
         return self.state
 
@@ -275,7 +276,7 @@ class PipelineEngine:
             except RecoverableError as exc:
                 last_error = exc
                 label = f"attempt {attempt + 1}/{self.max_retries + 1}"
-                log.warning(
+                logger.warning(
                     "  Recoverable error at step %d (%s): %s",
                     step_enum.step_number,
                     label,
@@ -349,7 +350,7 @@ class PipelineEngine:
         state.execution_mode = execution.get("execution_mode", "full")
         state.judge_enabled = judge.get("enabled", True)
 
-        log.info(
+        logger.info(
             "Config validated: mode=%s, judge=%s",
             state.execution_mode,
             state.judge_enabled,
@@ -370,7 +371,7 @@ class PipelineEngine:
         skill_dir = state.project_dir / state.skill_dir
         state.run_dir = skill_dir / "runs" / state.run_id
 
-        log.info("Initialized run %s at %s", state.run_id, state.run_dir)
+        logger.info("Initialized run %s at %s", state.run_id, state.run_dir)
         return state
 
     async def _step_03_cross_skill_check(self, state: PipelineState) -> PipelineState:
@@ -389,7 +390,7 @@ class PipelineEngine:
                 latest = runs_dir / "latest"
                 if latest.is_symlink() or latest.is_dir():
                     state.cross_skill_run_ids[skill_path.name] = latest.name
-                    log.info("Found cross-skill data: %s", skill_path.name)
+                    logger.info("Found cross-skill data: %s", skill_path.name)
 
         return state
 
@@ -412,7 +413,7 @@ class PipelineEngine:
         # Store file entries in state for subsequent steps
         state._discovered_files = files  # type: ignore[attr-defined]
 
-        log.info("Discovered %d files", state.total_files)
+        logger.info("Discovered %d files", state.total_files)
         return state
 
     async def _step_05_bulk_extraction(self, state: PipelineState) -> PipelineState:
@@ -421,7 +422,7 @@ class PipelineEngine:
 
         files = getattr(state, "_discovered_files", [])
         if not files:
-            log.warning("No files discovered -- skipping extraction")
+            logger.warning("No files discovered -- skipping extraction")
             return state
 
         text_dir = self._text_dir(state)
@@ -444,7 +445,7 @@ class PipelineEngine:
         except ExtractionPipelineError as exc:
             raise BlockingGateError(f"Extraction failed: {exc}") from exc
 
-        log.info("Extraction complete for %d files", len(file_paths))
+        logger.info("Extraction complete for %d files", len(file_paths))
         return state
 
     # Phase 3: Inventory ----------------------------------------------------
@@ -468,7 +469,7 @@ class PipelineEngine:
         # Store customer entries for later steps
         state._customer_entries = customers  # type: ignore[attr-defined]
 
-        log.info(
+        logger.info(
             "Inventory: %d customers, %d reference files",
             state.total_customers,
             state.reference_file_count,
@@ -481,7 +482,7 @@ class PipelineEngine:
 
         customers = getattr(state, "_customer_entries", [])
         if not customers:
-            log.info("No customers found -- skipping entity resolution")
+            logger.info("No customers found -- skipping entity resolution")
             return state
 
         entity_aliases = (state.deal_config or {}).get("entity_aliases", {})
@@ -507,7 +508,7 @@ class PipelineEngine:
         match_log = resolver.get_match_log()
         (inv_dir / "entity_matches.json").write_text(json.dumps(match_log, indent=2))
 
-        log.info("Entity resolver initialized with %d customers", len(customers_csv))
+        logger.info("Entity resolver initialized with %d customers", len(customers_csv))
         return state
 
     async def _step_08_reference_registry(self, state: PipelineState) -> PipelineState:
@@ -527,7 +528,7 @@ class PipelineEngine:
         state._reference_files = ref_files  # type: ignore[attr-defined]
         state.reference_file_count = len(ref_files)
 
-        log.info("Classified %d reference files", len(ref_files))
+        logger.info("Classified %d reference files", len(ref_files))
         return state
 
     async def _step_09_customer_mentions(self, state: PipelineState) -> PipelineState:
@@ -538,7 +539,7 @@ class PipelineEngine:
         customers = getattr(state, "_customer_entries", [])
 
         if not ref_files or not customers:
-            log.info("No reference files or customers -- skipping mentions")
+            logger.info("No reference files or customers -- skipping mentions")
             return state
 
         customer_names = {c.safe_name: c.name for c in customers}
@@ -564,7 +565,7 @@ class PipelineEngine:
             match_log = resolver.get_match_log()
             (inv_dir / "entity_matches.json").write_text(json.dumps(match_log, indent=2))
 
-        log.info("Built customer mention index")
+        logger.info("Built customer mention index")
         return state
 
     async def _step_10_inventory_integrity(self, state: PipelineState) -> PipelineState:
@@ -587,9 +588,9 @@ class PipelineEngine:
         )
 
         if issues:
-            log.warning("Inventory integrity issues found: %d", len(issues))
+            logger.warning("Inventory integrity issues found: %d", len(issues))
         else:
-            log.info("Inventory integrity check passed")
+            logger.info("Inventory integrity check passed")
 
         return state
 
@@ -598,7 +599,7 @@ class PipelineEngine:
         source_of_truth = (state.deal_config or {}).get("source_of_truth", {})
         customer_db_path = source_of_truth.get("customer_database")
         if not customer_db_path:
-            log.info("Skipping step 11 -- no source_of_truth.customer_database")
+            logger.info("Skipping step 11 -- no source_of_truth.customer_database")
             return state
 
         from dd_agents.reporting.contract_dates import ContractDateReconciler
@@ -606,7 +607,7 @@ class PipelineEngine:
         # Load customer database
         db_path = state.project_dir / customer_db_path
         if not db_path.exists():
-            log.warning("Customer database not found at %s -- skipping", db_path)
+            logger.warning("Customer database not found at %s -- skipping", db_path)
             return state
 
         try:
@@ -614,7 +615,7 @@ class PipelineEngine:
             if not isinstance(customer_database, list):
                 customer_database = customer_database.get("customers", [])
         except (json.JSONDecodeError, OSError) as exc:
-            log.warning("Failed to load customer database: %s", exc)
+            logger.warning("Failed to load customer database: %s", exc)
             return state
 
         reconciler = ContractDateReconciler()
@@ -630,13 +631,13 @@ class PipelineEngine:
             state.run_dir / "contract_date_reconciliation.json",
         )
 
-        log.info("Contract date reconciliation complete: %d entries", len(result.entries))
+        logger.info("Contract date reconciliation complete: %d entries", len(result.entries))
         return state
 
     async def _step_12_incremental_classification(self, state: PipelineState) -> PipelineState:
         """Classify customers for incremental mode.  CONDITIONAL."""
         if state.execution_mode != "incremental":
-            log.info("Skipping step 12 -- not incremental mode")
+            logger.info("Skipping step 12 -- not incremental mode")
             return state
 
         from dd_agents.persistence.incremental import IncrementalClassifier
@@ -652,7 +653,6 @@ class PipelineEngine:
         # Load prior file checksums (from prior run if available)
         prior_files: dict[str, list[str]] = {}
         if state.prior_run_dir:
-            state.prior_run_dir.parent.parent / "inventory"
             prior_class_path = state.prior_run_dir / "classification.json"
             if prior_class_path.exists():
                 try:
@@ -661,8 +661,8 @@ class PipelineEngine:
                         name = entry.get("customer_safe_name", "")
                         if name:
                             prior_files[name] = sorted(entry.get("files", []))
-                except (json.JSONDecodeError, OSError):
-                    pass
+                except (json.JSONDecodeError, OSError) as exc:
+                    logger.warning("Could not load prior classification from %s: %s", prior_class_path, exc)
 
         staleness = (state.deal_config or {}).get("execution", {}).get("staleness_threshold_runs", 3)
 
@@ -686,7 +686,7 @@ class PipelineEngine:
             if c.classification.value in ("NEW", "CHANGED", "STALE_REFRESH")
         ]
 
-        log.info(
+        logger.info(
             "Classified %d customers, %d need analysis",
             len(classification.customers),
             len(state.customers_to_analyze),
@@ -698,7 +698,7 @@ class PipelineEngine:
     async def _step_13_create_team(self, state: PipelineState) -> PipelineState:
         """Create the agent team."""
         self.team = AgentTeam(state)
-        log.info("Agent team created")
+        logger.info("Agent team created")
         return state
 
     async def _step_14_prepare_prompts(self, state: PipelineState) -> PipelineState:
@@ -706,7 +706,7 @@ class PipelineEngine:
         if self.team is None:
             self.team = AgentTeam(state)
         # Placeholder -- wire to agents.prompt_builder when available
-        log.info("Prepare prompts (placeholder -- wire to agents.prompt_builder)")
+        logger.info("Prepare prompts (placeholder -- wire to agents.prompt_builder)")
         return state
 
     async def _step_15_route_references(self, state: PipelineState) -> PipelineState:
@@ -714,7 +714,7 @@ class PipelineEngine:
         if self.team is None:
             self.team = AgentTeam(state)
         # Placeholder -- wire to agents.prompt_builder when available
-        log.info("Route references (placeholder -- wire to inventory.reference_files)")
+        logger.info("Route references (placeholder -- wire to inventory.reference_files)")
         return state
 
     async def _step_16_spawn_specialists(self, state: PipelineState) -> PipelineState:
@@ -728,9 +728,9 @@ class PipelineEngine:
             state.agent_sessions[name] = result.get("session_id", "")
             state.agent_costs[name] = result.get("cost_usd", 0.0)
             if result.get("is_error"):
-                log.warning("Agent %s completed with error: %s", name, result.get("error"))
+                logger.warning("Agent %s completed with error: %s", name, result.get("error"))
             else:
-                log.info(
+                logger.info(
                     "Agent %s completed: %d turns, $%.4f, %dms",
                     name,
                     result.get("num_turns", 0),
@@ -744,16 +744,15 @@ class PipelineEngine:
         # Check that all 4 agents produced output for all customers
         findings_dir = state.run_dir / "findings"
         missing: list[str] = []
-        agents = ["legal", "finance", "commercial", "producttech"]
 
         for customer in state.customer_safe_names:
-            for agent in agents:
+            for agent in ALL_SPECIALIST_AGENTS:
                 path = findings_dir / agent / f"{customer}.json"
                 if not path.exists():
                     missing.append(f"{agent}/{customer}")
 
         if missing:
-            log.warning(
+            logger.warning(
                 "Coverage gate: %d missing outputs: %s",
                 len(missing),
                 missing[:10],
@@ -768,19 +767,19 @@ class PipelineEngine:
     async def _step_18_incremental_merge(self, state: PipelineState) -> PipelineState:
         """Merge new findings with carried-forward findings.  CONDITIONAL."""
         if state.execution_mode != "incremental":
-            log.info("Skipping step 18 -- not incremental mode")
+            logger.info("Skipping step 18 -- not incremental mode")
             return state
 
         if self.team is None:
             self.team = AgentTeam(state)
         # Placeholder -- handled by agent team
-        log.info("Incremental merge (placeholder -- wire to persistence.incremental)")
+        logger.info("Incremental merge (placeholder -- wire to persistence.incremental)")
         return state
 
     async def _step_19_spawn_judge(self, state: PipelineState) -> PipelineState:
         """Spawn Judge agent for quality review.  CONDITIONAL."""
         if not state.judge_enabled:
-            log.info("Skipping step 19 -- judge not enabled")
+            logger.info("Skipping step 19 -- judge not enabled")
             return state
 
         if self.team is None:
@@ -795,37 +794,37 @@ class PipelineEngine:
     async def _step_20_judge_review(self, state: PipelineState) -> PipelineState:
         """Judge reviews, samples, spot-checks, scores.  CONDITIONAL."""
         if not state.judge_enabled:
-            log.info("Skipping step 20 -- judge not enabled")
+            logger.info("Skipping step 20 -- judge not enabled")
             return state
 
         if self.team is None:
             self.team = AgentTeam(state)
         # Placeholder -- handled by agent team
-        log.info("Judge review (placeholder -- wire to agents.judge)")
+        logger.info("Judge review (placeholder -- wire to agents.judge)")
         return state
 
     async def _step_21_judge_respawn(self, state: PipelineState) -> PipelineState:
         """Re-spawn agents below Judge threshold.  CONDITIONAL."""
         if not state.judge_enabled:
-            log.info("Skipping step 21 -- judge not enabled")
+            logger.info("Skipping step 21 -- judge not enabled")
             return state
 
         if self.team is None:
             self.team = AgentTeam(state)
         # Placeholder -- handled by agent team
-        log.info("Judge respawn (placeholder -- wire to agents.judge)")
+        logger.info("Judge respawn (placeholder -- wire to agents.judge)")
         return state
 
     async def _step_22_judge_round2(self, state: PipelineState) -> PipelineState:
         """Judge Round 2 review of re-analyzed findings.  CONDITIONAL."""
         if not state.judge_enabled:
-            log.info("Skipping step 22 -- judge not enabled")
+            logger.info("Skipping step 22 -- judge not enabled")
             return state
 
         if self.team is None:
             self.team = AgentTeam(state)
         # Placeholder -- handled by agent team
-        log.info("Judge Round 2 (placeholder -- wire to agents.judge)")
+        logger.info("Judge Round 2 (placeholder -- wire to agents.judge)")
         return state
 
     # Phase 6: Reporting ----------------------------------------------------
@@ -853,7 +852,7 @@ class PipelineEngine:
         merged_dir = findings_dir / "merged"
         merger.write_merged(merged, merged_dir)
 
-        log.info("Merged findings for %d customers", len(merged))
+        logger.info("Merged findings for %d customers", len(merged))
         return state
 
     async def _step_25_merge_gaps(self, state: PipelineState) -> PipelineState:
@@ -865,10 +864,9 @@ class PipelineEngine:
         gaps_dir.mkdir(parents=True, exist_ok=True)
 
         # Collect gaps from agent directories
-        agents = ["legal", "finance", "commercial", "producttech"]
         for customer in state.customer_safe_names:
             all_gaps: list[dict[str, Any]] = []
-            for agent in agents:
+            for agent in ALL_SPECIALIST_AGENTS:
                 gap_file = findings_dir / agent / "gaps" / f"{customer}.json"
                 if gap_file.exists():
                     try:
@@ -883,7 +881,7 @@ class PipelineEngine:
                 out = gaps_dir / f"{customer}.json"
                 out.write_text(json.dumps(all_gaps, indent=2))
 
-        log.info("Gap merge complete")
+        logger.info("Gap merge complete")
         return state
 
     async def _step_26_build_numerical_manifest(self, state: PipelineState) -> PipelineState:
@@ -1006,7 +1004,7 @@ class PipelineEngine:
         manifest_path = state.run_dir / "numerical_manifest.json"
         manifest_path.write_text(json.dumps(manifest, indent=2))
 
-        log.info("Built numerical manifest with %d entries", len(manifest["numbers"]))
+        logger.info("Built numerical manifest with %d entries", len(manifest["numbers"]))
         return state
 
     async def _step_27_numerical_audit(self, state: PipelineState) -> PipelineState:
@@ -1031,15 +1029,15 @@ class PipelineEngine:
 
                 failures = [c for c in checks if not c.passed]
                 if failures:
-                    log.warning(
+                    logger.warning(
                         "Numerical audit: %d/%d checks failed",
                         len(failures),
                         len(checks),
                     )
                 else:
-                    log.info("Numerical audit: all %d checks passed", len(checks))
+                    logger.info("Numerical audit: all %d checks passed", len(checks))
             except Exception as exc:
-                log.warning("Numerical audit could not run: %s", exc)
+                logger.warning("Numerical audit could not run: %s", exc)
 
         state.validation_results["numerical_audit"] = True
         return state
@@ -1063,17 +1061,17 @@ class PipelineEngine:
         state.validation_results["qa_audit"] = report.audit_passed
 
         if report.audit_passed:
-            log.info("QA audit passed")
+            logger.info("QA audit passed")
         else:
             failed = [name for name, check in report.checks.items() if not check.passed]
-            log.warning("QA audit: %d checks failed: %s", len(failed), failed)
+            logger.warning("QA audit: %d checks failed: %s", len(failed), failed)
 
         return state
 
     async def _step_29_build_report_diff(self, state: PipelineState) -> PipelineState:
         """Build diff against prior run.  CONDITIONAL."""
         if not state.prior_run_id or not state.prior_run_dir:
-            log.info("Skipping step 29 -- no prior run for diff comparison")
+            logger.info("Skipping step 29 -- no prior run for diff comparison")
             return state
 
         from dd_agents.reporting.diff import ReportDiffBuilder
@@ -1088,7 +1086,7 @@ class PipelineEngine:
 
         diff_builder.write_diff(diff, state.run_dir / "report_diff.json")
 
-        log.info(
+        logger.info(
             "Report diff: %d changes",
             len(diff.changes),
         )
@@ -1116,7 +1114,7 @@ class PipelineEngine:
             try:
                 schema = ReportSchema.model_validate_json(schema_path.read_text())
             except Exception:
-                log.warning("Invalid report_schema.json -- using default")
+                logger.warning("Invalid report_schema.json -- using default")
                 schema = ReportSchema(schema_version="1.0.0")
         else:
             schema = ReportSchema(schema_version="1.0.0")
@@ -1134,7 +1132,7 @@ class PipelineEngine:
             deal_config=state.deal_config,
         )
 
-        log.info("Excel report generated: %s", output_path)
+        logger.info("Excel report generated: %s", output_path)
         return state
 
     async def _step_31_post_generation_validation(self, state: PipelineState) -> PipelineState:
@@ -1144,13 +1142,13 @@ class PipelineEngine:
 
         schema_path = state.run_dir / "report_schema.json"
         if not schema_path.exists():
-            log.info("No report_schema.json -- skipping post-generation validation")
+            logger.info("No report_schema.json -- skipping post-generation validation")
             return state
 
         try:
             schema = ReportSchema.model_validate_json(schema_path.read_text())
         except Exception as exc:
-            log.warning("Cannot load report schema for validation: %s", exc)
+            logger.warning("Cannot load report schema for validation: %s", exc)
             return state
 
         validator = SchemaValidator(report_schema=schema)
@@ -1161,13 +1159,13 @@ class PipelineEngine:
             checks = validator.validate_report(excel_files[0])
             failures = [c for c in checks if not c.passed]
             if failures:
-                log.warning(
+                logger.warning(
                     "Schema validation: %d/%d checks failed",
                     len(failures),
                     len(checks),
                 )
             else:
-                log.info("Schema validation passed")
+                logger.info("Schema validation passed")
 
         return state
 
@@ -1191,13 +1189,13 @@ class PipelineEngine:
         )
 
         run_mgr.finalize_run(metadata)
-        log.info("Run finalized: %s", state.run_id)
+        logger.info("Run finalized: %s", state.run_id)
         return state
 
     async def _step_33_update_run_history(self, state: PipelineState) -> PipelineState:
         """Append entry to run_history.json."""
         # Already handled in step 32 by RunManager.finalize_run()
-        log.info("Run history updated (via finalize_run)")
+        logger.info("Run history updated (via finalize_run)")
         return state
 
     async def _step_34_save_entity_cache(self, state: PipelineState) -> PipelineState:
@@ -1206,11 +1204,11 @@ class PipelineEngine:
         if resolver is not None:
             try:
                 resolver.cache.save()
-                log.info("Entity resolution cache saved")
+                logger.info("Entity resolution cache saved")
             except Exception as exc:
-                log.warning("Failed to save entity cache: %s", exc)
+                logger.warning("Failed to save entity cache: %s", exc)
         else:
-            log.info("No entity resolver -- skipping cache save")
+            logger.info("No entity resolver -- skipping cache save")
         return state
 
     async def _step_35_shutdown(self, state: PipelineState) -> PipelineState:
@@ -1229,8 +1227,8 @@ class PipelineEngine:
         dod_results = dod.check_all()
         passed = sum(1 for c in dod_results if c.passed)
         total = len(dod_results)
-        log.info("DoD: %d/%d checks passed", passed, total)
+        logger.info("DoD: %d/%d checks passed", passed, total)
 
         self.team = None
-        log.info("Pipeline shutdown complete")
+        logger.info("Pipeline shutdown complete")
         return state

@@ -11,7 +11,7 @@ from typing import Any
 from dd_agents.models.inventory import FileEntry
 from dd_agents.utils.constants import DD_DIR, EXCLUDE_PATTERNS
 
-log = logging.getLogger("dd_agents.inventory.discovery")
+logger = logging.getLogger(__name__)
 
 
 class FileDiscovery:
@@ -73,7 +73,7 @@ class FileDiscovery:
                 )
 
         entries.sort(key=lambda e: e.path)
-        log.info("Discovered %d files in %s", len(entries), data_room)
+        logger.info("Discovered %d files in %s", len(entries), data_room)
         return entries
 
     def write_tree(self, files: list[FileEntry], output_path: Path) -> None:
@@ -102,7 +102,7 @@ class FileDiscovery:
         _render_tree(tree, lines, prefix="")
 
         output_path.write_text("\n".join(lines) + "\n")
-        log.debug("Wrote tree.txt with %d lines", len(lines))
+        logger.debug("Wrote tree.txt with %d lines", len(lines))
 
     def write_files_list(self, files: list[FileEntry], output_path: Path) -> None:
         """Write a flat sorted file list (``files.txt``).
@@ -119,7 +119,7 @@ class FileDiscovery:
 
         content = "\n".join(entry.path for entry in files) + "\n"
         output_path.write_text(content)
-        log.debug("Wrote files.txt with %d entries", len(files))
+        logger.debug("Wrote files.txt with %d entries", len(files))
 
 
 def _matches_any(name: str, patterns: list[str]) -> bool:

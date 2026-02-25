@@ -10,7 +10,7 @@ import logging
 import uuid
 from typing import Any
 
-log = logging.getLogger("dd_agents.vector_store.store")
+logger = logging.getLogger(__name__)
 
 try:
     import chromadb
@@ -46,7 +46,7 @@ class VectorStore:
         self._collection: Any = None
 
         if not CHROMADB_AVAILABLE:
-            log.warning(
+            logger.warning(
                 "chromadb is not installed -- VectorStore will operate as a no-op. Install with: pip install chromadb"
             )
             return
@@ -60,13 +60,13 @@ class VectorStore:
             self._collection = self._client.get_or_create_collection(
                 name=collection_name,
             )
-            log.info(
+            logger.info(
                 "VectorStore initialized: collection=%s, persist_dir=%s",
                 collection_name,
                 persist_dir or "<in-memory>",
             )
         except Exception:
-            log.exception("Failed to initialize ChromaDB -- VectorStore disabled")
+            logger.exception("Failed to initialize ChromaDB -- VectorStore disabled")
             self._client = None
             self._collection = None
 
@@ -91,7 +91,7 @@ class VectorStore:
             Number of documents successfully added.
         """
         if self._collection is None:
-            log.debug("VectorStore.add_documents: no-op (ChromaDB unavailable)")
+            logger.debug("VectorStore.add_documents: no-op (ChromaDB unavailable)")
             return 0
 
         try:
@@ -127,11 +127,11 @@ class VectorStore:
                 documents=texts,
                 metadatas=metadatas,
             )
-            log.debug("Added %d documents to collection %s", len(ids), self.collection_name)
+            logger.debug("Added %d documents to collection %s", len(ids), self.collection_name)
             return len(ids)
 
         except Exception:
-            log.exception("Failed to add documents to VectorStore")
+            logger.exception("Failed to add documents to VectorStore")
             return 0
 
     def search(
@@ -158,7 +158,7 @@ class VectorStore:
             Each dict contains ``text``, ``metadata``, ``distance``, and ``id``.
         """
         if self._collection is None:
-            log.debug("VectorStore.search: no-op (ChromaDB unavailable)")
+            logger.debug("VectorStore.search: no-op (ChromaDB unavailable)")
             return []
 
         try:
@@ -193,7 +193,7 @@ class VectorStore:
             return matches
 
         except Exception:
-            log.exception("VectorStore search failed")
+            logger.exception("VectorStore search failed")
             return []
 
     def delete_collection(self) -> bool:
@@ -205,16 +205,16 @@ class VectorStore:
             ``True`` if deletion succeeded or no-op, ``False`` on error.
         """
         if self._client is None:
-            log.debug("VectorStore.delete_collection: no-op (ChromaDB unavailable)")
+            logger.debug("VectorStore.delete_collection: no-op (ChromaDB unavailable)")
             return True
 
         try:
             self._client.delete_collection(name=self.collection_name)
             self._collection = None
-            log.info("Deleted collection %s", self.collection_name)
+            logger.info("Deleted collection %s", self.collection_name)
             return True
         except Exception:
-            log.exception("Failed to delete collection %s", self.collection_name)
+            logger.exception("Failed to delete collection %s", self.collection_name)
             return False
 
     @property

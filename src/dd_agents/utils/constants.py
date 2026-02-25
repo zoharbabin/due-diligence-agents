@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dd_agents.extraction._constants import IMAGE_EXTENSIONS
+
 # ---------------------------------------------------------------------------
 # Directory structure constants
 # ---------------------------------------------------------------------------
@@ -74,7 +76,8 @@ EXCLUDE_PATTERNS: list[str] = [
     "~lock.*",  # LibreOffice lock files
 ]
 
-SUPPORTED_EXTENSIONS: set[str] = {
+# Office/document formats unique to inventory scanning (not in extraction sets).
+_OFFICE_EXTENSIONS: set[str] = {
     ".pdf",
     ".docx",
     ".doc",
@@ -82,22 +85,19 @@ SUPPORTED_EXTENSIONS: set[str] = {
     ".xls",
     ".pptx",
     ".ppt",
-    ".txt",
-    ".csv",
-    ".md",
     ".rtf",
     ".html",
     ".htm",
-    ".xml",
-    ".json",
-    ".png",
-    ".jpg",
-    ".jpeg",
-    ".tiff",
-    ".tif",
-    ".bmp",
-    ".gif",
 }
+
+# Plaintext subset recognised by inventory (extraction PLAINTEXT_EXTENSIONS
+# includes additional config formats like .yaml, .ini, .cfg that are not
+# expected in data rooms).
+_INVENTORY_PLAINTEXT: set[str] = {".txt", ".csv", ".md", ".json", ".xml"}
+
+# All extensions the inventory scanner discovers.  Image extensions are
+# imported from ``extraction._constants`` to avoid maintaining two copies.
+SUPPORTED_EXTENSIONS: set[str] = set(IMAGE_EXTENSIONS) | _OFFICE_EXTENSIONS | _INVENTORY_PLAINTEXT
 
 # ---------------------------------------------------------------------------
 # Batch naming (1-based per spec)

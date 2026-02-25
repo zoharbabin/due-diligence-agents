@@ -138,12 +138,10 @@ class NumericalAuditor:
         n006 = _manifest_get(manifest, "N006")
         n007 = _manifest_get(manifest, "N007")
 
-        if all(n is not None for n in [n003, n004, n005, n006, n007]):
-            severity_sum = n004.value + n005.value + n006.value + n007.value  # type: ignore[union-attr]
-            if severity_sum != n003.value:  # type: ignore[union-attr]
-                failures.append(
-                    f"N004+N005+N006+N007 ({severity_sum}) != N003 ({n003.value})"  # type: ignore[union-attr]
-                )
+        if n003 is not None and n004 is not None and n005 is not None and n006 is not None and n007 is not None:
+            severity_sum = n004.value + n005.value + n006.value + n007.value
+            if severity_sum != n003.value:
+                failures.append(f"N004+N005+N006+N007 ({severity_sum}) != N003 ({n003.value})")
 
         return AuditCheck(
             passed=len(failures) == 0,

@@ -580,9 +580,8 @@ class QAAuditor:
     def check_report_consistency(self) -> tuple[str, AuditCheck]:
         schema_path = self.run_dir / "report_schema.json"
         schema_driven = schema_path.exists()
-        # If no prior run, report_diff check passes by default
         diff_path = self.run_dir / "report_diff.json"
-        diff_populated = diff_path.exists() or True  # true if no prior run
+        diff_populated = diff_path.exists()  # Optional: only present when prior run exists
 
         return "report_consistency", AuditCheck(
             passed=schema_driven,

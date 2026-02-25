@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from dd_agents.models.inventory import FileEntry, ReferenceFile
 
-log = logging.getLogger("dd_agents.inventory.integrity")
+logger = logging.getLogger(__name__)
 
 
 class InventoryIntegrityVerifier:
@@ -84,8 +84,8 @@ class InventoryIntegrityVerifier:
 
         if issues:
             for issue in issues:
-                log.warning("Integrity issue: %s", issue)
+                logger.warning("Integrity issue: %s", issue)
         else:
-            log.info("Inventory integrity check passed")
+            logger.info("Inventory integrity check passed")
 
         return issues

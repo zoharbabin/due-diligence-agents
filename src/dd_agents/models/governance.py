@@ -55,13 +55,10 @@ class GovernanceGraph(BaseModel):
         return [f for f in all_files if f not in governed and f not in targets]
 
     def has_cycles(self) -> list[list[str]]:
-        """Detect governance cycles. Returns list of cycle paths.
+        """Detect governance cycles using ``networkx.simple_cycles()``.
 
-        NOTE: The production implementation should use
-        networkx.simple_cycles() instead of this inline DFS. simple_cycles()
-        handles disconnected components correctly (it finds cycles in all
-        components, not just the largest connected component) and is more
-        thoroughly tested for edge cases.
+        Returns a list of cycle paths (each cycle is a list of file paths).
+        Handles disconnected components correctly.
         """
         import networkx as nx
 

@@ -582,7 +582,7 @@ class TestReportingLeadAgent:
 
     def test_name(self, tmp_project: Path, tmp_run_dir: Path, run_id: str) -> None:
         agent = ReportingLeadAgent(tmp_project, tmp_run_dir, run_id)
-        assert agent.get_agent_name() == "reportinglead"
+        assert agent.get_agent_name() == "reporting_lead"
 
     def test_model(self, tmp_project: Path, tmp_run_dir: Path, run_id: str) -> None:
         agent = ReportingLeadAgent(tmp_project, tmp_run_dir, run_id)
@@ -634,7 +634,7 @@ class TestBaseAgentRunner:
             def get_agent_name(self) -> str:
                 return "incomplete"
 
-            # Missing: get_model_id, get_system_prompt, get_tools
+            # Missing: get_system_prompt, get_tools
 
         with pytest.raises(TypeError):
             IncompleteAgent(tmp_project, tmp_run_dir, run_id)
@@ -758,7 +758,7 @@ class TestAgentType:
         assert AgentType.COMMERCIAL == "commercial"
         assert AgentType.PRODUCTTECH == "producttech"
         assert AgentType.JUDGE == "judge"
-        assert AgentType.REPORTING_LEAD == "reportinglead"
+        assert AgentType.REPORTING_LEAD == "reporting_lead"
 
     def test_judge_and_reporting_not_in_specialist_focus(self) -> None:
         assert AgentType.JUDGE not in SPECIALIST_FOCUS

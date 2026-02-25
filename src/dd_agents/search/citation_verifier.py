@@ -23,6 +23,8 @@ from typing import TYPE_CHECKING
 
 from rapidfuzz import fuzz
 
+from dd_agents.search.chunker import PAGE_MARKER_RE
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -34,9 +36,6 @@ logger = logging.getLogger(__name__)
 # Minimum fuzzy match score (0-100) to consider a quote verified.
 # 80 % tolerates OCR character errors while still catching hallucinations.
 QUOTE_MATCH_THRESHOLD = 80
-
-# Regex to split extracted text into pages by ``--- Page N ---`` markers.
-_PAGE_MARKER_RE = re.compile(r"\n--- Page (\d+) ---\n")
 
 # Regex to collapse whitespace for normalization.
 _WHITESPACE_RE = re.compile(r"\s+")
@@ -58,7 +57,7 @@ def split_by_pages(text: str) -> dict[str, str]:
     The key is the string page number (e.g. ``"5"``).  Text before the
     first marker is stored under key ``"0"`` (preamble).
     """
-    parts = _PAGE_MARKER_RE.split(text)
+    parts = PAGE_MARKER_RE.split(text)
     pages: dict[str, str] = {}
 
     if not parts:

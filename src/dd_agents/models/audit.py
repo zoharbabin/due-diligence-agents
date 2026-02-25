@@ -99,11 +99,11 @@ class Contradiction(BaseModel):
 class AgentScoreDimensions(BaseModel):
     """Per-dimension scores for an agent. From agent-prompts.md section 6d."""
 
-    citation_verification: int = Field(ge=0, le=100)
-    contextual_validation: int = Field(ge=0, le=100)
-    financial_accuracy: int = Field(ge=0, le=100)
-    cross_agent_consistency: int = Field(ge=0, le=100)
-    completeness: int = Field(ge=0, le=100)
+    citation_verification: int = Field(default=0, ge=0, le=100)
+    contextual_validation: int = Field(default=0, ge=0, le=100)
+    financial_accuracy: int = Field(default=0, ge=0, le=100)
+    cross_agent_consistency: int = Field(default=0, ge=0, le=100)
+    completeness: int = Field(default=0, ge=0, le=100)
 
 
 class AgentScore(BaseModel):
@@ -123,7 +123,7 @@ class AgentScore(BaseModel):
     # The Python field name is `pass_count`; "pass" is only used in JSON I/O.
     partial: int = 0
     fail: int = 0
-    dimensions: AgentScoreDimensions = Field(default_factory=AgentScoreDimensions)  # type: ignore[arg-type]
+    dimensions: AgentScoreDimensions = Field(default_factory=AgentScoreDimensions)
 
 
 class UnitScore(BaseModel):
