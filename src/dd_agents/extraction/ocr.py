@@ -134,5 +134,5 @@ class OCRExtractor:
             return []
 
         img = Image.open(str(filepath))
-        img.load()  # type: ignore[no-untyped-call]  # Force read so the file handle is released.
+        img.load()  # type: ignore[no-untyped-call]  # Force file handle release.
         return [img]

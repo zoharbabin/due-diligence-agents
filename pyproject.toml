@@ -66,7 +66,10 @@ warn_unused_configs = true
 # Third-party packages without stubs (sklearn, pytesseract, etc.) trigger
 # import-untyped errors.  Per-module overrides handle missing packages, but
 # installed-without-stubs packages need this global disable.
-disable_error_code = ["import-untyped"]
+# unused-ignore: Pillow stubs vary across versions (load() typed in some,
+# untyped in others), so type: ignore comments may be needed locally but
+# unused in CI, or vice versa.
+disable_error_code = ["import-untyped", "unused-ignore"]
 
 [[tool.mypy.overrides]]
 module = [
