@@ -83,7 +83,7 @@ def _pass_2_alias_lookup(
 def _pass_3_fuzzy_match(
     preprocessed_source: str,
     target_names: dict[str, str],
-    short_name_guard: list[str],
+    preprocessed_guards: list[str],
 ) -> tuple[str | None, float]:
     """Fuzzy matching with length-based thresholds and short name guard.
 
@@ -97,7 +97,6 @@ def _pass_3_fuzzy_match(
         return (None, 0.0)
 
     # Also check the explicit short_name_guard list
-    preprocessed_guards = [preprocess_name(n) for n in short_name_guard]
     if preprocessed_source in preprocessed_guards:
         return (None, 0.0)
 
@@ -121,7 +120,7 @@ def _pass_3_fuzzy_match(
 def _pass_4_tfidf_match(
     preprocessed_source: str,
     target_names: dict[str, str],
-    short_name_guard: list[str],
+    preprocessed_guards: list[str],
 ) -> tuple[str | None, float]:
     """TF-IDF cosine similarity on character 3-grams and 4-grams.
 
@@ -133,7 +132,6 @@ def _pass_4_tfidf_match(
     if source_len <= SHORT_NAME_MAX_LEN:
         return (None, 0.0)
 
-    preprocessed_guards = [preprocess_name(n) for n in short_name_guard]
     if preprocessed_source in preprocessed_guards:
         return (None, 0.0)
 
@@ -273,12 +271,18 @@ class EntityResolver:
         self.exclusions: list[str] = entity_aliases.get("exclusions", [])
         self.parent_child: dict[str, list[str]] = entity_aliases.get("parent_child", {})
 
+        # Pre-compute the preprocessed guard list once (avoids re-computing per resolve call)
+        self._preprocessed_guards: list[str] = [preprocess_name(n) for n in self.short_name_guard]
+
         # Build target name lookup: preprocessed -> original
+        # Skip entries that preprocess to empty string (e.g. "Inc.") to avoid
+        # false-positive exact matches and dictionary key collisions.
         self.target_names: dict[str, str] = {}
         for cust in customers_csv:
             original = cust["customer_name"]
             preprocessed = preprocess_name(original)
-            self.target_names[preprocessed] = original
+            if preprocessed:
+                self.target_names[preprocessed] = original
 
         # Load cache
         self.cache = EntityResolutionCache(cache_path)
@@ -399,7 +403,7 @@ class EntityResolver:
         fuzzy_match, fuzzy_score = _pass_3_fuzzy_match(
             preprocessed,
             self.target_names,
-            self.short_name_guard,
+            self._preprocessed_guards,
         )
         attempt_info: dict[str, Any] = {"pass": 3, "method": "fuzzy"}
         if fuzzy_match:
@@ -462,7 +466,7 @@ class EntityResolver:
         tfidf_match, tfidf_score = _pass_4_tfidf_match(
             preprocessed,
             self.target_names,
-            self.short_name_guard,
+            self._preprocessed_guards,
         )
         attempt_info = {"pass": 4, "method": "tfidf"}
         if tfidf_match:

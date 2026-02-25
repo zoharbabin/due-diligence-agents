@@ -664,7 +664,7 @@ class PipelineEngine:
                 except (json.JSONDecodeError, OSError) as exc:
                     logger.warning("Could not load prior classification from %s: %s", prior_class_path, exc)
 
-        staleness = (state.deal_config or {}).get("execution", {}).get("staleness_threshold_runs", 3)
+        staleness = (state.deal_config or {}).get("execution", {}).get("staleness_threshold", 3)
 
         classification = classifier.classify_customers(
             current_files=current_files,

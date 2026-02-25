@@ -232,10 +232,11 @@ class TestPass3FuzzyMatch:
         """Names on the explicit short_name_guard list are blocked."""
         # "sierra networks" is >5 chars and would normally fuzzy match,
         # but if it's on the guard list it's blocked
+        preprocessed_guards = [preprocess_name("Sierra Networks")]
         match, score = _pass_3_fuzzy_match(
             "sierra networks",
             target_names,
-            ["Sierra Networks"],
+            preprocessed_guards,
         )
         assert match is None
         assert score == 0.0

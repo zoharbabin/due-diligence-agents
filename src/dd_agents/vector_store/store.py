@@ -99,9 +99,11 @@ class VectorStore:
             texts: list[str] = []
             metadatas: list[dict[str, str | int | float | bool]] = []
 
+            skipped = 0
             for doc in documents:
                 text = doc.get("text", "")
                 if not text:
+                    skipped += 1
                     continue
 
                 doc_id = doc.get("id", str(uuid.uuid4()))
@@ -119,6 +121,8 @@ class VectorStore:
                 texts.append(text)
                 metadatas.append(clean_meta)
 
+            if skipped:
+                logger.debug("Skipped %d documents with empty text", skipped)
             if not ids:
                 return 0
 
@@ -171,7 +175,7 @@ class VectorStore:
             if not results or not results.get("documents"):
                 return matches
 
-            docs = results["documents"][0]
+            docs = results.get("documents", [[]])[0]
             metadatas = results.get("metadatas", [[]])[0]
             distances = results.get("distances", [[]])[0]
             ids = results.get("ids", [[]])[0]
