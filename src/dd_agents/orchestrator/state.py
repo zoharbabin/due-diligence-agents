@@ -147,6 +147,17 @@ class PipelineState:
                 "metadata": sr.metadata,
             }
 
+        # Persist dynamic attributes that downstream steps depend on.
+        # ``_customer_entries`` is set via setattr in step 6 and consumed
+        # by step 14 (prompt building) and the respawn path (step 17).
+        customer_entries_ser: list[dict[str, Any]] = []
+        _entries: list[Any] = getattr(self, "_customer_entries", [])
+        for entry in _entries:
+            if hasattr(entry, "model_dump"):
+                customer_entries_ser.append(entry.model_dump())
+            elif isinstance(entry, dict):
+                customer_entries_ser.append(entry)
+
         return {
             "run_id": self.run_id,
             "skill_dir": str(self.skill_dir),
@@ -179,6 +190,7 @@ class PipelineState:
             "cross_skill_run_ids": self.cross_skill_run_ids,
             "judge_scores": self.judge_scores,
             "exit_code": self.exit_code,
+            "_customer_entries": customer_entries_ser,
         }
 
     @classmethod
@@ -228,4 +240,21 @@ class PipelineState:
             judge_scores=data.get("judge_scores", {}),
             exit_code=data.get("exit_code", 0),
         )
+
+        # Restore dynamic attribute ``_customer_entries`` so that respawn
+        # and prompt rebuilding work correctly after checkpoint resume.
+        raw_entries = data.get("_customer_entries", [])
+        if raw_entries:
+            import contextlib
+
+            from dd_agents.models.inventory import CustomerEntry
+
+            restored: list[CustomerEntry] = []
+            for item in raw_entries:
+                if isinstance(item, dict):
+                    with contextlib.suppress(Exception):
+                        restored.append(CustomerEntry.model_validate(item))
+            if restored:
+                state._customer_entries = restored  # type: ignore[attr-defined]
+
         return state

@@ -182,6 +182,19 @@ class ExtractionPipeline:
         """
         output_dir.mkdir(parents=True, exist_ok=True)
 
+        # Suppress MuPDF C-level stderr globally for the entire extraction
+        # run.  Without this, the per-method toggle (False/True) races across
+        # threads: Thread A restores True in its finally block while Thread B
+        # is still mid-extraction, causing MuPDF to dump raw warnings to stderr.
+        # Warnings are still captured via fitz.TOOLS.mupdf_warnings() in each
+        # method and logged at debug level.
+        try:
+            import fitz
+
+            fitz.TOOLS.mupdf_display_errors(False)
+        except ImportError:
+            pass
+
         # --- cache ---
         # Thread-safety note: cache.is_cached() (read) is called from
         # worker threads, while cache.update() (write) is called only
@@ -189,6 +202,13 @@ class ExtractionPipeline:
         # guarantees dict reads are atomic, so no lock is needed.
         cache = ExtractionCache(cache_path)
         cache.load()
+        # Snapshot empty-state before workers start: if the cache file was
+        # wiped/missing we trust existing readable output on disk.  Captured
+        # once so that main-thread cache.update() calls don't invalidate the
+        # flag mid-run (race between main thread writes and worker reads).
+        cache_was_empty = len(cache) == 0
+        if cache_was_empty:
+            logger.info("Checksum cache is empty — will skip extraction for files with existing readable output")
 
         # --- quality tracker (protected by lock for thread safety) ---
         tracker = ExtractionQualityTracker()
@@ -198,6 +218,8 @@ class ExtractionPipeline:
 
         primary_failures = 0
         total_non_plaintext = 0
+        cache_hits = 0
+        fresh_extractions = 0
 
         workers = max_workers if max_workers is not None else _DEFAULT_WORKERS
         total_files = len(files)
@@ -219,12 +241,13 @@ class ExtractionPipeline:
             out_file = output_dir / self._safe_text_name(filepath_str)
 
             if (
-                cache.is_cached(filepath_str, current_hash)
-                and out_file.exists()
+                out_file.exists()
                 and out_file.stat().st_size >= _SCANNED_PDF_THRESHOLD
                 and self._is_cached_output_readable(out_file)
+                and (cache.is_cached(filepath_str, current_hash) or cache_was_empty)
             ):
-                # Cache hit -- keep existing quality entry.
+                # Cache hit, or cache is empty but readable output exists
+                # from a prior run (e.g. checksums file was wiped).
                 return _FileResult(
                     filepath_str=filepath_str,
                     current_hash=current_hash,
@@ -276,8 +299,10 @@ class ExtractionPipeline:
                             fallback_chain=["missing"],
                         )
                 elif result.is_cache_hit:
+                    cache_hits += 1
                     cache.update(result.filepath_str, result.current_hash or "")
                 elif result.entry is not None:
+                    fresh_extractions += 1
                     if not result.is_plaintext:
                         total_non_plaintext += 1
 
@@ -314,6 +339,13 @@ class ExtractionPipeline:
         tracker.save(quality_json_path)
 
         # Log extraction summary.
+        if cache_hits > 0:
+            logger.info(
+                "Extraction: %d/%d files cached (skipped), %d extracted",
+                cache_hits,
+                total_files,
+                fresh_extractions,
+            )
         summary = self.get_extraction_summary(tracker.entries)
         logger.info(
             "Extraction complete: %d/%d files succeeded (%.0f%%), methods: %s",
@@ -434,9 +466,6 @@ class ExtractionPipeline:
         except ImportError:
             return "normal"
 
-        # Suppress MuPDF C-level stderr messages (e.g. "premature end in
-        # aes filter") — capture them via mupdf_warnings() instead.
-        fitz.TOOLS.mupdf_display_errors(False)
         try:
             doc = fitz.open(str(filepath))
         except Exception:
@@ -475,11 +504,10 @@ class ExtractionPipeline:
         except Exception:
             return "normal"
         finally:
-            # Log any MuPDF warnings at debug level, then restore display.
+            # Capture MuPDF warnings at debug level (stderr suppressed globally).
             warnings = fitz.TOOLS.mupdf_warnings()
             if warnings:
                 logger.debug("MuPDF warnings for %s: %s", filepath, warnings)
-            fitz.TOOLS.mupdf_display_errors(True)
             doc.close()
 
     @staticmethod
@@ -915,13 +943,10 @@ class ExtractionPipeline:
         except ImportError:
             return ""
 
-        # Suppress MuPDF C-level stderr messages; capture via warnings API.
-        fitz.TOOLS.mupdf_display_errors(False)
         try:
             doc = fitz.open(str(filepath))
         except Exception as exc:
             logger.debug("pymupdf failed to open %s: %s", filepath, exc)
-            fitz.TOOLS.mupdf_display_errors(True)
             return ""
 
         parts: list[str] = []
@@ -933,10 +958,10 @@ class ExtractionPipeline:
         except Exception as exc:
             logger.debug("pymupdf extraction error for %s: %s", filepath, exc)
         finally:
+            # Capture MuPDF warnings at debug level (stderr suppressed globally).
             warnings = fitz.TOOLS.mupdf_warnings()
             if warnings:
                 logger.debug("MuPDF warnings for %s: %s", filepath, warnings)
-            fitz.TOOLS.mupdf_display_errors(True)
             doc.close()
 
         return "\n".join(parts)

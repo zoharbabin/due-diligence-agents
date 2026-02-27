@@ -27,6 +27,7 @@ from __future__ import annotations
 import logging
 import shutil
 import tempfile
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -330,6 +331,11 @@ class GlmOcrExtractor:
     lifetime of the extractor instance — subsequent files reuse the
     same model without re-downloading or re-loading.
 
+    Thread-safety: all MLX/Metal operations are serialized through
+    ``_lock`` because Apple Metal command buffers are not thread-safe.
+    Concurrent Metal submissions cause a hard process abort:
+    ``[IOGPUMetalCommandBuffer validate]: failed assertion``.
+
     Usage::
 
         extractor = GlmOcrExtractor()
@@ -340,15 +346,22 @@ class GlmOcrExtractor:
         self._mlx_model: Any = None
         self._mlx_processor: Any = None
         self._mlx_checked = False
+        # Serializes MLX model loading and inference — Metal GPU is
+        # not thread-safe and concurrent command buffer submissions
+        # crash the process.
+        self._lock = threading.Lock()
 
     def _ensure_mlx_model(self) -> bool:
-        """Load the MLX model/processor on first call.  Returns *True* if available."""
+        """Load the MLX model/processor on first call.  Returns *True* if available.
+
+        Must be called while holding ``self._lock``.
+        """
         if self._mlx_checked:
             return self._mlx_model is not None
 
-        self._mlx_checked = True
         imports = _import_mlx_vlm()
         if imports is None:
+            self._mlx_checked = True
             logger.debug("mlx-vlm not available -- skipping MLX backend")
             return False
 
@@ -360,6 +373,11 @@ class GlmOcrExtractor:
         except Exception:
             logger.warning("Failed to load MLX model %s", MODEL_ID_MLX, exc_info=True)
             return False
+        finally:
+            # Set _mlx_checked AFTER model load completes (or fails) to
+            # prevent other threads from seeing checked=True + model=None
+            # during the download/load window.
+            self._mlx_checked = True
 
     def extract(self, filepath: Path) -> tuple[str, float]:
         """Extract text from *filepath* using GLM-OCR.
@@ -378,13 +396,16 @@ class GlmOcrExtractor:
             logger.debug("GLM-OCR does not support extension %s", suffix)
             return "", CONFIDENCE_FAILURE
 
-        # Backend 1: mlx-vlm (Apple Silicon)
-        if self._ensure_mlx_model():
-            text, conf = _try_mlx_extract(filepath, self._mlx_model, self._mlx_processor)
-            if text.strip():
-                return text, conf
+        # Backend 1: mlx-vlm (Apple Silicon).
+        # Lock serializes model loading AND inference — Metal command
+        # buffers crash the process if submitted from multiple threads.
+        with self._lock:
+            if self._ensure_mlx_model():
+                text, conf = _try_mlx_extract(filepath, self._mlx_model, self._mlx_processor)
+                if text.strip():
+                    return text, conf
 
-        # Backend 2: Ollama (cross-platform)
+        # Backend 2: Ollama (HTTP-based, thread-safe without lock).
         text, conf = _try_ollama_extract(filepath)
         if text.strip():
             return text, conf

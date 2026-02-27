@@ -178,9 +178,11 @@ def list_checkpoints(checkpoint_dir: Path) -> list[str]:
 
 
 def clean_checkpoints(checkpoint_dir: Path) -> int:
-    """Remove all checkpoint files (and stale ``.tmp`` / ``.bak`` files).
+    """Remove stale ``.tmp`` / ``.bak`` files from the checkpoint directory.
 
-    Called after a successful pipeline completion.
+    Called after a successful pipeline completion.  Checkpoint JSON files
+    are **preserved** so that ``--resume-from`` works against a completed
+    run (e.g. to regenerate the Excel report).
 
     Returns
     -------
@@ -191,16 +193,16 @@ def clean_checkpoints(checkpoint_dir: Path) -> int:
     if not checkpoint_dir.is_dir():
         return removed
     for f in checkpoint_dir.iterdir():
-        if f.name.startswith("checkpoint_") and f.suffix in (".json", ".tmp", ".bak"):
+        if f.name.startswith("checkpoint_") and f.suffix in (".tmp", ".bak"):
             f.unlink()
             removed += 1
-    # Also clean sub-checkpoint directories
+    # Clean sub-checkpoint directories (intermediate agent state).
     for d in checkpoint_dir.iterdir():
         if d.is_dir() and d.name.startswith("step_"):
             shutil.rmtree(d)
             removed += 1
     if removed:
-        logger.info("Cleaned %d checkpoint file(s)/dir(s)", removed)
+        logger.info("Cleaned %d stale checkpoint file(s)/dir(s)", removed)
     return removed
 
 

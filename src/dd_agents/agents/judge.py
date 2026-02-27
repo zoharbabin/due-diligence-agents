@@ -211,6 +211,81 @@ class JudgeAgent(BaseAgentRunner):
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _extract_scores_from_prose(raw_text: str) -> dict[str, Any] | None:
+        """Extract agent scores from prose/markdown Judge output.
+
+        When the Judge outputs prose instead of JSON, look for patterns like:
+        - "Legal: 85/100" or "legal score: 85"
+        - "Overall quality: 78"
+        - "Citation Verification: 90"
+
+        Returns a dict shaped like ``{"agent_scores": {...}, "overall_quality": N}``
+        or ``None`` if no scores could be extracted.
+        """
+        import re as _re
+
+        agent_names = ("legal", "finance", "commercial", "producttech")
+        dimension_names = (
+            "citation_verification",
+            "contextual_validation",
+            "financial_accuracy",
+            "cross_agent_consistency",
+            "completeness",
+        )
+
+        agent_scores: dict[str, dict[str, Any]] = {}
+
+        for agent in agent_names:
+            # Match patterns like "Legal: 85/100", "legal score: 85",
+            # "Legal agent: 85", "legal = 85"
+            pattern = _re.compile(
+                rf"\b{agent}\b[^:\n]{{0,30}}[:=]\s*(\d{{1,3}})(?:\s*/\s*100)?",
+                _re.IGNORECASE,
+            )
+            match = pattern.search(raw_text)
+            if match:
+                score = min(int(match.group(1)), 100)
+                dims: dict[str, int] = {}
+                # Try to find dimension scores near the agent mention.
+                agent_section_start = max(0, match.start() - 50)
+                agent_section_end = min(len(raw_text), match.end() + 1000)
+                section = raw_text[agent_section_start:agent_section_end]
+                for dim in dimension_names:
+                    dim_label = dim.replace("_", "[_ ]")
+                    dim_pattern = _re.compile(
+                        rf"\b{dim_label}\b[^:\n]{{0,20}}[:=]\s*(\d{{1,3}})",
+                        _re.IGNORECASE,
+                    )
+                    dim_match = dim_pattern.search(section)
+                    if dim_match:
+                        dims[dim] = min(int(dim_match.group(1)), 100)
+                agent_scores[agent] = {"score": score, "dimensions": dims}
+
+        if not agent_scores:
+            return None
+
+        # Extract overall quality.
+        overall = 0
+        overall_pattern = _re.compile(
+            r"overall[_ ](?:quality|score)[^:\n]{0,20}[:=]\s*(\d{1,3})",
+            _re.IGNORECASE,
+        )
+        overall_match = overall_pattern.search(raw_text)
+        if overall_match:
+            overall = min(int(overall_match.group(1)), 100)
+        else:
+            # Compute from agent scores.
+            if agent_scores:
+                overall = round(sum(s["score"] for s in agent_scores.values()) / len(agent_scores))
+
+        logger.info(
+            "Extracted Judge scores from prose: %d agents, overall=%d",
+            len(agent_scores),
+            overall,
+        )
+        return {"agent_scores": agent_scores, "overall_quality": overall}
+
+    @staticmethod
     def _build_scores_from_result(result: dict[str, Any], round_num: int) -> QualityScores:
         """Build a :class:`QualityScores` from the agent run result.
 
@@ -219,8 +294,9 @@ class JudgeAgent(BaseAgentRunner):
         matches the ``QualityScores`` schema with ``agent_scores`` containing
         per-agent dimension scores.
 
-        Falls back to a minimal ``QualityScores`` object when parsing fails
-        (e.g. when the agent produced no output or malformed JSON).
+        Falls back to prose extraction when JSON parsing yields no
+        ``agent_scores``, then to a minimal ``QualityScores`` when all
+        strategies fail.
         """
         from dd_agents.models.audit import AgentScore as _AgentScore
 
@@ -234,6 +310,20 @@ class JudgeAgent(BaseAgentRunner):
             if "agent_scores" in item:
                 scores_data = item
                 break
+
+        # Strategy 2: try prose extraction from raw agent text.
+        if scores_data is None:
+            raw_text = result.get("raw_output", "")
+            if not raw_text:
+                # Reconstruct raw text from parsed output dicts.
+                parts: list[str] = []
+                for item in output:
+                    for _key, val in item.items():
+                        if isinstance(val, str):
+                            parts.append(val)
+                raw_text = "\n".join(parts)
+            if raw_text:
+                scores_data = JudgeAgent._extract_scores_from_prose(raw_text)
 
         if scores_data is None:
             logger.warning("Judge output did not contain agent_scores -- returning empty QualityScores")

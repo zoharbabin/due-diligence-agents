@@ -62,6 +62,10 @@ class BaseAgentRunner(ABC):
     max_turns: int = 200
     max_budget_usd: float = 5.0
 
+    # Minimum SDK message buffer (bytes).  The actual value is computed
+    # dynamically from the largest extracted-text file in the data room.
+    _MIN_BUFFER_BYTES: int = 5 * 1024 * 1024  # 5 MB floor
+
     def __init__(
         self,
         project_dir: Path,
@@ -82,13 +86,13 @@ class BaseAgentRunner(ABC):
     def get_agent_name(self) -> str:
         """Return the canonical agent name (e.g. ``'legal'``)."""
 
-    def get_model_id(self) -> str:
+    def get_model_id(self) -> str | None:
         """Return the LLM model identifier for this agent.
 
-        Defaults to ``claude-sonnet-4-20250514``.  Subclasses may override
-        if they need a different model.
+        Returns ``None`` so the SDK uses its own configured model.
+        Subclasses may override to force a specific model.
         """
-        return "claude-sonnet-4-20250514"
+        return None
 
     @abstractmethod
     def get_system_prompt(self) -> str:
@@ -97,6 +101,43 @@ class BaseAgentRunner(ABC):
     @abstractmethod
     def get_tools(self) -> list[str]:
         """Return the list of tool names available to this agent."""
+
+    def _compute_buffer_size(self) -> int:
+        """Compute SDK message buffer from the largest extracted-text file.
+
+        The ``claude_agent_sdk`` streams JSON messages on stdout.  When an
+        agent reads a file via a tool call, the entire file content appears
+        inside a single JSON message.  The buffer must be large enough to
+        hold that message (file bytes + JSON/base64 encoding overhead).
+
+        Returns 3× the largest ``.txt`` file in the text directory, with
+        a floor of :attr:`_MIN_BUFFER_BYTES`.
+        """
+        from pathlib import Path as _Path
+
+        text_dir = _Path(self.project_dir) / "_dd" / "forensic-dd" / "index" / "text"
+        if not text_dir.is_dir():
+            return self._MIN_BUFFER_BYTES
+
+        max_size = 0
+        for f in text_dir.iterdir():
+            if f.suffix in (".md", ".txt") and f.is_file():
+                try:
+                    size = f.stat().st_size
+                    if size > max_size:
+                        max_size = size
+                except OSError:
+                    continue
+
+        # 3× for JSON encoding overhead (escaping, base64, wrapper)
+        computed = max_size * 3
+        return max(computed, self._MIN_BUFFER_BYTES)
+
+    def _raw_output_path(self) -> Path:
+        """Return the path for saving raw agent output text."""
+        from pathlib import Path as _Path
+
+        return _Path(self.run_dir) / "agent_output" / f"{self.get_agent_name()}_raw.txt"
 
     # ------------------------------------------------------------------
     # Main execution entry-point
@@ -125,14 +166,29 @@ class BaseAgentRunner(ABC):
 
         start = time.monotonic()
         try:
-            prompt = self.build_prompt(state)
+            # Use pre-built prompt from pipeline step 14 if available.
+            # Fall back to build_prompt() for tests / standalone invocations.
+            prompt = state.get("prompt") or self.build_prompt(state)
 
             # Placeholder: actual SDK integration would call ``query()`` here.
             raw_output = await self._spawn_agent(prompt)
 
-            parsed = self._parse_agent_output(raw_output)
+            # Persist raw output for diagnostics (always, not just on failure).
+            raw_output_path = self._raw_output_path()
+            parsed = self._parse_agent_output(raw_output, raw_output_path=raw_output_path)
             result["output"] = parsed
-            result["status"] = "success"
+
+            if raw_output.strip():
+                # Agent ran and produced text output.  Specialist agents write
+                # findings as files on disk — their text stream is commentary,
+                # not structured JSON.  Status is success; the coverage gate
+                # (step 17) verifies actual file output.
+                result["status"] = "success"
+            else:
+                # Agent returned empty — SDK may have failed silently.
+                result["status"] = "error"
+                result["error"] = f"Agent {agent_name} produced no output"
+                logger.warning(result["error"])
         except TimeoutError:
             result["status"] = "timeout"
             result["error"] = f"Agent {agent_name} exceeded timeout of {self.timeout_seconds}s"
@@ -209,29 +265,64 @@ class BaseAgentRunner(ABC):
             permission_mode="bypassPermissions",
             cwd=str(self.project_dir),
             allowed_tools=self.get_tools(),
+            max_buffer_size=self._compute_buffer_size(),
+        )
+
+        agent_name = self.get_agent_name()
+        prompt_tokens = len(prompt) // 4
+        buffer_mb = self._compute_buffer_size() / (1024 * 1024)
+        logger.info(
+            "Agent %s: starting SDK session (prompt ~%dK tokens, buffer %.1f MB, max_turns=%d)",
+            agent_name,
+            prompt_tokens // 1000,
+            buffer_mb,
+            self.max_turns,
         )
 
         text_parts: list[str] = []
+        msg_count = 0
         try:
             async for message in _query(prompt=prompt, options=options):
+                msg_count += 1
                 if isinstance(message, _AssistantMessage):
                     for block in message.content:
                         if isinstance(block, _TextBlock):
                             text_parts.append(block.text)
-                elif isinstance(message, _ResultMessage) and message.is_error:
-                    logger.error(
-                        "Agent %s SDK error: %s",
-                        self.get_agent_name(),
-                        message.result,
-                    )
-                    break
+                elif isinstance(message, _ResultMessage):
+                    if message.is_error:
+                        logger.error(
+                            "Agent %s SDK error (msg #%d): %s",
+                            agent_name,
+                            msg_count,
+                            message.result,
+                        )
+                    else:
+                        logger.info(
+                            "Agent %s completed (msg #%d): %s",
+                            agent_name,
+                            msg_count,
+                            str(message.result)[:200] if message.result else "OK",
+                        )
+                    # Do NOT break here — breaking an anyio-backed async
+                    # generator from an asyncio.create_task triggers
+                    # "Attempted to exit cancel scope in a different task".
+                    # The ResultMessage is the terminal message so the loop
+                    # will end naturally.
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "Agent %s SDK call failed: %s -- returning partial output (%d parts collected)",
-                self.get_agent_name(),
+                agent_name,
                 exc,
                 len(text_parts),
             )
+
+        total_text = len("\n".join(text_parts))
+        logger.info(
+            "Agent %s: session ended after %d messages, %d text chars collected",
+            agent_name,
+            msg_count,
+            total_text,
+        )
 
         return "\n".join(text_parts)
 
@@ -366,9 +457,11 @@ class BaseAgentRunner(ABC):
 
         # All strategies exhausted -- log and optionally persist raw output.
         if raw_output.strip():
+            preview = raw_output.strip()[:500]
             logger.error(
-                "Agent output contained no parseable JSON (%d chars)",
+                "Agent output contained no parseable JSON (%d chars). Preview:\n%s",
                 len(raw_output),
+                preview,
             )
             if raw_output_path is not None:
                 try:

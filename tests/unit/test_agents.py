@@ -282,6 +282,58 @@ class TestPromptBuilder:
         # Falls back to max_tokens as available => max 2 per batch.
         assert len(batches) >= 1
 
+    def test_estimate_customer_tokens(self) -> None:
+        """Data-driven estimate accounts for file listing size."""
+        small = CustomerEntry(
+            group="",
+            name="A",
+            safe_name="a",
+            path="/a",
+            file_count=1,
+            files=["/a.pdf"],
+        )
+        large = CustomerEntry(
+            group="",
+            name="B",
+            safe_name="b",
+            path="/b",
+            file_count=50,
+            files=[f"/dir/very_long_filename_{i}.pdf" for i in range(50)],
+        )
+        small_tokens = PromptBuilder._estimate_customer_tokens(small)
+        large_tokens = PromptBuilder._estimate_customer_tokens(large)
+
+        assert small_tokens >= 40  # header only
+        assert large_tokens > small_tokens * 5  # many files = much higher
+        assert large_tokens > 200  # non-trivial estimate
+
+    def test_batch_customers_data_driven_splitting(self) -> None:
+        """Data-driven batching splits large customer lists correctly."""
+        # Create 10 customers with ~500 tokens each (long file lists).
+        customers = [
+            CustomerEntry(
+                group="g",
+                name=f"Cust {i}",
+                safe_name=f"cust_{i}",
+                path=f"/path/to/customer_{i}",
+                file_count=40,
+                files=[f"/path/to/customer_{i}/file_{j}_with_long_name.pdf" for j in range(40)],
+            )
+            for i in range(10)
+        ]
+
+        # With ~500 tokens each and max_tokens=3000, overhead=500 → ~2500 available.
+        # Should get ~5 per batch → 2 batches.
+        batches = PromptBuilder.batch_customers(
+            customers,
+            max_tokens=3000,
+            overhead_tokens=500,
+        )
+        assert len(batches) >= 2
+        # All customers accounted for.
+        total = sum(len(b) for b in batches)
+        assert total == 10
+
     def test_specialist_focus_all_agents_have_entries(self) -> None:
         specialist_types = [
             AgentType.LEGAL,
@@ -308,7 +360,7 @@ class TestLegalAgent:
 
     def test_model(self, tmp_project: Path, tmp_run_dir: Path, run_id: str) -> None:
         agent = LegalAgent(tmp_project, tmp_run_dir, run_id)
-        assert agent.get_model_id() == "claude-sonnet-4-20250514"
+        assert agent.get_model_id() is None
 
     def test_focus_areas(self) -> None:
         assert "change_of_control" in LEGAL_FOCUS_AREAS
@@ -356,7 +408,7 @@ class TestFinanceAgent:
 
     def test_model(self, tmp_project: Path, tmp_run_dir: Path, run_id: str) -> None:
         agent = FinanceAgent(tmp_project, tmp_run_dir, run_id)
-        assert agent.get_model_id() == "claude-sonnet-4-20250514"
+        assert agent.get_model_id() is None
 
     def test_focus_areas(self) -> None:
         assert "payment_terms" in FINANCE_FOCUS_AREAS
@@ -388,7 +440,7 @@ class TestCommercialAgent:
 
     def test_model(self, tmp_project: Path, tmp_run_dir: Path, run_id: str) -> None:
         agent = CommercialAgent(tmp_project, tmp_run_dir, run_id)
-        assert agent.get_model_id() == "claude-sonnet-4-20250514"
+        assert agent.get_model_id() is None
 
     def test_focus_areas(self) -> None:
         assert "sla_compliance" in COMMERCIAL_FOCUS_AREAS
@@ -421,7 +473,7 @@ class TestProductTechAgent:
 
     def test_model(self, tmp_project: Path, tmp_run_dir: Path, run_id: str) -> None:
         agent = ProductTechAgent(tmp_project, tmp_run_dir, run_id)
-        assert agent.get_model_id() == "claude-sonnet-4-20250514"
+        assert agent.get_model_id() is None
 
     def test_focus_areas(self) -> None:
         assert "product_scope" in PRODUCTTECH_FOCUS_AREAS
@@ -480,7 +532,7 @@ class TestJudgeAgent:
 
     def test_model(self, tmp_project: Path, tmp_run_dir: Path, run_id: str) -> None:
         agent = JudgeAgent(tmp_project, tmp_run_dir, run_id)
-        assert agent.get_model_id() == "claude-sonnet-4-20250514"
+        assert agent.get_model_id() is None
 
     def test_max_turns(self, tmp_project: Path, tmp_run_dir: Path, run_id: str) -> None:
         agent = JudgeAgent(tmp_project, tmp_run_dir, run_id)
@@ -586,7 +638,7 @@ class TestReportingLeadAgent:
 
     def test_model(self, tmp_project: Path, tmp_run_dir: Path, run_id: str) -> None:
         agent = ReportingLeadAgent(tmp_project, tmp_run_dir, run_id)
-        assert agent.get_model_id() == "claude-sonnet-4-20250514"
+        assert agent.get_model_id() is None
 
     def test_max_turns(self, tmp_project: Path, tmp_run_dir: Path, run_id: str) -> None:
         agent = ReportingLeadAgent(tmp_project, tmp_run_dir, run_id)
@@ -818,12 +870,18 @@ class TestBaseAgentRunnerRun:
     """Tests for the async run method."""
 
     @pytest.mark.asyncio
-    async def test_run_returns_success(self, tmp_project: Path, tmp_run_dir: Path, run_id: str) -> None:
+    async def test_run_returns_result_dict(self, tmp_project: Path, tmp_run_dir: Path, run_id: str) -> None:
+        """In test environment (no working SDK), run() returns a well-formed result dict.
+
+        Without a live API, the agent produces no output, which is now correctly
+        reported as an error rather than a false success.
+        """
         agent = LegalAgent(tmp_project, tmp_run_dir, run_id)
         result = await agent.run({"customers": []})
         assert result["agent_name"] == "legal"
-        assert result["status"] == "success"
-        assert result["error"] is None
+        # No working SDK in tests -- agent produces empty output.
+        assert result["status"] == "error"
+        assert result["error"] is not None
         assert result["elapsed_seconds"] >= 0
 
     @pytest.mark.asyncio

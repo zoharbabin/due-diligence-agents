@@ -180,6 +180,22 @@ def run(
         elif state.validation_results:
             summary_parts.append("Audit: [bold yellow]INCOMPLETE[/bold yellow]")
 
+        # List key output files so the user can click to open them.
+        run_dir = state.run_dir
+        key_files: list[tuple[str, Path]] = [
+            ("Excel Report", run_dir / "report" / "dd_report.xlsx"),
+            ("Audit Report", run_dir / "audit.json"),
+            ("DoD Results", run_dir / "dod_results.json"),
+            ("Numerical Manifest", run_dir / "numerical_manifest.json"),
+            ("Findings", run_dir / "findings" / "merged"),
+        ]
+        existing = [(label, p) for label, p in key_files if p.exists()]
+        if existing:
+            summary_parts.append("")
+            summary_parts.append("[bold]Key outputs:[/bold]")
+            for label, p in existing:
+                summary_parts.append(f"  {label}: [link=file://{p}]{p}[/link]")
+
         console.print(
             Panel(
                 "\n".join(summary_parts),

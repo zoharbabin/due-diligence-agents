@@ -79,7 +79,17 @@ class NumericalAuditor:
         for entry in manifest.numbers:
             resolved = self._resolve_path(entry.source_file)
             if not self._source_exists(resolved):
-                failures.append(f"{entry.id} ({entry.label}): source_file '{entry.source_file}' does not exist")
+                # A glob pattern matching 0 files is valid when the manifest
+                # value is also 0 (e.g. zero gaps → no gap JSON files).
+                if "*" in entry.source_file and entry.value == 0:
+                    logger.debug(
+                        "%s (%s): glob '%s' matched 0 files but value is 0 -- accepted",
+                        entry.id,
+                        entry.label,
+                        entry.source_file,
+                    )
+                else:
+                    failures.append(f"{entry.id} ({entry.label}): source_file '{entry.source_file}' does not exist")
             if not entry.derivation:
                 failures.append(f"{entry.id} ({entry.label}): missing derivation")
         return AuditCheck(

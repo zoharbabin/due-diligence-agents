@@ -80,6 +80,7 @@ class AgentTeam:
         # Internal tracking
         self._agent_start_times: dict[str, float] = {}
         self._agent_last_activity: dict[str, float] = {}
+        self._completed_agents: set[str] = set()
 
     # ------------------------------------------------------------------
     # Specialist agents
@@ -111,12 +112,25 @@ class AgentTeam:
         configs = agent_configs or {}
         tasks: dict[str, asyncio.Task[dict[str, Any]]] = {}
 
-        # Adaptive timeout (Issue #42)
-        timeout = self.calculate_adaptive_timeout(num_customers) if num_customers > 0 else self.agent_timeout_s
+        # Adaptive timeout (Issue #42).  Account for sequential batch count:
+        # each agent runs its batches sequentially, so the slowest agent
+        # (most batches) determines the overall timeout.
+        max_batches = 1
+        for agent_name in ALL_SPECIALIST_AGENTS:
+            n = len(self.state.agent_prompts.get(agent_name, []))
+            if n > max_batches:
+                max_batches = n
+
+        timeout = (
+            self.calculate_adaptive_timeout(num_customers, num_batches=max_batches)
+            if num_customers > 0
+            else self.agent_timeout_s
+        )
         logger.info(
-            "Specialist timeout: %ds (customers=%d, adaptive=%s)",
+            "Specialist timeout: %ds (customers=%d, batches=%d, adaptive=%s)",
             timeout,
             num_customers,
+            max_batches,
             num_customers > 0,
         )
 
@@ -164,11 +178,26 @@ class AgentTeam:
         self,
         agent_name: str,
         config: dict[str, Any],
+        *,
+        prompt: str | None = None,
+        prompts: list[str] | None = None,
     ) -> dict[str, Any]:
         """Run a single specialist agent via the agent runner SDK integration.
 
         Creates the appropriate specialist runner, builds the pipeline state
-        dict, and invokes :meth:`BaseAgentRunner.run`.
+        dict, and invokes :meth:`BaseAgentRunner.run`.  When the agent has
+        multiple batch prompts (from step 14), each batch is run as a separate
+        SDK session so that no single prompt exceeds the model's context.
+
+        Parameters
+        ----------
+        prompt:
+            Optional single pre-built prompt string.  When *None* (default),
+            the pre-built prompt(s) from ``state.agent_prompts`` are used.
+        prompts:
+            Optional list of pre-built prompts (one per batch).  Takes
+            precedence over *prompt*.  Used by respawn to pass multiple
+            batched prompts for missing customers.
         """
         from dd_agents.agents.prompt_builder import AgentType
         from dd_agents.agents.specialists import SPECIALIST_CLASSES
@@ -191,40 +220,81 @@ class AgentTeam:
             }
 
         runner_cls = SPECIALIST_CLASSES[agent_type]
-        runner = runner_cls(
-            project_dir=self.state.project_dir,
-            run_dir=self.state.run_dir,
-            run_id=self.state.run_id,
-        )
 
         # Apply optional per-agent config overrides.
+        runner_kwargs: dict[str, Any] = {}
         if config.get("max_turns"):
-            runner.max_turns = int(config["max_turns"])
+            runner_kwargs["max_turns"] = int(config["max_turns"])
         if config.get("max_budget_usd"):
-            runner.max_budget_usd = float(config["max_budget_usd"])
+            runner_kwargs["max_budget_usd"] = float(config["max_budget_usd"])
 
-        logger.info("Spawning specialist agent: %s", agent_name)
+        # Determine batch prompts.  ``prompts`` (list) takes precedence
+        # over ``prompt`` (single string), which takes precedence over
+        # pre-built batches from step 14.
+        if prompts is not None:
+            batch_prompts: list[str | None] = list(prompts)
+        elif prompt is not None:
+            batch_prompts = [prompt]
+        else:
+            pre_built = self.state.agent_prompts.get(agent_name, [])
+            batch_prompts = list(pre_built) if pre_built else [None]
 
-        # Build state dict for the agent runner from pipeline state.
-        agent_state: dict[str, Any] = {
-            "customers": self.state.customer_safe_names,
-            "deal_config": self.state.deal_config,
-        }
+        # Run each batch as a separate agent session so each prompt stays
+        # within the model's effective context window.
+        all_outputs: list[Any] = []
+        total_elapsed_ms = 0
+        errors: list[str] = []
 
-        start_ms = time.monotonic()
-        result = await runner.run(agent_state)
-        elapsed_ms = int((time.monotonic() - start_ms) * 1000)
+        for batch_idx, batch_prompt in enumerate(batch_prompts):
+            batch_label = (
+                f"{agent_name}"
+                if len(batch_prompts) == 1
+                else f"{agent_name} batch {batch_idx + 1}/{len(batch_prompts)}"
+            )
+            logger.info("Spawning specialist agent: %s", batch_label)
+
+            runner = runner_cls(
+                project_dir=self.state.project_dir,
+                run_dir=self.state.run_dir,
+                run_id=self.state.run_id,
+            )
+            if runner_kwargs.get("max_turns"):
+                runner.max_turns = runner_kwargs["max_turns"]
+            if runner_kwargs.get("max_budget_usd"):
+                runner.max_budget_usd = runner_kwargs["max_budget_usd"]
+
+            agent_state: dict[str, Any] = {
+                "customers": self.state.customer_safe_names,
+                "deal_config": self.state.deal_config,
+                "prompt": batch_prompt,
+            }
+
+            start_ms = time.monotonic()
+            result = await runner.run(agent_state)
+            elapsed_ms = int((time.monotonic() - start_ms) * 1000)
+            total_elapsed_ms += elapsed_ms
+
+            if result.get("output"):
+                all_outputs.extend(result["output"])
+            if result.get("error"):
+                errors.append(f"[{batch_label}] {result['error']}")
+
+        status = "completed"
+        if errors and not all_outputs:
+            status = "failed"
+        elif errors:
+            status = "partial"
 
         return {
             "agent": agent_name,
-            "status": "completed" if result.get("status") == "success" else result.get("status", "failed"),
+            "status": status,
             "cost_usd": 0.0,
             "session_id": "",
             "num_turns": 0,
-            "duration_ms": elapsed_ms,
-            "is_error": result.get("status") != "success",
-            "output": result.get("output"),
-            "error": result.get("error"),
+            "duration_ms": total_elapsed_ms,
+            "is_error": status == "failed",
+            "output": all_outputs or None,
+            "error": "; ".join(errors) if errors else None,
         }
 
     # ------------------------------------------------------------------
@@ -360,6 +430,8 @@ class AgentTeam:
                     }
                 else:
                     results[agent_name] = task.result()
+                # Mark as completed so stall detection ignores it.
+                self._completed_agents.add(agent_name)
             else:
                 # Timed out
                 logger.warning("Agent %s timed out after %ds", agent_name, timeout)
@@ -385,14 +457,21 @@ class AgentTeam:
         """Return names of agents that have not produced output recently.
 
         An agent is considered stalled if the time since its last
-        recorded activity exceeds ``stall_threshold_s``.
+        recorded activity exceeds ``stall_threshold_s``.  Agents that
+        have already completed are excluded.
         """
         now = time.monotonic()
         stalled: list[str] = []
         for agent_name, last in self._agent_last_activity.items():
+            if agent_name in self._completed_agents:
+                continue
             if (now - last) > self.stall_threshold_s:
                 stalled.append(agent_name)
         return stalled
+
+    def mark_agent_completed(self, agent_name: str) -> None:
+        """Mark an agent as completed so it's excluded from stall detection."""
+        self._completed_agents.add(agent_name)
 
     def is_timed_out(self, agent_name: str) -> bool:
         """Check if an agent has exceeded its wall-clock timeout."""
@@ -409,15 +488,23 @@ class AgentTeam:
     def calculate_adaptive_timeout(
         num_customers: int,
         *,
+        num_batches: int = 1,
         base_timeout_s: int = BASE_TIMEOUT_S,
         per_customer_s: int = PER_CUSTOMER_TIMEOUT_S,
     ) -> int:
-        """Calculate an adaptive timeout based on the number of customers.
+        """Calculate an adaptive timeout based on customers and batch count.
+
+        When agents run multiple batches sequentially (e.g. 4 batches of 20
+        customers each), each batch needs its own time budget.  The timeout
+        is calculated per-batch and then multiplied by the batch count.
 
         Parameters
         ----------
         num_customers:
-            How many customers the agent must process.
+            Total number of customers the agent must process.
+        num_batches:
+            Number of sequential batches (default 1).  Each batch gets its
+            own share of per-customer time.
         base_timeout_s:
             Fixed base timeout in seconds (default 1800 = 30 min).
         per_customer_s:
@@ -428,7 +515,10 @@ class AgentTeam:
         int
             Calculated timeout in seconds.
         """
-        return base_timeout_s + (num_customers * per_customer_s)
+        effective_batches = max(1, num_batches)
+        # Each batch gets the base timeout + per-customer time for its share.
+        per_batch = base_timeout_s + (num_customers * per_customer_s) // effective_batches
+        return per_batch * effective_batches
 
     # ------------------------------------------------------------------
     # Filesystem-based output monitoring (Issue #42)

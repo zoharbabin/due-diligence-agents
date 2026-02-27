@@ -96,12 +96,60 @@ class PromptBuilder:
     # Specialist prompt
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _coerce_deal_config(deal_config: DealConfig | dict[str, Any] | None) -> DealConfig | None:
+        """Convert a raw dict to :class:`DealConfig` if needed.
+
+        The pipeline state stores ``deal_config`` as a plain dict for
+        JSON-safe checkpoint serialisation.  This helper reconstructs
+        the typed Pydantic model so callers can use attribute access.
+        Returns *None* if conversion fails or *deal_config* is ``None``.
+        """
+        if deal_config is None:
+            return None
+
+        # Already a DealConfig (or similar Pydantic model with .buyer)
+        if hasattr(deal_config, "buyer"):
+            return deal_config  # type: ignore[return-value]
+
+        # Raw dict → DealConfig via Pydantic validation
+        if isinstance(deal_config, dict):
+            from dd_agents.models.config import DealConfig as _DealConfig
+
+            try:
+                return _DealConfig.model_validate(deal_config)
+            except Exception:
+                return None
+
+        return None
+
+    @staticmethod
+    def _coerce_customers(customers: list[CustomerEntry] | list[str] | list[Any]) -> list[CustomerEntry]:
+        """Ensure *customers* is a list of :class:`CustomerEntry` objects.
+
+        When ``_run_specialist`` falls back to ``build_prompt()``, customers
+        may be plain safe-name strings from ``PipelineState.customer_safe_names``.
+        This converts them to minimal :class:`CustomerEntry` instances so that
+        ``_build_customer_list`` can access ``.name`` / ``.safe_name`` etc.
+        """
+        if not customers:
+            return []
+
+        first = customers[0]
+        if hasattr(first, "safe_name"):
+            return customers  # type: ignore[return-value]
+
+        # Plain strings — convert to minimal CustomerEntry objects.
+        from dd_agents.models.inventory import CustomerEntry as _CustomerEntry
+
+        return [_CustomerEntry(group="", name=str(s), safe_name=str(s), path=str(s)) for s in customers]
+
     def build_specialist_prompt(
         self,
         agent_name: str,
-        customers: list[CustomerEntry],
+        customers: list[CustomerEntry] | list[str],
         reference_files: list[ReferenceFile] | None = None,
-        deal_config: DealConfig | None = None,
+        deal_config: DealConfig | dict[str, Any] | None = None,
         text_dir: str | None = None,
     ) -> str:
         """Build a complete, self-contained specialist prompt.
@@ -112,15 +160,20 @@ class PromptBuilder:
             One of ``legal``, ``finance``, ``commercial``, ``producttech``.
         customers:
             List of :class:`CustomerEntry` objects -- every customer the agent
-            must analyse.
+            must analyse.  Plain strings (safe_names) are also accepted and
+            automatically coerced to minimal :class:`CustomerEntry` objects.
         reference_files:
             Reference files routed to this agent.  May be ``None``.
         deal_config:
-            The loaded :class:`DealConfig`.  May be ``None`` for tests.
+            The loaded :class:`DealConfig`, or a raw dict from pipeline
+            state.  Automatically coerced to :class:`DealConfig` if a
+            dict is passed.  May be ``None`` for tests.
         text_dir:
             Path to the extracted text directory (e.g.
             ``_dd/forensic-dd/index/text``).  Used to construct pointers.
         """
+        deal_config = self._coerce_deal_config(deal_config)
+        customers = self._coerce_customers(customers)
         sections: list[str] = []
 
         # 1. Role & deal context
@@ -228,9 +281,10 @@ class PromptBuilder:
         self,
         findings_dir: str | Path | None = None,
         schema_path: str | Path | None = None,
-        deal_config: DealConfig | None = None,
+        deal_config: DealConfig | dict[str, Any] | None = None,
     ) -> str:
         """Build the Reporting Lead agent prompt."""
+        deal_config = self._coerce_deal_config(deal_config)
         sections: list[str] = []
 
         sections.append(
@@ -272,11 +326,25 @@ class PromptBuilder:
         return len(prompt) // 4
 
     @staticmethod
+    def _estimate_customer_tokens(customer: CustomerEntry) -> int:
+        """Estimate the prompt tokens one customer entry will occupy.
+
+        Accounts for the header lines (name, safe_name, path, file count)
+        plus one line per file in the listing.
+        """
+        # Fixed header: "### Customer: ...", safe_name, path, "Files (N):"
+        chars = 160
+        for fp in customer.files or []:
+            chars += len(fp) + 8  # "    - {fp}\n"
+        return max(1, chars // 4)
+
+    @staticmethod
     def batch_customers(
         customers: list[CustomerEntry],
-        max_tokens: int = 80_000,
-        tokens_per_customer: int = 50,
+        max_tokens: int = 40_000,
+        tokens_per_customer: int | None = None,
         overhead_tokens: int = 5_000,
+        max_per_batch: int = 20,
     ) -> list[list[CustomerEntry]]:
         """Split *customers* into batches that each fit within *max_tokens*.
 
@@ -285,11 +353,18 @@ class PromptBuilder:
         customers:
             Full customer list.
         max_tokens:
-            Maximum tokens per batch (default 80 000 -- 80 % of 200k context).
+            Maximum tokens per batch (default 40 000 -- ~20 % of 200k context,
+            leaving ample room for agent tool calls and file reads).
         tokens_per_customer:
-            Estimated tokens per customer entry in the prompt.
+            Estimated tokens per customer entry in the prompt.  When ``None``
+            (default), computed automatically from the actual file listings
+            in each customer entry.
         overhead_tokens:
             Fixed token overhead for prompt preamble, rules, etc.
+        max_per_batch:
+            Hard cap on customers per batch (default 20).  Prevents
+            oversized batches when file listings are unavailable and
+            the token estimation underestimates prompt size.
 
         Returns
         -------
@@ -303,11 +378,32 @@ class PromptBuilder:
         if available <= 0:
             available = max_tokens
 
-        max_per_batch = max(1, available // max(1, tokens_per_customer))
+        # When tokens_per_customer is explicit, use uniform splitting.
+        if tokens_per_customer is not None:
+            cap = max(1, available // max(1, tokens_per_customer))
+            cap = min(cap, max_per_batch)
+            batches: list[list[CustomerEntry]] = []
+            for i in range(0, len(customers), cap):
+                batches.append(customers[i : i + cap])
+            return batches
 
-        batches: list[list[CustomerEntry]] = []
-        for i in range(0, len(customers), max_per_batch):
-            batches.append(customers[i : i + max_per_batch])
+        # Data-driven greedy batching: pack customers until the batch is full.
+        batches = []
+        current_batch: list[CustomerEntry] = []
+        current_tokens = 0
+
+        for customer in customers:
+            est = PromptBuilder._estimate_customer_tokens(customer)
+            if current_batch and (current_tokens + est > available or len(current_batch) >= max_per_batch):
+                batches.append(current_batch)
+                current_batch = []
+                current_tokens = 0
+            current_batch.append(customer)
+            current_tokens += est
+
+        if current_batch:
+            batches.append(current_batch)
+
         return batches
 
     # ------------------------------------------------------------------

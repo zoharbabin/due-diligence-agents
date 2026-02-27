@@ -700,6 +700,40 @@ class TestExtractionPipeline:
         content = md_file.read_text(encoding="utf-8")
         assert "substantial contract" in content
 
+    def test_empty_cache_skips_reextraction_when_output_readable(self, tmp_path: Path) -> None:
+        """When cache file is empty/missing but readable output exists, skip re-extraction."""
+        src = tmp_path / "sources"
+        src.mkdir()
+        f = src / "contract.txt"
+        f.write_text(
+            "This is a substantial contract with enough text to pass the threshold.\n" * 5,
+            encoding="utf-8",
+        )
+
+        output_dir = tmp_path / "output"
+        cache_path = tmp_path / "cache" / "checksums.sha256"
+
+        pipeline = ExtractionPipeline()
+
+        # First run: extract normally (builds cache + output).
+        pipeline.extract_all([str(f)], output_dir, cache_path)
+        md_files = list(output_dir.glob("*.md"))
+        assert len(md_files) == 1
+        original_content = md_files[0].read_text(encoding="utf-8")
+        original_mtime = md_files[0].stat().st_mtime
+
+        # Wipe the cache file to simulate a lost/deleted checksums.sha256.
+        cache_path.unlink()
+
+        # Second run: should NOT re-extract because output is readable.
+        pipeline.extract_all([str(f)], output_dir, cache_path)
+
+        # Output file should be untouched (mtime unchanged = not rewritten).
+        assert md_files[0].stat().st_mtime == original_mtime
+        assert md_files[0].read_text(encoding="utf-8") == original_content
+        # Cache should be rebuilt with the file hash.
+        assert cache_path.exists()
+
     def test_count_pages_in_text(self) -> None:
         """_count_pages_in_text correctly counts page markers."""
         text_3_pages = (
