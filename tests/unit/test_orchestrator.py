@@ -3098,3 +3098,94 @@ class TestStep16SubCheckpoints:
 
         # Verify the schema has exactly the expected keys
         assert set(actual.keys()) == {"status", "agent", "cost_usd", "duration_ms", "error"}
+
+
+# ======================================================================
+# Output structure validation
+# ======================================================================
+
+
+class TestValidateAgentOutputStructure:
+    """Tests for PipelineEngine._validate_agent_output_structure."""
+
+    def test_all_structured_reports_clean(self, tmp_path: Path) -> None:
+        """No warnings when all cross_references and gaps are dicts."""
+        findings_dir = tmp_path / "findings"
+        legal_dir = findings_dir / "legal"
+        legal_dir.mkdir(parents=True)
+
+        data = {
+            "customer": "Acme Corp",
+            "findings": [],
+            "cross_references": [{"data_point": "ARR", "match_status": "match"}],
+            "gaps": [{"missing_item": "DPA", "gap_type": "Missing_Doc"}],
+        }
+        (legal_dir / "acme_corp.json").write_text(json.dumps(data))
+
+        summary = PipelineEngine._validate_agent_output_structure(findings_dir, ["acme_corp"])
+        assert summary["legal"]["string_cross_refs"] == 0
+        assert summary["legal"]["string_gaps"] == 0
+        assert summary["legal"]["total_cross_refs"] == 1
+        assert summary["legal"]["total_gaps"] == 1
+
+    def test_detects_string_cross_references(self, tmp_path: Path) -> None:
+        """String cross-references are counted in the summary."""
+        findings_dir = tmp_path / "findings"
+        finance_dir = findings_dir / "finance"
+        finance_dir.mkdir(parents=True)
+
+        data = {
+            "customer": "Beta Inc",
+            "findings": [],
+            "cross_references": [
+                "Revenue matches between MSA and cube",
+                {"data_point": "ARR", "match_status": "match"},
+                "Payment terms differ",
+            ],
+            "gaps": [],
+        }
+        (finance_dir / "beta_inc.json").write_text(json.dumps(data))
+
+        summary = PipelineEngine._validate_agent_output_structure(findings_dir, ["beta_inc"])
+        assert summary["finance"]["string_cross_refs"] == 2
+        assert summary["finance"]["total_cross_refs"] == 3
+
+    def test_detects_string_gaps(self, tmp_path: Path) -> None:
+        """String gaps are counted in the summary."""
+        findings_dir = tmp_path / "findings"
+        legal_dir = findings_dir / "legal"
+        legal_dir.mkdir(parents=True)
+
+        data = {
+            "customer": "Gamma LLC",
+            "findings": [],
+            "cross_references": [],
+            "gaps": ["Missing DPA", "Missing SOW"],
+        }
+        (legal_dir / "gamma_llc.json").write_text(json.dumps(data))
+
+        summary = PipelineEngine._validate_agent_output_structure(findings_dir, ["gamma_llc"])
+        assert summary["legal"]["string_gaps"] == 2
+        assert summary["legal"]["total_gaps"] == 2
+
+    def test_skips_coverage_manifest(self, tmp_path: Path) -> None:
+        """coverage_manifest.json should not be checked."""
+        findings_dir = tmp_path / "findings"
+        legal_dir = findings_dir / "legal"
+        legal_dir.mkdir(parents=True)
+
+        # coverage_manifest.json has a different structure
+        manifest = {"customers_covered": 5, "coverage_pct": 1.0}
+        (legal_dir / "coverage_manifest.json").write_text(json.dumps(manifest))
+
+        summary = PipelineEngine._validate_agent_output_structure(findings_dir, [])
+        assert summary["legal"]["files_checked"] == 0
+
+    def test_empty_findings_dir(self, tmp_path: Path) -> None:
+        """Empty findings directory should produce an empty summary."""
+        findings_dir = tmp_path / "findings"
+        findings_dir.mkdir(parents=True)
+
+        summary = PipelineEngine._validate_agent_output_structure(findings_dir, ["acme_corp"])
+        # No agent directories exist — summary is empty
+        assert summary == {}

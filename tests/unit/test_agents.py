@@ -345,6 +345,75 @@ class TestPromptBuilder:
             assert agent_type in SPECIALIST_FOCUS
             assert len(SPECIALIST_FOCUS[agent_type]) > 0
 
+    def test_output_format_includes_cross_reference_schema(
+        self,
+        builder: PromptBuilder,
+        sample_customers: list[CustomerEntry],
+    ) -> None:
+        """Prompt must include explicit cross-reference entry schema."""
+        prompt = builder.build_specialist_prompt(
+            agent_name="finance",
+            customers=sample_customers,
+        )
+        assert "Cross-Reference Entry Schema" in prompt
+        assert "data_point" in prompt
+        assert "match_status" in prompt
+        assert "NEVER write a bare string as a cross-reference" in prompt
+
+    def test_output_format_includes_gap_schema(
+        self,
+        builder: PromptBuilder,
+        sample_customers: list[CustomerEntry],
+    ) -> None:
+        """Prompt must include explicit gap entry schema."""
+        prompt = builder.build_specialist_prompt(
+            agent_name="legal",
+            customers=sample_customers,
+        )
+        assert "Gap Entry Schema" in prompt
+        assert "missing_item" in prompt
+        assert "gap_type" in prompt
+        assert "NEVER write a bare string as a gap" in prompt
+
+    def test_output_format_includes_finding_schema_with_citations(
+        self,
+        builder: PromptBuilder,
+        sample_customers: list[CustomerEntry],
+    ) -> None:
+        """Prompt must include finding schema with nested citations array."""
+        prompt = builder.build_specialist_prompt(
+            agent_name="commercial",
+            customers=sample_customers,
+        )
+        assert "Finding Entry Schema" in prompt
+        assert '"citations"' in prompt
+        assert '"source_path"' in prompt
+        assert "Every finding MUST have at least one citation" in prompt
+        assert "Findings without citations will be downgraded" in prompt
+
+    def test_robustness_structured_output_uses_citations_array(
+        self,
+    ) -> None:
+        """Robustness instructions should reference nested citations, not flat fields."""
+        instructions = PromptBuilder.robustness_instructions()
+        assert '"citations"' in instructions
+        assert '"source_path"' in instructions
+        # Should NOT use the old flat format
+        assert '"file_path": "string (required)"' not in instructions
+
+    def test_completeness_checklist_enforces_citations(
+        self,
+        builder: PromptBuilder,
+        sample_customers: list[CustomerEntry],
+    ) -> None:
+        """Completeness checklist should require non-empty citations on every finding."""
+        prompt = builder.build_specialist_prompt(
+            agent_name="finance",
+            customers=sample_customers,
+        )
+        assert "non-empty `citations` array" in prompt
+        assert "P0/P1 finding has `exact_quote`" in prompt
+
 
 # =========================================================================
 # Specialist agent tests
@@ -1359,7 +1428,7 @@ class TestRobustnessInstructions:
     def test_robustness_includes_structured_output(self) -> None:
         text = PromptBuilder.robustness_instructions()
         assert "Structured Output" in text
-        assert "customer_safe_name" in text
+        assert "citations" in text
         assert "severity" in text
 
     def test_robustness_includes_answer_normalization(self) -> None:
@@ -1368,9 +1437,8 @@ class TestRobustnessInstructions:
 
     def test_robustness_includes_citation_format(self) -> None:
         text = PromptBuilder.robustness_instructions()
-        assert "file_path" in text
-        assert "page" in text
-        assert "section_ref" in text
+        assert "source_path" in text
+        assert "location" in text
         assert "exact_quote" in text
 
     def test_robustness_includes_anti_hallucination(self) -> None:

@@ -1197,7 +1197,111 @@ class PipelineEngine:
             worst_coverage * 100,
             worst_agent or "n/a",
         )
+
+        # --- Output structure validation ------------------------------------
+        # Check that agent-produced JSON files have properly structured
+        # cross_references and gaps (dicts, not bare strings).  Log quality
+        # metrics so operators can track prompt effectiveness.
+        self._validate_agent_output_structure(findings_dir, state.customer_safe_names)
+
         return state
+
+    # ------------------------------------------------------------------
+    # Output structure validation
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _validate_agent_output_structure(
+        findings_dir: Any,
+        customer_safe_names: list[str],
+    ) -> dict[str, Any]:
+        """Validate internal structure of agent output files.
+
+        Checks that ``cross_references`` and ``gaps`` entries are dicts
+        (not bare strings).  Logs per-agent quality metrics.
+
+        Returns a summary dict with counts of malformed entries per agent
+        (useful for tests and monitoring).
+        """
+        from pathlib import Path as _Path
+
+        summary: dict[str, Any] = {}
+        findings_path = _Path(str(findings_dir))
+
+        for agent in ALL_SPECIALIST_AGENTS:
+            agent_dir = findings_path / agent
+            if not agent_dir.is_dir():
+                continue
+
+            agent_stats: dict[str, int] = {
+                "files_checked": 0,
+                "string_cross_refs": 0,
+                "total_cross_refs": 0,
+                "string_gaps": 0,
+                "total_gaps": 0,
+            }
+
+            for fp in sorted(agent_dir.glob("*.json")):
+                if fp.name == "coverage_manifest.json":
+                    continue
+                try:
+                    data = json.loads(fp.read_text())
+                except (json.JSONDecodeError, OSError):
+                    continue
+                if not isinstance(data, dict):
+                    continue
+
+                agent_stats["files_checked"] += 1
+
+                # Check cross_references
+                for cr in data.get("cross_references", []):
+                    agent_stats["total_cross_refs"] += 1
+                    if not isinstance(cr, dict):
+                        agent_stats["string_cross_refs"] += 1
+
+                # Check gaps
+                for gap in data.get("gaps", []):
+                    agent_stats["total_gaps"] += 1
+                    if not isinstance(gap, dict):
+                        agent_stats["string_gaps"] += 1
+
+            summary[agent] = agent_stats
+
+            # Log per-agent quality metrics
+            scr = agent_stats["string_cross_refs"]
+            tcr = agent_stats["total_cross_refs"]
+            sg = agent_stats["string_gaps"]
+            tg = agent_stats["total_gaps"]
+
+            if scr > 0:
+                logger.warning(
+                    "Agent %s: %d/%d cross-references are bare strings (will be auto-recovered at merge)",
+                    agent,
+                    scr,
+                    tcr,
+                )
+            if sg > 0:
+                logger.warning(
+                    "Agent %s: %d/%d gaps are bare strings (will be auto-recovered at merge)",
+                    agent,
+                    sg,
+                    tg,
+                )
+
+        # Log aggregate summary
+        total_scr = sum(s.get("string_cross_refs", 0) for s in summary.values())
+        total_sg = sum(s.get("string_gaps", 0) for s in summary.values())
+        if total_scr == 0 and total_sg == 0:
+            logger.info("Output structure validation: all cross-references and gaps are properly structured")
+        else:
+            logger.warning(
+                "Output structure validation: %d string cross-references, %d string gaps "
+                "(all will be auto-recovered during merge)",
+                total_scr,
+                total_sg,
+            )
+
+        return summary
 
     # ------------------------------------------------------------------
     # Coverage helpers

@@ -493,7 +493,73 @@ class PromptBuilder:
             '  "cross_references": [],\n'
             '  "metadata": {}\n'
             "}\n"
-            "```"
+            "```\n\n"
+            "### Finding Entry Schema\n\n"
+            "Every entry in `findings` MUST be a JSON object with a non-empty "
+            "`citations` array:\n"
+            "```json\n"
+            "{\n"
+            '  "severity": "P0 | P1 | P2 | P3 (required)",\n'
+            '  "category": "string (required)",\n'
+            '  "title": "string (required, max 120 chars)",\n'
+            '  "description": "string (required)",\n'
+            '  "confidence": "high | medium | low",\n'
+            '  "citations": [\n'
+            "    {\n"
+            '      "source_type": "file",\n'
+            '      "source_path": "exact/path/to/document.pdf (required)",\n'
+            '      "location": "Section X.Y or page number",\n'
+            '      "exact_quote": "verbatim text from the document (required '
+            'for P0/P1)"\n'
+            "    }\n"
+            "  ]\n"
+            "}\n"
+            "```\n"
+            "**CRITICAL**: Every finding MUST have at least one citation with "
+            "a valid `source_path` pointing to the actual file you read. "
+            "Findings without citations will be downgraded in severity. "
+            "For P0 and P1 findings, every citation MUST include `exact_quote` "
+            "copied verbatim from the document.\n\n"
+            "If a finding is based on aggregate data (e.g. revenue "
+            "concentration from a reference spreadsheet), cite the specific "
+            "reference file and the relevant cell, row, or tab.\n\n"
+            "### Cross-Reference Entry Schema\n\n"
+            "Every entry in `cross_references` MUST be a JSON **object** (not a string):\n"
+            "```json\n"
+            "{\n"
+            '  "data_point": "string (required) — e.g. ARR, Payment Terms, Contract Value",\n'
+            '  "data_type": "string — financial | pricing | entity | operational",\n'
+            '  "contract_value": "string — value found in the contract",\n'
+            '  "contract_source": {"file": "path", "page": 1, "quote": "exact text"},\n'
+            '  "reference_value": "string — value found in the reference data",\n'
+            '  "reference_source": {"file": "path", "tab": "sheet name"},\n'
+            '  "match_status": "match | mismatch | not_available",\n'
+            '  "variance": "string — e.g. -20.8%",\n'
+            '  "severity": "P0 | P1 | P2 | P3 | null",\n'
+            '  "interpretation": "string — brief analysis of the comparison"\n'
+            "}\n"
+            "```\n"
+            "NEVER write a bare string as a cross-reference entry. "
+            "If you cannot fill all fields, still write an object with at least "
+            "`data_point` and `match_status`.\n\n"
+            "### Gap Entry Schema\n\n"
+            "Every entry in `gaps` MUST be a JSON **object** (not a string):\n"
+            "```json\n"
+            "{\n"
+            '  "missing_item": "string (required) — the missing document or data",\n'
+            '  "gap_type": "Missing_Doc | Missing_Data | Ambiguous_Link '
+            '| Unreadable | Contradiction | Data_Mismatch",\n'
+            '  "priority": "P0 | P1 | P2 | P3",\n'
+            '  "why_needed": "string — why this document/data is needed",\n'
+            '  "risk_if_missing": "string — what could go wrong without it",\n'
+            '  "request_to_company": "string — what to ask the target company",\n'
+            '  "evidence": "string — where you noticed the gap",\n'
+            '  "detection_method": "checklist | cross_reference | pattern_check | governance_resolution"\n'
+            "}\n"
+            "```\n"
+            "NEVER write a bare string as a gap entry. "
+            "If you cannot fill all fields, still write an object with at least "
+            "`missing_item` and `gap_type`."
         )
 
     def _build_manifest_requirement(self, agent_name: str, customers: list[CustomerEntry]) -> str:
@@ -531,20 +597,28 @@ class PromptBuilder:
             # 1. Structured output enforcement
             #
             "### Structured Output\n\n"
-            "Every finding MUST be a valid JSON object matching this schema:\n"
+            "Every finding MUST be a valid JSON object with a `citations` array "
+            "containing at least one citation object:\n"
             "```json\n"
             "{\n"
-            '  "customer_safe_name": "string (required)",\n'
             '  "severity": "P0 | P1 | P2 | P3 (required)",\n'
-            '  "title": "string (required)",\n'
+            '  "category": "string (required)",\n'
+            '  "title": "string (required, max 120 chars)",\n'
             '  "description": "string (required)",\n'
-            '  "file_path": "string (required)",\n'
-            '  "page": "integer or null",\n'
-            '  "section_ref": "string or null",\n'
-            '  "exact_quote": "string (required)"\n'
+            '  "confidence": "high | medium | low",\n'
+            '  "citations": [\n'
+            "    {\n"
+            '      "source_type": "file",\n'
+            '      "source_path": "exact/path/to/document.pdf (required)",\n'
+            '      "location": "Section X.Y or page number",\n'
+            '      "exact_quote": "verbatim text from document (required for P0/P1)"\n'
+            "    }\n"
+            "  ]\n"
             "}\n"
             "```\n"
-            "Do NOT omit required fields. Do NOT add fields not in the schema.\n\n"
+            "Do NOT omit required fields. Do NOT produce findings with an empty "
+            "or missing `citations` array — every finding MUST cite at least one "
+            "source document.\n\n"
             #
             # 2. Answer normalization
             #
@@ -557,11 +631,15 @@ class PromptBuilder:
             # 3. Citation format
             #
             "### Citation Format\n\n"
-            "Every citation MUST include ALL of these fields:\n"
-            "- file_path: exact path to the source file\n"
-            "- page: page number where the text appears (integer, or null if not applicable)\n"
-            "- section_ref: section heading or clause number (e.g. 'Section 12.3')\n"
-            "- exact_quote: the verbatim text from the document, copied character-for-character\n\n"
+            "Every citation object in the `citations` array MUST include:\n"
+            "- source_type: 'file' (or 'web_research' with access_date)\n"
+            "- source_path: exact path to the source file (required)\n"
+            "- location: section heading, clause number, or page reference\n"
+            "- exact_quote: verbatim text copied character-for-character "
+            "(required for P0 and P1 findings)\n\n"
+            "For aggregate/reference-data findings (e.g. revenue concentration "
+            "from a spreadsheet), cite the reference file with tab/row details "
+            "in the `location` field.\n\n"
             #
             # 4. Anti-hallucination
             #
@@ -601,10 +679,13 @@ class PromptBuilder:
             "1. ALL customers in your assigned list have been analyzed.\n"
             "2. ALL files for each customer have been read or searched.\n"
             "3. ALL required fields in every finding and gap are populated.\n"
-            "4. ALL exact_quote values have been verified against the source document.\n"
-            "5. Every P0 finding has been re-read and its severity confirmed.\n"
-            "6. Every customer with zero findings has been re-checked for missed issues.\n"
-            "7. ALL reference files assigned to you have been processed.\n\n"
+            "4. EVERY finding has a non-empty `citations` array with at least one "
+            "citation that includes `source_path`.\n"
+            "5. ALL `exact_quote` values have been verified against the source document.\n"
+            "6. Every P0/P1 finding has `exact_quote` in every citation.\n"
+            "7. Every P0 finding has been re-read and its severity confirmed.\n"
+            "8. Every customer with zero findings has been re-checked for missed issues.\n"
+            "9. ALL reference files assigned to you have been processed.\n\n"
             "YOU MAY HAVE MISSED CRITICAL INFORMATION. Go back and re-examine any "
             "customers where you produced fewer findings than expected relative to "
             "their file count.\n\n"

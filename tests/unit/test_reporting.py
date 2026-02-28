@@ -764,14 +764,14 @@ class TestMergeNormalization:
         assert result.cross_references[0].data_point == "Contract Value"
         assert result.cross_references[0].match_status == "match"
 
-    def test_union_cross_refs_skips_non_dict_entries(self) -> None:
-        """Non-dict entries in cross_references (e.g. strings) should be skipped, not crash."""
+    def test_union_cross_refs_recovers_string_entries(self) -> None:
+        """String entries in cross_references should be auto-recovered, not dropped."""
         agent_outputs = {
             "finance": {
                 "customer": "Acme Corp",
                 "findings": [],
                 "cross_references": [
-                    "some bare string from agent",
+                    "Revenue terms match between MSA and Order Form",
                     42,
                     {
                         "data_point": "Revenue",
@@ -786,9 +786,110 @@ class TestMergeNormalization:
         }
         merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
         result = merger.merge_customer(agent_outputs, customer_name="Acme Corp", customer_safe_name="acme_corp")
-        # The string and int are skipped; only the valid dict entry survives
+        # The string is recovered as a cross-reference; the int is dropped
+        assert len(result.cross_references) == 2
+        # Recovered entry should have the string as data_point
+        recovered = [cr for cr in result.cross_references if "Revenue terms" in cr.data_point]
+        assert len(recovered) == 1
+        assert recovered[0].match_status == "match"  # "match" keyword detected
+        # The dict entry also survives
+        assert any(cr.data_point == "Revenue" for cr in result.cross_references)
+
+    def test_cross_ref_string_mismatch_keyword_detected(self) -> None:
+        """Bare string cross-refs with mismatch keywords get status='mismatch'."""
+        agent_outputs = {
+            "finance": {
+                "customer": "Acme Corp",
+                "findings": [],
+                "cross_references": [
+                    "ARR discrepancy between contract ($1.2M) and revenue cube ($1.0M)",
+                ],
+            }
+        }
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        result = merger.merge_customer(agent_outputs, customer_name="Acme Corp", customer_safe_name="acme_corp")
         assert len(result.cross_references) == 1
-        assert result.cross_references[0].data_point == "Revenue"
+        assert result.cross_references[0].match_status == "mismatch"
+        assert "ARR discrepancy" in result.cross_references[0].data_point
+
+    def test_cross_ref_string_unknown_status(self) -> None:
+        """Bare string cross-refs without match/mismatch keywords get 'not_available'."""
+        agent_outputs = {
+            "finance": {
+                "customer": "Acme Corp",
+                "findings": [],
+                "cross_references": [
+                    "Payment terms reference Section 4.2 of the Order Form",
+                ],
+            }
+        }
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        result = merger.merge_customer(agent_outputs, customer_name="Acme Corp", customer_safe_name="acme_corp")
+        assert len(result.cross_references) == 1
+        assert result.cross_references[0].match_status == "not_available"
+
+    def test_cross_ref_empty_string_dropped(self) -> None:
+        """Empty or whitespace-only string cross-refs are dropped."""
+        agent_outputs = {
+            "finance": {
+                "customer": "Acme Corp",
+                "findings": [],
+                "cross_references": ["", "   ", None],
+            }
+        }
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        result = merger.merge_customer(agent_outputs, customer_name="Acme Corp", customer_safe_name="acme_corp")
+        assert len(result.cross_references) == 0
+
+    def test_gap_string_recovery_preserves_full_text(self) -> None:
+        """Bare string gaps should be recovered with the full text preserved."""
+        agent_outputs = {
+            "legal": {
+                "gaps": [
+                    "Missing DPA for data processing. Required under GDPR compliance obligations.",
+                ],
+            },
+        }
+        gaps = FindingMerger._collect_gaps(agent_outputs, "Acme Corp")
+        assert len(gaps) == 1
+        assert gaps[0].missing_item == "Missing DPA for data processing"
+        # Full text preserved in why_needed
+        assert "GDPR" in gaps[0].why_needed
+
+    def test_gap_string_recovery_infers_gap_type(self) -> None:
+        """Bare string gaps should infer gap_type from keywords."""
+        agent_outputs = {
+            "producttech": {
+                "gaps": [
+                    "Unreadable scanned document: security_addendum_scan.pdf",
+                    "Contradiction between MSA liability cap and Order Form cap",
+                    "Missing SOC 2 Type II audit report",
+                ],
+            },
+        }
+        gaps = FindingMerger._collect_gaps(agent_outputs, "Acme Corp")
+        assert len(gaps) == 3
+        gap_types = {g.missing_item[:20]: str(g.gap_type) for g in gaps}
+        assert gap_types["Unreadable scanned d"] == "Unreadable"
+        assert gap_types["Contradiction betwee"] == "Contradiction"
+        assert gap_types["Missing SOC 2 Type I"] == "Missing_Doc"
+
+    def test_gap_string_recovery_infers_priority(self) -> None:
+        """Bare string gaps with critical keywords should get P1 priority."""
+        agent_outputs = {
+            "legal": {
+                "gaps": [
+                    "CRITICAL: Missing master services agreement for largest customer",
+                    "Minor documentation gap in archived SOW",
+                ],
+            },
+        }
+        gaps = FindingMerger._collect_gaps(agent_outputs, "Acme Corp")
+        assert len(gaps) == 2
+        critical_gap = next(g for g in gaps if "CRITICAL" in g.missing_item)
+        minor_gap = next(g for g in gaps if "Minor" in g.missing_item)
+        assert str(critical_gap.priority) == "P1"
+        assert str(minor_gap.priority) == "P2"
 
 
 # ===========================================================================

@@ -493,20 +493,62 @@ class FindingMerger:
         return cr
 
     @staticmethod
+    def _coerce_cross_reference_entry(entry: Any, agent: str) -> dict[str, Any] | None:
+        """Coerce a non-dict cross-reference entry into a minimal dict.
+
+        Agents sometimes produce bare strings (e.g. "Revenue terms match
+        between MSA and Order Form") instead of structured objects.  Rather
+        than silently dropping this data, we parse it into a minimal
+        CrossReference dict so the information is preserved.
+
+        Returns ``None`` only for truly unrecoverable types (e.g. ``int``,
+        ``bool``, ``None``).
+        """
+        if isinstance(entry, dict):
+            return entry
+        if isinstance(entry, str) and entry.strip():
+            text = entry.strip()
+            # Infer match_status from keywords in the string.
+            lower = text.lower()
+            if any(w in lower for w in ("mismatch", "discrepan", "differ", "variance", "conflict")):
+                status = "mismatch"
+            elif any(w in lower for w in ("match", "consistent", "align", "confirm")):
+                status = "match"
+            else:
+                status = "not_available"
+            logger.warning(
+                "Recovered bare-string cross-reference from %s as data_point (status=%s): %r",
+                agent,
+                status,
+                text[:120],
+            )
+            return {
+                "data_point": text[:200],
+                "match_status": status,
+                "interpretation": f"Auto-recovered from unstructured agent output ({agent})",
+            }
+        logger.warning(
+            "Dropping unrecoverable cross-reference entry from %s: type=%s",
+            agent,
+            type(entry).__name__,
+        )
+        return None
+
+    @staticmethod
     def _union_cross_refs(
         agent_outputs: dict[str, dict[str, Any]],
     ) -> list[CrossReference]:
         refs: list[CrossReference] = []
-        for _agent, data in agent_outputs.items():
-            for cr_dict in data.get("cross_references", []):
-                if not isinstance(cr_dict, dict):
-                    logger.warning("Skipping non-dict cross-reference entry: %s", type(cr_dict).__name__)
+        for agent, data in agent_outputs.items():
+            for cr_raw in data.get("cross_references", []):
+                cr_dict = FindingMerger._coerce_cross_reference_entry(cr_raw, agent)
+                if cr_dict is None:
                     continue
                 normalised = FindingMerger._normalize_cross_reference(cr_dict)
                 try:
                     refs.append(CrossReference.model_validate(normalised))
                 except Exception:  # noqa: BLE001
-                    logger.warning("Skipping invalid cross-reference: %s", cr_dict)
+                    logger.warning("Skipping invalid cross-reference from %s: %s", agent, cr_dict)
         return refs
 
     @staticmethod
@@ -866,6 +908,52 @@ class FindingMerger:
         return "Missing_Doc"
 
     @staticmethod
+    def _coerce_gap_string(text: str, agent: str) -> dict[str, Any]:
+        """Recover a structured gap dict from a bare string.
+
+        Agents sometimes produce gaps as plain strings (e.g. "Missing DPA
+        for data processing").  Rather than a minimal wrap, we extract as
+        much structure as possible using keyword analysis.
+        """
+        text = text.strip()
+        lower = text.lower()
+        logger.warning(
+            "Recovered bare-string gap from %s as structured object: %r",
+            agent,
+            text[:120],
+        )
+
+        # Infer gap_type from keywords.
+        gap_type = FindingMerger._coerce_gap_type(text, agent)
+
+        # Infer priority from severity-like keywords.
+        if any(w in lower for w in ("critical", "blocker", "deal-stopper", "urgent")):
+            priority = "P1"
+        elif any(w in lower for w in ("important", "significant", "material")):
+            priority = "P2"
+        else:
+            priority = "P2"  # default for gaps
+
+        # Extract a concise missing_item from the text (truncate at first
+        # sentence boundary or 200 chars).
+        missing_item = text
+        for sep in (". ", "; ", " — ", " - "):
+            idx = text.find(sep)
+            if 0 < idx < 200:
+                missing_item = text[:idx]
+                break
+        missing_item = missing_item[:200]
+
+        return {
+            "missing_item": missing_item,
+            "gap_type": gap_type,
+            "priority": priority,
+            "why_needed": text if text != missing_item else "Required for due diligence analysis",
+            "risk_if_missing": "Incomplete analysis — potential blind spot",
+            "detection_method": "checklist",
+        }
+
+    @staticmethod
     def _normalize_gap(raw: dict[str, Any], customer_name: str, agent: str) -> dict[str, Any]:
         """Normalise an agent-produced gap to match the Gap Pydantic model.
 
@@ -954,9 +1042,8 @@ class FindingMerger:
             for gap_raw in data.get("gaps", []):
                 if isinstance(gap_raw, str):
                     # Agent produced a bare string instead of a gap object —
-                    # wrap it so downstream validation can accept or reject it.
-                    logger.warning("Gap entry from %s is a bare string: %r", agent, gap_raw[:120])
-                    gap_raw = {"missing_item": gap_raw, "gap_type": "Missing_Doc"}
+                    # recover as much structure as we can from the text.
+                    gap_raw = FindingMerger._coerce_gap_string(gap_raw, agent)
                 if not isinstance(gap_raw, dict):
                     logger.warning("Skipping non-dict gap entry from %s: %s", agent, type(gap_raw).__name__)
                     continue
