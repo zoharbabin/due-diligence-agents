@@ -870,16 +870,21 @@ class TestBaseAgentRunnerRun:
     """Tests for the async run method."""
 
     @pytest.mark.asyncio
-    async def test_run_returns_result_dict(self, tmp_project: Path, tmp_run_dir: Path, run_id: str) -> None:
-        """In test environment (no working SDK), run() returns a well-formed result dict.
+    async def test_run_returns_result_dict(
+        self,
+        tmp_project: Path,
+        tmp_run_dir: Path,
+        run_id: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When SDK returns empty output, run() reports an error result dict."""
+        import dd_agents.agents.base as base_mod
 
-        Without a live API, the agent produces no output, which is now correctly
-        reported as an error rather than a false success.
-        """
+        monkeypatch.setattr(base_mod, "_HAS_SDK", False)
         agent = LegalAgent(tmp_project, tmp_run_dir, run_id)
         result = await agent.run({"customers": []})
         assert result["agent_name"] == "legal"
-        # No working SDK in tests -- agent produces empty output.
+        # SDK unavailable -- agent produces empty output → error.
         assert result["status"] == "error"
         assert result["error"] is not None
         assert result["elapsed_seconds"] >= 0
