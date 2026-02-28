@@ -1,3 +1,5 @@
+"""Pydantic models for QA audit results, checks, and agent scoring."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -45,6 +47,9 @@ class AuditSummary(BaseModel):
     total_files: int = 0
     total_findings: int = 0
     total_gaps: int = 0
+    # String keys (not Severity enum) are intentional here: these dicts are
+    # serialised directly to JSON and consumed by external tools that expect
+    # plain string keys ("P0", "P1", etc.).
     findings_by_severity: dict[str, int] = Field(default_factory=lambda: {"P0": 0, "P1": 0, "P2": 0, "P3": 0})
     gaps_by_priority: dict[str, int] = Field(default_factory=lambda: {"P0": 0, "P1": 0, "P2": 0, "P3": 0})
     clean_result_count: int = 0

@@ -16,7 +16,7 @@ import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from dd_agents.models.enums import SourceType
+from dd_agents.models.enums import AgentName, Confidence, Severity, SourceType
 from dd_agents.models.finding import (
     Citation,
     CrossReference,
@@ -38,9 +38,104 @@ logger = logging.getLogger(__name__)
 class FindingMerger:
     """Executes the 6-step merge/dedup protocol for specialist agent outputs."""
 
-    def __init__(self, run_id: str = "", timestamp: str = "") -> None:
+    def __init__(
+        self,
+        run_id: str = "",
+        timestamp: str = "",
+        file_inventory: list[str] | None = None,
+    ) -> None:
         self.run_id = run_id or datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         self.timestamp = timestamp or datetime.now(UTC).isoformat()
+        self._file_index = self._build_file_index(file_inventory or [])
+
+    # ------------------------------------------------------------------
+    # File inventory index for citation path resolution
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _build_file_index(file_inventory: list[str]) -> dict[str, list[str]]:
+        """Build a basename → full-path(s) index from the files.txt inventory.
+
+        Returns a dict mapping each lowercase basename to a list of full
+        paths (multiple files can share a basename across directories).
+        """
+        index: dict[str, list[str]] = {}
+        for path in file_inventory:
+            if not path.strip():
+                continue
+            basename = path.rsplit("/", 1)[-1].lower()
+            index.setdefault(basename, []).append(path)
+        return index
+
+    def _resolve_citation_path(self, source_path: str) -> str:
+        """Resolve an agent-produced source_path against the file inventory.
+
+        Tries progressively looser matching strategies:
+        1. Exact match in inventory (pass through)
+        2. Strip .md extraction artifact suffix
+        3. Strip absolute /Users/... prefix to data-room root
+        4. Basename lookup in the file index
+
+        Returns the best matching path, or the original if no match.
+        """
+        if not self._file_index or not source_path:
+            return source_path
+
+        sp = source_path.strip()
+
+        # Collect all known full paths for fast lookup.
+        all_paths: set[str] | None = None
+
+        def _known_paths() -> set[str]:
+            nonlocal all_paths
+            if all_paths is None:
+                all_paths = {p for paths in self._file_index.values() for p in paths}
+            return all_paths
+
+        # 1. Exact match — nothing to fix.
+        if sp in _known_paths():
+            return sp
+
+        # 2. Strip .md extraction artifact suffix (e.g. "file.xlsx.md" → "file.xlsx").
+        if sp.endswith(".md") and "." in sp[:-3]:
+            stripped = sp[:-3]
+            if stripped in _known_paths():
+                return stripped
+            sp = stripped  # continue matching with stripped version
+
+        # 3. Strip absolute path prefix — find the data-room top-level folder
+        #    pattern (e.g. "1. Due Diligence/") and match from there.
+        segments = sp.split("/")
+        for i, seg in enumerate(segments):
+            if seg and seg[:1].isdigit() and ". " in seg:
+                candidate = "/".join(segments[i:])
+                if candidate in _known_paths():
+                    return candidate
+                break
+
+        # 4. Basename lookup: find the file in the index by its filename.
+        basename = segments[-1].lower() if segments else ""
+        if basename and basename in self._file_index:
+            matches = self._file_index[basename]
+            if len(matches) == 1:
+                # Unambiguous — use the known full path.
+                return matches[0]
+            # Multiple files with same basename — try to pick the one whose
+            # path suffix best matches the agent's partial path.
+            sp_lower = sp.lower()
+            for match in matches:
+                if match.lower().endswith(sp_lower):
+                    return match
+            # Try matching last 2 path segments.
+            if len(segments) >= 2:
+                suffix = "/".join(segments[-2:]).lower()
+                for match in matches:
+                    if match.lower().endswith(suffix):
+                        return match
+            # Ambiguous but still better than an unresolved path — use first.
+            return matches[0]
+
+        return source_path
 
     # ------------------------------------------------------------------
     # Public API
@@ -404,6 +499,9 @@ class FindingMerger:
         refs: list[CrossReference] = []
         for _agent, data in agent_outputs.items():
             for cr_dict in data.get("cross_references", []):
+                if not isinstance(cr_dict, dict):
+                    logger.warning("Skipping non-dict cross-reference entry: %s", type(cr_dict).__name__)
+                    continue
                 normalised = FindingMerger._normalize_cross_reference(cr_dict)
                 try:
                     refs.append(CrossReference.model_validate(normalised))
@@ -473,8 +571,7 @@ class FindingMerger:
     # Citation normalisation
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _normalize_citation(raw: dict[str, Any]) -> dict[str, Any]:
+    def _normalize_citation(self, raw: dict[str, Any]) -> dict[str, Any]:
         """Normalise an agent-produced citation dict to match the Citation schema.
 
         Agents may produce citations with different field names depending on
@@ -482,6 +579,10 @@ class FindingMerger:
         ``section_ref``) or the Pydantic schema (``source_type``, ``source_path``,
         ``location``).  This method maps the former to the latter so that
         ``Citation.model_validate()`` succeeds.
+
+        When a file inventory is available, also resolves agent-produced paths
+        against the inventory to fix common mismatches (basename-only paths,
+        ``.md`` extraction artifacts, absolute path prefixes).
         """
         c = dict(raw)  # shallow copy to avoid mutation
 
@@ -498,6 +599,11 @@ class FindingMerger:
             c["source_path"] = ""
         if not c.get("source_type"):
             c["source_type"] = "file"
+
+        # Resolve source_path against the file inventory.
+        sp = c.get("source_path", "")
+        if sp and not sp.startswith("["):
+            c["source_path"] = self._resolve_citation_path(sp)
 
         # Build location from page / section_ref when location is absent.
         if "location" not in c:
@@ -521,28 +627,28 @@ class FindingMerger:
     # ------------------------------------------------------------------
 
     # Severity normalization: agents may emit "high"/"medium"/"low"/"critical"
-    # instead of P0/P1/P2/P3.  Map common synonyms to standard values.
-    _SEVERITY_MAP: dict[str, str] = {
-        "critical": "P0",
-        "blocker": "P0",
-        "deal-stopper": "P0",
-        "high": "P1",
-        "medium": "P2",
-        "moderate": "P2",
-        "low": "P3",
-        "minor": "P3",
-        "info": "P3",
-        "informational": "P3",
-        "p0": "P0",
-        "p1": "P1",
-        "p2": "P2",
-        "p3": "P3",
+    # instead of P0/P1/P2/P3.  Map common synonyms to standard Severity values.
+    _SEVERITY_MAP: dict[str, Severity] = {
+        "critical": Severity.P0,
+        "blocker": Severity.P0,
+        "deal-stopper": Severity.P0,
+        "high": Severity.P1,
+        "medium": Severity.P2,
+        "moderate": Severity.P2,
+        "low": Severity.P3,
+        "minor": Severity.P3,
+        "info": Severity.P3,
+        "informational": Severity.P3,
+        "p0": Severity.P0,
+        "p1": Severity.P1,
+        "p2": Severity.P2,
+        "p3": Severity.P3,
     }
 
     @staticmethod
-    def _normalize_severity(raw: str) -> str:
+    def _normalize_severity(raw: str) -> Severity:
         """Map agent severity strings to ``Severity`` enum values."""
-        return FindingMerger._SEVERITY_MAP.get(raw.strip().lower(), "P3")
+        return FindingMerger._SEVERITY_MAP.get(raw.strip().lower(), Severity.P3)
 
     @staticmethod
     def _normalize_agent_name(raw: str) -> str:
@@ -648,11 +754,11 @@ class FindingMerger:
             # P0/P1 findings require exact_quote on all citations.  If any
             # citation lacks it (including synthetic ones), downgrade to P2
             # rather than losing the finding entirely.
-            if severity in ("P0", "P1"):
+            if severity in (Severity.P0, Severity.P1):
                 missing_quote = any(not cit.exact_quote for cit in citations)
                 if missing_quote or has_synthetic:
                     original_severity = severity
-                    severity = "P2"
+                    severity = Severity.P2
                     logger.warning(
                         "Downgraded finding '%s' from %s to P2: citations lack exact_quote",
                         title,
@@ -661,22 +767,18 @@ class FindingMerger:
 
             # Normalise confidence to enum values.
             raw_conf = str(f.get("confidence", "medium")).strip().lower()
-            confidence = raw_conf if raw_conf in ("high", "medium", "low") else "medium"
+            confidence = Confidence(raw_conf) if raw_conf in ("high", "medium", "low") else Confidence.MEDIUM
 
             try:
-                from dd_agents.models.enums import AgentName as _AgentName
-                from dd_agents.models.enums import Confidence as _Confidence
-                from dd_agents.models.enums import Severity as _Severity
-
                 finding = Finding(
                     id=finding_id,
-                    severity=_Severity(severity),
+                    severity=severity,
                     category=f.get("category", "uncategorized"),
                     title=title,
                     description=f.get("description", ""),
                     citations=citations,
-                    confidence=_Confidence(confidence),
-                    agent=_AgentName(agent),
+                    confidence=confidence,
+                    agent=AgentName(agent),
                     skill="forensic-dd",
                     run_id=self.run_id,
                     timestamp=self.timestamp,
@@ -711,6 +813,59 @@ class FindingMerger:
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _coerce_gap_type(raw_value: Any, agent: str) -> str:
+        """Coerce an arbitrary agent-produced gap_type to a valid GapType enum value.
+
+        The 6 GapType categories form a specificity hierarchy:
+
+        * 4 *specific* categories have distinctive vocabulary that can't
+          be confused with anything else (Unreadable, Contradiction,
+          Data_Mismatch, Ambiguous_Link).
+        * 2 *broad* categories split on whether the document exists but
+          is incomplete (Missing_Data) or is entirely absent (Missing_Doc).
+
+        We check specific → broad, defaulting to Missing_Doc.
+        """
+        if not isinstance(raw_value, str) or not raw_value.strip():
+            return "Missing_Doc"
+
+        valid = {"Missing_Doc", "Missing_Data", "Ambiguous_Link", "Unreadable", "Contradiction", "Data_Mismatch"}
+        if raw_value in valid:
+            return raw_value
+
+        s = raw_value.strip().lower().replace("-", "_")
+
+        def _contains(*stems: str) -> bool:
+            return any(stem in s for stem in stems)
+
+        # --- Specific categories (distinctive vocabulary) ---
+
+        # Document exists but can't be parsed
+        if _contains("unreadab", "ocr", "garble", "illegib", "image_only", "scan_qual"):
+            return "Unreadable"
+        # Two sources say opposite things
+        if _contains("contradict", "conflict"):
+            return "Contradiction"
+        # Values disagree between sources
+        if _contains("mismatch", "discrepan", "inconsisten"):
+            return "Data_Mismatch"
+        # Governance link can't be resolved
+        if _contains("ambiguous", "unclear"):
+            return "Ambiguous_Link"
+
+        # --- Broad categories: Missing_Data vs Missing_Doc ---
+
+        # Document exists but its content is incomplete / redacted / empty
+        if _contains("incomplete", "partial", "redact", "blank", "empty", "no_data"):
+            return "Missing_Data"
+        # Qualifier implies the *data* is absent (not the document itself)
+        if _contains("information", "detail", "analysis", "metric", "content", "category", "breakdown"):
+            return "Missing_Data"
+
+        # Default: the document itself is absent
+        return "Missing_Doc"
+
+    @staticmethod
     def _normalize_gap(raw: dict[str, Any], customer_name: str, agent: str) -> dict[str, Any]:
         """Normalise an agent-produced gap to match the Gap Pydantic model.
 
@@ -726,28 +881,29 @@ class FindingMerger:
         g.setdefault("customer", customer_name)
         g.setdefault("agent", agent)
 
-        # Map priority from severity if missing
+        # Map priority from severity if missing, coercing plain-English levels
         if "priority" not in g and "severity" in g:
             g["priority"] = g.pop("severity")
         g.setdefault("priority", "P2")
-
-        # Normalise gap_type to enum values
-        gap_type = g.get("gap_type", "Missing_Doc")
-        _gap_type_map: dict[str, str] = {
-            "missing document": "Missing_Doc",
-            "missing_document": "Missing_Doc",
-            "missing doc": "Missing_Doc",
-            "missing_doc": "Missing_Doc",
-            "missing data": "Missing_Data",
-            "missing_data": "Missing_Data",
-            "ambiguous link": "Ambiguous_Link",
-            "ambiguous_link": "Ambiguous_Link",
-            "unreadable": "Unreadable",
-            "contradiction": "Contradiction",
-            "data mismatch": "Data_Mismatch",
-            "data_mismatch": "Data_Mismatch",
+        _priority_map: dict[str, str] = {
+            "critical": "P0",
+            "deal-stopper": "P0",
+            "high": "P1",
+            "major": "P1",
+            "medium": "P2",
+            "moderate": "P2",
+            "important": "P2",
+            "low": "P3",
+            "minor": "P3",
+            "informational": "P3",
+            "info": "P3",
         }
-        g["gap_type"] = _gap_type_map.get(gap_type.lower(), gap_type) if isinstance(gap_type, str) else gap_type
+        raw_prio = g["priority"]
+        if isinstance(raw_prio, str) and raw_prio.lower() in _priority_map:
+            g["priority"] = _priority_map[raw_prio.lower()]
+
+        # Normalise gap_type to one of the 6 valid GapType enum values.
+        g["gap_type"] = FindingMerger._coerce_gap_type(g.get("gap_type"), agent)
 
         # Map missing_item from alternative names
         if "missing_item" not in g:
@@ -820,8 +976,12 @@ class FindingMerger:
         for gap_dict in seen.values():
             try:
                 gaps.append(Gap.model_validate(gap_dict))
-            except Exception:  # noqa: BLE001
-                logger.warning("Skipping invalid gap during merge: %s", gap_dict.get("missing_item", ""))
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Skipping invalid gap during merge: %s (reason: %s)",
+                    gap_dict.get("missing_item", ""),
+                    str(exc)[:200],
+                )
         return gaps
 
     # ------------------------------------------------------------------
@@ -838,7 +998,7 @@ class FindingMerger:
         so they surface in audit logs.
         """
         for finding in findings:
-            if finding.severity in ("P0", "P1"):
+            if finding.severity in (Severity.P0, Severity.P1):
                 for cit in finding.citations:
                     if not cit.source_path or cit.source_path.startswith("[synthetic:"):
                         logger.warning(

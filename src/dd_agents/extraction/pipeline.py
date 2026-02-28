@@ -661,7 +661,8 @@ class ExtractionPipeline:
 
         # 1. pymupdf — per-page extraction with explicit page markers.
         if not skip_text_extractors:
-            text = self._run_pymupdf(filepath)
+            pymupdf_result = self._run_pymupdf(filepath)
+            text = pymupdf_result if isinstance(pymupdf_result, str) else pymupdf_result[0]
             entry = self._try_method(
                 "pymupdf",
                 text,
@@ -930,31 +931,60 @@ class ExtractionPipeline:
         return f"{truncated}_{digest}.md"
 
     @staticmethod
-    def _run_pymupdf(filepath: Path) -> str:
+    def _run_pymupdf(
+        filepath: Path,
+        *,
+        capture_blocks: bool = False,
+    ) -> str | tuple[str, list[dict[str, Any]]]:
         """Extract text page-by-page using ``pymupdf`` with explicit page markers.
 
         Injects ``--- Page N ---`` headers so that downstream LLM analysis
         can cite page numbers accurately.
 
-        Returns empty string if pymupdf is not installed or extraction fails.
+        Parameters
+        ----------
+        capture_blocks:
+            When *True*, also capture block-level coordinate data for
+            visual grounding (Issue #7).  Returns ``(text, blocks)``
+            instead of just ``text``.
+
+        Returns empty string (or ``("", [])``) if pymupdf is not installed
+        or extraction fails.
         """
         try:
             import fitz  # pymupdf
         except ImportError:
-            return ""
+            return ("", []) if capture_blocks else ""
 
         try:
             doc = fitz.open(str(filepath))
         except Exception as exc:
             logger.debug("pymupdf failed to open %s: %s", filepath, exc)
-            return ""
+            return ("", []) if capture_blocks else ""
 
         parts: list[str] = []
+        blocks: list[dict[str, Any]] = []
         try:
             for page_num, page in enumerate(doc, start=1):
                 page_text = page.get_text()
                 if page_text and page_text.strip():
                     parts.append(f"\n--- Page {page_num} ---\n\n{page_text}")
+                if capture_blocks:
+                    for block in page.get_text("blocks"):
+                        # block: (x0, y0, x1, y1, text, block_no, type)
+                        if len(block) >= 7 and block[6] == 0:  # type 0 = text
+                            text_content = str(block[4]).strip()
+                            if text_content:
+                                blocks.append(
+                                    {
+                                        "page": page_num,
+                                        "x0": float(block[0]),
+                                        "y0": float(block[1]),
+                                        "x1": float(block[2]),
+                                        "y1": float(block[3]),
+                                        "text": text_content,
+                                    }
+                                )
         except Exception as exc:
             logger.debug("pymupdf extraction error for %s: %s", filepath, exc)
         finally:
@@ -964,7 +994,10 @@ class ExtractionPipeline:
                 logger.debug("MuPDF warnings for %s: %s", filepath, warnings)
             doc.close()
 
-        return "\n".join(parts)
+        text = "\n".join(parts)
+        if capture_blocks:
+            return text, blocks
+        return text
 
     @staticmethod
     def _run_pdftotext(filepath: Path) -> str:

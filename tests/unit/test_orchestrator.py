@@ -3019,3 +3019,82 @@ class TestStep35WithMixedCriticalAndNonCriticalFailures:
         """Verify that CRITICAL_DOD_CHECKS matches the expected set from the spec."""
         _engine = self._make_engine(tmp_path)
         assert frozenset({1, 2, 3, 11, 13, 14, 15, 17, 19}) == PipelineEngine.CRITICAL_DOD_CHECKS
+
+
+# ======================================================================
+# Step 16 sub-checkpoints (detailed schema and path tests)
+# ======================================================================
+
+
+class TestStep16SubCheckpoints:
+    """Tests for step-16-specific sub-checkpoint save/load and schema validation."""
+
+    def test_save_sub_checkpoint_writes_json_to_correct_path(self, tmp_path: Path) -> None:
+        """save_sub_checkpoint creates checkpoints/<step>/customer_<key>.json."""
+        from dd_agents.orchestrator.checkpoints import save_sub_checkpoint
+
+        cp_dir = tmp_path / "checkpoints"
+        result_path = save_sub_checkpoint(cp_dir, "step_16", "acme_corp", {"status": "complete", "agent": "legal"})
+
+        expected_path = cp_dir / "step_16" / "customer_acme_corp.json"
+        assert result_path == expected_path
+        assert expected_path.exists()
+
+        data = json.loads(expected_path.read_text(encoding="utf-8"))
+        assert data["status"] == "complete"
+        assert data["agent"] == "legal"
+
+    def test_load_sub_checkpoints_returns_empty_dict_when_no_checkpoints(self, tmp_path: Path) -> None:
+        """load_sub_checkpoints returns {} when the step directory does not exist."""
+        from dd_agents.orchestrator.checkpoints import load_sub_checkpoints
+
+        cp_dir = tmp_path / "checkpoints"
+        # Don't create the directory at all
+        result = load_sub_checkpoints(cp_dir, "step_16")
+        assert result == {}
+        assert isinstance(result, dict)
+
+    def test_load_sub_checkpoints_reads_back_saved_data(self, tmp_path: Path) -> None:
+        """load_sub_checkpoints returns all previously saved sub-checkpoints keyed by customer."""
+        from dd_agents.orchestrator.checkpoints import load_sub_checkpoints, save_sub_checkpoint
+
+        cp_dir = tmp_path / "checkpoints"
+        save_sub_checkpoint(cp_dir, "step_16", "alpha", {"status": "complete", "agent": "finance"})
+        save_sub_checkpoint(cp_dir, "step_16", "beta", {"status": "failed", "agent": "legal"})
+        save_sub_checkpoint(cp_dir, "step_16", "gamma", {"status": "complete", "agent": "commercial"})
+
+        loaded = load_sub_checkpoints(cp_dir, "step_16")
+
+        assert len(loaded) == 3
+        assert set(loaded.keys()) == {"alpha", "beta", "gamma"}
+        assert loaded["alpha"]["status"] == "complete"
+        assert loaded["alpha"]["agent"] == "finance"
+        assert loaded["beta"]["status"] == "failed"
+        assert loaded["gamma"]["agent"] == "commercial"
+
+    def test_sub_checkpoint_data_format_matches_expected_schema(self, tmp_path: Path) -> None:
+        """Sub-checkpoint data includes status, agent, cost_usd, duration_ms, and error fields."""
+        from dd_agents.orchestrator.checkpoints import load_sub_checkpoints, save_sub_checkpoint
+
+        cp_dir = tmp_path / "checkpoints"
+        expected_data = {
+            "status": "complete",
+            "agent": "product_tech",
+            "cost_usd": 0.042,
+            "duration_ms": 12500,
+            "error": None,
+        }
+        save_sub_checkpoint(cp_dir, "step_16", "widget_co", expected_data)
+
+        loaded = load_sub_checkpoints(cp_dir, "step_16")
+        actual = loaded["widget_co"]
+
+        # Verify all expected fields are present and match
+        assert actual["status"] == "complete"
+        assert actual["agent"] == "product_tech"
+        assert actual["cost_usd"] == pytest.approx(0.042)
+        assert actual["duration_ms"] == 12500
+        assert actual["error"] is None
+
+        # Verify the schema has exactly the expected keys
+        assert set(actual.keys()) == {"status", "agent", "cost_usd", "duration_ms", "error"}

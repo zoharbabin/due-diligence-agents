@@ -588,9 +588,22 @@ class PipelineEngine:
         # Resolve file paths to absolute
         file_paths = [str(state.project_dir / entry.path) for entry in files]
 
+        # Select OCR backend from deal-config (Issue #2)
+        ocr_preference = "auto"
+        if state.deal_config and isinstance(state.deal_config, dict):
+            extraction_cfg = state.deal_config.get("extraction", {})
+            if isinstance(extraction_cfg, dict):
+                ocr_preference = extraction_cfg.get("ocr_backend", "auto")
+
+        from dd_agents.extraction.ocr_registry import OCRBackendRegistry
+
+        ocr_backend = OCRBackendRegistry.get_backend(ocr_preference)
+
         from dd_agents.extraction.glm_ocr import GlmOcrExtractor
 
-        pipeline = ExtractionPipeline(glm_ocr=GlmOcrExtractor())
+        # Pass registry-selected GLM-OCR backend if available; otherwise
+        # None so the pipeline relies on its default pytesseract OCR.
+        pipeline = ExtractionPipeline(glm_ocr=ocr_backend if isinstance(ocr_backend, GlmOcrExtractor) else None)
         try:
             pipeline.extract_all(
                 files=file_paths,
@@ -719,6 +732,16 @@ class PipelineEngine:
             )
             match_log = resolver.get_match_log()
             (inv_dir / "entity_matches.json").write_text(json.dumps(match_log, indent=2))
+
+        # Cross-document entity deduplication (Issue #11)
+        from dd_agents.entity_resolution.dedup import CrossDocumentDeduplicator
+
+        dedup = CrossDocumentDeduplicator()
+        for mention in mention_index.matches:
+            for ref_file in mention.reference_files:
+                dedup.add_resolution(mention.customer_name, mention.customer_safe_name, ref_file)
+        dedup.write_summary(inv_dir / "entity_dedup_summary.json")
+        logger.info("Wrote entity dedup summary to %s", inv_dir / "entity_dedup_summary.json")
 
         logger.info("Built customer mention index")
         return state
@@ -1002,23 +1025,52 @@ class PipelineEngine:
         return state
 
     async def _step_16_spawn_specialists(self, state: PipelineState) -> PipelineState:
-        """Spawn 4 specialist agents in parallel."""
+        """Spawn 4 specialist agents in parallel with sub-checkpoint resume."""
         # Pre-create findings directories so agents can write immediately.
+        from dd_agents.orchestrator.checkpoints import load_sub_checkpoints, save_sub_checkpoint
         from dd_agents.utils.constants import ALL_SPECIALIST_AGENTS
 
         findings_dir = state.run_dir / "findings"
         for agent_name in ALL_SPECIALIST_AGENTS:
             (findings_dir / agent_name).mkdir(parents=True, exist_ok=True)
 
+        # Load sub-checkpoints to find already-completed agents (Issue #51)
+        checkpoint_dir = state.run_dir / "checkpoints"
+        sub_checkpoints = load_sub_checkpoints(checkpoint_dir, "step_16")
+        completed_agents = [key for key, data in sub_checkpoints.items() if data.get("status") == "success"]
+        agents_to_run = [a for a in ALL_SPECIALIST_AGENTS if a not in completed_agents]
+
+        if completed_agents:
+            logger.info(
+                "Step 16 resume: %d agent(s) already completed: %s",
+                len(completed_agents),
+                ", ".join(completed_agents),
+            )
+            # Restore cached results for completed agents
+            for agent_name in completed_agents:
+                state.agent_results[agent_name] = sub_checkpoints[agent_name]
+
+        if not agents_to_run:
+            logger.info("Step 16: all agents already completed via sub-checkpoints")
+            return state
+
         team = self._ensure_team(state)
 
         results = await team.spawn_specialists(
             num_customers=len(state.customer_safe_names),
+            agents=agents_to_run,
         )
         for name, result in results.items():
             state.agent_results[name] = result
             state.agent_sessions[name] = result.get("session_id", "")
             state.agent_costs[name] = result.get("cost_usd", 0.0)
+
+            # Save sub-checkpoint with full result so resume restores
+            # complete agent_results (output, session_id, etc.) — Issue #51
+            sub_data = dict(result)
+            sub_data["status"] = "success" if not result.get("is_error") else "failed"
+            save_sub_checkpoint(checkpoint_dir, "step_16", name, sub_data)
+
             if result.get("is_error"):
                 logger.warning("Agent %s completed with error: %s", name, result.get("error"))
             else:
@@ -1632,7 +1684,13 @@ class PipelineEngine:
         """Merge and deduplicate findings across agents."""
         from dd_agents.reporting.merge import FindingMerger
 
-        merger = FindingMerger(run_id=state.run_id)
+        # Load file inventory so the merger can resolve agent citation paths.
+        files_txt = self._inventory_dir(state) / "files.txt"
+        file_inventory: list[str] = []
+        if files_txt.exists():
+            file_inventory = [line.strip() for line in files_txt.read_text().strip().splitlines() if line.strip()]
+
+        merger = FindingMerger(run_id=state.run_id, file_inventory=file_inventory)
         findings_dir = state.run_dir / "findings"
         merged = merger.merge_all(findings_dir)
 
@@ -2087,6 +2145,23 @@ class PipelineEngine:
         )
 
         logger.info("Excel report generated: %s", output_path)
+
+        # Generate interactive HTML report alongside Excel (Issue #9)
+        try:
+            from dd_agents.reporting.html import HTMLReportGenerator
+
+            html_generator = HTMLReportGenerator()
+            html_path = report_dir / "dd_report.html"
+            html_generator.generate(
+                merged_data=merged_findings,
+                output_path=html_path,
+                run_id=state.run_id,
+                title="Due Diligence Report",
+            )
+            logger.info("HTML report generated: %s", html_path)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("HTML report generation failed (Excel report still available): %s", exc)
+
         return state
 
     async def _step_31_post_generation_validation(self, state: PipelineState) -> PipelineState:

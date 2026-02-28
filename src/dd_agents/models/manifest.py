@@ -1,3 +1,5 @@
+"""Pydantic models for coverage manifests (files read, skipped, and failed per customer)."""
+
 from __future__ import annotations
 
 from pydantic import BaseModel, Field

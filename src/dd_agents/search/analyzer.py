@@ -19,6 +19,7 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any
 
+from dd_agents.models.enums import Confidence
 from dd_agents.models.search import (
     SearchCitation,
     SearchColumnResult,
@@ -402,7 +403,7 @@ class SearchAnalyzer:
                             columns={
                                 col.name: SearchColumnResult(
                                     answer="NOT_ADDRESSED",
-                                    confidence="low",
+                                    confidence=Confidence.LOW,
                                     citations=[],
                                 )
                                 for col in self._prompts.columns

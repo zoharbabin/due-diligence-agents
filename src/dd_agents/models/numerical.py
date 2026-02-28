@@ -1,3 +1,5 @@
+"""Pydantic models for numerical audit manifests and cross-document reconciliation."""
+
 from __future__ import annotations
 
 from pydantic import BaseModel, Field

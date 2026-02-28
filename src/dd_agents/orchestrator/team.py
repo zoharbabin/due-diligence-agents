@@ -91,8 +91,9 @@ class AgentTeam:
         agent_configs: dict[str, Any] | None = None,
         *,
         num_customers: int = 0,
+        agents: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Spawn the four specialist agents in parallel.
+        """Spawn specialist agents in parallel.
 
         Parameters
         ----------
@@ -102,6 +103,10 @@ class AgentTeam:
             Number of customers to process.  When > 0, an adaptive timeout
             is calculated (base + per-customer).  Otherwise falls back to
             the instance's ``agent_timeout_s``.
+        agents:
+            Optional subset of agent names to spawn.  When *None* (default),
+            all four specialist agents are spawned.  Used by step 16 resume
+            to skip already-completed agents (Issue #51).
 
         Returns
         -------
@@ -112,11 +117,13 @@ class AgentTeam:
         configs = agent_configs or {}
         tasks: dict[str, asyncio.Task[dict[str, Any]]] = {}
 
+        agent_names = agents if agents is not None else list(ALL_SPECIALIST_AGENTS)
+
         # Adaptive timeout (Issue #42).  Account for sequential batch count:
         # each agent runs its batches sequentially, so the slowest agent
         # (most batches) determines the overall timeout.
         max_batches = 1
-        for agent_name in ALL_SPECIALIST_AGENTS:
+        for agent_name in agent_names:
             n = len(self.state.agent_prompts.get(agent_name, []))
             if n > max_batches:
                 max_batches = n
@@ -134,7 +141,7 @@ class AgentTeam:
             num_customers > 0,
         )
 
-        for agent_name in ALL_SPECIALIST_AGENTS:
+        for agent_name in agent_names:
             cfg = configs.get(agent_name, {})
             task = asyncio.create_task(
                 self._run_specialist(agent_name, cfg),
@@ -155,7 +162,7 @@ class AgentTeam:
             monitor_task = asyncio.create_task(
                 self.monitor_agent_output(
                     findings_dir,
-                    list(ALL_SPECIALIST_AGENTS),
+                    agent_names,
                     stop_event=stop_monitor,
                 ),
                 name="agent-output-monitor",

@@ -5,7 +5,9 @@
 
 **Branch**: `feat/production-hardening-plan`
 **Epic**: [#32](https://github.com/zoharbabin/due-diligence-agents/issues/32)
-**Baseline**: 1291 unit tests passing, mypy strict clean, ruff clean (v0.2.1)
+**Baseline**: 1544 unit tests passing, mypy strict clean, ruff clean (v0.3.0)
+
+> **Status**: P0 and P1 issues resolved. See commit `54d1b38` (Resolve all 12 production hardening issues #68-#80) and subsequent cleanup. Remaining P2/P3 issues tracked in the issue tracker.
 
 ---
 
@@ -49,7 +51,7 @@ Excel report — or fail loudly with actionable diagnostics.
 | **Agent integration** | Agents produce real findings via Claude Agent SDK | All agent calls are placeholders returning empty strings | Full SDK integration with retry and recovery |
 | **Validation** | 30 DoD checks enforce quality | 19 of 30 checks hardcoded to pass | All 30 checks implemented against real data |
 | **Resume** | Pipeline can resume from checkpoint after interruption | State not fully serialized, runtime attributes lost | Full checkpoint/resume with atomic persistence |
-| **Test coverage** | Critical paths have unit tests | 1016 tests, 8 untested modules | ~1100+ tests, all modules covered |
+| **Test coverage** | Critical paths have unit tests | 1544 tests, all modules covered | Target exceeded |
 
 ---
 
@@ -94,7 +96,7 @@ documented reason to deviate.
 
 ### 2.5 No regressions
 
-The existing 1016 tests must continue to pass after every change. If a fix
+The existing 1544 tests must continue to pass after every change. If a fix
 necessarily changes behavior, update the affected tests in the same commit.
 
 ---
@@ -277,7 +279,7 @@ satisfied incrementally.
 the real Claude Agent SDK. Establish the foundation that all subsequent waves
 depend on.
 
-**Entry criteria**: Current main branch, 1016 tests passing
+**Entry criteria**: Current main branch, 1544 tests passing
 **Exit criteria**: Pipeline can run steps 1-13 without crashing. Agent calls
 reach the SDK (even if agents are not fully functional yet). All P0 issues
 closed.

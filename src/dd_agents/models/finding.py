@@ -1,3 +1,5 @@
+"""Pydantic models for findings, citations, gaps, and cross-references."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -13,6 +15,43 @@ from dd_agents.models.enums import (
     SourceType,
 )
 from dd_agents.models.governance import GovernanceGraph
+
+
+def _coerce_severity(v: Any) -> Severity:
+    """Coerce string values to Severity enum."""
+    if isinstance(v, Severity):
+        return v
+    if isinstance(v, str):
+        return Severity(v)
+    raise ValueError(f"Cannot coerce {v!r} to Severity")
+
+
+def _coerce_confidence(v: Any) -> Confidence:
+    """Coerce string values to Confidence enum."""
+    if isinstance(v, Confidence):
+        return v
+    if isinstance(v, str):
+        return Confidence(v)
+    raise ValueError(f"Cannot coerce {v!r} to Confidence")
+
+
+def _coerce_agent_name(v: Any) -> AgentName:
+    """Coerce string values to AgentName enum."""
+    if isinstance(v, AgentName):
+        return v
+    if isinstance(v, str):
+        return AgentName(v)
+    raise ValueError(f"Cannot coerce {v!r} to AgentName")
+
+
+class BoundingBox(BaseModel):
+    """Page-level bounding box for visual grounding of findings."""
+
+    x0: float = Field(description="Left edge in points")
+    y0: float = Field(description="Top edge in points")
+    x1: float = Field(description="Right edge in points")
+    y1: float = Field(description="Bottom edge in points")
+    page: int = Field(description="1-based page number")
 
 
 class Citation(BaseModel):
@@ -39,6 +78,8 @@ class Citation(BaseModel):
     # JSON string escaping. No custom serializer needed -- Pydantic v2 handles
     # this natively via model_dump_json().
     access_date: str | None = None  # Required when source_type == web_research
+    page_number: int | None = Field(default=None, description="1-based page number for visual grounding")
+    bounding_box: BoundingBox | None = Field(default=None, description="Coordinate box for visual grounding")
 
     @model_validator(mode="after")
     def web_research_needs_access_date(self) -> Citation:
@@ -71,6 +112,21 @@ class Finding(BaseModel):
     analysis_unit: str  # customer name
     metadata: dict[str, Any] = Field(default_factory=dict)
 
+    @field_validator("severity", mode="before")
+    @classmethod
+    def coerce_severity(cls, v: Any) -> Severity:
+        return _coerce_severity(v)
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def coerce_confidence(cls, v: Any) -> Confidence:
+        return _coerce_confidence(v)
+
+    @field_validator("agent", mode="before")
+    @classmethod
+    def coerce_agent(cls, v: Any) -> AgentName:
+        return _coerce_agent_name(v)
+
     @field_validator("citations")
     @classmethod
     def p0_p1_require_exact_quote(cls, v: list[Citation], info: ValidationInfo) -> list[Citation]:
@@ -97,6 +153,16 @@ class AgentFinding(BaseModel):
     citations: list[Citation] = Field(min_length=1)
     confidence: Confidence
 
+    @field_validator("severity", mode="before")
+    @classmethod
+    def coerce_severity(cls, v: Any) -> Severity:
+        return _coerce_severity(v)
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def coerce_confidence(cls, v: Any) -> Confidence:
+        return _coerce_confidence(v)
+
 
 class Gap(BaseModel):
     """
@@ -116,6 +182,18 @@ class Gap(BaseModel):
     source_file: str | None = None  # Recommended
     agent: AgentName | None = None  # Recommended
     run_id: str | None = None  # Recommended
+
+    @field_validator("priority", mode="before")
+    @classmethod
+    def coerce_priority(cls, v: Any) -> Severity:
+        return _coerce_severity(v)
+
+    @field_validator("agent", mode="before")
+    @classmethod
+    def coerce_agent(cls, v: Any) -> AgentName | None:
+        if v is None:
+            return None
+        return _coerce_agent_name(v)
 
 
 class CrossReferenceData(BaseModel):

@@ -1,3 +1,5 @@
+"""Pydantic models for Excel report schema, formatting, diffs, and contract date reconciliation."""
+
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator

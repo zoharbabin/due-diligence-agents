@@ -321,6 +321,9 @@ def _try_ollama_extract(filepath: Path) -> tuple[str, float]:
 # ── Public extractor class ───────────────────────────────────────────
 
 
+_GLM_OCR_EXTENSIONS: frozenset[str] = frozenset({".pdf"} | IMAGE_EXTENSIONS)
+
+
 class GlmOcrExtractor:
     """Extracts text from scanned PDFs and images using GLM-OCR.
 
@@ -341,6 +344,14 @@ class GlmOcrExtractor:
         extractor = GlmOcrExtractor()
         text, confidence = extractor.extract(Path("scanned_doc.pdf"))
     """
+
+    @property
+    def name(self) -> str:
+        return "glm_ocr"
+
+    @property
+    def supported_extensions(self) -> frozenset[str]:
+        return _GLM_OCR_EXTENSIONS
 
     def __init__(self) -> None:
         self._mlx_model: Any = None

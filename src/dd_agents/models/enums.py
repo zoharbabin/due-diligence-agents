@@ -1,3 +1,5 @@
+"""Shared enumerations used across the pipeline (severity, confidence, agent names, etc.)."""
+
 from __future__ import annotations
 
 from enum import StrEnum

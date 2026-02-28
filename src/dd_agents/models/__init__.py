@@ -29,6 +29,7 @@ from dd_agents.models.config import (
     DomainConfig,
     EntityAliases,
     ExecutionConfig,
+    ExtractionConfig,
     ForensicDDConfig,
     JudgeConfig,
     KeyExecutive,
@@ -56,6 +57,7 @@ from dd_agents.models.entity import (
 from dd_agents.models.enums import (
     AgentName,
     AuditAction,
+    CompletionStatus,
     Confidence,
     CustomerClassificationStatus,
     DealType,
@@ -75,6 +77,7 @@ from dd_agents.models.enums import (
 # Finding
 from dd_agents.models.finding import (
     AgentFinding,
+    BoundingBox,
     Citation,
     CrossReference,
     CrossReferenceData,
@@ -161,6 +164,7 @@ __all__ = [
     # Enums
     "AgentName",
     "AuditAction",
+    "CompletionStatus",
     "Confidence",
     "CustomerClassificationStatus",
     "DealType",
@@ -187,6 +191,7 @@ __all__ = [
     "DomainConfig",
     "EntityAliases",
     "ExecutionConfig",
+    "ExtractionConfig",
     "ForensicDDConfig",
     "JudgeConfig",
     "KeyExecutive",
@@ -201,6 +206,7 @@ __all__ = [
     "GovernanceGraph",
     # Finding
     "AgentFinding",
+    "BoundingBox",
     "Citation",
     "CrossReference",
     "CrossReferenceData",

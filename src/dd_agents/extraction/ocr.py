@@ -24,6 +24,9 @@ _CONFIDENCE_OCR = 0.6
 OCR_PAGE_TIMEOUT = 30
 
 
+_OCR_EXTENSIONS: frozenset[str] = frozenset({".pdf"} | IMAGE_EXTENSIONS)
+
+
 class OCRExtractor:
     """Extracts text via Tesseract OCR (``pytesseract``).
 
@@ -38,6 +41,14 @@ class OCRExtractor:
         extractor = OCRExtractor()
         text, confidence = extractor.extract(Path("scanned_doc.pdf"))
     """
+
+    @property
+    def name(self) -> str:
+        return "pytesseract"
+
+    @property
+    def supported_extensions(self) -> frozenset[str]:
+        return _OCR_EXTENSIONS
 
     def extract(self, filepath: Path) -> tuple[str, float]:
         """Extract text from *filepath* using Tesseract OCR.

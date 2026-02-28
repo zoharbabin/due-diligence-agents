@@ -4,6 +4,36 @@ All notable changes to this project will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.0] - 2026-02-28
+
+### Added
+
+- Entity deduplication module (`entity_resolution/dedup.py`) for post-resolution duplicate detection.
+- Pluggable OCR registry (`extraction/ocr_registry.py`) replacing hardcoded OCR backend selection.
+- Pluggable document extraction backend (`extraction/backend.py`) replacing hardcoded markitdown dependency.
+- Layout-aware PDF extraction (`extraction/layout_pdf.py`) preserving table structure and spatial relationships.
+- Visual grounding with bounding-box coordinate support (`extraction/coordinates.py`) for citation anchoring.
+- Interactive HTML review report generation (`reporting/html.py`) alongside Excel output.
+- Type-safety tests (`test_type_safety.py`) enforcing enum usage over raw strings in models.
+- Visual grounding tests (`test_visual_grounding.py`) for citation bounding-box serialization.
+- 253 new unit tests (1,291 → 1,544) covering entity dedup, extraction backends, layout PDF, OCR registry, HTML reports, type safety, and visual grounding.
+
+### Fixed
+
+- Citation path resolution now validates against file inventory instead of filesystem, fixing false negatives in containerized environments.
+- Gap type normalization uses keyword-stem logic (e.g., "missing" → MISSING_DOCUMENT) instead of exact string matching.
+- Cross-reference fields accept both `dict` and `str` types, fixing `AttributeError` on agent output with string cross-references.
+- Priority coercion for gaps: string priorities (e.g., "high") are normalized to enum values before validation.
+- Numerical audit N008/N009 rederivation formulas now match manifest field names.
+- Worker crash handling in concurrent extraction no longer loses the error context.
+- Search analyzer answer merging: YES-prefixed free text now correctly beats NO in priority.
+
+### Changed
+
+- Finding model (`models/finding.py`) extended with gap-specific fields and flexible cross-reference types.
+- Merge module (`reporting/merge.py`) rewritten with proper gap preservation, citation dedup, and conflict resolution.
+- Extraction pipeline hardened with backend abstraction and graceful degradation on missing optional dependencies.
+
 ## [0.2.1] - 2026-02-25
 
 ### Added

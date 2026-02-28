@@ -1,6 +1,6 @@
 # Due Diligence Agent SDK
 
-> **Status**: Implemented. Full pipeline, contract search, and auto-config commands operational with 1,290+ passing tests.
+> **Status**: Implemented. Full pipeline, contract search, and auto-config commands operational with 1,544+ passing unit tests.
 
 Standalone Python application for forensic M&A due diligence. Migrates a Claude Code Skill (3,100+ lines across 9 files) to a programmatic pipeline using `claude-agent-sdk` v0.1.39+. Six agents (4 specialists + optional Judge + Reporting Lead) analyze contract data rooms, extract clauses, build governance graphs, detect gaps, and produce a 14-sheet Excel report — all under deterministic Python orchestration with hook-enforced quality gates.
 
@@ -17,10 +17,10 @@ due-diligence-agents/
 │       ├── orchestrator/        # 35-step pipeline, state machine, checkpoints
 │       ├── agents/              # Agent definitions, prompt builder, specialists
 │       ├── extraction/          # Document extraction: pymupdf, markitdown, GLM-OCR, Claude vision
-│       ├── entity_resolution/   # 6-pass cascading matcher, cache, rapidfuzz
+│       ├── entity_resolution/   # 6-pass cascading matcher, dedup, cache, rapidfuzz
 │       ├── inventory/           # File discovery, customer registry, references
 │       ├── validation/          # Numerical audit, QA, DoD checks, schema validation
-│       ├── reporting/           # Merge/dedup, Excel generation, report diff
+│       ├── reporting/           # Merge/dedup, Excel generation, HTML review, report diff
 │       ├── persistence/         # Three-tier storage, run management, incremental
 │       ├── hooks/               # SDK hooks (PreToolUse, PostToolUse, Stop)
 │       ├── search/              # Contract search: analyzer, Excel writer, runner
@@ -271,6 +271,17 @@ Each phase is designed to fit within a single Claude Code session. Use `/clear` 
 - **markitdown** — PDF/Office extraction
 - **pymupdf** (fitz) — Primary PDF extraction with page markers
 - **GLM-OCR** (optional) — High-quality vision-LM OCR for scanned PDFs
+
+## Docker
+
+Build and run in a container:
+
+```bash
+docker build -t dd-agents .
+docker run -e ANTHROPIC_API_KEY="sk-ant-..." -v ./data_room:/workspace/data_room dd-agents run deal-config.json
+```
+
+The multi-stage Dockerfile uses `python:3.12-slim`, installs `poppler-utils` for PDF fallback, and runs as a non-root user.
 
 ## License
 

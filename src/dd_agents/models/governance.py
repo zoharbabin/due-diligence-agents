@@ -1,3 +1,5 @@
+"""Pydantic models for the contract governance graph (edges, citations, graph container)."""
+
 from __future__ import annotations
 
 from pydantic import BaseModel, Field

@@ -308,8 +308,9 @@ class TestFindingMerger:
 
     def test_normalize_citation_maps_file_path_to_source_path(self) -> None:
         """Agent-produced file_path should be mapped to source_path."""
+        merger = FindingMerger(run_id="test")
         raw = {"file_path": "msa.pdf", "page": 5, "section_ref": "Section 3", "exact_quote": "q"}
-        normalised = FindingMerger._normalize_citation(raw)
+        normalised = merger._normalize_citation(raw)
         assert normalised["source_path"] == "msa.pdf"
         assert normalised["source_type"] == "file"
         assert normalised["location"] == "Section 3, p. 5"
@@ -318,18 +319,93 @@ class TestFindingMerger:
 
     def test_normalize_citation_preserves_correct_schema(self) -> None:
         """When agent already provides source_type + source_path, they are preserved."""
+        merger = FindingMerger(run_id="test")
         raw = {"source_type": "file", "source_path": "sow.pdf", "location": "S1", "exact_quote": "q"}
-        normalised = FindingMerger._normalize_citation(raw)
+        normalised = merger._normalize_citation(raw)
         assert normalised == raw
 
     def test_normalize_citation_defaults_missing_fields(self) -> None:
         """When only exact_quote is present, defaults are filled in."""
+        merger = FindingMerger(run_id="test")
         raw = {"exact_quote": "some text"}
-        normalised = FindingMerger._normalize_citation(raw)
+        normalised = merger._normalize_citation(raw)
         assert normalised["source_type"] == "file"
         assert normalised["source_path"] == ""
         assert normalised["location"] == ""
         assert normalised["exact_quote"] == "some text"
+
+    # ------------------------------------------------------------------ #
+    # Citation path resolution against file inventory
+    # ------------------------------------------------------------------ #
+
+    def test_resolve_citation_path_exact_match(self) -> None:
+        """Exact match in inventory is returned unchanged."""
+        inventory = ["1. Legal/1.1 MSA/msa.pdf", "2. Finance/2.1 Tax/tax.xlsx"]
+        merger = FindingMerger(run_id="test", file_inventory=inventory)
+        assert merger._resolve_citation_path("1. Legal/1.1 MSA/msa.pdf") == "1. Legal/1.1 MSA/msa.pdf"
+
+    def test_resolve_citation_path_strips_md_suffix(self) -> None:
+        """Extraction artifact .md suffix is stripped and resolved."""
+        inventory = ["1. Legal/1.1 MSA/msa.pdf"]
+        merger = FindingMerger(run_id="test", file_inventory=inventory)
+        assert merger._resolve_citation_path("1. Legal/1.1 MSA/msa.pdf.md") == "1. Legal/1.1 MSA/msa.pdf"
+
+    def test_resolve_citation_path_strips_absolute_prefix(self) -> None:
+        """Absolute /Users/.../data-room/ prefix is stripped to data-room root."""
+        inventory = ["1. Legal/1.1 MSA/msa.pdf"]
+        merger = FindingMerger(run_id="test", file_inventory=inventory)
+        result = merger._resolve_citation_path("/Users/me/data/1. Legal/1.1 MSA/msa.pdf")
+        assert result == "1. Legal/1.1 MSA/msa.pdf"
+
+    def test_resolve_citation_path_basename_unique(self) -> None:
+        """When basename is unique in inventory, resolve to the full path."""
+        inventory = ["1. Legal/1.1 MSA/master_services_agreement.pdf"]
+        merger = FindingMerger(run_id="test", file_inventory=inventory)
+        assert merger._resolve_citation_path("master_services_agreement.pdf") == (
+            "1. Legal/1.1 MSA/master_services_agreement.pdf"
+        )
+
+    def test_resolve_citation_path_basename_ambiguous_suffix_disambiguates(self) -> None:
+        """When multiple files share a basename, the matching suffix wins."""
+        inventory = [
+            "1. Legal/1.1 MSA/contract.pdf",
+            "2. Finance/2.1 Tax/contract.pdf",
+        ]
+        merger = FindingMerger(run_id="test", file_inventory=inventory)
+        assert merger._resolve_citation_path("2.1 Tax/contract.pdf") == "2. Finance/2.1 Tax/contract.pdf"
+
+    def test_resolve_citation_path_no_inventory(self) -> None:
+        """When no inventory is provided, path is returned unchanged."""
+        merger = FindingMerger(run_id="test")
+        assert merger._resolve_citation_path("msa.pdf") == "msa.pdf"
+
+    def test_resolve_citation_path_no_match(self) -> None:
+        """When path doesn't match anything, it's returned unchanged."""
+        inventory = ["1. Legal/msa.pdf"]
+        merger = FindingMerger(run_id="test", file_inventory=inventory)
+        assert merger._resolve_citation_path("nonexistent.docx") == "nonexistent.docx"
+
+    def test_resolve_citation_path_md_suffix_then_basename(self) -> None:
+        """.md stripping + basename lookup works in combination."""
+        inventory = ["1. Legal/1.1 MSA/msa.pdf"]
+        merger = FindingMerger(run_id="test", file_inventory=inventory)
+        assert merger._resolve_citation_path("msa.pdf.md") == "1. Legal/1.1 MSA/msa.pdf"
+
+    def test_normalize_citation_resolves_path_with_inventory(self) -> None:
+        """End-to-end: _normalize_citation resolves source_path via inventory."""
+        inventory = ["1. Legal/1.1 MSA/msa.pdf"]
+        merger = FindingMerger(run_id="test", file_inventory=inventory)
+        raw = {"file_path": "msa.pdf", "exact_quote": "test"}
+        normalised = merger._normalize_citation(raw)
+        assert normalised["source_path"] == "1. Legal/1.1 MSA/msa.pdf"
+
+    def test_normalize_citation_skips_synthetic_paths(self) -> None:
+        """Paths starting with [ (synthetic) should not be resolved."""
+        inventory = ["1. Legal/msa.pdf"]
+        merger = FindingMerger(run_id="test", file_inventory=inventory)
+        raw = {"source_path": "[synthetic:no_citation_provided]", "source_type": "file", "location": ""}
+        normalised = merger._normalize_citation(raw)
+        assert normalised["source_path"] == "[synthetic:no_citation_provided]"
 
     def test_promote_findings_with_flat_citation_fields(self) -> None:
         """Findings with flat file_path/page/exact_quote (no citations array) are promoted."""
@@ -501,6 +577,120 @@ class TestMergeNormalization:
         assert result.gaps[0].gap_type == "Missing_Doc"
         assert result.gaps[0].customer == "Acme Corp"
 
+    # -- _coerce_gap_type keyword classification --
+
+    @pytest.mark.parametrize(
+        ("raw_type", "expected"),
+        [
+            # Exact enum values pass through
+            ("Missing_Doc", "Missing_Doc"),
+            ("Missing_Data", "Missing_Data"),
+            ("Ambiguous_Link", "Ambiguous_Link"),
+            ("Unreadable", "Unreadable"),
+            ("Contradiction", "Contradiction"),
+            ("Data_Mismatch", "Data_Mismatch"),
+            # Missing_Doc variants
+            ("Not_Found", "Missing_Doc"),
+            ("not_found", "Missing_Doc"),
+            ("missing document", "Missing_Doc"),
+            ("missing_document", "Missing_Doc"),
+            ("document_missing", "Missing_Doc"),
+            ("not_provided", "Missing_Doc"),
+            ("absent", "Missing_Doc"),
+            ("unavailable", "Missing_Doc"),
+            ("missing_file", "Missing_Doc"),
+            ("missing_contract", "Missing_Doc"),
+            ("missing_policy", "Missing_Doc"),
+            # Missing_Data variants
+            ("Incomplete", "Missing_Data"),
+            ("incomplete_data", "Missing_Data"),
+            ("partial", "Missing_Data"),
+            ("redacted", "Missing_Data"),
+            ("blank", "Missing_Data"),
+            ("empty", "Missing_Data"),
+            ("missing_information", "Missing_Data"),
+            ("missing_detail", "Missing_Data"),
+            ("missing_analysis", "Missing_Data"),
+            ("missing_metrics", "Missing_Data"),
+            ("missing_content", "Missing_Data"),
+            ("missing_category", "Missing_Data"),
+            ("no_data", "Missing_Data"),
+            # Unreadable variants
+            ("unreadable_document", "Unreadable"),
+            ("ocr_failure", "Unreadable"),
+            ("scan_quality", "Unreadable"),
+            ("garbled", "Unreadable"),
+            ("image_only", "Unreadable"),
+            # Data_Mismatch variants
+            ("mismatch", "Data_Mismatch"),
+            ("discrepancy", "Data_Mismatch"),
+            ("data_inconsistency", "Data_Mismatch"),
+            # Contradiction variants
+            ("conflict", "Contradiction"),
+            ("contradicts_prior", "Contradiction"),
+            # Ambiguous_Link variants
+            ("ambiguous", "Ambiguous_Link"),
+            ("unclear_reference", "Ambiguous_Link"),
+            # Unknown → default Missing_Doc
+            ("something_random", "Missing_Doc"),
+            ("xyz", "Missing_Doc"),
+        ],
+    )
+    def test_coerce_gap_type(self, raw_type: str, expected: str) -> None:
+        """_coerce_gap_type maps agent strings to valid GapType enum values."""
+        assert FindingMerger._coerce_gap_type(raw_type, "test") == expected
+
+    def test_coerce_gap_type_none_defaults_to_missing_doc(self) -> None:
+        """None or empty gap_type defaults to Missing_Doc."""
+        assert FindingMerger._coerce_gap_type(None, "test") == "Missing_Doc"
+        assert FindingMerger._coerce_gap_type("", "test") == "Missing_Doc"
+        assert FindingMerger._coerce_gap_type("  ", "test") == "Missing_Doc"
+
+    def test_coerce_gap_type_specificity_ordering(self) -> None:
+        """More specific keywords win over broad ones (e.g. 'unreadable' beats 'missing')."""
+        # 'unreadable_document' should be Unreadable, not Missing_Doc
+        assert FindingMerger._coerce_gap_type("unreadable_document", "test") == "Unreadable"
+        # 'data_mismatch_found' should be Data_Mismatch, not Missing_Doc
+        assert FindingMerger._coerce_gap_type("data_mismatch_found", "test") == "Data_Mismatch"
+        # 'incomplete_document' should be Missing_Data, not Missing_Doc
+        assert FindingMerger._coerce_gap_type("incomplete_document", "test") == "Missing_Data"
+
+    # -- priority coercion --
+
+    def test_normalize_gap_priority_high_to_p1(self) -> None:
+        """Agent-produced priority 'high' maps to P1."""
+        raw = {"gap_type": "Missing_Doc", "title": "Test", "description": "Test", "severity": "high"}
+        normalised = FindingMerger._normalize_gap(raw, "Test Corp", "commercial")
+        assert normalised["priority"] == "P1"
+
+    def test_normalize_gap_priority_low_to_p3(self) -> None:
+        """Agent-produced priority 'low' maps to P3."""
+        raw = {"gap_type": "Missing_Doc", "title": "Test", "description": "Test", "severity": "low"}
+        normalised = FindingMerger._normalize_gap(raw, "Test Corp", "commercial")
+        assert normalised["priority"] == "P3"
+
+    # -- end-to-end: gaps survive normalization + Pydantic validation --
+
+    def test_collect_gaps_agent_variants_survive_validation(self) -> None:
+        """Gaps with agent-produced types survive normalization + validation."""
+        agent_outputs = {
+            "producttech": {
+                "customer": "Acme Corp",
+                "findings": [],
+                "gaps": [
+                    {"gap_type": "Not_Found", "title": "Privacy Policy", "description": "Empty file"},
+                    {"gap_type": "Incomplete", "title": "SOC2 Report", "description": "Partial"},
+                    {"gap_type": "missing_information", "title": "Revenue Data", "description": "Missing"},
+                ],
+            }
+        }
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        result = merger.merge_customer(agent_outputs, customer_name="Acme Corp", customer_safe_name="acme_corp")
+        assert len(result.gaps) == 3
+        gap_types = {g.gap_type.value for g in result.gaps}
+        assert "Missing_Doc" in gap_types
+        assert "Missing_Data" in gap_types
+
     def test_normalize_governance_edge_maps_from_to(self) -> None:
         """Agent-produced 'from'/'to' mapped to 'from_file'/'to_file'."""
         raw = {"from": "sow.pdf", "to": "msa.pdf", "relationship": "governs"}
@@ -573,6 +763,32 @@ class TestMergeNormalization:
         assert len(result.cross_references) == 1
         assert result.cross_references[0].data_point == "Contract Value"
         assert result.cross_references[0].match_status == "match"
+
+    def test_union_cross_refs_skips_non_dict_entries(self) -> None:
+        """Non-dict entries in cross_references (e.g. strings) should be skipped, not crash."""
+        agent_outputs = {
+            "finance": {
+                "customer": "Acme Corp",
+                "findings": [],
+                "cross_references": [
+                    "some bare string from agent",
+                    42,
+                    {
+                        "data_point": "Revenue",
+                        "contract_value": "$1M",
+                        "reference_value": "$1M",
+                        "source_file": "contract.pdf",
+                        "reference_file": "financials.xlsx",
+                        "status": "match",
+                    },
+                ],
+            }
+        }
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        result = merger.merge_customer(agent_outputs, customer_name="Acme Corp", customer_safe_name="acme_corp")
+        # The string and int are skipped; only the valid dict entry survives
+        assert len(result.cross_references) == 1
+        assert result.cross_references[0].data_point == "Revenue"
 
 
 # ===========================================================================

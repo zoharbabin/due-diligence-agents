@@ -50,6 +50,7 @@ class NumericalAuditor:
         self.run_dir = run_dir
         self.inventory_dir = inventory_dir or run_dir
         self.prior_manifest = prior_manifest
+        self._findings_cache: list[dict[str, Any]] | None = None
 
     # ------------------------------------------------------------------ #
     # full audit
@@ -152,6 +153,14 @@ class NumericalAuditor:
             severity_sum = n004.value + n005.value + n006.value + n007.value
             if severity_sum != n003.value:
                 failures.append(f"N004+N005+N006+N007 ({severity_sum}) != N003 ({n003.value})")
+
+        # Ratio consistency: each severity count / total must be in [0, 1]
+        if n003 is not None and n003.value > 0:
+            for nid, entry in [("N004", n004), ("N005", n005), ("N006", n006), ("N007", n007)]:
+                if entry is not None:
+                    ratio = entry.value / n003.value
+                    if not (0.0 <= ratio <= 1.0):
+                        failures.append(f"{nid}/N003 ratio {ratio:.4f} is outside [0, 1]")
 
         return AuditCheck(
             passed=len(failures) == 0,
@@ -318,48 +327,44 @@ class NumericalAuditor:
                 # For entries beyond N001-N010, accept the manifest value
                 return None
 
-    def _load_merged_findings(self) -> list[dict[str, Any]]:
-        """Load all findings from the merged findings directory.
-
-        Excludes entries whose category is ``domain_reviewed_no_issues``.
-        """
+    def _cached_findings(self) -> list[dict[str, Any]]:
+        """Load ALL findings (including clean results) once and cache them."""
+        if self._findings_cache is not None:
+            return self._findings_cache
         merged_dir = self.run_dir / "findings" / "merged"
         if not merged_dir.exists():
-            return []
+            self._findings_cache = []
+            return self._findings_cache
         all_findings: list[dict[str, Any]] = []
         for jf in sorted(merged_dir.glob("*.json")):
             try:
                 data = json.loads(jf.read_text())
                 findings = data.get("findings", [])
-                for f in findings:
-                    if f.get("category") != "domain_reviewed_no_issues":
-                        all_findings.append(f)
+                all_findings.extend(findings)
             except (json.JSONDecodeError, OSError):
                 continue
-        return all_findings
+        self._findings_cache = all_findings
+        return self._findings_cache
+
+    def _load_merged_findings(self) -> list[dict[str, Any]]:
+        """Load findings excluding ``domain_reviewed_no_issues`` (clean results)."""
+        return [f for f in self._cached_findings() if f.get("category") != "domain_reviewed_no_issues"]
 
     def _count_merged_findings(self) -> int:
         """N003: count total findings from merged dir, excluding domain_reviewed_no_issues."""
         return len(self._load_merged_findings())
 
     def _count_findings_by_severity(self, severity: str) -> int:
-        """N004-N007: count findings matching a specific severity level."""
+        """N004-N007: count findings matching a specific severity level.
+
+        Excludes clean results (``domain_reviewed_no_issues``) so N007 (P3)
+        does not double-count them.
+        """
         return sum(1 for f in self._load_merged_findings() if f.get("severity") == severity)
 
     def _count_clean_results(self) -> int:
         """N008: count findings with category='domain_reviewed_no_issues'."""
-        merged_dir = self.run_dir / "findings" / "merged"
-        if not merged_dir.exists():
-            return 0
-        total = 0
-        for jf in sorted(merged_dir.glob("*.json")):
-            try:
-                data = json.loads(jf.read_text())
-                findings = data.get("findings", [])
-                total += sum(1 for f in findings if f.get("category") == "domain_reviewed_no_issues")
-            except (json.JSONDecodeError, OSError):
-                continue
-        return total
+        return sum(1 for f in self._cached_findings() if f.get("category") == "domain_reviewed_no_issues")
 
     def _count_total_gaps(self) -> int:
         """N009: count total gaps from the gaps directory."""

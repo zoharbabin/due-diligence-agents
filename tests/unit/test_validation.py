@@ -2762,3 +2762,123 @@ class TestDoDCheck30ReportDiff:
         )
         check = checker.check_16_entity_resolution_log()
         assert check.passed is True
+
+
+# ===================================================================== #
+# Issue #49 — Numerical Audit Layer 2 Fixes
+# ===================================================================== #
+
+
+class TestNumericalAuditLayer2Fixes:
+    """Tests for N007 exclusion, findings cache, and ratio consistency."""
+
+    def test_n007_excludes_clean_results(self, tmp_path: Path) -> None:
+        """N007 (P3 count) must NOT include domain_reviewed_no_issues findings."""
+        merged_dir = tmp_path / "findings" / "merged"
+        merged_dir.mkdir(parents=True)
+        (merged_dir / "customer_a.json").write_text(
+            json.dumps(
+                {
+                    "findings": [
+                        {"severity": "P3", "category": "contractual_risk"},
+                        {"severity": "P3", "category": "domain_reviewed_no_issues"},
+                        {"severity": "P3", "category": "domain_reviewed_no_issues"},
+                    ]
+                }
+            )
+        )
+        auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
+        entry = ManifestEntry(id="N007", label="P3", value=0, source_file="x", derivation="count")
+        # Only the non-clean P3 finding should be counted
+        assert auditor._rederive(entry) == 1
+
+    def test_n008_counts_only_clean_results(self, tmp_path: Path) -> None:
+        """N008 counts only domain_reviewed_no_issues findings."""
+        merged_dir = tmp_path / "findings" / "merged"
+        merged_dir.mkdir(parents=True)
+        (merged_dir / "customer_a.json").write_text(
+            json.dumps(
+                {
+                    "findings": [
+                        {"severity": "P3", "category": "domain_reviewed_no_issues"},
+                        {"severity": "P2", "category": "contractual_risk"},
+                        {"severity": "P3", "category": "domain_reviewed_no_issues"},
+                    ]
+                }
+            )
+        )
+        auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
+        entry = ManifestEntry(id="N008", label="Clean", value=0, source_file="x", derivation="count")
+        assert auditor._rederive(entry) == 2
+
+    def test_findings_cache_loads_once(self, tmp_path: Path) -> None:
+        """Cached findings are loaded from disk only once."""
+        merged_dir = tmp_path / "findings" / "merged"
+        merged_dir.mkdir(parents=True)
+        (merged_dir / "customer_a.json").write_text(json.dumps({"findings": [{"severity": "P2", "category": "risk"}]}))
+        auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
+        # First call populates cache
+        result1 = auditor._cached_findings()
+        assert len(result1) == 1
+        # Add more data to disk — cache should NOT reflect it
+        (merged_dir / "customer_b.json").write_text(json.dumps({"findings": [{"severity": "P1", "category": "risk"}]}))
+        result2 = auditor._cached_findings()
+        assert len(result2) == 1  # Still cached, not reloaded
+        assert result1 is result2  # Same object
+
+    @staticmethod
+    def _full_manifest(**overrides: int) -> NumericalManifest:
+        """Build a valid 10-entry manifest with optional value overrides."""
+        defaults: dict[str, int] = {
+            "N001": 3,
+            "N002": 10,
+            "N003": 10,
+            "N004": 2,
+            "N005": 3,
+            "N006": 4,
+            "N007": 1,
+            "N008": 0,
+            "N009": 2,
+            "N010": 5,
+        }
+        defaults.update(overrides)
+        entries = [
+            ManifestEntry(id=k, label=k, value=v, source_file="x", derivation="count") for k, v in defaults.items()
+        ]
+        return NumericalManifest(generated_at="2026-01-01T00:00:00Z", numbers=entries)
+
+    def test_ratio_consistency_passes_valid(self, tmp_path: Path) -> None:
+        """Ratio check passes when all severity/total ratios are in [0, 1]."""
+        auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
+        manifest = self._full_manifest(N003=10, N004=2, N005=3, N006=4, N007=1)
+        check = auditor.check_cross_source_consistency(manifest)
+        # No ratio failures
+        ratio_failures = [f for f in check.details.get("failures", []) if "ratio" in f]
+        assert ratio_failures == []
+
+    def test_ratio_consistency_fails_invalid(self, tmp_path: Path) -> None:
+        """Ratio check fails when a severity count exceeds total findings."""
+        auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
+        manifest = self._full_manifest(N003=5, N004=6, N005=0, N006=0, N007=0)
+        check = auditor.check_cross_source_consistency(manifest)
+        ratio_failures = [f for f in check.details.get("failures", []) if "ratio" in f]
+        assert len(ratio_failures) >= 1
+        assert "N004/N003" in ratio_failures[0]
+
+    def test_n003_excludes_clean_results(self, tmp_path: Path) -> None:
+        """N003 (total findings) should exclude domain_reviewed_no_issues."""
+        merged_dir = tmp_path / "findings" / "merged"
+        merged_dir.mkdir(parents=True)
+        (merged_dir / "customer_a.json").write_text(
+            json.dumps(
+                {
+                    "findings": [
+                        {"severity": "P2", "category": "risk"},
+                        {"severity": "P3", "category": "domain_reviewed_no_issues"},
+                    ]
+                }
+            )
+        )
+        auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
+        entry = ManifestEntry(id="N003", label="Total", value=0, source_file="x", derivation="count")
+        assert auditor._rederive(entry) == 1

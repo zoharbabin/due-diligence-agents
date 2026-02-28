@@ -5,8 +5,8 @@
 - Python 3.12+
 - pip
 - Git
-- `pdftotext` (poppler-utils) for document extraction
-- `tesseract-ocr` (optional, for scanned PDFs)
+- `poppler-utils` (optional — fallback for pymupdf PDF extraction failures)
+- `tesseract-ocr` (optional — OCR for scanned PDFs)
 
 ## Development Setup
 
@@ -30,10 +30,12 @@ This installs the package in editable mode with all dev dependencies (pytest, ru
 ## Running Tests
 
 ```bash
-make test          # Unit + integration tests
-make test-unit     # Unit tests only (fast, no API calls)
-make test-e2e      # End-to-end tests (requires API key, slow)
+make test              # Unit + integration tests
+make test-unit         # Unit tests only (fast, no API calls)
+pytest tests/e2e/ -x   # End-to-end tests (requires API key, slow)
 ```
+
+The project has 1,544+ unit tests, 17 integration tests, and 9 E2E tests (3 skipped without API key). Unit and integration tests require no API key.
 
 ## Quality Gates
 

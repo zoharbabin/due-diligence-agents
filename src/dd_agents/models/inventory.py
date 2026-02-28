@@ -1,3 +1,5 @@
+"""Pydantic models for data room inventory: files, customers, mentions, and counts."""
+
 from __future__ import annotations
 
 from pydantic import BaseModel, Field

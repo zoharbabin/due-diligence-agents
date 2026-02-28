@@ -39,6 +39,8 @@ from dd_agents.utils.naming import preprocess_name
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from dd_agents.entity_resolution.dedup import CrossDocumentDeduplicator
+
 # ======================================================================
 # Individual pass functions
 # ======================================================================
@@ -573,6 +575,47 @@ class EntityResolver:
 
         self.cache.save(self.run_id)
         return results
+
+    # ------------------------------------------------------------------
+    # Batch resolution with cross-document dedup (Issue #11)
+    # ------------------------------------------------------------------
+
+    def resolve_all_with_dedup(
+        self,
+        names_by_source: dict[str, list[str]],
+        source_type: str = "reference_file",
+    ) -> tuple[dict[str, str | None], CrossDocumentDeduplicator]:
+        """Resolve names grouped by source file, tracking cross-document dedup.
+
+        Parameters
+        ----------
+        names_by_source:
+            ``{source_file: [name1, name2, ...]}``.
+        source_type:
+            Source type label for the match log.
+
+        Returns
+        -------
+        tuple[dict[str, str | None], CrossDocumentDeduplicator]
+            A flat ``{source_name: canonical | None}`` resolution map
+            and the populated deduplicator.
+        """
+        from dd_agents.entity_resolution.dedup import CrossDocumentDeduplicator
+
+        self.cache.compute_invalidation(self._entity_aliases, self.config_hash)
+
+        dedup = CrossDocumentDeduplicator()
+        all_results: dict[str, str | None] = {}
+
+        for source_file, names in names_by_source.items():
+            for name in names:
+                canonical = self.resolve_name(name, source_type)
+                all_results[name] = canonical
+                if canonical is not None:
+                    dedup.add_resolution(name, canonical, source_file)
+
+        self.cache.save(self.run_id)
+        return all_results, dedup
 
     # ------------------------------------------------------------------
     # Match log
