@@ -1598,6 +1598,7 @@ class PipelineEngine:
             DEFAULT_SCORE_THRESHOLD,
             JudgeAgent,
         )
+        from dd_agents.models.audit import QualityScores
 
         judge_config = (state.deal_config or {}).get("judge", {})
 
@@ -1625,6 +1626,25 @@ class PipelineEngine:
                 judge_dir = state.run_dir / "judge"
                 judge_dir.mkdir(parents=True, exist_ok=True)
                 scores_path = judge_dir / "quality_scores.json"
+
+                # The judge agent may have written quality_scores.json via
+                # its Write tool during the SDK session.  If that file
+                # contains richer data than what we parsed from the text
+                # stream (common: the stream is prose, the file is JSON),
+                # prefer the agent's file.
+                if scores.overall_quality == 0 and not scores.agent_scores and scores_path.exists():
+                    try:
+                        on_disk = json.loads(scores_path.read_text())
+                        if on_disk.get("agent_scores") and on_disk.get("overall_quality", 0) > 0:
+                            logger.info(
+                                "Judge text stream yielded empty scores; "
+                                "recovering from agent-written file (overall=%d)",
+                                on_disk["overall_quality"],
+                            )
+                            scores = QualityScores.model_validate(on_disk)
+                    except (json.JSONDecodeError, OSError, Exception) as exc:  # noqa: BLE001
+                        logger.warning("Failed to recover judge scores from disk: %s", exc)
+
                 scores_path.write_text(scores.model_dump_json(indent=2))
 
                 # Store in state for steps 21-22
@@ -1987,8 +2007,8 @@ class PipelineEngine:
                     "id": "N009",
                     "label": "Total Gaps",
                     "value": 0,
-                    "source_file": "{RUN_DIR}/findings/merged/gaps/*.json",
-                    "derivation": "count",
+                    "source_file": "{RUN_DIR}/findings/merged/*.json",
+                    "derivation": "count_gaps",
                 },
                 {
                     "id": "N010",
@@ -2019,20 +2039,10 @@ class PipelineEngine:
                             sev = f.get("severity", "P3")
                             if sev in sev_counts:
                                 sev_counts[sev] += 1
+                    # Gaps are embedded in each customer's merged JSON.
+                    total_gaps += len(data.get("gaps", []))
                 except (json.JSONDecodeError, OSError):
                     continue
-
-            gaps_dir = merged_dir / "gaps"
-            if gaps_dir.exists():
-                for gf in gaps_dir.glob("*.json"):
-                    try:
-                        gdata = json.loads(gf.read_text())
-                        if isinstance(gdata, list):
-                            total_gaps += len(gdata)
-                        elif isinstance(gdata, dict):
-                            total_gaps += len(gdata.get("gaps", []))
-                    except (json.JSONDecodeError, OSError):
-                        continue
 
             manifest["numbers"][2]["value"] = total_findings
             manifest["numbers"][3]["value"] = sev_counts["P0"]

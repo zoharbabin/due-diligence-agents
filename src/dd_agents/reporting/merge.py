@@ -229,6 +229,17 @@ class FindingMerger:
             governance_resolved_pct=gov_pct,
         )
 
+    # Non-customer JSON files that agents may write alongside customer findings.
+    _NON_CUSTOMER_STEMS: frozenset[str] = frozenset(
+        {
+            "coverage_manifest",
+            "numerical_manifest",
+            "report_diff",
+            "quality_scores",
+            "metadata",
+        }
+    )
+
     def merge_all(self, findings_dir: Path) -> dict[str, MergedCustomerOutput]:
         """Process all customers found under *findings_dir*.
 
@@ -248,7 +259,8 @@ class FindingMerger:
             agent_dir = findings_dir / agent
             if agent_dir.is_dir():
                 for fp in agent_dir.glob("*.json"):
-                    customer_names.add(fp.stem)
+                    if fp.stem not in self._NON_CUSTOMER_STEMS:
+                        customer_names.add(fp.stem)
 
         results: dict[str, MergedCustomerOutput] = {}
         for csn in sorted(customer_names):

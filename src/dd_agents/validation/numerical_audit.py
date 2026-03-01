@@ -367,18 +367,20 @@ class NumericalAuditor:
         return sum(1 for f in self._cached_findings() if f.get("category") == "domain_reviewed_no_issues")
 
     def _count_total_gaps(self) -> int:
-        """N009: count total gaps from the gaps directory."""
-        gaps_dir = self.run_dir / "findings" / "merged" / "gaps"
-        if not gaps_dir.exists():
+        """N009: count total gaps from merged customer files.
+
+        Gaps are stored inside each merged customer JSON (``data.gaps[]``),
+        not as separate files in ``merged/gaps/``.  This counts all gaps
+        across all merged customer files.
+        """
+        merged_dir = self.run_dir / "findings" / "merged"
+        if not merged_dir.exists():
             return 0
         total = 0
-        for gf in sorted(gaps_dir.glob("*.json")):
+        for jf in sorted(merged_dir.glob("*.json")):
             try:
-                gdata = json.loads(gf.read_text())
-                if isinstance(gdata, list):
-                    total += len(gdata)
-                elif isinstance(gdata, dict):
-                    total += len(gdata.get("gaps", []))
+                data = json.loads(jf.read_text())
+                total += len(data.get("gaps", []))
             except (json.JSONDecodeError, OSError):
                 continue
         return total

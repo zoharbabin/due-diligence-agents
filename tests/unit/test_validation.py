@@ -668,13 +668,21 @@ class TestNumericalAuditor:
         assert auditor._rederive(entry) == 2
 
     def test_rederive_n009_counts_total_gaps(self, tmp_path: Path) -> None:
-        """N009 rederivation counts total gaps from gaps dir."""
-        gaps_dir = tmp_path / "findings" / "merged" / "gaps"
-        gaps_dir.mkdir(parents=True)
-        (gaps_dir / "customer_a.json").write_text(json.dumps([{"gap": "missing clause"}, {"gap": "no termination"}]))
-        (gaps_dir / "customer_b.json").write_text(json.dumps({"gaps": [{"gap": "no renewal"}]}))
+        """N009 rederivation counts gaps embedded in merged customer files."""
+        merged_dir = tmp_path / "findings" / "merged"
+        merged_dir.mkdir(parents=True)
+        (merged_dir / "customer_a.json").write_text(
+            json.dumps({"findings": [], "gaps": [{"gap": "missing clause"}, {"gap": "no termination"}]})
+        )
+        (merged_dir / "customer_b.json").write_text(json.dumps({"findings": [], "gaps": [{"gap": "no renewal"}]}))
         auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
-        entry = ManifestEntry(id="N009", label="Total Gaps", value=0, source_file="gaps/*.json", derivation="count")
+        entry = ManifestEntry(
+            id="N009",
+            label="Total Gaps",
+            value=0,
+            source_file="{RUN_DIR}/findings/merged/*.json",
+            derivation="count_gaps",
+        )
         assert auditor._rederive(entry) == 3
 
     def test_rederive_n010_counts_reference_files(self, tmp_path: Path) -> None:
@@ -2882,3 +2890,218 @@ class TestNumericalAuditLayer2Fixes:
         auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
         entry = ManifestEntry(id="N003", label="Total", value=0, source_file="x", derivation="count")
         assert auditor._rederive(entry) == 1
+
+
+# ===========================================================================
+# N009 gap count from merged customer files
+# ===========================================================================
+
+
+class TestN009GapCountFromMergedFiles:
+    """N009 should count gaps from merged customer JSON, not gaps/ dir."""
+
+    def test_n009_counts_gaps_from_merged_customer_files(self, tmp_path: Path) -> None:
+        merged_dir = tmp_path / "findings" / "merged"
+        merged_dir.mkdir(parents=True)
+        # Two customers with gaps inside their merged JSON
+        (merged_dir / "acme_corp.json").write_text(
+            json.dumps(
+                {
+                    "findings": [],
+                    "gaps": [{"priority": "P1"}, {"priority": "P2"}],
+                }
+            )
+        )
+        (merged_dir / "globex.json").write_text(
+            json.dumps(
+                {
+                    "findings": [],
+                    "gaps": [{"priority": "P0"}],
+                }
+            )
+        )
+        auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
+        entry = ManifestEntry(id="N009", label="Gaps", value=0, source_file="x", derivation="count")
+        assert auditor._rederive(entry) == 3
+
+    def test_n009_returns_zero_when_no_gaps(self, tmp_path: Path) -> None:
+        merged_dir = tmp_path / "findings" / "merged"
+        merged_dir.mkdir(parents=True)
+        (merged_dir / "acme_corp.json").write_text(
+            json.dumps(
+                {
+                    "findings": [{"severity": "P2"}],
+                    "gaps": [],
+                }
+            )
+        )
+        auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
+        entry = ManifestEntry(id="N009", label="Gaps", value=0, source_file="x", derivation="count")
+        assert auditor._rederive(entry) == 0
+
+    def test_n009_returns_zero_when_no_merged_dir(self, tmp_path: Path) -> None:
+        auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
+        entry = ManifestEntry(id="N009", label="Gaps", value=0, source_file="x", derivation="count")
+        assert auditor._rederive(entry) == 0
+
+
+# ===========================================================================
+# Audit summary gap and clean-result population
+# ===========================================================================
+
+
+class TestAuditSummaryGapPopulation:
+    """_build_summary must populate total_gaps, gaps_by_priority, clean_result_count."""
+
+    def _make_run_dir(self, tmp_path: Path) -> Path:
+        """Set up a run dir with merged findings containing gaps."""
+        run_dir = tmp_path
+        merged_dir = run_dir / "findings" / "merged"
+        merged_dir.mkdir(parents=True)
+        inv_dir = run_dir
+        (inv_dir / "files.txt").write_text("file1.pdf\nfile2.pdf\n")
+        (merged_dir / "acme_corp.json").write_text(
+            json.dumps(
+                {
+                    "findings": [
+                        {
+                            "id": "f1",
+                            "severity": "P2",
+                            "category": "risk",
+                            "title": "t",
+                            "description": "d",
+                            "citations": [{"source_type": "file", "source_path": "f.pdf", "exact_quote": "q"}],
+                        },
+                        {
+                            "id": "f2",
+                            "severity": "P3",
+                            "category": "domain_reviewed_no_issues",
+                            "title": "clean",
+                            "description": "clean",
+                            "citations": [{"source_type": "file", "source_path": "f.pdf"}],
+                        },
+                    ],
+                    "gaps": [
+                        {"priority": "P1", "agent": "legal"},
+                        {"priority": "P2", "agent": "finance"},
+                    ],
+                }
+            )
+        )
+        (merged_dir / "globex.json").write_text(
+            json.dumps(
+                {
+                    "findings": [
+                        {
+                            "id": "f3",
+                            "severity": "P1",
+                            "category": "risk",
+                            "title": "t2",
+                            "description": "d2",
+                            "citations": [{"source_type": "file", "source_path": "g.pdf", "exact_quote": "q"}],
+                        },
+                    ],
+                    "gaps": [
+                        {"priority": "P0", "agent": "legal"},
+                    ],
+                }
+            )
+        )
+        return run_dir
+
+    def test_summary_populates_gap_counts(self, tmp_path: Path) -> None:
+        run_dir = self._make_run_dir(tmp_path)
+        auditor = QAAuditor(
+            run_dir=run_dir,
+            inventory_dir=run_dir,
+            customer_safe_names=["acme_corp", "globex"],
+        )
+        summary = auditor._build_summary()
+        assert summary.total_gaps == 3
+        assert summary.gaps_by_priority["P0"] == 1
+        assert summary.gaps_by_priority["P1"] == 1
+        assert summary.gaps_by_priority["P2"] == 1
+
+    def test_summary_populates_clean_result_count(self, tmp_path: Path) -> None:
+        run_dir = self._make_run_dir(tmp_path)
+        auditor = QAAuditor(
+            run_dir=run_dir,
+            inventory_dir=run_dir,
+            customer_safe_names=["acme_corp", "globex"],
+        )
+        summary = auditor._build_summary()
+        assert summary.clean_result_count == 1
+
+    def test_summary_populates_agents_producing_gaps(self, tmp_path: Path) -> None:
+        run_dir = self._make_run_dir(tmp_path)
+        auditor = QAAuditor(
+            run_dir=run_dir,
+            inventory_dir=run_dir,
+            customer_safe_names=["acme_corp", "globex"],
+        )
+        summary = auditor._build_summary()
+        assert sorted(summary.agents_producing_gaps) == ["finance", "legal"]
+
+    def test_summary_zero_gaps_when_none(self, tmp_path: Path) -> None:
+        merged_dir = tmp_path / "findings" / "merged"
+        merged_dir.mkdir(parents=True)
+        (tmp_path / "files.txt").write_text("f.pdf\n")
+        (merged_dir / "acme_corp.json").write_text(
+            json.dumps(
+                {
+                    "findings": [{"id": "f1", "severity": "P2", "category": "risk"}],
+                    "gaps": [],
+                }
+            )
+        )
+        auditor = QAAuditor(
+            run_dir=tmp_path,
+            inventory_dir=tmp_path,
+            customer_safe_names=["acme_corp"],
+        )
+        summary = auditor._build_summary()
+        assert summary.total_gaps == 0
+        assert summary.agents_producing_gaps == []
+
+
+# ===========================================================================
+# coverage_manifest exclusion from merge
+# ===========================================================================
+
+
+class TestCoverageManifestExclusion:
+    """merge_all should not treat coverage_manifest.json as a customer."""
+
+    def test_coverage_manifest_excluded_from_customers(self, tmp_path: Path) -> None:
+        from dd_agents.reporting.merge import FindingMerger
+
+        findings_dir = tmp_path / "findings"
+        for agent in AGENTS:
+            agent_dir = findings_dir / agent
+            agent_dir.mkdir(parents=True)
+            # Real customer
+            (agent_dir / "acme_corp.json").write_text(json.dumps(_make_customer_json("acme_corp", agent)))
+            # Non-customer files that agents sometimes write
+            (agent_dir / "coverage_manifest.json").write_text(json.dumps({"agent": agent, "customers_processed": 1}))
+
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        result = merger.merge_all(findings_dir)
+
+        assert "acme_corp" in result
+        assert "coverage_manifest" not in result
+        assert len(result) == 1
+
+    def test_other_non_customer_stems_excluded(self, tmp_path: Path) -> None:
+        from dd_agents.reporting.merge import FindingMerger
+
+        findings_dir = tmp_path / "findings"
+        agent_dir = findings_dir / "legal"
+        agent_dir.mkdir(parents=True)
+        (agent_dir / "acme_corp.json").write_text(json.dumps(_make_customer_json("acme_corp", "legal")))
+        # All known non-customer stems
+        for stem in ("coverage_manifest", "numerical_manifest", "report_diff", "quality_scores", "metadata"):
+            (agent_dir / f"{stem}.json").write_text("{}")
+
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        result = merger.merge_all(findings_dir)
+        assert set(result.keys()) == {"acme_corp"}

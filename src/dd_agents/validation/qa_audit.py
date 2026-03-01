@@ -994,14 +994,41 @@ class QAAuditor:
     def _build_summary(self) -> AuditSummary:
         merged_findings = self._load_all_merged_findings()
         by_severity: dict[str, int] = {"P0": 0, "P1": 0, "P2": 0, "P3": 0}
+        clean_count = 0
         for f in merged_findings:
             sev = f.get("severity", "")
             if sev in by_severity:
                 by_severity[sev] += 1
+            if f.get("category") == "domain_reviewed_no_issues":
+                clean_count += 1
+
+        # Count gaps and their priorities from merged customer files.
+        total_gaps = 0
+        gaps_by_priority: dict[str, int] = {"P0": 0, "P1": 0, "P2": 0, "P3": 0}
+        agents_with_gaps: set[str] = set()
+        merged_dir = self.run_dir / "findings" / "merged"
+        if merged_dir.exists():
+            for jf in merged_dir.glob("*.json"):
+                try:
+                    data = json.loads(jf.read_text())
+                except (json.JSONDecodeError, OSError):
+                    continue
+                for gap in data.get("gaps", []):
+                    total_gaps += 1
+                    prio = gap.get("priority", "P2")
+                    if prio in gaps_by_priority:
+                        gaps_by_priority[prio] += 1
+                    agent = gap.get("agent", "")
+                    if agent:
+                        agents_with_gaps.add(agent)
 
         return AuditSummary(
             total_customers=len(self.customer_safe_names),
             total_files=len(self._read_files_txt()),
             total_findings=len(merged_findings),
             findings_by_severity=by_severity,
+            total_gaps=total_gaps,
+            gaps_by_priority=gaps_by_priority,
+            clean_result_count=clean_count,
+            agents_producing_gaps=sorted(agents_with_gaps),
         )
