@@ -282,6 +282,7 @@ class BaseAgentRunner(ABC):
             permission_mode="bypassPermissions",
             cwd=str(self.project_dir),
             allowed_tools=self.get_tools(),
+            disallowed_tools=["Agent", "Bash"],
             max_buffer_size=self._compute_buffer_size(),
         )
 

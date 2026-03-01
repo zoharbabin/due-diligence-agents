@@ -133,7 +133,7 @@ class AgentTeam:
         batch_concurrency = getattr(
             getattr(getattr(self.state, "deal_config", None), "execution", None),
             "batch_concurrency",
-            3,
+            6,
         )
         # Effective sequential waves = ceil(batches / concurrency)
         effective_waves = max(1, -(-max_batches // max(1, batch_concurrency)))
@@ -260,11 +260,11 @@ class AgentTeam:
 
         # Concurrency limit for parallel batch execution.  Each batch
         # processes different customers writing to different files, so
-        # parallelism is safe.  Default 3 (configurable via deal-config).
+        # parallelism is safe.  Default 6 (configurable via deal-config).
         concurrency = getattr(
             getattr(getattr(self.state, "deal_config", None), "execution", None),
             "batch_concurrency",
-            3,
+            6,
         )
         concurrency = max(1, min(concurrency, len(batch_prompts)))
 

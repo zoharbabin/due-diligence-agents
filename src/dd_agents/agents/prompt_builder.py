@@ -451,10 +451,17 @@ class PromptBuilder:
             f"for your output JSON.\n"
             f"Write: {self.run_dir}/findings/{agent_name}/{{safe_name}}.json\n\n"
             f"TOTAL: {len(customers)} customers. You must process every single one.\n\n"
-            f"SPEED RULE: Do NOT read or validate existing output files in the findings "
+            f"SPEED RULES (MANDATORY — violating these wastes budget and causes failures):\n"
+            f"1. Do NOT read or validate existing output files in the findings "
             f"directory. Always write fresh output by analyzing source documents directly. "
-            f"If a file already exists at the output path, overwrite it without reading it first. "
-            f"Spending turns checking prior output wastes time and budget."
+            f"If a file already exists at the output path, overwrite it without reading it first.\n"
+            f"2. Do NOT spawn sub-agents, background agents, or parallel agents. "
+            f"You are a single agent processing customers one at a time IN THIS SESSION. "
+            f"Never use the Agent tool or launch child processes. "
+            f"Process each customer sequentially: read files → analyze → write JSON → next customer.\n"
+            f"3. Do NOT summarize your progress, reflect on what you did, or produce final "
+            f"status reports. Just write the JSON files and move to the next customer.\n"
+            f"4. Do NOT re-read a customer's output file after writing it. Write it once correctly."
         )
         return "\n".join(lines)
 
