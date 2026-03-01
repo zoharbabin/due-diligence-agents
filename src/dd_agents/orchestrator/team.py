@@ -650,9 +650,14 @@ class AgentTeam:
             mt = f.stat().st_mtime
             if since is not None and mt >= since:
                 modified += 1
-            if mt > latest_mtime:
-                latest_mtime = mt
-                latest_name = f.stem
+                # "latest" only tracks files modified in this run.
+                if mt > latest_mtime:
+                    latest_mtime = mt
+                    latest_name = f.stem
+            elif since is None:
+                if mt > latest_mtime:
+                    latest_mtime = mt
+                    latest_name = f.stem
         if since is None:
             modified = total
         return total, modified, latest_name
@@ -730,10 +735,11 @@ class AgentTeam:
                     name,
                     since=monitor_epoch,
                 )
-                pct = f" ({modified * 100 // total_customers}%)" if total_customers > 0 else ""
-                parts.append(f"{name}: {modified}/{total_customers} done{pct}")
-                if latest:
-                    parts[-1] += f" | latest: {latest}"
+                if modified == 0:
+                    parts.append(f"{name}: analyzing (0/{total_customers})")
+                else:
+                    pct = f" ({modified * 100 // total_customers}%)" if total_customers > 0 else ""
+                    parts.append(f"{name}: {modified}/{total_customers} done{pct} | latest: {latest}")
 
             progress_line = " | ".join(parts)
             logger.info(
