@@ -616,6 +616,31 @@ class AgentTeam:
                     latest = mt
         return latest
 
+    @staticmethod
+    def _count_agent_files(output_dir: Path, agent_name: str) -> tuple[int, str]:
+        """Count customer JSON files and find the most recent one for *agent_name*.
+
+        Returns ``(file_count, latest_filename)``.  Excludes non-customer files
+        like ``coverage_manifest.json`` and ``_temp_*`` scratch files.
+        """
+        agent_dir = output_dir / agent_name
+        if not agent_dir.is_dir():
+            return 0, ""
+        latest_mtime = 0.0
+        latest_name = ""
+        count = 0
+        for f in agent_dir.iterdir():
+            if f.suffix != ".json":
+                continue
+            if f.name.startswith("_temp_") or f.name == "coverage_manifest.json":
+                continue
+            count += 1
+            mt = f.stat().st_mtime
+            if mt > latest_mtime:
+                latest_mtime = mt
+                latest_name = f.stem
+        return count, latest_name
+
     async def monitor_agent_output(
         self,
         output_dir: Path,
@@ -626,10 +651,10 @@ class AgentTeam:
         stall_threshold_s: float | None = None,
         stop_event: asyncio.Event | None = None,
     ) -> None:
-        """Continuously monitor *output_dir* for new files.
+        """Continuously monitor *output_dir* for new files with live progress.
 
         Runs until *stop_event* is set (or cancelled).  At each interval it
-        checks whether any new files have appeared.  If not:
+        counts customer output files per agent and logs a progress summary.
 
         - After ``warn_threshold_s`` seconds with no new files: log WARNING.
         - After ``stall_threshold_s`` seconds with no new files: log ERROR
@@ -642,7 +667,8 @@ class AgentTeam:
         agent_names:
             Agent names being monitored (for logging).
         check_interval_s:
-            Seconds between checks (default: ``liveness_interval_s``).
+            Seconds between checks (default: 15s for progress, or
+            ``liveness_interval_s`` for stall detection).
         warn_threshold_s:
             Seconds without output before WARNING (default: ``WARN_NO_OUTPUT_S``).
         stall_threshold_s:
@@ -651,14 +677,23 @@ class AgentTeam:
         stop_event:
             When set, the monitor exits its loop.
         """
-        interval = check_interval_s if check_interval_s is not None else float(self.liveness_interval_s)
+        # Use a shorter interval for progress display (15s) while keeping
+        # the stall detection thresholds unchanged.
+        interval = check_interval_s if check_interval_s is not None else 15.0
         warn_s = warn_threshold_s if warn_threshold_s is not None else float(WARN_NO_OUTPUT_S)
         stall_s = stall_threshold_s if stall_threshold_s is not None else float(STALL_NO_OUTPUT_S)
         evt = stop_event or asyncio.Event()
 
         last_seen_mtime = self._latest_file_mtime(output_dir)
         last_new_file_time = time.monotonic()
+        start_time = time.monotonic()
         warned = False
+
+        # Track baseline counts so we can show delta from run start.
+        baseline_counts: dict[str, int] = {}
+        for name in agent_names:
+            count, _ = self._count_agent_files(output_dir, name)
+            baseline_counts[name] = count
 
         while not evt.is_set():
             try:
@@ -667,9 +702,29 @@ class AgentTeam:
             except TimeoutError:
                 pass  # Normal: interval elapsed without stop signal.
 
+            # Build progress summary for each agent.
+            elapsed_total = time.monotonic() - start_time
+            elapsed_min = int(elapsed_total) // 60
+            elapsed_sec = int(elapsed_total) % 60
+            parts: list[str] = []
+            for name in agent_names:
+                count, latest = self._count_agent_files(output_dir, name)
+                new_count = count - baseline_counts.get(name, 0)
+                parts.append(f"{name}: {count} files (+{new_count} new)")
+                if latest:
+                    parts[-1] += f" | latest: {latest}"
+
+            progress_line = " | ".join(parts)
+            logger.info(
+                "Agent progress [%02d:%02d]: %s",
+                elapsed_min,
+                elapsed_sec,
+                progress_line,
+            )
+
+            # Stall detection (unchanged logic).
             current_mtime = self._latest_file_mtime(output_dir)
             if current_mtime is not None and (last_seen_mtime is None or current_mtime > last_seen_mtime):
-                # New file(s) detected -- update tracking.
                 last_seen_mtime = current_mtime
                 last_new_file_time = time.monotonic()
                 warned = False
@@ -677,21 +732,21 @@ class AgentTeam:
                     self.record_activity(name)
                 continue
 
-            elapsed = time.monotonic() - last_new_file_time
+            elapsed_since_last = time.monotonic() - last_new_file_time
 
-            if elapsed >= stall_s:
+            if elapsed_since_last >= stall_s:
                 stalled = self.detect_stalled_agents()
                 if stalled:
                     logger.error(
                         "Agents appear stalled (no new output for %.0fs): %s",
-                        elapsed,
+                        elapsed_since_last,
                         ", ".join(stalled),
                     )
-            elif elapsed >= warn_s and not warned:
+            elif elapsed_since_last >= warn_s and not warned:
                 warned = True
                 logger.warning(
                     "No new output files for %.0fs in %s (agents: %s)",
-                    elapsed,
+                    elapsed_since_last,
                     output_dir,
                     ", ".join(agent_names),
                 )
