@@ -2300,6 +2300,42 @@ class TestJudgeProseExtraction:
         assert result is not None
         assert result["overall_quality"] == 85  # (80 + 90) / 2
 
+    def test_extract_scores_from_markdown_table(self) -> None:
+        """Scores are extracted from markdown table format with pipe delimiters."""
+        from dd_agents.agents.judge import JudgeAgent
+
+        prose = (
+            "### Agent Scores (all PASS, threshold = 70)\n\n"
+            "| Agent | Score | Citation | Context | Financial | Consistency | Completeness |\n"
+            "|-------|-------|----------|---------|-----------|-------------|-------------|\n"
+            "| **Finance** | **87** | 85 | 88 | 92 | 85 | 88 |\n"
+            "| **Legal** | **86** | 82 | 90 | 85 | 88 | 85 |\n"
+            "| **ProductTech** | **85** | 84 | 86 | 88 | 85 | 83 |\n"
+            "| **Commercial** | **71** | 68 | 75 | 65 | 72 | 80 |\n\n"
+            "**Overall Run Score: 82**\n"
+        )
+        result = JudgeAgent._extract_scores_from_prose(prose)
+        assert result is not None
+        assert result["agent_scores"]["finance"]["score"] == 87
+        assert result["agent_scores"]["legal"]["score"] == 86
+        assert result["agent_scores"]["producttech"]["score"] == 85
+        assert result["agent_scores"]["commercial"]["score"] == 71
+        assert result["overall_quality"] == 82
+        # Verify dimension extraction from table columns.
+        fin_dims = result["agent_scores"]["finance"]["dimensions"]
+        assert fin_dims.get("citation_verification") == 85
+        assert fin_dims.get("contextual_validation") == 88
+        assert fin_dims.get("financial_accuracy") == 92
+
+    def test_extract_overall_run_score_variant(self) -> None:
+        """Overall score is extracted from 'Overall Run Score' wording."""
+        from dd_agents.agents.judge import JudgeAgent
+
+        prose = "| **Legal** | **90** |\n**Overall Run Score: 88**\n"
+        result = JudgeAgent._extract_scores_from_prose(prose)
+        assert result is not None
+        assert result["overall_quality"] == 88
+
     def test_build_scores_with_prose_fallback(self) -> None:
         """When JSON parsing yields no agent_scores, prose extraction is tried."""
         from dd_agents.agents.judge import JudgeAgent

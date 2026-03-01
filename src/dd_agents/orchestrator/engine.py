@@ -1631,19 +1631,31 @@ class PipelineEngine:
                 # its Write tool during the SDK session.  If that file
                 # contains richer data than what we parsed from the text
                 # stream (common: the stream is prose, the file is JSON),
-                # prefer the agent's file.
-                if scores.overall_quality == 0 and not scores.agent_scores and scores_path.exists():
-                    try:
-                        on_disk = json.loads(scores_path.read_text())
-                        if on_disk.get("agent_scores") and on_disk.get("overall_quality", 0) > 0:
-                            logger.info(
-                                "Judge text stream yielded empty scores; "
-                                "recovering from agent-written file (overall=%d)",
-                                on_disk["overall_quality"],
-                            )
-                            scores = QualityScores.model_validate(on_disk)
-                    except (json.JSONDecodeError, OSError, Exception) as exc:  # noqa: BLE001
-                        logger.warning("Failed to recover judge scores from disk: %s", exc)
+                # prefer the agent's file.  Search multiple candidate paths
+                # since the agent's cwd is project_dir and it may write
+                # relative or absolute paths.
+                if scores.overall_quality == 0 and not scores.agent_scores:
+                    candidate_paths = [
+                        scores_path,
+                        state.project_dir / "judge" / "quality_scores.json",
+                        state.run_dir / "audit" / "judge" / "quality_scores.json",
+                    ]
+                    for candidate in candidate_paths:
+                        if not candidate.exists():
+                            continue
+                        try:
+                            on_disk = json.loads(candidate.read_text())
+                            if on_disk.get("agent_scores") and on_disk.get("overall_quality", 0) > 0:
+                                logger.info(
+                                    "Judge text stream yielded empty scores; "
+                                    "recovering from agent-written file %s (overall=%d)",
+                                    candidate,
+                                    on_disk["overall_quality"],
+                                )
+                                scores = QualityScores.model_validate(on_disk)
+                                break
+                        except (json.JSONDecodeError, OSError, Exception) as exc:  # noqa: BLE001
+                            logger.warning("Failed to recover judge scores from %s: %s", candidate, exc)
 
                 scores_path.write_text(scores.model_dump_json(indent=2))
 

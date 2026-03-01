@@ -216,8 +216,8 @@ class JudgeAgent(BaseAgentRunner):
 
         When the Judge outputs prose instead of JSON, look for patterns like:
         - "Legal: 85/100" or "legal score: 85"
-        - "Overall quality: 78"
-        - "Citation Verification: 90"
+        - "Overall quality: 78" or "Overall Run Score: 82"
+        - Markdown table rows: ``| **Finance** | **87** | 85 | 88 | ...``
 
         Returns a dict shaped like ``{"agent_scores": {...}, "overall_quality": N}``
         or ``None`` if no scores could be extracted.
@@ -236,13 +236,22 @@ class JudgeAgent(BaseAgentRunner):
         agent_scores: dict[str, dict[str, Any]] = {}
 
         for agent in agent_names:
-            # Match patterns like "Legal: 85/100", "legal score: 85",
-            # "Legal agent: 85", "legal = 85"
-            pattern = _re.compile(
+            # Strategy A: prose patterns -- "Legal: 85/100", "legal score: 85"
+            prose_pattern = _re.compile(
                 rf"\b{agent}\b[^:\n]{{0,30}}[:=]\s*(\d{{1,3}})(?:\s*/\s*100)?",
                 _re.IGNORECASE,
             )
-            match = pattern.search(raw_text)
+            match = prose_pattern.search(raw_text)
+
+            # Strategy B: markdown table -- "| **Finance** | **87** |"
+            # Captures the first number after the agent name in a pipe-delimited row.
+            if not match:
+                table_pattern = _re.compile(
+                    rf"\|\s*\**{agent}\**\s*\|\s*\**(\d{{1,3}})\**",
+                    _re.IGNORECASE,
+                )
+                match = table_pattern.search(raw_text)
+
             if match:
                 score = min(int(match.group(1)), 100)
                 dims: dict[str, int] = {}
@@ -250,7 +259,28 @@ class JudgeAgent(BaseAgentRunner):
                 agent_section_start = max(0, match.start() - 50)
                 agent_section_end = min(len(raw_text), match.end() + 1000)
                 section = raw_text[agent_section_start:agent_section_end]
+
+                # For table rows, find the line containing the matched agent
+                # name and extract pipe-delimited numbers as dimensions.
+                match_offset = match.start() - agent_section_start
+                line_start = section.rfind("\n", 0, match_offset) + 1
+                line_end = section.find("\n", match_offset)
+                if line_end == -1:
+                    line_end = len(section)
+                row_text = section[line_start:line_end]
+                row_nums = [int(n) for n in _re.findall(r"(?<!\w)(\d{1,3})(?!\w)", row_text)]
+                # First number is the agent score, remaining are dimension
+                # scores in table column order.
+                if len(row_nums) > 1:
+                    dim_values = row_nums[1:]
+                    for i, dim_name in enumerate(dimension_names):
+                        if i < len(dim_values):
+                            dims[dim_name] = min(dim_values[i], 100)
+
+                # Also try explicit "dim_name: N" patterns (prose format).
                 for dim in dimension_names:
+                    if dim in dims:
+                        continue
                     dim_label = dim.replace("_", "[_ ]")
                     dim_pattern = _re.compile(
                         rf"\b{dim_label}\b[^:\n]{{0,20}}[:=]\s*(\d{{1,3}})",
@@ -266,8 +296,9 @@ class JudgeAgent(BaseAgentRunner):
 
         # Extract overall quality.
         overall = 0
+        # Match "Overall quality: 78", "Overall Run Score: 82", "overall score = 85"
         overall_pattern = _re.compile(
-            r"overall[_ ](?:quality|score)[^:\n]{0,20}[:=]\s*(\d{1,3})",
+            r"overall[_ ](?:quality|(?:\w+[_ ])?score)[^:\n]{0,20}[:=]\s*(\d{1,3})",
             _re.IGNORECASE,
         )
         overall_match = overall_pattern.search(raw_text)
