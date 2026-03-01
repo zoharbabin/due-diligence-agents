@@ -275,14 +275,31 @@ class BaseAgentRunner(ABC):
             )
             return ""
 
+        # Build system prompt with hard anti-sub-agent constraint.
+        # The system prompt is the most authoritative prompt layer — the LLM
+        # treats it as developer instructions.  User-prompt-level rules were
+        # observed to be ignored, so this constraint MUST be in the system prompt.
+        base_system = self.get_system_prompt()
+        system_prompt = (
+            f"{base_system}\n\n"
+            "CRITICAL CONSTRAINTS (NEVER VIOLATE):\n"
+            "1. You do NOT have access to the Agent tool. NEVER attempt to spawn "
+            "sub-agents, background agents, or parallel agents. You are a single "
+            "agent — process all customers yourself, sequentially, in this session.\n"
+            "2. You do NOT have access to the Bash tool. Do not attempt shell commands.\n"
+            "3. Do NOT read or validate existing output files before writing. Write "
+            "fresh output directly. If a file exists at the output path, overwrite it.\n"
+            "4. Do NOT summarize progress or produce status reports. Write JSON files "
+            "and move to the next customer immediately."
+        )
+
         options = _ClaudeAgentOptions(
-            system_prompt=self.get_system_prompt(),
+            system_prompt=system_prompt,
             model=self.get_model_id(),
             max_turns=self.max_turns,
             permission_mode="bypassPermissions",
             cwd=str(self.project_dir),
             allowed_tools=self.get_tools(),
-            disallowed_tools=["Agent", "Bash"],
             max_buffer_size=self._compute_buffer_size(),
         )
 

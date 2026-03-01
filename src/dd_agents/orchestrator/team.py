@@ -40,8 +40,10 @@ DEFAULT_STALL_THRESHOLD_S: int = 10 * 60  # 10 minutes with no output
 # Adaptive timeout parameters (Issue #42)
 BASE_TIMEOUT_S: int = 1800  # 30 minutes base
 PER_CUSTOMER_TIMEOUT_S: int = 120  # 2 minutes per customer
+MAX_TIMEOUT_S: int = 60 * 60  # 60 minutes hard cap
 WARN_NO_OUTPUT_S: int = 5 * 60  # 5 minutes -- log WARNING
 STALL_NO_OUTPUT_S: int = 10 * 60  # 10 minutes -- consider stalled
+STALL_CANCEL_S: int = 15 * 60  # 15 minutes -- cancel stalled tasks
 
 
 # ---------------------------------------------------------------------------
@@ -164,6 +166,8 @@ class AgentTeam:
             self._agent_last_activity[agent_name] = time.monotonic()
 
         # Start filesystem monitor alongside agent tasks (Issue #42).
+        # The monitor also performs stall-based cancellation: if no new output
+        # files appear for STALL_CANCEL_S seconds, it cancels stalled tasks.
         stop_monitor = asyncio.Event()
         monitor_task: asyncio.Task[None] | None = None
         run_dir = getattr(self.state, "run_dir", None)
@@ -176,6 +180,8 @@ class AgentTeam:
                     findings_dir,
                     agent_names,
                     stop_event=stop_monitor,
+                    agent_tasks=tasks,
+                    total_customers=len(self.state.customer_safe_names),
                 ),
                 name="agent-output-monitor",
             )
@@ -572,12 +578,14 @@ class AgentTeam:
         num_batches: int = 1,
         base_timeout_s: int = BASE_TIMEOUT_S,
         per_customer_s: int = PER_CUSTOMER_TIMEOUT_S,
+        max_timeout_s: int = MAX_TIMEOUT_S,
     ) -> int:
         """Calculate an adaptive timeout based on customers and batch count.
 
         When agents run multiple batches sequentially (e.g. 4 batches of 20
         customers each), each batch needs its own time budget.  The timeout
-        is calculated per-batch and then multiplied by the batch count.
+        is calculated per-batch and then multiplied by the batch count,
+        capped at ``max_timeout_s`` (default 60 min).
 
         Parameters
         ----------
@@ -590,16 +598,19 @@ class AgentTeam:
             Fixed base timeout in seconds (default 1800 = 30 min).
         per_customer_s:
             Additional seconds per customer (default 120 = 2 min).
+        max_timeout_s:
+            Hard cap on calculated timeout (default 3600 = 60 min).
 
         Returns
         -------
         int
-            Calculated timeout in seconds.
+            Calculated timeout in seconds, capped at *max_timeout_s*.
         """
         effective_batches = max(1, num_batches)
         # Each batch gets the base timeout + per-customer time for its share.
         per_batch = base_timeout_s + (num_customers * per_customer_s) // effective_batches
-        return per_batch * effective_batches
+        raw = per_batch * effective_batches
+        return min(raw, max_timeout_s)
 
     # ------------------------------------------------------------------
     # Filesystem-based output monitoring (Issue #42)
@@ -679,7 +690,10 @@ class AgentTeam:
         check_interval_s: float | None = None,
         warn_threshold_s: float | None = None,
         stall_threshold_s: float | None = None,
+        cancel_threshold_s: float | None = None,
         stop_event: asyncio.Event | None = None,
+        agent_tasks: dict[str, asyncio.Task[dict[str, Any]]] | None = None,
+        total_customers: int = 0,
     ) -> None:
         """Continuously monitor *output_dir* for new files with live progress.
 
@@ -687,8 +701,9 @@ class AgentTeam:
         counts customer output files per agent and logs a progress summary.
 
         - After ``warn_threshold_s`` seconds with no new files: log WARNING.
-        - After ``stall_threshold_s`` seconds with no new files: log ERROR
-          and update ``_agent_last_activity`` to reflect the stall.
+        - After ``stall_threshold_s`` seconds with no new files: log ERROR.
+        - After ``cancel_threshold_s`` seconds with no new files: CANCEL
+          stalled agent tasks.
 
         Parameters
         ----------
@@ -697,34 +712,44 @@ class AgentTeam:
         agent_names:
             Agent names being monitored (for logging).
         check_interval_s:
-            Seconds between checks (default: 15s for progress, or
-            ``liveness_interval_s`` for stall detection).
+            Seconds between checks (default: 15s).
         warn_threshold_s:
             Seconds without output before WARNING (default: ``WARN_NO_OUTPUT_S``).
         stall_threshold_s:
             Seconds without output before stall declaration
             (default: ``STALL_NO_OUTPUT_S``).
+        cancel_threshold_s:
+            Seconds without output before cancelling stalled tasks
+            (default: ``STALL_CANCEL_S``).
         stop_event:
             When set, the monitor exits its loop.
+        agent_tasks:
+            Mapping of agent name to asyncio.Task — used to cancel stalled
+            tasks after ``cancel_threshold_s`` elapses.
+        total_customers:
+            Total number of customers being processed.
         """
         # Use a shorter interval for progress display (15s) while keeping
         # the stall detection thresholds unchanged.
         interval = check_interval_s if check_interval_s is not None else 15.0
         warn_s = warn_threshold_s if warn_threshold_s is not None else float(WARN_NO_OUTPUT_S)
         stall_s = stall_threshold_s if stall_threshold_s is not None else float(STALL_NO_OUTPUT_S)
+        cancel_s = cancel_threshold_s if cancel_threshold_s is not None else float(STALL_CANCEL_S)
         evt = stop_event or asyncio.Event()
 
         last_seen_mtime = self._latest_file_mtime(output_dir)
         last_new_file_time = time.monotonic()
         start_time = time.monotonic()
         warned = False
+        cancelled = False
 
         # Record wall-clock epoch for "since" tracking — files modified
         # after this timestamp are counted as actively written this run.
         monitor_epoch = time.time()
 
-        # Track total customer count for progress percentage.
-        total_customers = len(getattr(self.state, "customer_safe_names", []))
+        # Use provided total_customers; fall back to state attribute.
+        if total_customers <= 0:
+            total_customers = len(getattr(self.state, "customer_safe_names", []))
 
         while not evt.is_set():
             try:
@@ -763,19 +788,39 @@ class AgentTeam:
                 progress_line,
             )
 
-            # Stall detection (unchanged logic).
+            # Stall detection and cancellation.
             current_mtime = self._latest_file_mtime(output_dir)
             if current_mtime is not None and (last_seen_mtime is None or current_mtime > last_seen_mtime):
                 last_seen_mtime = current_mtime
                 last_new_file_time = time.monotonic()
                 warned = False
+                cancelled = False
                 for name in agent_names:
                     self.record_activity(name)
                 continue
 
             elapsed_since_last = time.monotonic() - last_new_file_time
 
-            if elapsed_since_last >= stall_s:
+            # Cancel stalled tasks after cancel_threshold_s (default 15 min).
+            if elapsed_since_last >= cancel_s and not cancelled and agent_tasks:
+                cancelled = True
+                stalled = self.detect_stalled_agents()
+                if stalled:
+                    logger.error(
+                        "CANCELLING stalled agents (no new output for %.0fs): %s",
+                        elapsed_since_last,
+                        ", ".join(stalled),
+                    )
+                    for name in stalled:
+                        task = agent_tasks.get(name)
+                        if task is not None and not task.done():
+                            logger.warning("Cancelling task for stalled agent: %s", name)
+                            task.cancel()
+                    # Signal stop — remaining agents will be collected by
+                    # wait_for_agents with their partial results.
+                    evt.set()
+                    break
+            elif elapsed_since_last >= stall_s:
                 stalled = self.detect_stalled_agents()
                 if stalled:
                     logger.error(

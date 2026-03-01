@@ -1273,8 +1273,8 @@ class TestAgentTeamAdaptiveTimeout:
         from dd_agents.orchestrator.team import AgentTeam
 
         result = AgentTeam.calculate_adaptive_timeout(100)
-        # 1800 + 100 * 120 = 13800
-        assert result == 13800
+        # 1800 + 100 * 120 = 13800, capped at MAX_TIMEOUT_S (3600)
+        assert result == 3600
 
     def test_custom_base_and_per_customer(self) -> None:
         from dd_agents.orchestrator.team import AgentTeam
@@ -1297,20 +1297,20 @@ class TestAgentTeamAdaptiveTimeout:
     def test_multiple_batches_increases_timeout(self) -> None:
         from dd_agents.orchestrator.team import AgentTeam
 
-        # 80 customers, 4 batches:
+        # 80 customers, 4 batches (uncapped raw values shown):
         # per_batch = 1800 + (80 * 120) // 4 = 1800 + 2400 = 4200
-        # total = 4200 * 4 = 16800
+        # total = 4200 * 4 = 16800 → capped at 3600
         result = AgentTeam.calculate_adaptive_timeout(80, num_batches=4)
-        assert result == 16800
+        assert result == 3600
 
         # Same 80 customers with 1 batch (default):
         # per_batch = 1800 + (80 * 120) // 1 = 1800 + 9600 = 11400
-        # total = 11400 * 1 = 11400
+        # total = 11400 * 1 = 11400 → capped at 3600
         single = AgentTeam.calculate_adaptive_timeout(80, num_batches=1)
-        assert single == 11400
+        assert single == 3600
 
-        # Multi-batch should be larger because each batch gets its own base
-        assert result > single
+        # Both are capped at the same value
+        assert result == single
 
     def test_num_batches_zero_treated_as_one(self) -> None:
         from dd_agents.orchestrator.team import AgentTeam
@@ -1318,6 +1318,25 @@ class TestAgentTeamAdaptiveTimeout:
         result = AgentTeam.calculate_adaptive_timeout(10, num_batches=0)
         expected = AgentTeam.calculate_adaptive_timeout(10, num_batches=1)
         assert result == expected
+
+    def test_max_timeout_cap(self) -> None:
+        from dd_agents.orchestrator.team import AgentTeam
+
+        # Without cap: 1800 + 50 * 120 = 7800
+        # With default cap (3600): should be capped
+        result = AgentTeam.calculate_adaptive_timeout(50)
+        assert result == 3600
+
+        # With custom cap: 7200 allows the raw value through if under cap
+        result_high_cap = AgentTeam.calculate_adaptive_timeout(50, max_timeout_s=10000)
+        assert result_high_cap == 7800
+
+    def test_below_cap_not_reduced(self) -> None:
+        from dd_agents.orchestrator.team import AgentTeam
+
+        # 5 customers: 1800 + 5*120 = 2400, under 3600 cap
+        result = AgentTeam.calculate_adaptive_timeout(5)
+        assert result == 2400
 
 
 class TestAgentTeamStallDetection:
@@ -3233,3 +3252,119 @@ class TestBatchConcurrencyConfig:
         assert -(-7 // 3) == 3
         # 1 batch, concurrency 3 → 1 wave
         assert -(-1 // 3) == 1
+
+
+# =========================================================================
+# Stall cancellation constants test
+# =========================================================================
+
+
+class TestStallCancellationConstants:
+    """Tests for the stall cancellation threshold."""
+
+    def test_stall_cancel_threshold_exists(self) -> None:
+        from dd_agents.orchestrator.team import STALL_CANCEL_S, STALL_NO_OUTPUT_S
+
+        # Cancel threshold must be > stall threshold (cancel after stall)
+        assert STALL_CANCEL_S > STALL_NO_OUTPUT_S
+        # Default: 15 minutes
+        assert STALL_CANCEL_S == 15 * 60
+
+    def test_max_timeout_exists(self) -> None:
+        from dd_agents.orchestrator.team import MAX_TIMEOUT_S
+
+        # Default: 60 minutes hard cap
+        assert MAX_TIMEOUT_S == 60 * 60
+
+
+class TestMonitorCancellationParams:
+    """Tests for the monitor_agent_output cancellation parameters."""
+
+    @pytest.mark.asyncio
+    async def test_monitor_accepts_agent_tasks(self, tmp_path: Path) -> None:
+        """monitor_agent_output accepts agent_tasks kwarg for stall cancellation."""
+        import asyncio
+        from typing import Any
+
+        from dd_agents.orchestrator.team import AgentTeam
+
+        state = PipelineState(
+            run_id="cancel_test",
+            project_dir=tmp_path,
+        )
+        team = AgentTeam(state)
+
+        # Create a stop event and set it immediately to terminate the monitor
+        stop_event = asyncio.Event()
+        stop_event.set()
+
+        output_dir = tmp_path / "findings"
+        output_dir.mkdir(parents=True)
+
+        # Create a mock task dict
+        mock_tasks: dict[str, asyncio.Task[dict[str, Any]]] = {}
+
+        # Should not raise — tests that the kwarg is accepted
+        await team.monitor_agent_output(
+            output_dir,
+            ["legal"],
+            stop_event=stop_event,
+            agent_tasks=mock_tasks,
+            total_customers=10,
+        )
+
+    @pytest.mark.asyncio
+    async def test_monitor_cancels_stalled_tasks(self, tmp_path: Path) -> None:
+        """When cancel threshold is exceeded, monitor cancels stalled tasks."""
+        import asyncio
+        import time
+        from typing import Any
+
+        from dd_agents.orchestrator.team import AgentTeam
+
+        state = PipelineState(
+            run_id="cancel_test2",
+            project_dir=tmp_path,
+        )
+        state.customer_safe_names = ["cust_a", "cust_b"]
+        team = AgentTeam(state, stall_threshold_s=1)
+
+        output_dir = tmp_path / "findings"
+        output_dir.mkdir(parents=True)
+
+        # Track whether task was cancelled
+        cancelled = False
+
+        async def mock_agent() -> dict[str, Any]:
+            nonlocal cancelled
+            try:
+                await asyncio.sleep(999)
+            except asyncio.CancelledError:
+                cancelled = True
+                raise
+            return {"agent": "legal", "status": "completed"}
+
+        task = asyncio.create_task(mock_agent())
+        mock_tasks: dict[str, asyncio.Task[dict[str, Any]]] = {"legal": task}
+
+        # Set the agent's last activity to the past
+        team._agent_last_activity["legal"] = time.monotonic() - 120
+
+        stop_event = asyncio.Event()
+
+        # Run monitor with very short thresholds so it triggers immediately
+        await team.monitor_agent_output(
+            output_dir,
+            ["legal"],
+            check_interval_s=0.05,
+            warn_threshold_s=0.01,
+            stall_threshold_s=0.02,
+            cancel_threshold_s=0.03,
+            stop_event=stop_event,
+            agent_tasks=mock_tasks,
+            total_customers=2,
+        )
+
+        # Give the cancellation a moment to propagate
+        await asyncio.sleep(0.05)
+        assert cancelled or task.cancelled()

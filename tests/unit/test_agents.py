@@ -1752,3 +1752,165 @@ class TestJudgeScoreExtractionMalformedJSON:
         }
         scores = JudgeAgent._build_scores_from_result(result, round_num=1)
         assert scores.agent_scores["legal"].pass_count == 7
+
+
+# =========================================================================
+# System prompt anti-sub-agent constraint tests
+# =========================================================================
+
+
+class TestSystemPromptConstraints:
+    """Verify that _spawn_agent injects anti-sub-agent constraints into the system prompt."""
+
+    @pytest.mark.asyncio
+    async def test_system_prompt_contains_anti_sub_agent(
+        self,
+        tmp_project: Path,
+        tmp_run_dir: Path,
+        run_id: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The system prompt passed to SDK must forbid Agent tool usage."""
+        import dd_agents.agents.base as base_mod
+
+        captured_options: list[object] = []
+
+        class MockOptions:
+            def __init__(self, **kwargs: object) -> None:
+                self.kwargs = kwargs
+                captured_options.append(self)
+
+        class MockTextBlock:
+            def __init__(self, text: str) -> None:
+                self.text = text
+
+        class MockAssistantMessage:
+            def __init__(self, text: str) -> None:
+                self.content = [MockTextBlock(text)]
+
+        class MockResultMessage:
+            is_error = False
+            result = ""
+
+        async def mock_query(prompt: str, options: object) -> object:  # type: ignore[misc]
+            yield MockAssistantMessage("test output")
+
+        monkeypatch.setattr(base_mod, "_HAS_SDK", True)
+        monkeypatch.setattr(base_mod, "_query", mock_query)
+        monkeypatch.setattr(base_mod, "_AssistantMessage", MockAssistantMessage)
+        monkeypatch.setattr(base_mod, "_TextBlock", MockTextBlock)
+        monkeypatch.setattr(base_mod, "_ResultMessage", MockResultMessage)
+        monkeypatch.setattr(base_mod, "_ClaudeAgentOptions", MockOptions)
+
+        agent = LegalAgent(tmp_project, tmp_run_dir, run_id)
+        await agent._spawn_agent("test prompt")
+
+        assert len(captured_options) == 1
+        opts = captured_options[0]
+        system_prompt = opts.kwargs["system_prompt"]  # type: ignore[union-attr]
+
+        # Must contain the anti-sub-agent constraint
+        assert "NEVER" in system_prompt and "sub-agent" in system_prompt
+        assert "Agent tool" in system_prompt
+        assert "CRITICAL CONSTRAINTS" in system_prompt
+
+        # Must also contain the original specialist system prompt
+        assert "Legal specialist" in system_prompt
+
+    @pytest.mark.asyncio
+    async def test_system_prompt_contains_no_bash(
+        self,
+        tmp_project: Path,
+        tmp_run_dir: Path,
+        run_id: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The system prompt must forbid Bash tool usage."""
+        import dd_agents.agents.base as base_mod
+
+        captured_options: list[object] = []
+
+        class MockOptions:
+            def __init__(self, **kwargs: object) -> None:
+                self.kwargs = kwargs
+                captured_options.append(self)
+
+        class MockTextBlock:
+            def __init__(self, text: str) -> None:
+                self.text = text
+
+        class MockAssistantMessage:
+            def __init__(self, text: str) -> None:
+                self.content = [MockTextBlock(text)]
+
+        class MockResultMessage:
+            is_error = False
+            result = ""
+
+        async def mock_query(prompt: str, options: object) -> object:  # type: ignore[misc]
+            yield MockAssistantMessage("test output")
+
+        monkeypatch.setattr(base_mod, "_HAS_SDK", True)
+        monkeypatch.setattr(base_mod, "_query", mock_query)
+        monkeypatch.setattr(base_mod, "_AssistantMessage", MockAssistantMessage)
+        monkeypatch.setattr(base_mod, "_TextBlock", MockTextBlock)
+        monkeypatch.setattr(base_mod, "_ResultMessage", MockResultMessage)
+        monkeypatch.setattr(base_mod, "_ClaudeAgentOptions", MockOptions)
+
+        agent = FinanceAgent(tmp_project, tmp_run_dir, run_id)
+        await agent._spawn_agent("test prompt")
+
+        assert len(captured_options) == 1
+        opts = captured_options[0]
+        system_prompt = opts.kwargs["system_prompt"]  # type: ignore[union-attr]
+
+        assert "Bash tool" in system_prompt
+        assert "Finance specialist" in system_prompt
+
+    @pytest.mark.asyncio
+    async def test_no_disallowed_tools_parameter(
+        self,
+        tmp_project: Path,
+        tmp_run_dir: Path,
+        run_id: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """disallowed_tools should NOT be passed to SDK (parameter was removed)."""
+        import dd_agents.agents.base as base_mod
+
+        captured_options: list[object] = []
+
+        class MockOptions:
+            def __init__(self, **kwargs: object) -> None:
+                self.kwargs = kwargs
+                captured_options.append(self)
+
+        class MockTextBlock:
+            def __init__(self, text: str) -> None:
+                self.text = text
+
+        class MockAssistantMessage:
+            def __init__(self, text: str) -> None:
+                self.content = [MockTextBlock(text)]
+
+        class MockResultMessage:
+            is_error = False
+            result = ""
+
+        async def mock_query(prompt: str, options: object) -> object:  # type: ignore[misc]
+            yield MockAssistantMessage("test output")
+
+        monkeypatch.setattr(base_mod, "_HAS_SDK", True)
+        monkeypatch.setattr(base_mod, "_query", mock_query)
+        monkeypatch.setattr(base_mod, "_AssistantMessage", MockAssistantMessage)
+        monkeypatch.setattr(base_mod, "_TextBlock", MockTextBlock)
+        monkeypatch.setattr(base_mod, "_ResultMessage", MockResultMessage)
+        monkeypatch.setattr(base_mod, "_ClaudeAgentOptions", MockOptions)
+
+        agent = CommercialAgent(tmp_project, tmp_run_dir, run_id)
+        await agent._spawn_agent("test prompt")
+
+        assert len(captured_options) == 1
+        opts = captured_options[0]
+        # disallowed_tools was removed because it doesn't work
+        assert "disallowed_tools" not in opts.kwargs  # type: ignore[union-attr]
