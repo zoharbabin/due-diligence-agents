@@ -547,18 +547,12 @@ class ExcelReportGenerator:
 
     @staticmethod
     def _is_activated(sheet_def: SheetDef, deal_config: dict[str, Any]) -> bool:
-        """Evaluate sheet activation condition against the deal config."""
-        cond = sheet_def.activation_condition
-        if cond == "always":
-            return True
-        if "judge.enabled" in cond:
-            return bool(deal_config.get("judge", {}).get("enabled", False))
-        if "source_of_truth.customer_database" in cond:
-            return bool(deal_config.get("source_of_truth", {}).get("customer_database"))
-        if "prior run exists" in cond and "include_diff_sheet" in cond:
-            return bool(deal_config.get("reporting", {}).get("include_diff_sheet", False))
-        if "include_metadata_sheet" in cond:
-            return bool(deal_config.get("reporting", {}).get("include_metadata_sheet", False))
+        """Always activate all sheets so the workbook has all 14 tabs.
+
+        Conditional sheets (Quality_Audit, Run_Diff, _Metadata,
+        Contract_Date_Reconciliation) may have zero data rows, but they
+        still appear with headers so the report structure is complete.
+        """
         return True
 
     @staticmethod

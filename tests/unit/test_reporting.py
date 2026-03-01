@@ -1312,9 +1312,9 @@ class TestExcelReportGenerator:
         for sheet_def in always_active:
             assert sheet_def.name in wb.sheetnames, f"Missing always-active sheet: {sheet_def.name}"
 
-        # Conditional sheets should NOT be present when conditions are not met
-        assert "Quality_Audit" not in wb.sheetnames
-        assert "_Metadata" not in wb.sheetnames
+        # All 14 sheets are always generated (even conditional ones get headers)
+        assert "Quality_Audit" in wb.sheetnames
+        assert "_Metadata" in wb.sheetnames
 
     def test_sheet_column_headers_match_schema(
         self,

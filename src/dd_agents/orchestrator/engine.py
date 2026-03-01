@@ -13,6 +13,7 @@ agent failures.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import time
@@ -2158,6 +2159,85 @@ class PipelineEngine:
         )
         return state
 
+    def _build_run_metadata_for_excel(
+        self,
+        state: PipelineState,
+        merged_findings: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Build run_metadata dict for Excel generation.
+
+        Collects quality_scores, entity_matches, reference_files, and
+        run-level statistics so conditional sheets have data to render.
+        """
+        run_metadata: dict[str, Any] = {
+            "run_id": state.run_id,
+            "execution_mode": state.execution_mode,
+            "framework_version": state.framework_version,
+        }
+
+        inv_dir = self._inventory_dir(state)
+
+        # Quality scores (for Quality_Audit sheet)
+        for candidate in [
+            state.run_dir / "quality_scores.json",
+            state.run_dir / "audit" / "quality_scores.json",
+            state.run_dir / "audit" / "judge" / "quality_scores.json",
+        ]:
+            if candidate.exists():
+                try:
+                    run_metadata["quality_scores"] = json.loads(candidate.read_text())
+                    break
+                except (json.JSONDecodeError, OSError):
+                    continue
+
+        # Entity matches (for Entity_Resolution_Log sheet)
+        entity_path = inv_dir / "entity_matches.json"
+        if entity_path.exists():
+            with contextlib.suppress(json.JSONDecodeError, OSError):
+                run_metadata["entity_matches"] = json.loads(entity_path.read_text())
+
+        # Reference files (for Reference_Files_Index sheet)
+        ref_path = inv_dir / "reference_files.json"
+        if ref_path.exists():
+            try:
+                data = json.loads(ref_path.read_text())
+                run_metadata["reference_files"] = data if isinstance(data, list) else data.get("files", [])
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        # Contract date reconciliation
+        for candidate in [
+            state.run_dir / "contract_date_reconciliation.json",
+            inv_dir / "contract_date_reconciliation.json",
+        ]:
+            if candidate.exists():
+                try:
+                    run_metadata["contract_date_reconciliation"] = json.loads(candidate.read_text())
+                    break
+                except (json.JSONDecodeError, OSError):
+                    continue
+
+        # Finding and gap counts from merged data
+        total_findings = 0
+        total_gaps = 0
+        sev_counts: dict[str, int] = {"P0": 0, "P1": 0, "P2": 0, "P3": 0}
+        for _csn, data in merged_findings.items():
+            if not isinstance(data, dict):
+                continue
+            findings = data.get("findings", [])
+            total_findings += len(findings)
+            total_gaps += len(data.get("gaps", []))
+            for f in findings:
+                sev = f.get("severity", "P3")
+                if sev in sev_counts:
+                    sev_counts[sev] += 1
+
+        run_metadata["finding_counts"] = {**sev_counts, "total": total_findings}
+        run_metadata["gap_counts"] = {"total": total_gaps}
+        run_metadata["customer_count"] = len(merged_findings)
+
+        return run_metadata
+
     async def _step_30_generate_excel(self, state: PipelineState) -> PipelineState:
         """Generate Excel workbook from report_schema.json.
 
@@ -2263,11 +2343,16 @@ class PipelineEngine:
         report_dir.mkdir(parents=True, exist_ok=True)
         output_path = report_dir / "dd_report.xlsx"
 
+        # Build run_metadata from pipeline state so conditional sheets
+        # (Quality_Audit, _Metadata, etc.) have data to render.
+        run_metadata = self._build_run_metadata_for_excel(state, merged_findings)
+
         generator.generate(
             merged_findings=merged_findings,
             report_schema=schema,
             output_path=output_path,
             deal_config=state.deal_config,
+            run_metadata=run_metadata,
         )
 
         logger.info("Excel report generated: %s", output_path)
@@ -2329,12 +2414,24 @@ class PipelineEngine:
     # Phase 7: Finalization -------------------------------------------------
 
     async def _step_32_finalize_metadata(self, state: PipelineState) -> PipelineState:
-        """Write metadata.json, update 'latest' symlink."""
+        """Write metadata.json, update 'latest' symlink.
+
+        Populates all RunMetadata fields from pipeline state including
+        finding_counts, gap_counts, agent_scores, customer_assignments,
+        and batch_counts.
+        """
         from dd_agents.models.enums import CompletionStatus, ExecutionMode
         from dd_agents.models.persistence import RunMetadata
         from dd_agents.persistence.run_manager import RunManager
 
         run_mgr = RunManager(state.project_dir)
+
+        # Compute finding/gap counts from merged data
+        finding_counts = self._compute_finding_counts(state)
+        gap_counts = self._compute_gap_counts(state)
+        agent_scores = self._collect_agent_scores(state)
+        customer_assignments = self._collect_customer_assignments(state)
+        batch_counts = getattr(state, "batch_counts", {}) or {}
 
         metadata = RunMetadata(
             run_id=state.run_id,
@@ -2344,11 +2441,85 @@ class PipelineEngine:
             config_hash=state.config_hash,
             framework_version=state.framework_version,
             completion_status=CompletionStatus.COMPLETED,
+            finding_counts=finding_counts,
+            gap_counts=gap_counts,
+            agent_scores=agent_scores,
+            customer_assignments=customer_assignments,
+            batch_counts=batch_counts,
         )
 
         run_mgr.finalize_run(metadata)
         logger.info("Run finalized: %s", state.run_id)
         return state
+
+    def _compute_finding_counts(self, state: PipelineState) -> dict[str, int]:
+        """Compute per-severity finding counts from merged findings."""
+        merged_dir = state.run_dir / "findings" / "merged"
+        counts: dict[str, int] = {"P0": 0, "P1": 0, "P2": 0, "P3": 0, "total": 0}
+        if not merged_dir.exists():
+            return counts
+        for jf in merged_dir.glob("*.json"):
+            try:
+                data = json.loads(jf.read_text())
+                for f in data.get("findings", []):
+                    sev = f.get("severity", "P3")
+                    if sev in counts:
+                        counts[sev] += 1
+                    counts["total"] += 1
+            except (json.JSONDecodeError, OSError):
+                continue
+        return counts
+
+    def _compute_gap_counts(self, state: PipelineState) -> dict[str, int]:
+        """Compute gap counts from merged findings."""
+        merged_dir = state.run_dir / "findings" / "merged"
+        total = 0
+        if merged_dir.exists():
+            for jf in merged_dir.glob("*.json"):
+                try:
+                    data = json.loads(jf.read_text())
+                    total += len(data.get("gaps", []))
+                except (json.JSONDecodeError, OSError):
+                    continue
+        return {"total": total}
+
+    def _collect_agent_scores(self, state: PipelineState) -> dict[str, int]:
+        """Collect judge agent scores from quality_scores.json."""
+        for candidate in [
+            state.run_dir / "quality_scores.json",
+            state.run_dir / "audit" / "quality_scores.json",
+            state.run_dir / "audit" / "judge" / "quality_scores.json",
+        ]:
+            if candidate.exists():
+                try:
+                    data = json.loads(candidate.read_text())
+                    raw_scores = data.get("agent_scores", {})
+                    return {
+                        name: (s.get("score", 0) if isinstance(s, dict) else int(s)) for name, s in raw_scores.items()
+                    }
+                except (json.JSONDecodeError, OSError, ValueError):
+                    continue
+        return {}
+
+    def _collect_customer_assignments(self, state: PipelineState) -> dict[str, list[str]]:
+        """Collect customer → agents mapping from merged findings."""
+        merged_dir = state.run_dir / "findings" / "merged"
+        assignments: dict[str, list[str]] = {}
+        if not merged_dir.exists():
+            return assignments
+        for jf in merged_dir.glob("*.json"):
+            try:
+                data = json.loads(jf.read_text())
+                csn = jf.stem
+                agents: set[str] = set()
+                for f in data.get("findings", []):
+                    agent = f.get("agent", "")
+                    if agent:
+                        agents.add(agent)
+                assignments[csn] = sorted(agents)
+            except (json.JSONDecodeError, OSError):
+                continue
+        return assignments
 
     async def _step_33_update_run_history(self, state: PipelineState) -> PipelineState:
         """Append entry to run_history.json."""
