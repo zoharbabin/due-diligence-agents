@@ -358,7 +358,20 @@ class TestPromptBuilder:
         assert "Cross-Reference Entry Schema" in prompt
         assert "data_point" in prompt
         assert "match_status" in prompt
-        assert "NEVER write a bare string as a cross-reference" in prompt
+        assert "NEVER write a bare string" in prompt
+
+    def test_cross_reference_schema_forbids_empty_placeholders(
+        self,
+        builder: PromptBuilder,
+        sample_customers: list[CustomerEntry],
+    ) -> None:
+        """Prompt must explicitly forbid empty-placeholder cross-references."""
+        prompt = builder.build_specialist_prompt(
+            agent_name="finance",
+            customers=sample_customers,
+        )
+        assert "NEVER create empty placeholders" in prompt
+        assert "ONLY create a cross-reference when you have an actual data point" in prompt
 
     def test_output_format_includes_gap_schema(
         self,

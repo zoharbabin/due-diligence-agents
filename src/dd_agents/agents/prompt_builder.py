@@ -524,24 +524,36 @@ class PromptBuilder:
             "concentration from a reference spreadsheet), cite the specific "
             "reference file and the relevant cell, row, or tab.\n\n"
             "### Cross-Reference Entry Schema\n\n"
-            "Every entry in `cross_references` MUST be a JSON **object** (not a string):\n"
+            "Cross-references compare a data point found in contracts against "
+            "reference data (spreadsheets, financial statements, etc). Every "
+            "entry in `cross_references` MUST be a JSON **object** with real "
+            "values populated — do NOT create empty placeholders:\n"
             "```json\n"
             "{\n"
-            '  "data_point": "string (required) — e.g. ARR, Payment Terms, Contract Value",\n'
-            '  "data_type": "string — financial | pricing | entity | operational",\n'
-            '  "contract_value": "string — value found in the contract",\n'
-            '  "contract_source": {"file": "path", "page": 1, "quote": "exact text"},\n'
-            '  "reference_value": "string — value found in the reference data",\n'
-            '  "reference_source": {"file": "path", "tab": "sheet name"},\n'
-            '  "match_status": "match | mismatch | not_available",\n'
-            '  "variance": "string — e.g. -20.8%",\n'
-            '  "severity": "P0 | P1 | P2 | P3 | null",\n'
-            '  "interpretation": "string — brief analysis of the comparison"\n'
+            '  "data_point": "ARR (required — the specific metric being compared)",\n'
+            '  "data_type": "financial",\n'
+            '  "contract_value": "$1.2M (actual value from the contract)",\n'
+            '  "contract_source": {"file": "path/to/msa.pdf", "page": 5,\n'
+            '    "quote": "Annual contract value of $1,200,000"},\n'
+            '  "reference_value": "$1.1M (actual value from reference data)",\n'
+            '  "reference_source": {"file": "path/to/cube.xlsx",\n'
+            '    "tab": "Revenue", "row": "Row 42"},\n'
+            '  "match_status": "mismatch",\n'
+            '  "variance": "-8.3%",\n'
+            '  "severity": "P2",\n'
+            '  "interpretation": "Contract states $1.2M but revenue cube shows $1.1M"\n'
             "}\n"
             "```\n"
-            "NEVER write a bare string as a cross-reference entry. "
-            "If you cannot fill all fields, still write an object with at least "
-            "`data_point` and `match_status`.\n\n"
+            "**Rules for cross-references:**\n"
+            "- NEVER write a bare string — always a structured object.\n"
+            "- NEVER create empty placeholders with `data_point: unknown` or "
+            "empty values — these are filtered out and wasted.\n"
+            "- ONLY create a cross-reference when you have an actual data point "
+            "to compare with real values from two sources.\n"
+            "- `contract_value` and `reference_value` MUST contain the actual "
+            "values you found, not placeholders.\n"
+            "- If you have no reference data to compare against, do NOT create "
+            "a cross-reference — skip it.\n\n"
             "### Gap Entry Schema\n\n"
             "Every entry in `gaps` MUST be a JSON **object** (not a string):\n"
             "```json\n"

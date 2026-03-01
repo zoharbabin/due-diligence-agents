@@ -176,6 +176,16 @@ class FindingMerger:
                     continue
                 finding = dict(finding)  # shallow copy to avoid mutation
                 finding["agent"] = agent
+                # Coerce singular "citation" dict → "citations" array.
+                # Some agents produce {"citation": {...}} instead of
+                # {"citations": [{...}]}.  Normalise early so downstream
+                # code only deals with the plural form.
+                if "citations" not in finding and "citation" in finding:
+                    cit = finding.pop("citation")
+                    if isinstance(cit, dict):
+                        finding["citations"] = [cit]
+                    elif isinstance(cit, list):
+                        finding["citations"] = cit
                 all_findings.append(finding)
 
         # Step 3 -- Deduplicate
@@ -535,20 +545,56 @@ class FindingMerger:
         return None
 
     @staticmethod
+    def _is_empty_shell_cross_ref(cr: dict[str, Any]) -> bool:
+        """Detect empty-shell cross-references that carry no useful data.
+
+        Agents sometimes produce structural placeholders with
+        ``data_point="unknown"`` and empty value fields.  These pollute
+        the report without adding analytical value.
+        """
+        dp = str(cr.get("data_point", "")).strip().lower()
+        if dp in ("unknown", "", "n/a", "none"):
+            # Check if ANY value field is populated.
+            for key in ("contract_value", "reference_value", "variance", "interpretation"):
+                val = cr.get(key)
+                if val and str(val).strip():
+                    return False
+            # Check nested source objects for real content.
+            for src_key in ("contract_source", "reference_source"):
+                src = cr.get(src_key)
+                if isinstance(src, dict):
+                    for v in src.values():
+                        if v and str(v).strip():
+                            return False
+            return True
+        return False
+
+    @staticmethod
     def _union_cross_refs(
         agent_outputs: dict[str, dict[str, Any]],
     ) -> list[CrossReference]:
         refs: list[CrossReference] = []
+        empty_shell_count = 0
         for agent, data in agent_outputs.items():
             for cr_raw in data.get("cross_references", []):
                 cr_dict = FindingMerger._coerce_cross_reference_entry(cr_raw, agent)
                 if cr_dict is None:
                     continue
                 normalised = FindingMerger._normalize_cross_reference(cr_dict)
+                # Filter out empty-shell cross-references that carry no
+                # analytical data (e.g. data_point="unknown", empty values).
+                if FindingMerger._is_empty_shell_cross_ref(normalised):
+                    empty_shell_count += 1
+                    continue
                 try:
                     refs.append(CrossReference.model_validate(normalised))
                 except Exception:  # noqa: BLE001
                     logger.warning("Skipping invalid cross-reference from %s: %s", agent, cr_dict)
+        if empty_shell_count:
+            logger.info(
+                "Filtered %d empty-shell cross-references (data_point=unknown, no values)",
+                empty_shell_count,
+            )
         return refs
 
     @staticmethod

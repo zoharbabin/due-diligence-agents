@@ -891,6 +891,157 @@ class TestMergeNormalization:
         assert str(critical_gap.priority) == "P1"
         assert str(minor_gap.priority) == "P2"
 
+    # -----------------------------------------------------------------------
+    # Empty-shell cross-reference filtering
+    # -----------------------------------------------------------------------
+
+    def test_empty_shell_cross_ref_unknown_data_point(self) -> None:
+        """Cross-ref with data_point='unknown' and empty values is an empty shell."""
+        cr = {"data_point": "unknown", "contract_value": "", "reference_value": ""}
+        assert FindingMerger._is_empty_shell_cross_ref(cr) is True
+
+    def test_empty_shell_cross_ref_na_data_point(self) -> None:
+        """Cross-ref with data_point='n/a' is an empty shell."""
+        cr = {"data_point": "n/a"}
+        assert FindingMerger._is_empty_shell_cross_ref(cr) is True
+
+    def test_empty_shell_cross_ref_with_value_kept(self) -> None:
+        """Cross-ref with data_point='unknown' but populated value is NOT an empty shell."""
+        cr = {"data_point": "unknown", "contract_value": "$50,000"}
+        assert FindingMerger._is_empty_shell_cross_ref(cr) is False
+
+    def test_empty_shell_cross_ref_with_source_content_kept(self) -> None:
+        """Cross-ref with data_point='unknown' but populated source object is NOT empty."""
+        cr = {
+            "data_point": "unknown",
+            "contract_source": {"file": "msa.pdf", "quote": "Payment terms: Net 30"},
+        }
+        assert FindingMerger._is_empty_shell_cross_ref(cr) is False
+
+    def test_real_cross_ref_is_not_empty_shell(self) -> None:
+        """Normal cross-ref with real data_point passes through."""
+        cr = {"data_point": "ARR", "contract_value": "$1.2M", "reference_value": "$1.0M"}
+        assert FindingMerger._is_empty_shell_cross_ref(cr) is False
+
+    def test_union_cross_refs_filters_empty_shells(self) -> None:
+        """_union_cross_refs should drop empty-shell entries."""
+        agent_outputs = {
+            "finance": {
+                "cross_references": [
+                    {
+                        "data_point": "unknown",
+                        "contract_value": "",
+                        "reference_value": "",
+                        "match_status": "not_available",
+                    },
+                    {
+                        "data_point": "ARR",
+                        "contract_value": "$1.2M",
+                        "reference_value": "$1.0M",
+                        "match_status": "mismatch",
+                        "variance": "-16.7%",
+                    },
+                ],
+            },
+        }
+        refs = FindingMerger._union_cross_refs(agent_outputs)
+        assert len(refs) == 1
+        assert refs[0].data_point == "ARR"
+
+    # -----------------------------------------------------------------------
+    # Citation singular → plural coercion
+    # -----------------------------------------------------------------------
+
+    def test_citation_singular_dict_coerced_to_citations_array(self) -> None:
+        """Finding with 'citation' (singular dict) should be coerced to 'citations' array."""
+        agent_outputs = {
+            "finance": {
+                "findings": [
+                    {
+                        "severity": "P2",
+                        "category": "revenue_recognition",
+                        "title": "Deferred revenue gap",
+                        "description": "Issue found",
+                        "confidence": "high",
+                        "citation": {
+                            "source_type": "primary_document",
+                            "source_path": "report.pdf",
+                            "location": "Section 3",
+                            "exact_quote": "Revenue was deferred",
+                        },
+                    }
+                ],
+            },
+        }
+        merger = FindingMerger(run_id="test_run")
+        result = merger.merge_customer(agent_outputs, "Test Co", "test_co")
+        assert len(result.findings) == 1
+        assert len(result.findings[0].citations) == 1
+        assert result.findings[0].citations[0].source_path == "report.pdf"
+
+    def test_citation_singular_list_coerced_to_citations(self) -> None:
+        """Finding with 'citation' as a list should be moved to 'citations'."""
+        agent_outputs = {
+            "legal": {
+                "findings": [
+                    {
+                        "severity": "P2",
+                        "category": "change_of_control",
+                        "title": "CoC clause",
+                        "description": "Found CoC",
+                        "confidence": "medium",
+                        "citation": [
+                            {
+                                "source_type": "primary_document",
+                                "source_path": "msa.pdf",
+                                "location": "Section 12",
+                                "exact_quote": "Change of control",
+                            }
+                        ],
+                    }
+                ],
+            },
+        }
+        merger = FindingMerger(run_id="test_run")
+        result = merger.merge_customer(agent_outputs, "Test Co", "test_co")
+        assert len(result.findings) == 1
+        assert len(result.findings[0].citations) == 1
+
+    def test_citations_plural_not_overwritten_by_coercion(self) -> None:
+        """When 'citations' already exists, singular 'citation' is ignored."""
+        agent_outputs = {
+            "legal": {
+                "findings": [
+                    {
+                        "severity": "P2",
+                        "category": "change_of_control",
+                        "title": "CoC clause",
+                        "description": "Found CoC",
+                        "confidence": "high",
+                        "citations": [
+                            {
+                                "source_type": "primary_document",
+                                "source_path": "msa.pdf",
+                                "location": "Section 12",
+                                "exact_quote": "Change of control",
+                            }
+                        ],
+                        "citation": {
+                            "source_type": "primary_document",
+                            "source_path": "other.pdf",
+                            "location": "Page 1",
+                            "exact_quote": "Should be ignored",
+                        },
+                    }
+                ],
+            },
+        }
+        merger = FindingMerger(run_id="test_run")
+        result = merger.merge_customer(agent_outputs, "Test Co", "test_co")
+        assert len(result.findings) == 1
+        # Should use the existing 'citations', not the singular 'citation'
+        assert result.findings[0].citations[0].source_path == "msa.pdf"
+
 
 # ===========================================================================
 # ReportDiffBuilder tests
