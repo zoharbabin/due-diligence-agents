@@ -617,29 +617,45 @@ class AgentTeam:
         return latest
 
     @staticmethod
-    def _count_agent_files(output_dir: Path, agent_name: str) -> tuple[int, str]:
-        """Count customer JSON files and find the most recent one for *agent_name*.
+    def _count_agent_files(
+        output_dir: Path,
+        agent_name: str,
+        *,
+        since: float | None = None,
+    ) -> tuple[int, int, str]:
+        """Count customer JSON files for *agent_name*.
 
-        Returns ``(file_count, latest_filename)``.  Excludes non-customer files
-        like ``coverage_manifest.json`` and ``_temp_*`` scratch files.
+        Returns ``(total_count, modified_count, latest_filename)``.
+
+        *modified_count* is the number of files whose mtime is >= *since*
+        (i.e. files written or overwritten since the monitor started).
+        When *since* is ``None``, *modified_count* equals *total_count*.
+
+        Excludes non-customer files like ``coverage_manifest.json`` and
+        ``_temp_*`` scratch files.
         """
         agent_dir = output_dir / agent_name
         if not agent_dir.is_dir():
-            return 0, ""
+            return 0, 0, ""
         latest_mtime = 0.0
         latest_name = ""
-        count = 0
+        total = 0
+        modified = 0
         for f in agent_dir.iterdir():
             if f.suffix != ".json":
                 continue
             if f.name.startswith("_temp_") or f.name == "coverage_manifest.json":
                 continue
-            count += 1
+            total += 1
             mt = f.stat().st_mtime
+            if since is not None and mt >= since:
+                modified += 1
             if mt > latest_mtime:
                 latest_mtime = mt
                 latest_name = f.stem
-        return count, latest_name
+        if since is None:
+            modified = total
+        return total, modified, latest_name
 
     async def monitor_agent_output(
         self,
@@ -689,11 +705,12 @@ class AgentTeam:
         start_time = time.monotonic()
         warned = False
 
-        # Track baseline counts so we can show delta from run start.
-        baseline_counts: dict[str, int] = {}
-        for name in agent_names:
-            count, _ = self._count_agent_files(output_dir, name)
-            baseline_counts[name] = count
+        # Record wall-clock epoch for "since" tracking — files modified
+        # after this timestamp are counted as actively written this run.
+        monitor_epoch = time.time()
+
+        # Track total customer count for progress percentage.
+        total_customers = len(getattr(self.state, "customer_safe_names", []))
 
         while not evt.is_set():
             try:
@@ -708,9 +725,13 @@ class AgentTeam:
             elapsed_sec = int(elapsed_total) % 60
             parts: list[str] = []
             for name in agent_names:
-                count, latest = self._count_agent_files(output_dir, name)
-                new_count = count - baseline_counts.get(name, 0)
-                parts.append(f"{name}: {count} files (+{new_count} new)")
+                total, modified, latest = self._count_agent_files(
+                    output_dir,
+                    name,
+                    since=monitor_epoch,
+                )
+                pct = f" ({modified * 100 // total_customers}%)" if total_customers > 0 else ""
+                parts.append(f"{name}: {modified}/{total_customers} done{pct}")
                 if latest:
                     parts[-1] += f" | latest: {latest}"
 
