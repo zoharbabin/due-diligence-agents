@@ -2360,3 +2360,146 @@ class TestReportSchemaPackageResolution:
 
         assert found is not None
         assert found == repo_config
+
+
+# ===========================================================================
+# P0/P1 downgrade on empty source_path + empty description fallback
+# ===========================================================================
+
+
+class TestSeverityDowngradeOnEmptySourcePath:
+    """P0/P1 findings with empty source_path should be downgraded to P2."""
+
+    def test_p1_downgraded_when_source_path_empty(self) -> None:
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        raw = [
+            {
+                "severity": "P1",
+                "category": "test",
+                "title": "High finding",
+                "description": "desc",
+                "confidence": "high",
+                "agent": "finance",
+                "citations": [
+                    {"source_type": "file", "source_path": "", "location": "p1", "exact_quote": "some quote"}
+                ],
+            }
+        ]
+        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        assert len(result) == 1
+        assert result[0].severity.value == "P2"
+
+    def test_p0_downgraded_when_source_path_synthetic(self) -> None:
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        raw = [
+            {
+                "severity": "P0",
+                "category": "test",
+                "title": "Critical finding",
+                "description": "desc",
+                "confidence": "high",
+                "agent": "legal",
+                "citations": [
+                    {
+                        "source_type": "file",
+                        "source_path": "[synthetic:no_citation_provided]",
+                        "location": "",
+                        "exact_quote": "quoted text",
+                    }
+                ],
+            }
+        ]
+        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        assert len(result) == 1
+        assert result[0].severity.value == "P2"
+
+    def test_p1_stays_when_source_path_present(self) -> None:
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        raw = [
+            {
+                "severity": "P1",
+                "category": "test",
+                "title": "High finding",
+                "description": "desc",
+                "confidence": "high",
+                "agent": "legal",
+                "citations": [
+                    {"source_type": "file", "source_path": "contract.pdf", "location": "p1", "exact_quote": "real"}
+                ],
+            }
+        ]
+        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        assert len(result) == 1
+        assert result[0].severity.value == "P1"
+
+    def test_p2_not_downgraded_with_empty_source(self) -> None:
+        """P2 findings should not be further downgraded (already P2+)."""
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        raw = [
+            {
+                "severity": "P2",
+                "category": "test",
+                "title": "Medium finding",
+                "description": "desc",
+                "confidence": "high",
+                "agent": "finance",
+                "citations": [{"source_type": "file", "source_path": "", "location": "", "exact_quote": "text"}],
+            }
+        ]
+        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        assert len(result) == 1
+        assert result[0].severity.value == "P2"
+
+
+class TestEmptyDescriptionFallback:
+    """Findings with empty description should fall back to title."""
+
+    def test_empty_description_uses_title(self) -> None:
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        raw = [
+            {
+                "severity": "P2",
+                "category": "test",
+                "title": "Important finding about data",
+                "description": "",
+                "confidence": "high",
+                "agent": "commercial",
+                "citations": [{"source_type": "file", "source_path": "f.pdf", "location": "p1", "exact_quote": "text"}],
+            }
+        ]
+        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        assert len(result) == 1
+        assert result[0].description == "Important finding about data"
+
+    def test_missing_description_uses_title(self) -> None:
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        raw = [
+            {
+                "severity": "P3",
+                "category": "test",
+                "title": "Minor note",
+                "confidence": "low",
+                "agent": "legal",
+                "citations": [{"source_type": "file", "source_path": "f.pdf", "location": "", "exact_quote": "q"}],
+            }
+        ]
+        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        assert len(result) == 1
+        assert result[0].description == "Minor note"
+
+    def test_present_description_preserved(self) -> None:
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        raw = [
+            {
+                "severity": "P2",
+                "category": "test",
+                "title": "Title text",
+                "description": "Detailed description here",
+                "confidence": "high",
+                "agent": "finance",
+                "citations": [{"source_type": "file", "source_path": "f.pdf", "location": "", "exact_quote": "q"}],
+            }
+        ]
+        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        assert len(result) == 1
+        assert result[0].description == "Detailed description here"

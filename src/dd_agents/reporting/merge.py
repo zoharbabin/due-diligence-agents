@@ -839,23 +839,36 @@ class FindingMerger:
                     )
                 ]
 
-            # P0/P1 findings require exact_quote on all citations.  If any
-            # citation lacks it (including synthetic ones), downgrade to P2
-            # rather than losing the finding entirely.
+            # P0/P1 findings require real citations: non-empty source_path
+            # AND exact_quote on every citation.  If any citation fails these
+            # checks (including synthetic ones), downgrade to P2 rather than
+            # losing the finding entirely.
             if severity in (Severity.P0, Severity.P1):
                 missing_quote = any(not cit.exact_quote for cit in citations)
-                if missing_quote or has_synthetic:
+                empty_source = any(
+                    not cit.source_path or cit.source_path.startswith("[synthetic:") for cit in citations
+                )
+                if missing_quote or has_synthetic or empty_source:
                     original_severity = severity
                     severity = Severity.P2
+                    reason = (
+                        "citations lack exact_quote" if missing_quote else "citations have empty/synthetic source_path"
+                    )
                     logger.warning(
-                        "Downgraded finding '%s' from %s to P2: citations lack exact_quote",
+                        "Downgraded finding '%s' from %s to P2: %s",
                         title,
                         original_severity,
+                        reason,
                     )
 
             # Normalise confidence to enum values.
             raw_conf = str(f.get("confidence", "medium")).strip().lower()
             confidence = Confidence(raw_conf) if raw_conf in ("high", "medium", "low") else Confidence.MEDIUM
+
+            # Ensure description is non-empty -- agents occasionally omit it.
+            # Fall back to title (always present by this point) rather than
+            # dropping the finding or failing the format audit.
+            description = f.get("description") or title
 
             try:
                 finding = Finding(
@@ -863,7 +876,7 @@ class FindingMerger:
                     severity=severity,
                     category=f.get("category", "uncategorized"),
                     title=title,
-                    description=f.get("description", ""),
+                    description=description,
                     citations=citations,
                     confidence=confidence,
                     agent=AgentName(agent),
