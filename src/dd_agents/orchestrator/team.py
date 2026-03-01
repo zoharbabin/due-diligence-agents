@@ -81,6 +81,8 @@ class AgentTeam:
         self._agent_start_times: dict[str, float] = {}
         self._agent_last_activity: dict[str, float] = {}
         self._completed_agents: set[str] = set()
+        # Per-batch SDK turn counts: "commercial_b1" → turn_number
+        self._batch_turns: dict[str, int] = {}
 
     # ------------------------------------------------------------------
     # Specialist agents
@@ -290,8 +292,15 @@ class AgentTeam:
                 "prompt": batch_prompt,
             }
 
+            # Progress callback: updates shared dict so monitor can display
+            # per-agent SDK turn counts during warm-up.
+            batch_key = f"{agent_name}_b{batch_idx + 1}"
+
+            def _on_turn(_agent: str, turn: int, _key: str = batch_key) -> None:
+                self._batch_turns[_key] = turn
+
             start_ms = time.monotonic()
-            result = await runner.run(agent_state)
+            result = await runner.run(agent_state, on_turn=_on_turn)
             elapsed_ms = int((time.monotonic() - start_ms) * 1000)
             return {
                 "output": result.get("output"),
@@ -735,8 +744,13 @@ class AgentTeam:
                     name,
                     since=monitor_epoch,
                 )
+                # Aggregate SDK turns across all batches for this agent.
+                agent_turns = sum(v for k, v in self._batch_turns.items() if k.startswith(f"{name}_"))
                 if modified == 0:
-                    parts.append(f"{name}: analyzing (0/{total_customers})")
+                    if agent_turns > 0:
+                        parts.append(f"{name}: analyzing ({agent_turns} turns)")
+                    else:
+                        parts.append(f"{name}: starting up")
                 else:
                     pct = f" ({modified * 100 // total_customers}%)" if total_customers > 0 else ""
                     parts.append(f"{name}: {modified}/{total_customers} done{pct} | latest: {latest}")

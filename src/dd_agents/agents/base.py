@@ -143,13 +143,21 @@ class BaseAgentRunner(ABC):
     # Main execution entry-point
     # ------------------------------------------------------------------
 
-    async def run(self, state: dict[str, Any]) -> dict[str, Any]:
+    async def run(
+        self,
+        state: dict[str, Any],
+        *,
+        on_turn: Any | None = None,
+    ) -> dict[str, Any]:
         """Build prompt, spawn the agent, collect and return structured output.
 
         Parameters
         ----------
         state:
             Mutable pipeline state dict.  Keys vary by agent type.
+        on_turn:
+            Optional callback ``(agent_name: str, turn: int) -> None`` invoked
+            periodically during the SDK session for progress tracking.
 
         Returns
         -------
@@ -171,7 +179,7 @@ class BaseAgentRunner(ABC):
             prompt = state.get("prompt") or self.build_prompt(state)
 
             # Placeholder: actual SDK integration would call ``query()`` here.
-            raw_output = await self._spawn_agent(prompt)
+            raw_output = await self._spawn_agent(prompt, on_turn=on_turn)
 
             # Persist raw output for diagnostics (always, not just on failure).
             raw_output_path = self._raw_output_path()
@@ -232,7 +240,12 @@ class BaseAgentRunner(ABC):
     # Agent spawn -- SDK integration
     # ------------------------------------------------------------------
 
-    async def _spawn_agent(self, prompt: str) -> str:
+    async def _spawn_agent(
+        self,
+        prompt: str,
+        *,
+        on_turn: Any | None = None,
+    ) -> str:
         """Spawn the agent via ``claude_agent_sdk.query()`` and return raw text.
 
         Collects all :class:`TextBlock` content from :class:`AssistantMessage`
@@ -244,6 +257,10 @@ class BaseAgentRunner(ABC):
         ----------
         prompt:
             The fully-assembled user prompt for the agent.
+        on_turn:
+            Optional callback ``(agent_name: str, turn: int) -> None`` invoked
+            every 5 SDK messages.  Used by the orchestrator to track per-batch
+            progress for the live monitor.
 
         Returns
         -------
@@ -284,6 +301,16 @@ class BaseAgentRunner(ABC):
         try:
             async for message in _query(prompt=prompt, options=options):
                 msg_count += 1
+                # Periodic progress: log every 10 turns, callback every 5.
+                if on_turn is not None and msg_count % 5 == 0:
+                    on_turn(agent_name, msg_count)
+                if msg_count % 10 == 0:
+                    logger.info(
+                        "Agent %s: SDK turn %d/%d",
+                        agent_name,
+                        msg_count,
+                        self.max_turns,
+                    )
                 if isinstance(message, _AssistantMessage):
                     for block in message.content:
                         if isinstance(block, _TextBlock):
