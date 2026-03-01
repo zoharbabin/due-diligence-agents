@@ -974,11 +974,11 @@ class FindingMerger:
 
         # Infer priority from severity-like keywords.
         if any(w in lower for w in ("critical", "blocker", "deal-stopper", "urgent")):
-            priority = "P1"
+            priority = Severity.P1.value
         elif any(w in lower for w in ("important", "significant", "material")):
-            priority = "P2"
+            priority = Severity.P2.value
         else:
-            priority = "P2"  # default for gaps
+            priority = Severity.P2.value  # default for gaps
 
         # Extract a concise missing_item from the text (truncate at first
         # sentence boundary or 200 chars).
@@ -1018,19 +1018,19 @@ class FindingMerger:
         # Map priority from severity if missing, coercing plain-English levels
         if "priority" not in g and "severity" in g:
             g["priority"] = g.pop("severity")
-        g.setdefault("priority", "P2")
+        g.setdefault("priority", Severity.P2.value)
         _priority_map: dict[str, str] = {
-            "critical": "P0",
-            "deal-stopper": "P0",
-            "high": "P1",
-            "major": "P1",
-            "medium": "P2",
-            "moderate": "P2",
-            "important": "P2",
-            "low": "P3",
-            "minor": "P3",
-            "informational": "P3",
-            "info": "P3",
+            "critical": Severity.P0.value,
+            "deal-stopper": Severity.P0.value,
+            "high": Severity.P1.value,
+            "major": Severity.P1.value,
+            "medium": Severity.P2.value,
+            "moderate": Severity.P2.value,
+            "important": Severity.P2.value,
+            "low": Severity.P3.value,
+            "minor": Severity.P3.value,
+            "informational": Severity.P3.value,
+            "info": Severity.P3.value,
         }
         raw_prio = g["priority"]
         if isinstance(raw_prio, str) and raw_prio.lower() in _priority_map:
