@@ -3189,3 +3189,47 @@ class TestValidateAgentOutputStructure:
         summary = PipelineEngine._validate_agent_output_structure(findings_dir, ["acme_corp"])
         # No agent directories exist — summary is empty
         assert summary == {}
+
+
+# ===========================================================================
+# Batch concurrency configuration tests
+# ===========================================================================
+
+
+class TestBatchConcurrencyConfig:
+    """Tests for batch_concurrency in ExecutionConfig."""
+
+    def test_default_batch_concurrency_is_three(self) -> None:
+        from dd_agents.models.config import ExecutionConfig
+
+        config = ExecutionConfig()
+        assert config.batch_concurrency == 3
+
+    def test_batch_concurrency_configurable(self) -> None:
+        from dd_agents.models.config import ExecutionConfig
+
+        config = ExecutionConfig(batch_concurrency=6)
+        assert config.batch_concurrency == 6
+
+    def test_batch_concurrency_minimum_one(self) -> None:
+        from dd_agents.models.config import ExecutionConfig
+
+        with pytest.raises(Exception):  # noqa: B017
+            ExecutionConfig(batch_concurrency=0)
+
+    def test_batch_concurrency_maximum_ten(self) -> None:
+        from dd_agents.models.config import ExecutionConfig
+
+        with pytest.raises(Exception):  # noqa: B017
+            ExecutionConfig(batch_concurrency=11)
+
+    def test_effective_waves_calculation(self) -> None:
+        """ceil(batches / concurrency) gives correct wave count."""
+        # 6 batches, concurrency 3 → 2 waves
+        assert -(-6 // 3) == 2
+        # 6 batches, concurrency 6 → 1 wave
+        assert -(-6 // 6) == 1
+        # 7 batches, concurrency 3 → 3 waves
+        assert -(-7 // 3) == 3
+        # 1 batch, concurrency 3 → 1 wave
+        assert -(-1 // 3) == 1

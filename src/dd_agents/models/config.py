@@ -166,6 +166,14 @@ class ExecutionConfig(BaseModel):
     execution_mode: ExecutionMode = ExecutionMode.FULL
     staleness_threshold: int = Field(default=3, ge=1, le=100)
     force_full_on_config_change: bool = True
+    batch_concurrency: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+        description="Max concurrent batches per agent in step 16. "
+        "Each batch is an independent SDK session processing different "
+        "customers, so parallelism is safe. Default 3.",
+    )
 
 
 class ReportingConfig(BaseModel):

@@ -119,25 +119,35 @@ class AgentTeam:
 
         agent_names = agents if agents is not None else list(ALL_SPECIALIST_AGENTS)
 
-        # Adaptive timeout (Issue #42).  Account for sequential batch count:
-        # each agent runs its batches sequentially, so the slowest agent
-        # (most batches) determines the overall timeout.
+        # Adaptive timeout (Issue #42).  Account for batch count and
+        # concurrency: with parallel batches, effective sequential waves
+        # = ceil(batches / concurrency).
         max_batches = 1
         for agent_name in agent_names:
             n = len(self.state.agent_prompts.get(agent_name, []))
             if n > max_batches:
                 max_batches = n
 
+        batch_concurrency = getattr(
+            getattr(getattr(self.state, "deal_config", None), "execution", None),
+            "batch_concurrency",
+            3,
+        )
+        # Effective sequential waves = ceil(batches / concurrency)
+        effective_waves = max(1, -(-max_batches // max(1, batch_concurrency)))
+
         timeout = (
-            self.calculate_adaptive_timeout(num_customers, num_batches=max_batches)
+            self.calculate_adaptive_timeout(num_customers, num_batches=effective_waves)
             if num_customers > 0
             else self.agent_timeout_s
         )
         logger.info(
-            "Specialist timeout: %ds (customers=%d, batches=%d, adaptive=%s)",
+            "Specialist timeout: %ds (customers=%d, batches=%d, concurrency=%d, waves=%d, adaptive=%s)",
             timeout,
             num_customers,
             max_batches,
+            batch_concurrency,
+            effective_waves,
             num_customers > 0,
         )
 
@@ -246,13 +256,17 @@ class AgentTeam:
             pre_built = self.state.agent_prompts.get(agent_name, [])
             batch_prompts = list(pre_built) if pre_built else [None]
 
-        # Run each batch as a separate agent session so each prompt stays
-        # within the model's effective context window.
-        all_outputs: list[Any] = []
-        total_elapsed_ms = 0
-        errors: list[str] = []
+        # Concurrency limit for parallel batch execution.  Each batch
+        # processes different customers writing to different files, so
+        # parallelism is safe.  Default 3 (configurable via deal-config).
+        concurrency = getattr(
+            getattr(getattr(self.state, "deal_config", None), "execution", None),
+            "batch_concurrency",
+            3,
+        )
+        concurrency = max(1, min(concurrency, len(batch_prompts)))
 
-        for batch_idx, batch_prompt in enumerate(batch_prompts):
+        async def _run_one_batch(batch_idx: int, batch_prompt: str | None) -> dict[str, Any]:
             batch_label = (
                 f"{agent_name}"
                 if len(batch_prompts) == 1
@@ -279,12 +293,63 @@ class AgentTeam:
             start_ms = time.monotonic()
             result = await runner.run(agent_state)
             elapsed_ms = int((time.monotonic() - start_ms) * 1000)
-            total_elapsed_ms += elapsed_ms
+            return {
+                "output": result.get("output"),
+                "error": result.get("error"),
+                "elapsed_ms": elapsed_ms,
+                "label": batch_label,
+            }
 
-            if result.get("output"):
-                all_outputs.extend(result["output"])
-            if result.get("error"):
-                errors.append(f"[{batch_label}] {result['error']}")
+        # Run batches concurrently (up to *concurrency* at a time).
+        all_outputs: list[Any] = []
+        total_elapsed_ms = 0
+        errors: list[str] = []
+
+        if concurrency >= len(batch_prompts):
+            # All batches fit in one wave — launch them all.
+            if len(batch_prompts) > 1:
+                logger.info(
+                    "Agent %s: running %d batches in parallel (concurrency=%d)",
+                    agent_name,
+                    len(batch_prompts),
+                    concurrency,
+                )
+            batch_tasks = [_run_one_batch(i, bp) for i, bp in enumerate(batch_prompts)]
+            batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+            for br in batch_results:
+                if isinstance(br, BaseException):
+                    errors.append(f"[{agent_name}] batch exception: {br}")
+                    continue
+                total_elapsed_ms = max(total_elapsed_ms, br["elapsed_ms"])
+                if br["output"]:
+                    all_outputs.extend(br["output"])
+                if br["error"]:
+                    errors.append(f"[{br['label']}] {br['error']}")
+        else:
+            # Use a semaphore to limit concurrent batches.
+            logger.info(
+                "Agent %s: running %d batches with concurrency=%d",
+                agent_name,
+                len(batch_prompts),
+                concurrency,
+            )
+            sem = asyncio.Semaphore(concurrency)
+
+            async def _limited(idx: int, bp: str | None) -> dict[str, Any]:
+                async with sem:
+                    return await _run_one_batch(idx, bp)
+
+            batch_tasks = [_limited(i, bp) for i, bp in enumerate(batch_prompts)]
+            batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+            for br in batch_results:
+                if isinstance(br, BaseException):
+                    errors.append(f"[{agent_name}] batch exception: {br}")
+                    continue
+                total_elapsed_ms = max(total_elapsed_ms, br["elapsed_ms"])
+                if br["output"]:
+                    all_outputs.extend(br["output"])
+                if br["error"]:
+                    errors.append(f"[{br['label']}] {br['error']}")
 
         status = "completed"
         if errors and not all_outputs:
