@@ -3199,17 +3199,17 @@ class TestValidateAgentOutputStructure:
 class TestBatchConcurrencyConfig:
     """Tests for batch_concurrency in ExecutionConfig."""
 
-    def test_default_batch_concurrency_is_three(self) -> None:
+    def test_default_batch_concurrency_is_six(self) -> None:
         from dd_agents.models.config import ExecutionConfig
 
         config = ExecutionConfig()
-        assert config.batch_concurrency == 3
+        assert config.batch_concurrency == 6
 
     def test_batch_concurrency_configurable(self) -> None:
         from dd_agents.models.config import ExecutionConfig
 
-        config = ExecutionConfig(batch_concurrency=6)
-        assert config.batch_concurrency == 6
+        config = ExecutionConfig(batch_concurrency=8)
+        assert config.batch_concurrency == 8
 
     def test_batch_concurrency_minimum_one(self) -> None:
         from dd_agents.models.config import ExecutionConfig

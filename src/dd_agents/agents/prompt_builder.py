@@ -450,7 +450,11 @@ class PromptBuilder:
             f"IMPORTANT: Use the exact safe_name provided above as the filename "
             f"for your output JSON.\n"
             f"Write: {self.run_dir}/findings/{agent_name}/{{safe_name}}.json\n\n"
-            f"TOTAL: {len(customers)} customers. You must process every single one."
+            f"TOTAL: {len(customers)} customers. You must process every single one.\n\n"
+            f"SPEED RULE: Do NOT read or validate existing output files in the findings "
+            f"directory. Always write fresh output by analyzing source documents directly. "
+            f"If a file already exists at the output path, overwrite it without reading it first. "
+            f"Spending turns checking prior output wastes time and budget."
         )
         return "\n".join(lines)
 
