@@ -161,7 +161,6 @@ class PromptBuilder:
         customers: list[CustomerEntry] | list[str],
         reference_files: list[ReferenceFile] | None = None,
         deal_config: DealConfig | dict[str, Any] | None = None,
-        text_dir: str | None = None,
     ) -> str:
         """Build a complete, self-contained specialist prompt.
 
@@ -179,9 +178,6 @@ class PromptBuilder:
             The loaded :class:`DealConfig`, or a raw dict from pipeline
             state.  Automatically coerced to :class:`DealConfig` if a
             dict is passed.  May be ``None`` for tests.
-        text_dir:
-            Path to the extracted text directory (e.g.
-            ``_dd/forensic-dd/index/text``).  Used to construct pointers.
         """
         deal_config = self._coerce_deal_config(deal_config)
         customers = self._coerce_customers(customers)
@@ -193,10 +189,13 @@ class PromptBuilder:
         # 2. Customer list
         sections.append(self._build_customer_list(agent_name, customers))
 
-        # 3. Reference files
+        # 3. File access instructions (Issue #87)
+        sections.append(self._build_file_access_instructions())
+
+        # 4. Reference files
         sections.append(self._build_reference_section(reference_files or []))
 
-        # 4. Specialist focus
+        # 5. Specialist focus
         try:
             agent_type = AgentType(agent_name)
         except ValueError:
@@ -204,13 +203,13 @@ class PromptBuilder:
         if agent_type and agent_type in SPECIALIST_FOCUS:
             sections.append(f"## YOUR SPECIALIST FOCUS\n\n{SPECIALIST_FOCUS[agent_type]}")
 
-        # 5. Output format requirements
+        # 6. Output format requirements
         sections.append(self._build_output_format(agent_name))
 
-        # 6. Manifest requirement
+        # 7. Manifest requirement
         sections.append(self._build_manifest_requirement(agent_name, customers))
 
-        # 7. Robustness instructions (Issue #52 -- spec doc 22)
+        # 8. Robustness instructions (Issue #52 -- spec doc 22)
         sections.append(self.robustness_instructions())
 
         return "\n\n---\n\n".join(sections)
@@ -458,9 +457,11 @@ class PromptBuilder:
             lines.append("")
 
         lines.append(
-            f"IMPORTANT: Use the exact safe_name provided above as the filename "
-            f"for your output JSON.\n"
-            f"Write: {self.run_dir}/findings/{agent_name}/{{safe_name}}.json\n\n"
+            f"CRITICAL — OUTPUT FILENAMES:\n"
+            f"Your output filename MUST be exactly: {{safe_name}}.json\n"
+            f"Copy the safe_name character-for-character from above. Do NOT normalize, "
+            f"transform, or recompute it. The safe_name is pre-computed and authoritative.\n"
+            f"Write to: {self.run_dir}/findings/{agent_name}/{{safe_name}}.json\n\n"
             f"TOTAL: {len(customers)} customers. You must process every single one.\n\n"
             f"SPEED RULES (MANDATORY — violating these wastes budget and causes failures):\n"
             f"1. Do NOT read or validate existing output files in the findings "
@@ -470,11 +471,28 @@ class PromptBuilder:
             f"You are a single agent processing customers one at a time IN THIS SESSION. "
             f"Never use the Agent tool or launch child processes. "
             f"Process each customer sequentially: read files → analyze → write JSON → next customer.\n"
-            f"3. Do NOT summarize your progress, reflect on what you did, or produce final "
+            f"3. Write each customer's JSON file IMMEDIATELY after analyzing it. "
+            f"Do NOT accumulate findings in memory across customers. "
+            f"Write → move on → write → move on.\n"
+            f"4. Do NOT summarize your progress, reflect on what you did, or produce final "
             f"status reports. Just write the JSON files and move to the next customer.\n"
-            f"4. Do NOT re-read a customer's output file after writing it. Write it once correctly."
+            f"5. Do NOT re-read a customer's output file after writing it. Write it once correctly."
         )
         return "\n".join(lines)
+
+    @staticmethod
+    def _build_file_access_instructions() -> str:
+        """Instructions telling agents to read original files directly (Issue #87)."""
+        return (
+            "## HOW TO READ FILES\n\n"
+            "Use the Read tool directly on the file paths listed above.\n"
+            "The Read tool handles all formats natively: .pdf, .xlsx, .xls, .docx, "
+            ".doc, .pptx, .csv, .txt, .json, .xml, images, and more.\n"
+            "Read the EXACT paths shown in the customer file lists — do not "
+            "construct alternative paths or look for converted versions.\n"
+            "For large files (>100KB), use Grep to search for specific terms "
+            "instead of reading the entire file."
+        )
 
     @staticmethod
     def _build_reference_section(reference_files: list[ReferenceFile]) -> str:
@@ -724,7 +742,16 @@ class PromptBuilder:
             "customers where you produced fewer findings than expected relative to "
             "their file count.\n\n"
             #
-            # 8. Not-Found protocol (AG-8)
+            # 8. Citation verification mandate (Issue #93)
+            #
+            "### Citation Verification (MANDATORY for P0 and P1)\n\n"
+            "Before including any P0 or P1 finding in your output, call the "
+            "`verify_citation` tool with the source_path and exact_quote.\n"
+            "Only include the finding if verify_citation returns found: true.\n"
+            "If verification fails, fix the quote to match the source text exactly, "
+            "or downgrade the finding to P2.\n\n"
+            #
+            # 9. Not-Found protocol (AG-8)
             #
             "### Not-Found Protocol\n\n"
             "If you search for a specific clause or document and it genuinely does not "

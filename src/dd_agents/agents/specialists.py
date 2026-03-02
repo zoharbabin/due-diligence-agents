@@ -168,6 +168,11 @@ class FinanceAgent(BaseAgentRunner):
 
     reference_categories: list[str] = ["financial", "pricing"]
 
+    # Finance batches are smaller because financial documents are dense
+    # and context exhaustion degrades citation quality (Issue #92).
+    max_customers_per_batch: int = 10
+    max_tokens_per_batch: int = 25_000
+
     def get_agent_name(self) -> str:
         return "finance"
 

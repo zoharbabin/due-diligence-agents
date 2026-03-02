@@ -506,7 +506,21 @@ class AgentTeam:
         # Process completed tasks
         for agent_name, task in tasks.items():
             if task in done:
-                exc = task.exception()
+                # task.exception() raises CancelledError for cancelled tasks
+                # (e.g. when the stall monitor cancels them).  Catch it
+                # explicitly so we don't crash the pipeline.
+                try:
+                    exc = task.exception()
+                except asyncio.CancelledError:
+                    logger.warning("Agent %s was cancelled (stall detection or timeout)", agent_name)
+                    results[agent_name] = {
+                        "agent": agent_name,
+                        "status": "cancelled",
+                        "error": "Agent was cancelled by stall monitor",
+                        "is_error": True,
+                    }
+                    self._completed_agents.add(agent_name)
+                    continue
                 if exc is not None:
                     logger.error("Agent %s raised: %s", agent_name, exc)
                     results[agent_name] = {
@@ -801,7 +815,32 @@ class AgentTeam:
 
             elapsed_since_last = time.monotonic() - last_new_file_time
 
+            # Per-agent completion tracking: mark agents as completed when
+            # they've written files for all (or nearly all) customers.
+            # This prevents the global stall detector from cancelling
+            # agents that finished early while others are still working.
+            if total_customers > 0:
+                for name in agent_names:
+                    if name in self._completed_agents:
+                        continue
+                    total_files, _, _ = self._count_agent_files(
+                        output_dir,
+                        name,
+                        since=monitor_epoch,
+                    )
+                    # Mark done when agent has covered all customers (±1 for
+                    # rounding / off-by-one in agent-side counting).
+                    if total_files >= total_customers:
+                        logger.info(
+                            "Agent %s appears complete: %d/%d files written",
+                            name,
+                            total_files,
+                            total_customers,
+                        )
+                        self.mark_agent_completed(name)
+
             # Cancel stalled tasks after cancel_threshold_s (default 15 min).
+            # Only cancel agents that haven't finished writing their output.
             if elapsed_since_last >= cancel_s and not cancelled and agent_tasks:
                 cancelled = True
                 stalled = self.detect_stalled_agents()
@@ -816,10 +855,20 @@ class AgentTeam:
                         if task is not None and not task.done():
                             logger.warning("Cancelling task for stalled agent: %s", name)
                             task.cancel()
-                    # Signal stop — remaining agents will be collected by
-                    # wait_for_agents with their partial results.
-                    evt.set()
-                    break
+                    # Only stop if ALL remaining agents are stalled.
+                    # If some agents are still active, let them continue.
+                    active_agents = [n for n in agent_names if n not in self._completed_agents and n not in stalled]
+                    if not active_agents:
+                        evt.set()
+                        break
+                    else:
+                        logger.info(
+                            "Some agents still active after cancellation: %s -- continuing monitor",
+                            ", ".join(active_agents),
+                        )
+                        # Reset stall timer for remaining active agents.
+                        last_new_file_time = time.monotonic()
+                        cancelled = False
             elif elapsed_since_last >= stall_s:
                 stalled = self.detect_stalled_agents()
                 if stalled:

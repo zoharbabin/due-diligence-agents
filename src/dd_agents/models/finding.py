@@ -93,6 +93,10 @@ class Citation(BaseModel):
     access_date: str | None = None  # Required when source_type == web_research
     page_number: int | None = Field(default=None, description="1-based page number for visual grounding")
     bounding_box: BoundingBox | None = Field(default=None, description="Coordinate box for visual grounding")
+    verification_status: str | None = Field(
+        default=None,
+        description="Result of verify_citation tool call: 'verified', 'failed', or None if not checked.",
+    )
 
     @model_validator(mode="after")
     def web_research_needs_access_date(self) -> Citation:

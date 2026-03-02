@@ -10,6 +10,7 @@ import json
 import logging
 import traceback
 from pathlib import Path
+from typing import Any
 
 import click
 from rich.console import Console
@@ -144,6 +145,12 @@ def run(
         deal_config_path=config_path.resolve(),
     )
 
+    # Pass CLI overrides through options dict so step 1 can apply them
+    # after loading the raw config file.
+    run_options: dict[str, Any] = {}
+    if mode is not None:
+        run_options["execution_mode"] = mode
+
     console.print()
     console.print(
         Panel(
@@ -157,7 +164,7 @@ def run(
     )
 
     try:
-        state = asyncio.run(engine.run(resume_from_step=resume_from))
+        state = asyncio.run(engine.run(resume_from_step=resume_from, options=run_options))
 
         # Print completion summary
         console.print()

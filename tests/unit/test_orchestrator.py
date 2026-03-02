@@ -3418,3 +3418,272 @@ class TestArtifactResolver:
 
         path = engine._resolve_artifact(FakeState(), "nonexistent_artifact")  # type: ignore[arg-type]
         assert path is None
+
+
+# ======================================================================
+# Production runtime fixes
+# ======================================================================
+
+
+class TestWaitForAgentsCancelledError:
+    """Tests for CancelledError handling in wait_for_agents."""
+
+    @pytest.mark.asyncio
+    async def test_cancelled_task_returns_cancelled_status(self, tmp_path: Path) -> None:
+        """A cancelled task should return status='cancelled', not crash."""
+        import asyncio
+        from typing import Any
+
+        from dd_agents.orchestrator.team import AgentTeam
+
+        state = PipelineState(run_id="cancel_err", project_dir=tmp_path)
+        team = AgentTeam(state)
+
+        async def mock_agent() -> dict[str, Any]:
+            await asyncio.sleep(999)
+            return {"agent": "finance", "status": "completed"}
+
+        task = asyncio.create_task(mock_agent())
+        # Cancel it immediately
+        task.cancel()
+        await asyncio.sleep(0)
+        tasks: dict[str, asyncio.Task[dict[str, Any]]] = {"finance": task}
+
+        results = await team.wait_for_agents(tasks, timeout=1.0)
+
+        assert "finance" in results
+        assert results["finance"]["status"] == "cancelled"
+        assert results["finance"]["is_error"] is True
+        assert "cancelled" in results["finance"]["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_normal_task_returns_result(self, tmp_path: Path) -> None:
+        """A normally completed task should return its result."""
+        import asyncio
+        from typing import Any
+
+        from dd_agents.orchestrator.team import AgentTeam
+
+        state = PipelineState(run_id="normal_ok", project_dir=tmp_path)
+        team = AgentTeam(state)
+
+        async def mock_agent() -> dict[str, Any]:
+            return {"agent": "legal", "status": "completed", "is_error": False}
+
+        task = asyncio.create_task(mock_agent())
+        await asyncio.sleep(0)
+        tasks: dict[str, asyncio.Task[dict[str, Any]]] = {"legal": task}
+
+        results = await team.wait_for_agents(tasks, timeout=1.0)
+
+        assert results["legal"]["status"] == "completed"
+        assert results["legal"]["is_error"] is False
+
+    @pytest.mark.asyncio
+    async def test_failed_task_returns_error(self, tmp_path: Path) -> None:
+        """A task that raises should return status='failed'."""
+        import asyncio
+        from typing import Any
+
+        from dd_agents.orchestrator.team import AgentTeam
+
+        state = PipelineState(run_id="fail_test", project_dir=tmp_path)
+        team = AgentTeam(state)
+
+        async def mock_agent() -> dict[str, Any]:
+            raise RuntimeError("SDK connection lost")
+
+        task = asyncio.create_task(mock_agent())
+        await asyncio.sleep(0)
+        tasks: dict[str, asyncio.Task[dict[str, Any]]] = {"commercial": task}
+
+        results = await team.wait_for_agents(tasks, timeout=1.0)
+
+        assert results["commercial"]["status"] == "failed"
+        assert "SDK connection lost" in results["commercial"]["error"]
+
+    @pytest.mark.asyncio
+    async def test_mixed_cancelled_and_completed(self, tmp_path: Path) -> None:
+        """Mix of cancelled and completed tasks should all be collected."""
+        import asyncio
+        from typing import Any
+
+        from dd_agents.orchestrator.team import AgentTeam
+
+        state = PipelineState(run_id="mixed", project_dir=tmp_path)
+        team = AgentTeam(state)
+
+        async def ok_agent() -> dict[str, Any]:
+            return {"agent": "legal", "status": "completed", "is_error": False}
+
+        async def slow_agent() -> dict[str, Any]:
+            await asyncio.sleep(999)
+            return {"agent": "finance", "status": "completed"}
+
+        ok_task = asyncio.create_task(ok_agent())
+        slow_task = asyncio.create_task(slow_agent())
+        slow_task.cancel()
+        await asyncio.sleep(0)
+
+        tasks: dict[str, asyncio.Task[dict[str, Any]]] = {
+            "legal": ok_task,
+            "finance": slow_task,
+        }
+
+        results = await team.wait_for_agents(tasks, timeout=1.0)
+
+        assert results["legal"]["status"] == "completed"
+        assert results["finance"]["status"] == "cancelled"
+        assert len(results) == 2
+
+
+class TestExecutionModeOverride:
+    """Tests for --mode CLI override propagation to engine."""
+
+    @pytest.mark.asyncio
+    async def test_mode_override_applied_in_step1(self, tmp_path: Path) -> None:
+        """Engine should apply execution_mode from options in step 1."""
+        # Create a minimal deal-config.json with execution_mode=full
+        config = {
+            "config_version": "1.0.0",
+            "buyer": {"name": "Buyer"},
+            "target": {"name": "Target"},
+            "deal": {"type": "acquisition", "focus_areas": ["ip_ownership"]},
+            "execution": {"execution_mode": "full"},
+            "judge": {"enabled": True},
+        }
+        config_path = tmp_path / "deal-config.json"
+        config_path.write_text(json.dumps(config))
+
+        engine = PipelineEngine(
+            project_dir=tmp_path,
+            deal_config_path=config_path,
+        )
+        engine._run_options = {"execution_mode": "incremental"}
+
+        state = PipelineState(project_dir=tmp_path)
+        state = await engine._step_01_validate_config(state)
+
+        assert state.execution_mode == "incremental"
+
+    @pytest.mark.asyncio
+    async def test_no_override_uses_config_value(self, tmp_path: Path) -> None:
+        """Without override, engine uses execution_mode from config file."""
+        config = {
+            "config_version": "1.0.0",
+            "buyer": {"name": "Buyer"},
+            "target": {"name": "Target"},
+            "deal": {"type": "acquisition", "focus_areas": ["ip_ownership"]},
+            "execution": {"execution_mode": "full"},
+            "judge": {"enabled": True},
+        }
+        config_path = tmp_path / "deal-config.json"
+        config_path.write_text(json.dumps(config))
+
+        engine = PipelineEngine(
+            project_dir=tmp_path,
+            deal_config_path=config_path,
+        )
+        engine._run_options = {}
+
+        state = PipelineState(project_dir=tmp_path)
+        state = await engine._step_01_validate_config(state)
+
+        assert state.execution_mode == "full"
+
+
+class TestReferenceFileRouting:
+    """Tests for step 15 reference file routing with extraction naming."""
+
+    def test_safe_text_name_lookup(self, tmp_path: Path) -> None:
+        """Step 15 should find extracted text using _safe_text_name convention."""
+        from dd_agents.extraction.pipeline import ExtractionPipeline
+
+        # Simulate extraction output naming
+        ref_path = "3 - Tax Returns/GST Filing - Jan 2024.pdf"
+        safe_name = ExtractionPipeline._safe_text_name(ref_path)
+
+        # The safe name should convert slashes to __
+        assert "__" in safe_name
+        assert safe_name.endswith(".md")
+        assert "/" not in safe_name
+
+        # Verify round-trip: create the file and check it can be found
+        text_dir = tmp_path / "text"
+        text_dir.mkdir()
+        (text_dir / safe_name).write_text("extracted content")
+
+        # The file should exist at the expected path
+        assert (text_dir / safe_name).exists()
+
+    def test_stem_fallback_still_works(self, tmp_path: Path) -> None:
+        """Legacy stem.md naming should still work as fallback."""
+        text_dir = tmp_path / "text"
+        text_dir.mkdir()
+
+        # Create a file with just the stem
+        (text_dir / "simple_file.md").write_text("content")
+        assert (text_dir / "simple_file.md").exists()
+
+
+class TestPerAgentCompletionTracking:
+    """Tests for per-agent completion tracking in the output monitor."""
+
+    @pytest.mark.asyncio
+    async def test_agent_marked_complete_when_all_files_written(self, tmp_path: Path) -> None:
+        """Monitor should mark agent as complete when it has written all customer files."""
+        import asyncio
+
+        from dd_agents.orchestrator.team import AgentTeam
+
+        state = PipelineState(run_id="completion_test", project_dir=tmp_path)
+        state.customer_safe_names = ["cust_a", "cust_b"]
+        team = AgentTeam(state)
+
+        output_dir = tmp_path / "findings"
+        legal_dir = output_dir / "legal"
+        legal_dir.mkdir(parents=True)
+
+        # Write all customer files for legal
+        (legal_dir / "cust_a.json").write_text("{}")
+        (legal_dir / "cust_b.json").write_text("{}")
+
+        stop = asyncio.Event()
+
+        async def stop_after_check() -> None:
+            await asyncio.sleep(0.3)
+            stop.set()
+
+        await asyncio.gather(
+            team.monitor_agent_output(
+                output_dir,
+                ["legal"],
+                check_interval_s=0.1,
+                stop_event=stop,
+                total_customers=2,
+            ),
+            stop_after_check(),
+        )
+
+        # Legal should be marked as completed
+        assert "legal" in team._completed_agents
+
+    def test_completed_agent_excluded_from_stall_detection(self, tmp_path: Path) -> None:
+        """Completed agents should not appear in stall detection."""
+        import time as _time
+
+        from dd_agents.orchestrator.team import AgentTeam
+
+        state = PipelineState(run_id="excl_test", project_dir=tmp_path)
+        team = AgentTeam(state, stall_threshold_s=1)
+
+        # Both agents were active long ago
+        team._agent_last_activity["legal"] = _time.monotonic() - 120
+        team._agent_last_activity["finance"] = _time.monotonic() - 120
+
+        # Mark legal as completed
+        team.mark_agent_completed("legal")
+
+        stalled = team.detect_stalled_agents()
+        assert "legal" not in stalled
+        assert "finance" in stalled

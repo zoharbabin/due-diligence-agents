@@ -210,10 +210,15 @@ def create_tool_definitions() -> list[dict[str, Any]]:
 
 # ---------------------------------------------------------------------------
 # Tool availability per agent type
+#
+# NOTE: These lists contain CUSTOM tools only.  Built-in SDK tools (Read,
+# Write, Glob, Grep) are added by each agent class in specialists.py.
+# The authoritative tool list per agent is defined in each agent's
+# ``get_tools()`` method (see specialists.py, judge.py, reporting_lead.py).
 # ---------------------------------------------------------------------------
 
-# Specialists: validation + lookup + progress
-SPECIALIST_TOOLS: list[str] = [
+# Specialists: validation + lookup + progress (custom tools only)
+SPECIALIST_CUSTOM_TOOLS: list[str] = [
     "validate_finding",
     "validate_gap",
     "validate_manifest",
@@ -223,13 +228,13 @@ SPECIALIST_TOOLS: list[str] = [
     "report_progress",
 ]
 
-# Judge: verification only
-JUDGE_TOOLS: list[str] = [
+# Judge: verification only (custom tools only)
+JUDGE_CUSTOM_TOOLS: list[str] = [
     "verify_citation",
 ]
 
-# Reporting Lead: all tools
-REPORTING_LEAD_TOOLS: list[str] = [
+# Reporting Lead: subset of custom tools
+REPORTING_LEAD_CUSTOM_TOOLS: list[str] = [
     "validate_finding",
     "validate_gap",
     "verify_citation",
@@ -247,8 +252,8 @@ def get_tools_for_agent(agent_type: str) -> list[str]:
         List of tool name strings.
     """
     mapping: dict[str, list[str]] = {
-        "specialist": SPECIALIST_TOOLS,
-        "judge": JUDGE_TOOLS,
-        "reporting_lead": REPORTING_LEAD_TOOLS,
+        "specialist": SPECIALIST_CUSTOM_TOOLS,
+        "judge": JUDGE_CUSTOM_TOOLS,
+        "reporting_lead": REPORTING_LEAD_CUSTOM_TOOLS,
     }
     return mapping.get(agent_type, [])

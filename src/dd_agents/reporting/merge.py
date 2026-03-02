@@ -251,7 +251,12 @@ class FindingMerger:
         }
     )
 
-    def merge_all(self, findings_dir: Path) -> dict[str, MergedCustomerOutput]:
+    def merge_all(
+        self,
+        findings_dir: Path,
+        *,
+        expected_customers: list[str] | None = None,
+    ) -> dict[str, MergedCustomerOutput]:
         """Process all customers found under *findings_dir*.
 
         Expects the directory layout::
@@ -261,6 +266,15 @@ class FindingMerger:
                 finance/<customer_safe_name>.json
                 commercial/<customer_safe_name>.json
                 producttech/<customer_safe_name>.json
+
+        Parameters
+        ----------
+        findings_dir:
+            Root of the per-agent findings directories.
+        expected_customers:
+            If provided, discovered stems are validated against this
+            canonical list.  Unknown stems are mapped to the closest
+            expected name (via fuzzy match) and a warning is logged.
 
         Returns ``{customer_safe_name: MergedCustomerOutput}``.
         """
@@ -272,6 +286,51 @@ class FindingMerger:
                 for fp in agent_dir.glob("*.json"):
                     if fp.stem not in self._NON_CUSTOMER_STEMS:
                         customer_names.add(fp.stem)
+
+        # Validate discovered stems against expected customer list (Issue #88).
+        if expected_customers is not None:
+            expected_set = set(expected_customers)
+            unknown_stems = customer_names - expected_set
+            if unknown_stems:
+                _rf_available = True
+                try:
+                    from rapidfuzz import process as rf_process
+                except ImportError:
+                    _rf_available = False
+
+                for stem in sorted(unknown_stems):
+                    best_match: str | None = None
+                    if _rf_available and expected_customers:
+                        result = rf_process.extractOne(stem, expected_customers)
+                        if result and result[1] >= 80.0:
+                            best_match = result[0]
+                    if best_match:
+                        logger.warning(
+                            "Unknown customer stem %r — fuzzy-matched to %r (renaming files)",
+                            stem,
+                            best_match,
+                        )
+                        # Rename agent files from unknown stem to canonical name
+                        for agent in ALL_SPECIALIST_AGENTS:
+                            src = findings_dir / agent / f"{stem}.json"
+                            dst = findings_dir / agent / f"{best_match}.json"
+                            if src.exists() and not dst.exists():
+                                src.rename(dst)
+                        customer_names.discard(stem)
+                        customer_names.add(best_match)
+                    else:
+                        logger.warning(
+                            "Unknown customer stem %r not in expected list and no fuzzy match — keeping as-is",
+                            stem,
+                        )
+
+            missing = expected_set - customer_names
+            if missing:
+                logger.warning(
+                    "%d expected customers have no findings: %s",
+                    len(missing),
+                    sorted(missing)[:10],
+                )
 
         results: dict[str, MergedCustomerOutput] = {}
         for csn in sorted(customer_names):

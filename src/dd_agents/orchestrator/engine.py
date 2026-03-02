@@ -113,6 +113,7 @@ class PipelineEngine:
         self.state = PipelineState(project_dir=self.project_dir)
         self.checkpoint_dir = self.project_dir / "_dd" / "forensic-dd" / "checkpoints"
         self.team: AgentTeam | None = None
+        self._run_options: dict[str, Any] = {}
 
         # Build the ordered mapping of PipelineStep -> async method
         self._step_registry: dict[PipelineStep, StepFn] = self._build_step_registry()
@@ -135,13 +136,17 @@ class PipelineEngine:
             Step number (1-35) to resume from.  ``0`` means start fresh.
             The checkpoint for the preceding step is loaded automatically.
         options:
-            Optional runtime overrides (reserved for future use).
+            Optional runtime overrides.  Supported keys:
+
+            - ``execution_mode`` (str): Override execution mode
+              (``"full"`` or ``"incremental"``).
 
         Returns
         -------
         PipelineState
             The final pipeline state after all steps complete.
         """
+        self._run_options = options or {}
         if resume_from_step > 0:
             predecessor = resume_from_step - 1
             if predecessor > 0:
@@ -503,6 +508,12 @@ class PipelineEngine:
         judge = raw.get("judge", {})
         state.execution_mode = execution.get("execution_mode", "full")
         state.judge_enabled = judge.get("enabled", True)
+
+        # Apply CLI overrides (e.g. --mode incremental)
+        mode_override = self._run_options.get("execution_mode")
+        if mode_override:
+            state.execution_mode = mode_override
+            logger.info("Execution mode overridden by CLI: %s", mode_override)
 
         logger.info(
             "Config validated: mode=%s, judge=%s",
@@ -953,10 +964,19 @@ class PipelineEngine:
             run_id=state.run_id,
         )
 
-        text_dir_str = str(self._text_dir(state))
+        # Per-agent batch sizing (Issue #92): look up class-level overrides.
+        from dd_agents.agents.prompt_builder import AgentType
+        from dd_agents.agents.specialists import SPECIALIST_CLASSES
 
         for agent_name in ALL_SPECIALIST_AGENTS:
-            batches = PromptBuilder.batch_customers(customers)
+            agent_cls = SPECIALIST_CLASSES.get(AgentType(agent_name))
+            max_per_batch = getattr(agent_cls, "max_customers_per_batch", 20) if agent_cls else 20
+            max_tokens = getattr(agent_cls, "max_tokens_per_batch", 40_000) if agent_cls else 40_000
+            batches = PromptBuilder.batch_customers(
+                customers,
+                max_tokens=max_tokens,
+                max_per_batch=max_per_batch,
+            )
             prompts: list[str] = []
             for batch in batches:
                 prompt = builder.build_specialist_prompt(
@@ -964,7 +984,6 @@ class PipelineEngine:
                     customers=batch,
                     reference_files=reference_files or None,
                     deal_config=deal_config_obj,
-                    text_dir=text_dir_str,
                 )
                 prompts.append(prompt)
 
@@ -1008,6 +1027,10 @@ class PipelineEngine:
         findings_dir = state.run_dir / "findings"
         routing_manifest: list[dict[str, Any]] = []
 
+        # Import the extraction pipeline's naming convention so we can
+        # locate extracted text files using the same logic that created them.
+        from dd_agents.extraction.pipeline import ExtractionPipeline
+
         for ref in ref_files:
             # Resolve the extracted text path
             source_text: _Path | None = None
@@ -1022,7 +1045,16 @@ class PipelineEngine:
                         source_text = candidate
 
             if source_text is None:
-                # Try to derive from file_path
+                # Strategy 2: use extraction pipeline's naming convention.
+                # Extraction writes files as path__to__file.pdf.md (slashes
+                # replaced with __, original extension preserved, .md appended).
+                safe_name = ExtractionPipeline._safe_text_name(ref.file_path)
+                candidate = text_dir / safe_name
+                if candidate.exists():
+                    source_text = candidate
+
+            if source_text is None:
+                # Strategy 3: fall back to simple stem.md (legacy convention)
                 stem = _Path(ref.file_path).stem
                 candidate = text_dir / f"{stem}.md"
                 if candidate.exists():
@@ -1162,12 +1194,14 @@ class PipelineEngine:
                     exhaustion.get("reason", "unknown"),
                 )
 
-        # --- Respawn for agents below 90 % coverage ------------------------
+        # --- Respawn for ANY missing customers (Issue #91) -----------------
+        # Always retry missing customers to achieve 100% coverage,
+        # not just when below 90%.
         for agent, missing_custs in per_agent_missing.items():
-            coverage_pct = (total_customers - len(missing_custs)) / max(total_customers, 1)
-            if coverage_pct < 0.90 and missing_custs:
+            if missing_custs:
+                coverage_pct = (total_customers - len(missing_custs)) / max(total_customers, 1)
                 logger.warning(
-                    "Agent %s coverage %.1f%% < 90%% -- respawning for %d missing customers",
+                    "Agent %s coverage %.1f%% -- respawning for %d missing customers",
                     agent,
                     coverage_pct * 100,
                     len(missing_custs),
@@ -1869,7 +1903,10 @@ class PipelineEngine:
 
         merger = FindingMerger(run_id=state.run_id, file_inventory=file_inventory)
         findings_dir = state.run_dir / "findings"
-        merged = merger.merge_all(findings_dir)
+        merged = merger.merge_all(
+            findings_dir,
+            expected_customers=state.customer_safe_names or None,
+        )
 
         # Write merged files
         merged_dir = findings_dir / "merged"
@@ -2565,7 +2602,7 @@ class PipelineEngine:
         resolver = getattr(state, "_entity_resolver", None)
         if resolver is not None:
             try:
-                resolver.cache.save()
+                resolver.cache.save(state.run_id)
                 logger.info("Entity resolution cache saved")
             except Exception as exc:
                 logger.warning("Failed to save entity cache: %s", exc)

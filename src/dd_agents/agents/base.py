@@ -62,6 +62,11 @@ class BaseAgentRunner(ABC):
     max_turns: int = 200
     max_budget_usd: float = 5.0
 
+    # Batch sizing -- subclasses may override for agents that need
+    # smaller batches (e.g., FinanceAgent processes dense spreadsheets).
+    max_customers_per_batch: int = 20
+    max_tokens_per_batch: int = 40_000
+
     # Minimum SDK message buffer (bytes).  The actual value is computed
     # dynamically from the largest extracted-text file in the data room.
     _MIN_BUFFER_BYTES: int = 5 * 1024 * 1024  # 5 MB floor
@@ -233,7 +238,6 @@ class BaseAgentRunner(ABC):
             customers=state.get("customers", []),
             reference_files=state.get("reference_files"),
             deal_config=state.get("deal_config") or self.deal_config,
-            text_dir=state.get("text_dir"),
         )
 
     # ------------------------------------------------------------------
@@ -290,7 +294,10 @@ class BaseAgentRunner(ABC):
             "3. Do NOT read or validate existing output files before writing. Write "
             "fresh output directly. If a file exists at the output path, overwrite it.\n"
             "4. Do NOT summarize progress or produce status reports. Write JSON files "
-            "and move to the next customer immediately."
+            "and move to the next customer immediately.\n"
+            "5. Your final output message MUST be a single valid JSON object. Do not "
+            "wrap it in markdown fences (no ```json). Do not include explanatory text "
+            "before or after the JSON. Output ONLY the JSON object."
         )
 
         options = _ClaudeAgentOptions(

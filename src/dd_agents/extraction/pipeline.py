@@ -1,5 +1,11 @@
 """Extraction pipeline -- orchestrates the fallback chain for all files.
 
+PURPOSE: Extraction serves the **search/vector index** (TF-IDF, chunking,
+vector store).  Specialist agents read original files directly via the
+SDK Read tool — they do NOT depend on extracted text for analysis (Issue #87).
+The verify_citation tool uses extracted text as a fallback for quote
+verification.
+
 The pipeline converts every data-room file to a single canonical
 markdown representation.  PDFs are pre-inspected to route the chain:
 
