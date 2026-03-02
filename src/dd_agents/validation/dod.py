@@ -424,26 +424,38 @@ class DefinitionOfDoneChecker:
         )
 
     def check_12b_agent_coverage_in_merged(self) -> AuditCheck:
-        """Every customer in merged output has findings or gaps from all 4 agents."""
+        """Every customer in merged output has findings or gaps from all *assigned* agents."""
         merged_dir = self.run_dir / "findings" / "merged"
         if not merged_dir.exists():
             return AuditCheck(
                 passed=False,
                 dod_checks=[12],
                 details={"failures": ["Merged findings directory does not exist"]},
-                rule="Check 12b: merged output covers all agents per customer.",
+                rule="Check 12b: merged output covers all assigned agents per customer.",
             )
 
         import json as _json
 
+        # Load per-customer agent assignments from metadata if available.
+        # Falls back to expecting all 4 agents when metadata is absent.
+        customer_assignments: dict[str, list[str]] = {}
+        metadata_path = self.run_dir / "metadata.json"
+        try:
+            meta = _json.loads(metadata_path.read_text())
+            customer_assignments = meta.get("customer_assignments", {})
+        except (ValueError, OSError):
+            pass
+
+        default_agents = set(ALL_SPECIALIST_AGENTS)
         missing_coverage: list[str] = []
-        expected_agents = set(ALL_SPECIALIST_AGENTS)
 
         for jf in sorted(merged_dir.glob("*.json")):
             try:
                 data = _json.loads(jf.read_text())
             except (ValueError, OSError):
                 continue
+            # Use the actual assignment for this customer, or all 4 as fallback
+            expected_agents = set(customer_assignments.get(jf.stem, default_agents))
             actual_agents: set[str] = set()
             for f in data.get("findings", []):
                 agent = f.get("agent", "")
@@ -465,7 +477,7 @@ class DefinitionOfDoneChecker:
                 "customers_missing_agents": len(missing_coverage),
                 "details": missing_coverage[:20],  # Cap at 20 to avoid huge output
             },
-            rule="Check 12b: merged output covers all agents per customer.",
+            rule="Check 12b: merged output covers all assigned agents per customer.",
         )
 
     # ------------------------------------------------------------------ #

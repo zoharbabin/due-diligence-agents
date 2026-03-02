@@ -517,3 +517,112 @@ class TestTextDirRemoval:
 
         sig = inspect.signature(PromptBuilder.build_specialist_prompt)
         assert "text_dir" not in sig.parameters
+
+
+# ===========================================================================
+# DoD check 12b: respects customer_assignments from metadata
+# ===========================================================================
+
+
+class TestDodCheck12bAssignments:
+    """DoD check 12b should compare against assigned agents, not all 4."""
+
+    def test_12b_passes_when_partial_assignment_covered(self, tmp_path: Path) -> None:
+        """Customer assigned to 2 agents passes when those 2 produce findings."""
+        from dd_agents.validation.dod import DefinitionOfDoneChecker
+
+        run_dir = tmp_path / "run"
+        merged_dir = run_dir / "findings" / "merged"
+        merged_dir.mkdir(parents=True)
+
+        # Write metadata with partial assignment
+        metadata = {
+            "customer_assignments": {
+                "acme_corp": ["finance", "legal"],
+            }
+        }
+        (run_dir / "metadata.json").write_text(json.dumps(metadata))
+
+        # Write merged output with only finance + legal findings
+        merged_output = {
+            "customer": "Acme Corp",
+            "customer_safe_name": "acme_corp",
+            "findings": [
+                _make_finding() | {"agent": "finance"},
+                _make_finding() | {"agent": "legal"},
+            ],
+            "gaps": [],
+        }
+        (merged_dir / "acme_corp.json").write_text(json.dumps(merged_output))
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=tmp_path / "inventory",
+            customer_safe_names=["acme_corp"],
+        )
+        result = checker.check_12b_agent_coverage_in_merged()
+        assert result.passed, f"Should pass but got: {result.details}"
+
+    def test_12b_fails_when_assigned_agent_missing(self, tmp_path: Path) -> None:
+        """Customer assigned to 3 agents fails when only 2 produce findings."""
+        from dd_agents.validation.dod import DefinitionOfDoneChecker
+
+        run_dir = tmp_path / "run"
+        merged_dir = run_dir / "findings" / "merged"
+        merged_dir.mkdir(parents=True)
+
+        metadata = {
+            "customer_assignments": {
+                "acme_corp": ["finance", "legal", "commercial"],
+            }
+        }
+        (run_dir / "metadata.json").write_text(json.dumps(metadata))
+
+        merged_output = {
+            "customer": "Acme Corp",
+            "customer_safe_name": "acme_corp",
+            "findings": [
+                _make_finding() | {"agent": "finance"},
+                _make_finding() | {"agent": "legal"},
+            ],
+            "gaps": [],
+        }
+        (merged_dir / "acme_corp.json").write_text(json.dumps(merged_output))
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=tmp_path / "inventory",
+            customer_safe_names=["acme_corp"],
+        )
+        result = checker.check_12b_agent_coverage_in_merged()
+        assert not result.passed
+        assert result.details["customers_missing_agents"] == 1
+
+    def test_12b_falls_back_to_all_agents_without_metadata(self, tmp_path: Path) -> None:
+        """Without metadata.json, check falls back to expecting all 4 agents."""
+        from dd_agents.validation.dod import DefinitionOfDoneChecker
+
+        run_dir = tmp_path / "run"
+        merged_dir = run_dir / "findings" / "merged"
+        merged_dir.mkdir(parents=True)
+
+        # No metadata.json — fallback to all 4 agents expected
+        merged_output = {
+            "customer": "Acme Corp",
+            "customer_safe_name": "acme_corp",
+            "findings": [
+                _make_finding() | {"agent": "finance"},
+                _make_finding() | {"agent": "legal"},
+            ],
+            "gaps": [],
+        }
+        (merged_dir / "acme_corp.json").write_text(json.dumps(merged_output))
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=tmp_path / "inventory",
+            customer_safe_names=["acme_corp"],
+        )
+        result = checker.check_12b_agent_coverage_in_merged()
+        assert not result.passed
+        assert result.details["customers_missing_agents"] == 1
