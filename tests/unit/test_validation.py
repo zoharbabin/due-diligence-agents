@@ -506,16 +506,16 @@ class TestNumericalAuditor:
         assert any("Customer count changed" in f for f in check.details["failures"])
 
     def test_run_full_audit(self, tmp_path: Path) -> None:
-        """Full audit returns 4 checks (layers 1, 2, 3, 5)."""
+        """Full audit returns 5 checks (layers 1, 2, 3, 5, 6)."""
         manifest = _make_manifest(n003=10, n004=1, n005=2, n006=3, n007=4)
         (tmp_path / "customers.csv").write_text("header\n" + "\n".join(f"row{i}" for i in range(3)) + "\n")
         (tmp_path / "counts.json").write_text(json.dumps({"total_customers": 3}))
 
         auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
         checks = auditor.run_full_audit(manifest)
-        assert len(checks) == 4
+        assert len(checks) == 5
         layers = [c.details["layer"] for c in checks]
-        assert sorted(layers) == [1, 2, 3, 5]
+        assert sorted(layers) == [1, 2, 3, 5, 6]
 
     def test_manifest_with_generated_at_validates(self) -> None:
         """A manifest dict that includes generated_at validates successfully."""
@@ -1282,9 +1282,9 @@ class TestDefinitionOfDoneChecker:
         )
         results = checker.check_all()
 
-        # Core (12) + Reporting (5) + Contract Dates (1) + Extraction (1)
-        # + Report Consistency (3) = 22 (no Judge, no Incremental)
-        assert len(results) == 22
+        # Core (12 + 12b) + Reporting (5) + Contract Dates (1) + Extraction (1)
+        # + Report Consistency (3) = 23 (no Judge, no Incremental)
+        assert len(results) == 23
 
     def test_check_count_with_judge(self, tmp_path: Path) -> None:
         """With judge.enabled, 4 additional checks appear."""
@@ -1299,7 +1299,7 @@ class TestDefinitionOfDoneChecker:
             deal_config={"judge": {"enabled": True, "threshold": 70}},
         )
         results = checker.check_all()
-        assert len(results) == 26  # 22 + 4 judge
+        assert len(results) == 27  # 23 + 4 judge
 
     def test_check_count_with_incremental(self, tmp_path: Path) -> None:
         """With incremental mode, 4 additional checks appear."""
@@ -1314,7 +1314,7 @@ class TestDefinitionOfDoneChecker:
             deal_config={"execution": {"mode": "incremental"}},
         )
         results = checker.check_all()
-        assert len(results) == 26  # 22 + 4 incremental
+        assert len(results) == 27  # 23 + 4 incremental
 
     def test_check_count_with_all_conditionals(self, tmp_path: Path) -> None:
         """With all conditionals, expect full 30 checks."""
@@ -1332,7 +1332,7 @@ class TestDefinitionOfDoneChecker:
             },
         )
         results = checker.check_all()
-        assert len(results) == 30
+        assert len(results) == 31
 
     def test_all_checks_return_audit_check(self, tmp_path: Path) -> None:
         """Every check returns an AuditCheck instance."""
@@ -3105,3 +3105,198 @@ class TestCoverageManifestExclusion:
         merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
         result = merger.merge_all(findings_dir)
         assert set(result.keys()) == {"acme_corp"}
+
+
+# ===================================================================== #
+# DoD check 12b -- agent coverage in merged output (#85)
+# ===================================================================== #
+
+
+class TestDoDCheck12bAgentCoverage:
+    """Tests for check_12b_agent_coverage_in_merged (#85)."""
+
+    @staticmethod
+    def _write_merged_json(merged_dir: Path, customer: str, agents: list[str]) -> None:
+        """Write a minimal merged JSON with findings from the given agents."""
+        findings = []
+        for agent in agents:
+            findings.append(
+                {
+                    "id": f"forensic-dd_{agent}_{customer}_0001",
+                    "severity": "P2",
+                    "category": "test",
+                    "title": f"Finding from {agent}",
+                    "description": "Test",
+                    "citations": [
+                        {
+                            "source_type": "file",
+                            "source_path": "test.pdf",
+                            "location": "p1",
+                            "exact_quote": "quote",
+                        }
+                    ],
+                    "confidence": "medium",
+                    "agent": agent,
+                    "run_id": "test",
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "analysis_unit": customer,
+                }
+            )
+        data = {
+            "customer": customer,
+            "customer_safe_name": customer,
+            "findings": findings,
+            "gaps": [],
+            "cross_references": [],
+            "governance_graph": {"edges": []},
+        }
+        merged_dir.mkdir(parents=True, exist_ok=True)
+        (merged_dir / f"{customer}.json").write_text(json.dumps(data))
+
+    def test_full_coverage_passes(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+        merged_dir = run_dir / "findings" / "merged"
+        self._write_merged_json(merged_dir, "acme", AGENTS)
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=["acme"],
+        )
+        result = checker.check_12b_agent_coverage_in_merged()
+        assert result.passed is True
+        assert result.details["customers_missing_agents"] == 0
+
+    def test_missing_agent_fails(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+        merged_dir = run_dir / "findings" / "merged"
+        self._write_merged_json(merged_dir, "acme", ["legal", "finance", "commercial"])
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=["acme"],
+        )
+        result = checker.check_12b_agent_coverage_in_merged()
+        assert result.passed is False
+        assert result.details["customers_missing_agents"] == 1
+
+    def test_no_merged_dir_fails(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+        run_dir.mkdir(parents=True)
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=["acme"],
+        )
+        result = checker.check_12b_agent_coverage_in_merged()
+        assert result.passed is False
+
+
+# ===================================================================== #
+# Layer 6 -- Financial Citation Verification (Issue #81)
+# ===================================================================== #
+
+
+class TestFinancialCitationVerification:
+    """Tests for Layer 6 financial citation verification (#81)."""
+
+    def test_extract_dollar_amounts_simple(self) -> None:
+        amounts = NumericalAuditor._extract_dollar_amounts("Revenue of $1,200,000")
+        assert 1_200_000.0 in amounts
+
+    def test_extract_dollar_amounts_with_suffix(self) -> None:
+        amounts = NumericalAuditor._extract_dollar_amounts("Cash position $1.98M")
+        assert any(abs(a - 1_980_000.0) < 1 for a in amounts)
+
+    def test_extract_dollar_amounts_thousands(self) -> None:
+        amounts = NumericalAuditor._extract_dollar_amounts("Burn rate $904K/month")
+        assert any(abs(a - 904_000.0) < 1 for a in amounts)
+
+    def test_amount_matches_within_tolerance(self) -> None:
+        # $1.98M should match $1,983,348 within 5%
+        assert NumericalAuditor._amount_matches_any(1_980_000, {1_983_348}, tolerance=0.05)
+
+    def test_amount_does_not_match_fabricated(self) -> None:
+        # $3.95M should NOT match $9,086,173
+        assert not NumericalAuditor._amount_matches_any(3_950_000, {9_086_173}, tolerance=0.05)
+
+    def test_check_financial_citations_no_text_dir(self, tmp_path: Path) -> None:
+        auditor = NumericalAuditor(run_dir=tmp_path)
+        result = auditor.check_financial_citations(text_dir=None)
+        assert result.passed is True
+        assert result.details.get("skipped") is True
+
+    def test_check_financial_citations_with_verified_data(self, tmp_path: Path) -> None:
+        # Create merged findings dir with a P0 finding.
+        merged_dir = tmp_path / "findings" / "merged"
+        merged_dir.mkdir(parents=True)
+        finding_data = {
+            "findings": [
+                {
+                    "severity": "P0",
+                    "title": "Cash position low",
+                    "description": "Cash position of $1,983,348",
+                    "citations": [
+                        {
+                            "source_path": "finance/balance_sheet.xlsx",
+                            "exact_quote": "Cash and equivalents: $1,983,348",
+                        }
+                    ],
+                }
+            ]
+        }
+        (merged_dir / "customer_a.json").write_text(json.dumps(finding_data))
+
+        # Create text dir with source file.
+        text_dir = tmp_path / "text"
+        (text_dir / "customer_a").mkdir(parents=True)
+        (text_dir / "customer_a" / "balance_sheet.xlsx.md").write_text(
+            "Cash and equivalents: $1,983,348\nTotal assets: $5,000,000"
+        )
+
+        auditor = NumericalAuditor(run_dir=tmp_path)
+        result = auditor.check_financial_citations(text_dir=text_dir)
+        assert result.passed is True
+        assert result.details["verified"] == 1
+
+    def test_check_financial_citations_catches_fabrication(self, tmp_path: Path) -> None:
+        # Create merged findings with fabricated value.
+        merged_dir = tmp_path / "findings" / "merged"
+        merged_dir.mkdir(parents=True)
+        finding_data = {
+            "findings": [
+                {
+                    "severity": "P0",
+                    "title": "Deferred revenue surge",
+                    "description": "Deferred revenue surged from $3.95M to $8.06M",
+                    "citations": [
+                        {
+                            "source_path": "finance/tax_return.pdf",
+                            "exact_quote": "Deferred revenue $3,950,000",
+                        }
+                    ],
+                }
+            ]
+        }
+        (merged_dir / "customer_a.json").write_text(json.dumps(finding_data))
+
+        # Source actually has different values.
+        text_dir = tmp_path / "text"
+        (text_dir / "customer_a").mkdir(parents=True)
+        (text_dir / "customer_a" / "tax_return.pdf.md").write_text(
+            "Current deferred revenue: $9,086,173\nPrior year: $12,088,616"
+        )
+
+        auditor = NumericalAuditor(run_dir=tmp_path)
+        result = auditor.check_financial_citations(text_dir=text_dir)
+        assert result.passed is False
+        assert result.details["checked"] == 1
+        assert len(result.details["failures"]) > 0

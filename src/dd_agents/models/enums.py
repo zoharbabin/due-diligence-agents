@@ -101,6 +101,15 @@ class SpotCheckResult(StrEnum):
     FAIL = "FAIL"
 
 
+class MatchStatus(StrEnum):
+    """Cross-reference match status values."""
+
+    MATCH = "match"
+    MISMATCH = "mismatch"
+    NOT_AVAILABLE = "not_available"
+    UNVERIFIED = "unverified"
+
+
 class CustomerClassificationStatus(StrEnum):
     """Incremental mode classification. From SKILL.md section 0e."""
 

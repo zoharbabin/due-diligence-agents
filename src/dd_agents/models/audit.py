@@ -129,6 +129,7 @@ class AgentScore(BaseModel):
     partial: int = 0
     fail: int = 0
     dimensions: AgentScoreDimensions = Field(default_factory=AgentScoreDimensions)
+    quality_tier: str = Field(default="full_pass", description="Quality tier: full_pass, advisory, conditional, fail")
 
 
 class UnitScore(BaseModel):

@@ -81,6 +81,7 @@ class DefinitionOfDoneChecker:
         results.append(self.check_10_reference_files_processed())
         results.append(self.check_11_audit_logs_exist())
         results.append(self.check_12_domain_coverage())
+        results.append(self.check_12b_agent_coverage_in_merged())
 
         # Reporting (13-17) -- always required
         results.append(self.check_13_merge_dedup_complete())
@@ -420,6 +421,51 @@ class DefinitionOfDoneChecker:
             passed=False,
             dod_checks=[12],
             details={"domain_coverage_check": "qa_audit_not_run_yet"},
+        )
+
+    def check_12b_agent_coverage_in_merged(self) -> AuditCheck:
+        """Every customer in merged output has findings or gaps from all 4 agents."""
+        merged_dir = self.run_dir / "findings" / "merged"
+        if not merged_dir.exists():
+            return AuditCheck(
+                passed=False,
+                dod_checks=[12],
+                details={"failures": ["Merged findings directory does not exist"]},
+                rule="Check 12b: merged output covers all agents per customer.",
+            )
+
+        import json as _json
+
+        missing_coverage: list[str] = []
+        expected_agents = set(ALL_SPECIALIST_AGENTS)
+
+        for jf in sorted(merged_dir.glob("*.json")):
+            try:
+                data = _json.loads(jf.read_text())
+            except (ValueError, OSError):
+                continue
+            actual_agents: set[str] = set()
+            for f in data.get("findings", []):
+                agent = f.get("agent", "")
+                if agent:
+                    actual_agents.add(agent)
+            for g in data.get("gaps", []):
+                agent = g.get("agent", "")
+                if agent:
+                    actual_agents.add(agent)
+            missing = expected_agents - actual_agents
+            if missing:
+                missing_coverage.append(f"{jf.stem}: missing {sorted(missing)}")
+
+        return AuditCheck(
+            passed=len(missing_coverage) == 0,
+            dod_checks=[12],
+            details={
+                "total_customers": len(list(merged_dir.glob("*.json"))),
+                "customers_missing_agents": len(missing_coverage),
+                "details": missing_coverage[:20],  # Cap at 20 to avoid huge output
+            },
+            rule="Check 12b: merged output covers all agents per customer.",
         )
 
     # ------------------------------------------------------------------ #

@@ -347,6 +347,46 @@ class PipelineEngine:
         """Return the PERMANENT inventory directory."""
         return state.project_dir / state.skill_dir / "inventory"
 
+    def _resolve_artifact(self, state: PipelineState, artifact: str) -> Path | None:
+        """Find a known artifact file by checking standard locations.
+
+        This is the single source of truth for artifact path resolution,
+        preventing duplicate hardcoded path lists across methods.
+        """
+        from pathlib import Path as _Path
+
+        artifact_paths: dict[str, list[str]] = {
+            "quality_scores": [
+                "quality_scores.json",
+                "judge/quality_scores.json",
+                "audit/quality_scores.json",
+                "audit/judge/quality_scores.json",
+            ],
+            "entity_matches": [
+                "entity_matches.json",
+            ],
+            "reference_files": [
+                "reference_files.json",
+            ],
+            "contract_date_reconciliation": [
+                "contract_date_reconciliation.json",
+            ],
+        }
+        # Check state-level artifact paths first (if recorded during pipeline execution).
+        if hasattr(state, "artifact_paths") and isinstance(getattr(state, "artifact_paths", None), dict):
+            recorded = state.artifact_paths.get(artifact)
+            if recorded:
+                recorded_path = _Path(recorded)
+                if recorded_path.exists():
+                    return recorded_path
+
+        # Fall back to filesystem search.
+        for relative in artifact_paths.get(artifact, []):
+            candidate = state.run_dir / relative
+            if candidate.exists():
+                return candidate
+        return None
+
     def _ensure_customer_entries(self, state: PipelineState) -> list[Any]:
         """Return ``_customer_entries``, reconstructing from CSV or checkpoint.
 
@@ -2177,19 +2217,11 @@ class PipelineEngine:
 
         inv_dir = self._inventory_dir(state)
 
-        # Quality scores (for Quality_Audit sheet)
-        for candidate in [
-            state.run_dir / "quality_scores.json",
-            state.run_dir / "judge" / "quality_scores.json",
-            state.run_dir / "audit" / "quality_scores.json",
-            state.run_dir / "audit" / "judge" / "quality_scores.json",
-        ]:
-            if candidate.exists():
-                try:
-                    run_metadata["quality_scores"] = json.loads(candidate.read_text())
-                    break
-                except (json.JSONDecodeError, OSError):
-                    continue
+        # Quality scores via centralized resolver.
+        qs_path = self._resolve_artifact(state, "quality_scores")
+        if qs_path is not None:
+            with contextlib.suppress(json.JSONDecodeError, OSError):
+                run_metadata["quality_scores"] = json.loads(qs_path.read_text())
 
         # Entity matches (for Entity_Resolution_Log sheet)
         # The file is shaped {generated_at, matches: [...], unmatched, rejected};
@@ -2491,23 +2523,16 @@ class PipelineEngine:
         return {"total": total}
 
     def _collect_agent_scores(self, state: PipelineState) -> dict[str, int]:
-        """Collect judge agent scores from quality_scores.json."""
-        for candidate in [
-            state.run_dir / "quality_scores.json",
-            state.run_dir / "judge" / "quality_scores.json",
-            state.run_dir / "audit" / "quality_scores.json",
-            state.run_dir / "audit" / "judge" / "quality_scores.json",
-        ]:
-            if candidate.exists():
-                try:
-                    data = json.loads(candidate.read_text())
-                    raw_scores = data.get("agent_scores", {})
-                    return {
-                        name: (s.get("score", 0) if isinstance(s, dict) else int(s)) for name, s in raw_scores.items()
-                    }
-                except (json.JSONDecodeError, OSError, ValueError):
-                    continue
-        return {}
+        """Collect agent quality scores from judge output."""
+        qs_path = self._resolve_artifact(state, "quality_scores")
+        if qs_path is None:
+            return {}
+        try:
+            data = json.loads(qs_path.read_text())
+            raw_scores = data.get("agent_scores", {})
+            return {agent: (s.get("score", 0) if isinstance(s, dict) else int(s)) for agent, s in raw_scores.items()}
+        except (json.JSONDecodeError, OSError, ValueError):
+            return {}
 
     def _collect_customer_assignments(self, state: PipelineState) -> dict[str, list[str]]:
         """Collect customer → agents mapping from merged findings."""

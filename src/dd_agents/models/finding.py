@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
@@ -11,10 +12,22 @@ from dd_agents.models.enums import (
     Confidence,
     DetectionMethod,
     GapType,
+    MatchStatus,
     Severity,
     SourceType,
 )
 from dd_agents.models.governance import GovernanceGraph
+
+_logger = logging.getLogger(__name__)
+
+_MATCH_STATUS_ALIASES: dict[str, str] = {
+    "": "unverified",
+    "confirmed": "match",
+    "unable_to_verify": "not_available",
+    "partial_match": "mismatch",
+}
+
+_VALID_MATCH_STATUSES: set[str] = {s.value for s in MatchStatus}
 
 
 def _coerce_severity(v: Any) -> Severity:
@@ -259,10 +272,28 @@ class CrossReference(BaseModel):
     contract_source: CrossReferenceSource = Field(default_factory=CrossReferenceSource)
     reference_value: str = ""
     reference_source: CrossReferenceSource = Field(default_factory=CrossReferenceSource)
-    match_status: str = ""  # match, mismatch, not_available
+    match_status: str = Field(default="unverified", description="match, mismatch, not_available, or unverified")
     variance: str = ""  # e.g., "-20.8%"
     severity: Severity | None = None
     interpretation: str = ""
+
+    @field_validator("match_status", mode="before")
+    @classmethod
+    def coerce_match_status(cls, v: Any) -> str:
+        """Coerce common match_status variants to canonical values."""
+        if not isinstance(v, str):
+            _logger.warning("Non-string match_status %r coerced to 'unverified'", v)
+            return "unverified"
+        raw: str = v.strip()
+        # Check aliases first
+        if raw in _MATCH_STATUS_ALIASES:
+            return _MATCH_STATUS_ALIASES[raw]
+        # Accept canonical values
+        if raw in _VALID_MATCH_STATUSES:
+            return raw
+        # Unknown value -> unverified with warning
+        _logger.warning("Unknown match_status %r coerced to 'unverified'", raw)
+        return "unverified"
 
 
 class CrossReferenceSummary(BaseModel):

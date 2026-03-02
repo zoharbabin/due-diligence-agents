@@ -5,9 +5,9 @@
 
 **Branch**: `feat/production-hardening-plan`
 **Epic**: [#32](https://github.com/zoharbabin/due-diligence-agents/issues/32)
-**Baseline**: 1544 unit tests passing, mypy strict clean, ruff clean (v0.3.0)
+**Baseline**: 1635 unit tests passing, mypy strict clean, ruff clean (v0.3.1)
 
-> **Status**: P0 and P1 issues resolved. See commit `54d1b38` (Resolve all 12 production hardening issues #68-#80) and subsequent cleanup. Remaining P2/P3 issues tracked in the issue tracker.
+> **Status**: All P0/P1/P2 issues resolved. See commit `54d1b38` (Resolve #68-#80), subsequent fixes (#81-#86: financial verification, citation enforcement, cross-ref validation, agent coverage, quality tiers, artifact resolution). 1635 unit tests, 17 integration, mypy strict, ruff clean.
 
 ---
 

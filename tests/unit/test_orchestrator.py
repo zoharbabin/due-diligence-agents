@@ -3368,3 +3368,53 @@ class TestMonitorCancellationParams:
         # Give the cancellation a moment to propagate
         await asyncio.sleep(0.05)
         assert cancelled or task.cancelled()
+
+
+# ======================================================================
+# Artifact Resolver (#86)
+# ======================================================================
+
+
+class TestArtifactResolver:
+    """Tests for centralized artifact path resolution (#86)."""
+
+    def test_resolve_quality_scores_in_judge_dir(self, tmp_path: Path) -> None:
+        (tmp_path / "judge").mkdir()
+        (tmp_path / "judge" / "quality_scores.json").write_text('{"overall_quality": 82}')
+        engine = PipelineEngine.__new__(PipelineEngine)
+
+        class FakeState:
+            run_dir = tmp_path
+
+        path = engine._resolve_artifact(FakeState(), "quality_scores")  # type: ignore[arg-type]
+        assert path is not None
+        assert path == tmp_path / "judge" / "quality_scores.json"
+
+    def test_resolve_quality_scores_in_root(self, tmp_path: Path) -> None:
+        (tmp_path / "quality_scores.json").write_text('{"overall_quality": 82}')
+        engine = PipelineEngine.__new__(PipelineEngine)
+
+        class FakeState:
+            run_dir = tmp_path
+
+        path = engine._resolve_artifact(FakeState(), "quality_scores")  # type: ignore[arg-type]
+        assert path is not None
+        assert path == tmp_path / "quality_scores.json"
+
+    def test_resolve_artifact_not_found(self, tmp_path: Path) -> None:
+        engine = PipelineEngine.__new__(PipelineEngine)
+
+        class FakeState:
+            run_dir = tmp_path
+
+        path = engine._resolve_artifact(FakeState(), "quality_scores")  # type: ignore[arg-type]
+        assert path is None
+
+    def test_resolve_unknown_artifact(self, tmp_path: Path) -> None:
+        engine = PipelineEngine.__new__(PipelineEngine)
+
+        class FakeState:
+            run_dir = tmp_path
+
+        path = engine._resolve_artifact(FakeState(), "nonexistent_artifact")  # type: ignore[arg-type]
+        assert path is None

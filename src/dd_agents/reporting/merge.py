@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -210,6 +211,16 @@ class FindingMerger:
 
         # Cross-references
         cross_refs = self._union_cross_refs(agent_outputs)
+
+        # Detect cross-agent conflicts (Issue #82).
+        conflicts = self._detect_cross_agent_conflicts(cross_refs)
+        if conflicts:
+            logger.warning(
+                "Detected %d cross-agent conflicts for customer %s",
+                len(conflicts),
+                customer_name,
+            )
+
         xref_summary = self._merge_xref_summaries(agent_outputs)
 
         # Governance resolved %
@@ -285,6 +296,14 @@ class FindingMerger:
                     )
                 except Exception:  # noqa: BLE001
                     logger.exception("Failed to merge customer %s — skipping", csn)
+        # Check agent coverage (Issue #85).
+        coverage_gaps = self.check_agent_coverage(results)
+        if coverage_gaps:
+            logger.warning(
+                "Agent coverage gaps detected: %d customers missing agents",
+                len(coverage_gaps),
+            )
+
         return results
 
     def write_merged(
@@ -318,6 +337,43 @@ class FindingMerger:
         for csn, mco in merged.items():
             out_path = output_dir / f"{csn}.json"
             out_path.write_text(mco.model_dump_json(indent=2))
+
+    # ------------------------------------------------------------------
+    # Agent coverage validation (Issue #85)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def check_agent_coverage(
+        merged: dict[str, MergedCustomerOutput],
+    ) -> list[dict[str, Any]]:
+        """Verify every customer has findings or gaps from all 4 specialist agents.
+
+        Returns a list of coverage gaps: ``[{customer, missing_agents}]``.
+        """
+        expected_agents = set(ALL_SPECIALIST_AGENTS)
+        gaps: list[dict[str, Any]] = []
+        for csn, mco in merged.items():
+            actual_agents: set[str] = set()
+            for f in mco.findings:
+                actual_agents.add(f.agent.value if hasattr(f.agent, "value") else str(f.agent))
+            for g in mco.gaps:
+                if g.agent:
+                    actual_agents.add(g.agent.value if hasattr(g.agent, "value") else str(g.agent))
+            missing = expected_agents - actual_agents
+            if missing:
+                gaps.append({"customer": csn, "missing_agents": sorted(missing)})
+                logger.warning(
+                    "Customer %s missing agent output: %s",
+                    csn,
+                    sorted(missing),
+                )
+        if gaps:
+            logger.warning(
+                "%d/%d customers have incomplete agent coverage",
+                len(gaps),
+                len(merged),
+            )
+        return gaps
 
     # ------------------------------------------------------------------
     # Deduplication helpers
@@ -534,7 +590,7 @@ class FindingMerger:
             lower = text.lower()
             if any(w in lower for w in ("mismatch", "discrepan", "differ", "variance", "conflict")):
                 status = "mismatch"
-            elif any(w in lower for w in ("match", "consistent", "align", "confirm")):
+            elif re.search(r"\b(?:match(?:ed|es)?|consistent|aligned?|confirmed?)\b", lower):
                 status = "match"
             else:
                 status = "not_available"
@@ -608,6 +664,51 @@ class FindingMerger:
                 empty_shell_count,
             )
         return refs
+
+    @staticmethod
+    def _detect_cross_agent_conflicts(
+        cross_refs: list[CrossReference],
+    ) -> list[dict[str, Any]]:
+        """Detect conflicting values for the same data_point across agents.
+
+        Groups cross-references by (data_point, data_type) and flags entries
+        where different agents report different contract_value or reference_value
+        for the same metric.
+
+        Returns a list of conflict dicts with: data_point, agents, values, severity.
+        """
+        from collections import defaultdict
+
+        # Group by data_point (normalized).
+        groups: dict[str, list[CrossReference]] = defaultdict(list)
+        for cr in cross_refs:
+            key = cr.data_point.strip().lower()
+            if key and key != "unknown":
+                groups[key].append(cr)
+
+        conflicts: list[dict[str, Any]] = []
+        for data_point, refs in groups.items():
+            if len(refs) < 2:
+                continue
+            # Check if contract_value or reference_value differ across refs.
+            contract_values = {r.contract_value.strip() for r in refs if r.contract_value.strip()}
+            reference_values = {r.reference_value.strip() for r in refs if r.reference_value.strip()}
+            if len(contract_values) > 1 or len(reference_values) > 1:
+                conflicts.append(
+                    {
+                        "data_point": data_point,
+                        "contract_values": sorted(contract_values),
+                        "reference_values": sorted(reference_values),
+                        "ref_count": len(refs),
+                    }
+                )
+                logger.warning(
+                    "Cross-agent conflict on '%s': contract_values=%s, reference_values=%s",
+                    data_point,
+                    sorted(contract_values),
+                    sorted(reference_values),
+                )
+        return conflicts
 
     @staticmethod
     def _merge_xref_summaries(
@@ -871,6 +972,17 @@ class FindingMerger:
                         title,
                         original_severity,
                         reason,
+                    )
+
+            # P2 findings with no real citation get downgraded to P3.
+            elif severity == Severity.P2:
+                if has_synthetic or all(
+                    not cit.source_path or cit.source_path.startswith("[synthetic:") for cit in citations
+                ):
+                    severity = Severity.P3
+                    logger.warning(
+                        "Downgraded finding '%s' from P2 to P3: no real citation provided",
+                        title,
                     )
 
             # Normalise confidence to enum values.
@@ -1148,23 +1260,23 @@ class FindingMerger:
 
     @staticmethod
     def _validate_finding_citations(findings: list[Finding]) -> None:
-        """Warn when P0/P1 findings have empty or synthetic citations.
+        """Warn when findings have empty or synthetic citations.
 
         This is a pre-generation quality gate.  It does not reject findings
-        outright (the Finding model validator already does that for missing
-        exact_quote on P0/P1), but it logs warnings for synthetic citations
+        outright but it logs warnings for synthetic or missing citations
         so they surface in audit logs.
         """
         for finding in findings:
-            if finding.severity in (Severity.P0, Severity.P1):
-                for cit in finding.citations:
-                    if not cit.source_path or cit.source_path.startswith("[synthetic:"):
-                        logger.warning(
-                            "P0/P1 finding %s has synthetic/empty citation — this will be flagged by QA audit",
-                            finding.id,
-                        )
-                    if not cit.exact_quote:
-                        logger.warning(
-                            "P0/P1 finding %s is missing exact_quote in citation — this will be flagged by QA audit",
-                            finding.id,
-                        )
+            for cit in finding.citations:
+                if not cit.source_path or cit.source_path.startswith("[synthetic:"):
+                    logger.warning(
+                        "%s finding %s has synthetic/empty citation — flagged for QA audit",
+                        finding.severity.value,
+                        finding.id,
+                    )
+                if finding.severity in (Severity.P0, Severity.P1, Severity.P2) and not cit.exact_quote:
+                    logger.warning(
+                        "%s finding %s is missing exact_quote in citation — flagged for QA audit",
+                        finding.severity.value,
+                        finding.id,
+                    )

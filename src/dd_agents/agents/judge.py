@@ -414,5 +414,23 @@ class JudgeAgent(BaseAgentRunner):
 
     @staticmethod
     def _apply_quality_caveats(scores: QualityScores, failing_agents: list[str]) -> None:
-        """Mark agents below threshold with quality caveats."""
+        """Mark agents below threshold with quality caveats and assign quality tiers.
+
+        Tiers:
+        - score >= 85: "full_pass" — all findings accepted
+        - score 75-84: "advisory" — findings included but flagged
+        - score 70-74: "conditional" — P0/P1 findings require review flag
+        - score < 70: "fail" — findings should be quarantined
+        """
         scores.agents_below_threshold = list(failing_agents)
+        for _agent_name, agent_score in scores.agent_scores.items():
+            if agent_score.score >= 85:
+                tier = "full_pass"
+            elif agent_score.score >= 75:
+                tier = "advisory"
+            elif agent_score.score >= 70:
+                tier = "conditional"
+            else:
+                tier = "fail"
+            # Store quality tier in the agent score's metadata for downstream use.
+            agent_score.quality_tier = tier

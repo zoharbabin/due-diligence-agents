@@ -52,13 +52,24 @@ SPECIALIST_FOCUS: dict[AgentType, str] = {
         "Flag minimum commitment shortfalls. IMPORTANT: You MUST analyze ALL customers, not "
         "just those with dedicated financial documents. For customers with only contract files, "
         "extract financial terms from their contracts and cross-reference against reference "
-        "file data. Gap detection: Check for missing financial verification, missing pricing "
+        "file data. "
+        "VERIFICATION REQUIREMENT: For every financial value you cite (dollar amounts, "
+        "percentages, ratios), you MUST verify it appears verbatim in the source document. "
+        "Include the exact page number and section. If a value is derived (e.g., percentage "
+        "change), show the calculation with exact source values. Do NOT round or approximate "
+        "source values — cite the exact numbers from the document. "
+        "Gap detection: Check for missing financial verification, missing pricing "
         "documentation, unexplained revenue variances. Write gap files."
     ),
     AgentType.COMMERCIAL: (
         "Evaluate renewal mechanics (auto vs manual, notice periods, penalties). Cross-reference "
         "contract terms against Customer Health Scores for churn risk. Compare pricing against "
-        "rate cards. Flag SLA commitments and service credit exposure. Gap detection: Check for "
+        "rate cards. Flag SLA commitments and service credit exposure. "
+        "IMPORTANT DOMAIN BOUNDARY: For detailed financial analysis (revenue recognition, "
+        "deferred revenue ratios, cash burn calculations, financial statement reconciliation), "
+        "defer to the Finance agent. Do NOT perform independent financial calculations — "
+        "note the data point and flag it for cross-agent review instead. "
+        "Gap detection: Check for "
         "missing SOWs, missing order forms, missing renewal evidence, unsigned documents. "
         "Write gap files for EVERY missing document detected."
     ),
@@ -520,8 +531,8 @@ class PromptBuilder:
             '      "source_type": "file",\n'
             '      "source_path": "exact/path/to/document.pdf (required)",\n'
             '      "location": "Section X.Y or page number",\n'
-            '      "exact_quote": "verbatim text from the document (required '
-            'for P0/P1)"\n'
+            '      "exact_quote": "verbatim text from the document (REQUIRED — '
+            'findings without exact_quote will be downgraded in severity)"\n'
             "    }\n"
             "  ]\n"
             "}\n"
@@ -634,7 +645,7 @@ class PromptBuilder:
             '      "source_type": "file",\n'
             '      "source_path": "exact/path/to/document.pdf (required)",\n'
             '      "location": "Section X.Y or page number",\n'
-            '      "exact_quote": "verbatim text from document (required for P0/P1)"\n'
+            '      "exact_quote": "verbatim text from document (REQUIRED for all findings)"\n'
             "    }\n"
             "  ]\n"
             "}\n"

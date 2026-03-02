@@ -949,6 +949,62 @@ class TestMergeNormalization:
         assert refs[0].data_point == "ARR"
 
     # -----------------------------------------------------------------------
+    # match_status validation (#84)
+    # -----------------------------------------------------------------------
+
+
+class TestMatchStatusValidation:
+    """Tests for cross-reference match_status validation (#84)."""
+
+    def test_empty_match_status_defaults_to_unverified(self) -> None:
+        from dd_agents.models.finding import CrossReference
+
+        cr = CrossReference(data_point="ARR", match_status="")
+        assert cr.match_status == "unverified"
+
+    def test_valid_match_status_accepted(self) -> None:
+        from dd_agents.models.finding import CrossReference
+
+        for status in ("match", "mismatch", "not_available", "unverified"):
+            cr = CrossReference(data_point="ARR", match_status=status)
+            assert cr.match_status == status
+
+    def test_confirmed_coerced_to_match(self) -> None:
+        from dd_agents.models.finding import CrossReference
+
+        cr = CrossReference(data_point="ARR", match_status="confirmed")
+        assert cr.match_status == "match"
+
+    def test_unable_to_verify_coerced_to_not_available(self) -> None:
+        from dd_agents.models.finding import CrossReference
+
+        cr = CrossReference(data_point="ARR", match_status="unable_to_verify")
+        assert cr.match_status == "not_available"
+
+    def test_unknown_status_coerced_to_unverified(self) -> None:
+        from dd_agents.models.finding import CrossReference
+
+        cr = CrossReference(data_point="ARR", match_status="maybe")
+        assert cr.match_status == "unverified"
+
+    def test_keyword_heuristic_no_false_positive_on_matching(self) -> None:
+        result = FindingMerger._coerce_cross_reference_entry("No matching reference found", "finance")
+        assert result is not None
+        assert result["match_status"] != "match"
+
+    def test_keyword_heuristic_detects_mismatch(self) -> None:
+        result = FindingMerger._coerce_cross_reference_entry("Values differ by 2%", "finance")
+        assert result is not None
+        assert result["match_status"] == "mismatch"
+
+    def test_keyword_heuristic_detects_match(self) -> None:
+        result = FindingMerger._coerce_cross_reference_entry("ARR values confirmed and consistent", "finance")
+        assert result is not None
+        assert result["match_status"] == "match"
+
+
+class TestMergeNormalizationContinued:
+    # -----------------------------------------------------------------------
     # Citation singular → plural coercion
     # -----------------------------------------------------------------------
 
@@ -2468,8 +2524,8 @@ class TestSeverityDowngradeOnEmptySourcePath:
         assert len(result) == 1
         assert result[0].severity.value == "P1"
 
-    def test_p2_not_downgraded_with_empty_source(self) -> None:
-        """P2 findings should not be further downgraded (already P2+)."""
+    def test_p2_downgraded_to_p3_with_empty_source(self) -> None:
+        """P2 findings with empty source_path are downgraded to P3 (#83)."""
         merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
         raw = [
             {
@@ -2484,7 +2540,7 @@ class TestSeverityDowngradeOnEmptySourcePath:
         ]
         result = merger._promote_findings(raw, "Customer A", "customer_a")
         assert len(result) == 1
-        assert result[0].severity.value == "P2"
+        assert result[0].severity.value == "P3"
 
 
 class TestEmptyDescriptionFallback:
@@ -2539,3 +2595,258 @@ class TestEmptyDescriptionFallback:
         result = merger._promote_findings(raw, "Customer A", "customer_a")
         assert len(result) == 1
         assert result[0].description == "Detailed description here"
+
+
+class TestCitationEnforcement:
+    """Tests for P2/P3 citation enforcement (#83)."""
+
+    def test_p2_without_citation_downgraded_to_p3(self) -> None:
+        """P2 finding with synthetic-only citation gets downgraded to P3."""
+        from dd_agents.reporting.merge import FindingMerger
+
+        merger = FindingMerger(run_id="test_run", timestamp="2026-01-01T00:00:00Z")
+        raw_findings = [
+            {
+                "severity": "P2",
+                "category": "test",
+                "title": "Uncited finding",
+                "description": "No real source",
+                "confidence": "medium",
+                "agent": "finance",
+            }
+        ]
+        promoted = merger._promote_findings(raw_findings, "Customer A", "customer_a")
+        assert len(promoted) == 1
+        assert promoted[0].severity.value == "P3"
+
+    def test_p2_with_real_citation_stays_p2(self) -> None:
+        """P2 finding with real citation remains P2."""
+        from dd_agents.reporting.merge import FindingMerger
+
+        merger = FindingMerger(run_id="test_run", timestamp="2026-01-01T00:00:00Z")
+        raw_findings = [
+            {
+                "severity": "P2",
+                "category": "test",
+                "title": "Cited finding",
+                "description": "Has real source",
+                "confidence": "medium",
+                "agent": "finance",
+                "citations": [
+                    {
+                        "source_type": "file",
+                        "source_path": "contracts/msa.pdf",
+                        "location": "Section 5",
+                        "exact_quote": "Actual quote from document",
+                    }
+                ],
+            }
+        ]
+        promoted = merger._promote_findings(raw_findings, "Customer A", "customer_a")
+        assert len(promoted) == 1
+        assert promoted[0].severity.value == "P2"
+
+    def test_p1_without_citation_downgraded_to_p2(self) -> None:
+        """P1 finding without exact_quote gets downgraded to P2 (existing behavior)."""
+        from dd_agents.reporting.merge import FindingMerger
+
+        merger = FindingMerger(run_id="test_run", timestamp="2026-01-01T00:00:00Z")
+        raw_findings = [
+            {
+                "severity": "P1",
+                "category": "test",
+                "title": "P1 no quote",
+                "description": "Missing quote",
+                "confidence": "high",
+                "agent": "legal",
+                "citations": [
+                    {
+                        "source_type": "file",
+                        "source_path": "contracts/msa.pdf",
+                        "location": "Section 5",
+                    }
+                ],
+            }
+        ]
+        promoted = merger._promote_findings(raw_findings, "Customer A", "customer_a")
+        assert len(promoted) == 1
+        assert promoted[0].severity.value == "P2"
+
+    def test_validate_finding_citations_warns_all_severities(self, caplog: pytest.LogCaptureFixture) -> None:
+        """_validate_finding_citations warns for all severity levels."""
+        import logging
+
+        from dd_agents.models.enums import AgentName, Confidence, Severity, SourceType
+        from dd_agents.models.finding import Citation, Finding
+        from dd_agents.reporting.merge import FindingMerger
+
+        findings = [
+            Finding(
+                id="forensic-dd_finance_test_0001",
+                severity=Severity.P2,
+                category="test",
+                title="Test finding",
+                description="Test",
+                citations=[
+                    Citation(
+                        source_type=SourceType.FILE,
+                        source_path="[synthetic:no_citation_provided]",
+                        location="",
+                    )
+                ],
+                confidence=Confidence.MEDIUM,
+                agent=AgentName.FINANCE,
+                run_id="test",
+                timestamp="2026-01-01T00:00:00Z",
+                analysis_unit="test",
+            )
+        ]
+        with caplog.at_level(logging.WARNING, logger="dd_agents.reporting.merge"):
+            FindingMerger._validate_finding_citations(findings)
+        assert any(
+            "P2 finding" in record.message and "synthetic/empty citation" in record.message for record in caplog.records
+        )
+
+
+class TestCommercialAgentQuality:
+    """Tests for commercial agent quality enforcement (#82)."""
+
+    def test_commercial_prompt_has_domain_boundary(self):
+        from dd_agents.agents.prompt_builder import SPECIALIST_FOCUS, AgentType
+
+        focus = SPECIALIST_FOCUS[AgentType.COMMERCIAL]
+        assert "defer to the Finance agent" in focus
+        assert "DOMAIN BOUNDARY" in focus
+
+    def test_quality_tiers_assigned(self):
+        from dd_agents.agents.judge import JudgeAgent
+        from dd_agents.models.audit import AgentScore, AgentScoreDimensions, QualityScores
+
+        dims = AgentScoreDimensions(
+            citation_verification=70,
+            contextual_validation=70,
+            financial_accuracy=70,
+            cross_agent_consistency=70,
+            completeness=70,
+        )
+        scores = QualityScores(
+            run_id="test",
+            overall_quality=75,
+            agent_scores={
+                "finance": AgentScore(score=87, dimensions=dims),
+                "legal": AgentScore(score=86, dimensions=dims),
+                "commercial": AgentScore(score=71, dimensions=dims),
+                "producttech": AgentScore(score=65, dimensions=dims),
+            },
+        )
+        JudgeAgent._apply_quality_caveats(scores, ["commercial", "producttech"])
+        assert scores.agent_scores["finance"].quality_tier == "full_pass"
+        assert scores.agent_scores["legal"].quality_tier == "full_pass"
+        assert scores.agent_scores["commercial"].quality_tier == "conditional"
+        assert scores.agent_scores["producttech"].quality_tier == "fail"
+
+    def test_cross_agent_conflict_detection(self):
+        from dd_agents.models.finding import CrossReference
+        from dd_agents.reporting.merge import FindingMerger
+
+        refs = [
+            CrossReference(data_point="deferred_revenue_ratio", contract_value="34.1%"),
+            CrossReference(data_point="deferred_revenue_ratio", contract_value="51.2%"),
+        ]
+        conflicts = FindingMerger._detect_cross_agent_conflicts(refs)
+        assert len(conflicts) == 1
+        assert conflicts[0]["data_point"] == "deferred_revenue_ratio"
+
+    def test_no_conflict_when_values_agree(self):
+        from dd_agents.models.finding import CrossReference
+        from dd_agents.reporting.merge import FindingMerger
+
+        refs = [
+            CrossReference(data_point="ARR", contract_value="$1.2M"),
+            CrossReference(data_point="ARR", contract_value="$1.2M"),
+        ]
+        conflicts = FindingMerger._detect_cross_agent_conflicts(refs)
+        assert len(conflicts) == 0
+
+
+# ===================================================================== #
+# Agent coverage validation (#85)
+# ===================================================================== #
+
+
+class TestAgentCoverage:
+    """Tests for per-customer agent coverage validation (#85)."""
+
+    def test_full_coverage_returns_no_gaps(self) -> None:
+        from dd_agents.models.enums import AgentName, Confidence, Severity, SourceType
+        from dd_agents.models.finding import Citation, Finding, MergedCustomerOutput
+
+        findings = []
+        for agent in ("legal", "finance", "commercial", "producttech"):
+            findings.append(
+                Finding(
+                    id=f"forensic-dd_{agent}_test_0001",
+                    severity=Severity.P2,
+                    category="test",
+                    title=f"Finding from {agent}",
+                    description="Test",
+                    citations=[
+                        Citation(
+                            source_type=SourceType.FILE,
+                            source_path="test.pdf",
+                            location="p1",
+                            exact_quote="quote",
+                        )
+                    ],
+                    confidence=Confidence.MEDIUM,
+                    agent=AgentName(agent),
+                    run_id="test",
+                    timestamp="2026-01-01T00:00:00Z",
+                    analysis_unit="test",
+                )
+            )
+        mco = MergedCustomerOutput(
+            customer="Test",
+            customer_safe_name="test",
+            findings=findings,
+        )
+        gaps = FindingMerger.check_agent_coverage({"test": mco})
+        assert len(gaps) == 0
+
+    def test_missing_agent_detected(self) -> None:
+        from dd_agents.models.enums import AgentName, Confidence, Severity, SourceType
+        from dd_agents.models.finding import Citation, Finding, MergedCustomerOutput
+
+        findings = []
+        for agent in ("legal", "finance", "commercial"):  # Missing producttech
+            findings.append(
+                Finding(
+                    id=f"forensic-dd_{agent}_test_0001",
+                    severity=Severity.P2,
+                    category="test",
+                    title=f"Finding from {agent}",
+                    description="Test",
+                    citations=[
+                        Citation(
+                            source_type=SourceType.FILE,
+                            source_path="test.pdf",
+                            location="p1",
+                            exact_quote="quote",
+                        )
+                    ],
+                    confidence=Confidence.MEDIUM,
+                    agent=AgentName(agent),
+                    run_id="test",
+                    timestamp="2026-01-01T00:00:00Z",
+                    analysis_unit="test",
+                )
+            )
+        mco = MergedCustomerOutput(
+            customer="Test",
+            customer_safe_name="test",
+            findings=findings,
+        )
+        gaps = FindingMerger.check_agent_coverage({"test": mco})
+        assert len(gaps) == 1
+        assert gaps[0]["customer"] == "test"
+        assert "producttech" in gaps[0]["missing_agents"]
