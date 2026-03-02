@@ -7,7 +7,7 @@
 **Epic**: [#32](https://github.com/zoharbabin/due-diligence-agents/issues/32)
 **Baseline**: 1635 unit tests passing, mypy strict clean, ruff clean (v0.3.1)
 
-> **Status**: All P0/P1/P2 issues resolved. See commit `54d1b38` (Resolve #68-#80), subsequent fixes (#81-#86: financial verification, citation enforcement, cross-ref validation, agent coverage, quality tiers, artifact resolution). 1635 unit tests, 17 integration, mypy strict, ruff clean.
+> **Status**: ALL ISSUES RESOLVED. All P0/P1/P2/P3/P4 issues across 40 tracked issues complete. Production hardening (#68-#80), post-production fixes (#81-#86), and all 9 remaining feature issues (#49, #65, #51, #11, #9, #6, #3, #2, #7) implemented. 1635 unit tests, 17 integration, mypy strict, ruff clean. All GitHub issues closed.
 
 ---
 
@@ -208,12 +208,12 @@ hardening and should be addressed after all P0-P2 issues are resolved.
 
 | # | Title | Priority |
 |---|-------|----------|
-| 2 | Replace pytesseract with pluggable OCR backend | P4 |
-| 3 | Add layout-aware PDF extraction | P4 |
-| 6 | Replace markitdown with pluggable document backend | P2 |
-| 7 | Add visual grounding with bounding box citations | P4 |
-| 9 | Generate interactive HTML review pages | P2 |
-| 11 | Add cross-document entity resolution | P2 |
+| 2 | Replace pytesseract with pluggable OCR backend | P4 | **COMPLETE** — `ocr_registry.py` |
+| 3 | Add layout-aware PDF extraction | P4 | **COMPLETE** — `layout_pdf.py` |
+| 6 | Replace markitdown with pluggable document backend | P2 | **COMPLETE** — `backend.py` Protocol + ExtractionChain |
+| 7 | Add visual grounding with bounding box citations | P4 | **COMPLETE** — `coordinates.py` + BoundingBox model |
+| 9 | Generate interactive HTML review pages | P2 | **COMPLETE** — `html.py` HTMLReportGenerator |
+| 11 | Add cross-document entity resolution | P2 | **COMPLETE** — `dedup.py` CrossDocumentDeduplicator |
 
 ---
 
