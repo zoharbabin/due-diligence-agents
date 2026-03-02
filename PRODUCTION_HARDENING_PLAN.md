@@ -7,7 +7,7 @@
 **Epic**: [#32](https://github.com/zoharbabin/due-diligence-agents/issues/32)
 **Baseline**: 1635 unit tests passing, mypy strict clean, ruff clean (v0.3.1)
 
-> **Status**: ALL ISSUES RESOLVED. All P0/P1/P2/P3/P4 issues across 40 tracked issues complete. Production hardening (#68-#80), post-production fixes (#81-#86), and all 9 remaining feature issues (#49, #65, #51, #11, #9, #6, #3, #2, #7) implemented. 1635 unit tests, 17 integration, mypy strict, ruff clean. All GitHub issues closed.
+> **Status**: ALL ISSUES RESOLVED. All P0/P1/P2/P3/P4 issues across 40 tracked issues complete. Production hardening (#68-#80), post-production fixes (#81-#86), and all 9 remaining feature issues (#49, #65, #51, #11, #9, #6, #3, #2, #7) implemented. Additional post-hardening: Issue #96 (runaway agent defense — client-side turn guards, respawn timeouts), Issue #9 (executive M&A HTML report rewrite). 1707 unit tests, 17 integration, mypy strict, ruff clean. All GitHub issues closed.
 
 ---
 

@@ -1444,17 +1444,39 @@ class PipelineEngine:
             )
             batch_prompts.append(prompt)
 
+        # Adaptive timeout: 5 min per customer, 10 min floor, 30 min cap.
+        respawn_timeout_s = min(
+            max(len(missing_customers) * 300, 600),
+            1800,
+        )
+        logger.info(
+            "Respawn for %s: timeout %ds for %d customers",
+            agent_name,
+            respawn_timeout_s,
+            len(missing_customers),
+        )
+
         team = self._ensure_team(state)
         try:
-            result = await team._run_specialist(
-                agent_name,
-                {"respawn": True},
-                prompts=batch_prompts,
+            result = await asyncio.wait_for(
+                team._run_specialist(
+                    agent_name,
+                    {"respawn": True},
+                    prompts=batch_prompts,
+                ),
+                timeout=respawn_timeout_s,
             )
             logger.info(
                 "Respawn for %s completed: status=%s",
                 agent_name,
                 result.get("status", "unknown"),
+            )
+        except TimeoutError:
+            logger.error(
+                "Respawn for %s timed out after %ds for %d customers",
+                agent_name,
+                respawn_timeout_s,
+                len(missing_customers),
             )
         except Exception as exc:
             logger.warning("Respawn for %s failed: %s", agent_name, exc)
@@ -2444,6 +2466,8 @@ class PipelineEngine:
                 output_path=html_path,
                 run_id=state.run_id,
                 title="Due Diligence Report",
+                run_metadata=run_metadata,
+                deal_config=state.deal_config,
             )
             logger.info("HTML report generated: %s", html_path)
         except Exception as exc:  # noqa: BLE001

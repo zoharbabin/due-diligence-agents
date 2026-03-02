@@ -243,17 +243,17 @@ The project is complete when ALL of the following are true:
 - [x] `ruff check src/ tests/` is clean
 - [x] `ruff format --check src/ tests/` is clean
 
-> **Status: COMPLETE** — All 6 phases implemented and verified. Production hardening (v0.3.0) added 253 additional unit tests. v0.3.1 adds security, documentation, and config cleanup. See `PRODUCTION_HARDENING_PLAN.md` for post-implementation hardening work.
+> **Status: COMPLETE** — All 6 phases implemented and verified. Production hardening (v0.3.0) added 253 additional unit tests. v0.3.1 adds security, documentation, and config cleanup. v0.3.2 adds executive HTML report (#9), runaway agent defense (#96), and respawn timeout protection. See `PRODUCTION_HARDENING_PLAN.md` for post-implementation hardening work.
 
 ## Test Summary
 
 | Category | Count |
 |----------|-------|
-| Unit tests (models, utils, entity resolution, extraction, config, hooks, tools, orchestrator, agents, reporting, validation, search, glm_ocr, type safety, visual grounding, entity dedup, OCR registry, layout PDF, HTML report, extraction backend) | 1680+ |
+| Unit tests (models, utils, entity resolution, extraction, config, hooks, tools, orchestrator, agents, reporting, validation, search, glm_ocr, type safety, visual grounding, entity dedup, OCR registry, layout PDF, HTML report, extraction backend, turn limits) | 1707 |
 | Integration tests (pipeline steps 1-11) | 17 |
 | E2E tests (pre-agent: config, tiers, discovery, registry, run manager, cache) | 6 |
 | E2E tests (API-dependent: dry run, full pipeline, incremental — skipped without key) | 3 |
-| **Total** | **1700+ passed, 3 skipped** |
+| **Total** | **1707 passed, 3 skipped** |
 
 ## Git History
 

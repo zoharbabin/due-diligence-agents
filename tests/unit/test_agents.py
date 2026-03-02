@@ -9,6 +9,7 @@ attributes, prompt construction, and score calculations.
 from __future__ import annotations
 
 import json
+import logging
 from typing import TYPE_CHECKING
 
 import pytest
@@ -1151,6 +1152,227 @@ class TestSpawnAgentSDKWiring:
         monkeypatch.setattr(agent, "_spawn_agent", mock_spawn)
         result = await agent._spawn_agent("test")
         assert result == '{"findings": []}'
+
+
+# =========================================================================
+# Issue #96: Turn-limit enforcement tests
+# =========================================================================
+
+
+class TestTurnLimitEnforcement:
+    """Tests for client-side turn-limit enforcement in _spawn_agent (Issue #96).
+
+    IMPORTANT: Mock SDK classes must be created ONCE and shared between the
+    ``_patch_sdk`` call (which patches them into ``base_mod``) and the
+    ``mock_query`` generator (which yields instances of them).  If different
+    class objects are used, ``isinstance`` checks inside ``_spawn_agent`` fail
+    because Python treats each ``class`` statement as a distinct type.
+    """
+
+    @staticmethod
+    def _patch_sdk(
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> tuple[type, type, type, type]:
+        """Patch all SDK symbols in base_mod and return mock classes.
+
+        Returns (MockTextBlock, MockAssistantMessage, MockResultMessage, MockOptions).
+        Tests use the *same* classes to construct messages for ``mock_query``.
+        """
+        import dd_agents.agents.base as base_mod
+
+        class MockTextBlock:
+            def __init__(self, text: str) -> None:
+                self.text = text
+
+        class MockAssistantMessage:
+            def __init__(self, text: str) -> None:
+                self.content = [MockTextBlock(text)]
+
+        class MockResultMessage:
+            is_error = False
+            result = ""
+
+        class MockOptions:
+            def __init__(self, **kwargs: object) -> None:
+                for k, v in kwargs.items():
+                    setattr(self, k, v)
+
+        monkeypatch.setattr(base_mod, "_HAS_SDK", True)
+        monkeypatch.setattr(base_mod, "_AssistantMessage", MockAssistantMessage)
+        monkeypatch.setattr(base_mod, "_TextBlock", MockTextBlock)
+        monkeypatch.setattr(base_mod, "_ResultMessage", MockResultMessage)
+        monkeypatch.setattr(base_mod, "_ClaudeAgentOptions", MockOptions)
+
+        return MockTextBlock, MockAssistantMessage, MockResultMessage, MockOptions
+
+    @pytest.mark.asyncio
+    async def test_normal_operation_unaffected(
+        self,
+        tmp_project: Path,
+        tmp_run_dir: Path,
+        run_id: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Agent completing within max_turns produces full output, no warnings."""
+        import dd_agents.agents.base as base_mod
+
+        _, mock_am, mock_rm, _ = self._patch_sdk(monkeypatch)
+
+        async def mock_query(prompt: str, options: object) -> object:  # type: ignore[misc]
+            for i in range(50):
+                yield mock_am(f"msg-{i} ")
+            yield mock_rm()
+
+        monkeypatch.setattr(base_mod, "_query", mock_query)
+        agent = LegalAgent(tmp_project, tmp_run_dir, run_id)
+        result = await agent._spawn_agent("test")
+        assert "msg-0" in result
+        assert "msg-49" in result
+
+    @pytest.mark.asyncio
+    async def test_soft_limit_fires_at_max_turns(
+        self,
+        tmp_project: Path,
+        tmp_run_dir: Path,
+        run_id: str,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Exceeding max_turns logs a warning but still returns output."""
+        import dd_agents.agents.base as base_mod
+
+        _, mock_am, mock_rm, _ = self._patch_sdk(monkeypatch)
+
+        async def mock_query(prompt: str, options: object) -> object:  # type: ignore[misc]
+            for i in range(210):
+                yield mock_am(f"m{i} ")
+            yield mock_rm()
+
+        monkeypatch.setattr(base_mod, "_query", mock_query)
+        agent = LegalAgent(tmp_project, tmp_run_dir, run_id)
+        agent.max_turns = 200
+
+        with caplog.at_level(logging.WARNING, logger="dd_agents.agents.base"):
+            result = await agent._spawn_agent("test")
+
+        assert "exceeded soft limit" in caplog.text
+        # All 210 messages collected (soft limit doesn't discard).
+        assert "m0" in result
+        assert "m209" in result
+
+    @pytest.mark.asyncio
+    async def test_hard_limit_cancels_and_preserves_partial(
+        self,
+        tmp_project: Path,
+        tmp_run_dir: Path,
+        run_id: str,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Hard limit (max_turns * 3) cancels the task; partial output is returned."""
+        import dd_agents.agents.base as base_mod
+
+        _, mock_am, _, _ = self._patch_sdk(monkeypatch)
+
+        async def mock_query(prompt: str, options: object) -> object:  # type: ignore[misc]
+            for i in range(2000):  # Way past any limit
+                yield mock_am(f"m{i} ")
+
+        monkeypatch.setattr(base_mod, "_query", mock_query)
+        agent = LegalAgent(tmp_project, tmp_run_dir, run_id)
+        agent.max_turns = 10  # Small for fast test
+
+        with caplog.at_level(logging.ERROR, logger="dd_agents.agents.base"):
+            result = await agent._spawn_agent("test")
+
+        assert "hard limit" in caplog.text.lower()
+        # Partial output preserved: at least the first messages are there.
+        assert "m0" in result
+        # Should have stopped well before 2000 messages.
+        assert "m1999" not in result
+
+    @pytest.mark.asyncio
+    async def test_max_budget_usd_passed_to_options(
+        self,
+        tmp_project: Path,
+        tmp_run_dir: Path,
+        run_id: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """max_budget_usd is forwarded to ClaudeAgentOptions."""
+        import dd_agents.agents.base as base_mod
+
+        _, _, mock_rm, _ = self._patch_sdk(monkeypatch)
+        captured_options: list[object] = []
+
+        async def mock_query(prompt: str, options: object) -> object:  # type: ignore[misc]
+            captured_options.append(options)
+            yield mock_rm()
+
+        monkeypatch.setattr(base_mod, "_query", mock_query)
+        agent = LegalAgent(tmp_project, tmp_run_dir, run_id)
+        agent.max_budget_usd = 7.5
+        await agent._spawn_agent("test")
+
+        assert len(captured_options) == 1
+        opts = captured_options[0]
+        assert getattr(opts, "max_budget_usd", None) == 7.5
+        assert getattr(opts, "max_turns", None) == agent.max_turns
+
+    @pytest.mark.asyncio
+    async def test_hard_limit_multiplier_is_configurable(
+        self,
+        tmp_project: Path,
+        tmp_run_dir: Path,
+        run_id: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """HARD_LIMIT_MULTIPLIER can be overridden per agent subclass."""
+        import dd_agents.agents.base as base_mod
+
+        _, mock_am, _, _ = self._patch_sdk(monkeypatch)
+
+        async def mock_query(prompt: str, options: object) -> object:  # type: ignore[misc]
+            for i in range(500):
+                yield mock_am(f"m{i} ")
+
+        monkeypatch.setattr(base_mod, "_query", mock_query)
+        agent = LegalAgent(tmp_project, tmp_run_dir, run_id)
+        agent.max_turns = 10
+        agent.HARD_LIMIT_MULTIPLIER = 2  # Hard limit = 20
+
+        result = await agent._spawn_agent("test")
+        # Should stop at 20, not run to 500.
+        assert "m0" in result
+        assert "m499" not in result
+
+    @pytest.mark.asyncio
+    async def test_exceeded_soft_noted_in_session_end_log(
+        self,
+        tmp_project: Path,
+        tmp_run_dir: Path,
+        run_id: str,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Session-end log includes '(exceeded soft limit)' when soft limit was hit."""
+        import dd_agents.agents.base as base_mod
+
+        _, mock_am, mock_rm, _ = self._patch_sdk(monkeypatch)
+
+        async def mock_query(prompt: str, options: object) -> object:  # type: ignore[misc]
+            for _ in range(15):
+                yield mock_am("x")
+            yield mock_rm()
+
+        monkeypatch.setattr(base_mod, "_query", mock_query)
+        agent = LegalAgent(tmp_project, tmp_run_dir, run_id)
+        agent.max_turns = 10
+
+        with caplog.at_level(logging.INFO, logger="dd_agents.agents.base"):
+            await agent._spawn_agent("test")
+
+        assert "exceeded soft limit" in caplog.text
 
 
 # =========================================================================

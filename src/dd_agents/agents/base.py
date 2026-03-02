@@ -62,6 +62,12 @@ class BaseAgentRunner(ABC):
     max_turns: int = 200
     max_budget_usd: float = 5.0
 
+    # Hard-limit multiplier: if an agent exceeds max_turns * HARD_LIMIT_MULTIPLIER,
+    # the session is forcibly cancelled.  The gap between soft (max_turns) and hard
+    # allows agents that are legitimately finishing work (writing final files) to
+    # complete gracefully, while guaranteeing termination before costs spiral.
+    HARD_LIMIT_MULTIPLIER: int = 3
+
     # Batch sizing -- subclasses may override for agents that need
     # smaller batches (e.g., FinanceAgent processes dense spreadsheets).
     max_customers_per_batch: int = 20
@@ -304,6 +310,7 @@ class BaseAgentRunner(ABC):
             system_prompt=system_prompt,
             model=self.get_model_id(),
             max_turns=self.max_turns,
+            max_budget_usd=self.max_budget_usd,
             permission_mode="bypassPermissions",
             cwd=str(self.project_dir),
             allowed_tools=self.get_tools(),
@@ -311,21 +318,60 @@ class BaseAgentRunner(ABC):
         )
 
         agent_name = self.get_agent_name()
+        hard_limit = self.max_turns * self.HARD_LIMIT_MULTIPLIER
         prompt_tokens = len(prompt) // 4
         buffer_mb = self._compute_buffer_size() / (1024 * 1024)
         logger.info(
-            "Agent %s: starting SDK session (prompt ~%dK tokens, buffer %.1f MB, max_turns=%d)",
+            "Agent %s: starting SDK session "
+            "(prompt ~%dK tokens, buffer %.1f MB, max_turns=%d, hard_limit=%d, budget=$%.2f)",
             agent_name,
             prompt_tokens // 1000,
             buffer_mb,
             self.max_turns,
+            hard_limit,
+            self.max_budget_usd,
         )
 
         text_parts: list[str] = []
         msg_count = 0
+        exceeded_soft = False
         try:
             async for message in _query(prompt=prompt, options=options):
                 msg_count += 1
+
+                # --- Turn enforcement (defense-in-depth, Issue #96) ---
+                # Soft limit: warn once when max_turns is exceeded.
+                if not exceeded_soft and msg_count > self.max_turns:
+                    exceeded_soft = True
+                    logger.warning(
+                        "Agent %s exceeded soft limit (max_turns=%d) at message %d "
+                        "— %d text parts collected (%d chars). "
+                        "Grace period until hard limit at %d.",
+                        agent_name,
+                        self.max_turns,
+                        msg_count,
+                        len(text_parts),
+                        sum(len(p) for p in text_parts),
+                        hard_limit,
+                    )
+                # Hard limit: break to prevent runaway.
+                # The async generator from _query() is created and consumed
+                # within the same asyncio task, so breaking the async-for
+                # loop triggers a clean aclose() on the generator.  Partial
+                # output collected so far is preserved and returned.
+                if msg_count > hard_limit:
+                    logger.error(
+                        "Agent %s hit hard limit (%d messages, max_turns=%d). "
+                        "Stopping to prevent runaway. "
+                        "Partial output: %d parts, %d chars.",
+                        agent_name,
+                        msg_count,
+                        self.max_turns,
+                        len(text_parts),
+                        sum(len(p) for p in text_parts),
+                    )
+                    break
+
                 # Periodic progress: log every 10 turns, callback every 5.
                 if on_turn is not None and msg_count % 5 == 0:
                     on_turn(agent_name, msg_count)
@@ -336,6 +382,7 @@ class BaseAgentRunner(ABC):
                         msg_count,
                         self.max_turns,
                     )
+
                 if isinstance(message, _AssistantMessage):
                     for block in message.content:
                         if isinstance(block, _TextBlock):
@@ -358,22 +405,22 @@ class BaseAgentRunner(ABC):
                     # Do NOT break here — breaking an anyio-backed async
                     # generator from an asyncio.create_task triggers
                     # "Attempted to exit cancel scope in a different task".
-                    # The ResultMessage is the terminal message so the loop
-                    # will end naturally.
+                    # ResultMessage is terminal; the loop ends naturally.
         except Exception as exc:  # noqa: BLE001
             logger.error(
-                "Agent %s SDK call failed: %s -- returning partial output (%d parts collected)",
+                "Agent %s SDK call failed: %s — returning partial output (%d parts collected)",
                 agent_name,
                 exc,
                 len(text_parts),
             )
 
-        total_text = len("\n".join(text_parts))
+        total_text = sum(len(p) for p in text_parts)
         logger.info(
-            "Agent %s: session ended after %d messages, %d text chars collected",
+            "Agent %s: session ended after %d messages, %d text chars collected%s",
             agent_name,
             msg_count,
             total_text,
+            " (exceeded soft limit)" if exceeded_soft else "",
         )
 
         return "\n".join(text_parts)

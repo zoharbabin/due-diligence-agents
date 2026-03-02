@@ -191,6 +191,7 @@ def run(
         run_dir = state.run_dir
         key_files: list[tuple[str, Path]] = [
             ("Excel Report", run_dir / "report" / "dd_report.xlsx"),
+            ("HTML Report", run_dir / "report" / "dd_report.html"),
             ("Audit Report", run_dir / "audit.json"),
             ("DoD Results", run_dir / "dod_results.json"),
             ("Numerical Manifest", run_dir / "numerical_manifest.json"),
