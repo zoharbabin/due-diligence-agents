@@ -2191,10 +2191,16 @@ class PipelineEngine:
                     continue
 
         # Entity matches (for Entity_Resolution_Log sheet)
+        # The file is shaped {generated_at, matches: [...], unmatched, rejected};
+        # the Excel handler expects a flat list of match dicts.
         entity_path = inv_dir / "entity_matches.json"
         if entity_path.exists():
             with contextlib.suppress(json.JSONDecodeError, OSError):
-                run_metadata["entity_matches"] = json.loads(entity_path.read_text())
+                em_data = json.loads(entity_path.read_text())
+                if isinstance(em_data, dict):
+                    run_metadata["entity_matches"] = em_data.get("matches", [])
+                elif isinstance(em_data, list):
+                    run_metadata["entity_matches"] = em_data
 
         # Reference files (for Reference_Files_Index sheet)
         ref_path = inv_dir / "reference_files.json"
