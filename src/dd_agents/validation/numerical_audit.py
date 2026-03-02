@@ -549,25 +549,6 @@ class NumericalAuditor:
                 continue
         return total
 
-    def _count_ghost_customers(self) -> int | None:
-        """N009: count ghost customer mentions from customer_mentions.json."""
-        path = self.inventory_dir / "customer_mentions.json"
-        if not path.exists():
-            return None
-        try:
-            data = json.loads(path.read_text())
-            if isinstance(data, list):
-                return sum(1 for item in data if item.get("ghost", False))
-            if isinstance(data, dict):
-                ghost_count = data.get("ghost_count")
-                if ghost_count is not None:
-                    return int(ghost_count)
-                ghost_list: list[Any] = data.get("ghost_customers", [])
-                return len(ghost_list)
-        except (json.JSONDecodeError, OSError):
-            return None
-        return 0
-
     def _count_reference_files(self) -> int | None:
         """N010: count reference files from reference_files.json."""
         path = self.inventory_dir / "reference_files.json"

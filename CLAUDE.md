@@ -88,7 +88,6 @@ Update the phase status in IMPLEMENTATION_PLAN.md after completing each phase.
 | `agents/*` | `docs/plan/06-agents.md` |
 | `reporting/*` | `docs/plan/10-reporting.md` |
 | `validation/*` | `docs/plan/11-qa-validation.md` |
-| `reasoning/*` | `docs/plan/21-ontology-and-reasoning.md` |
 | `vector_store/*` | `docs/plan/14-vector-store.md` |
 | `search/*` | `docs/plan/22-llm-robustness.md` + `docs/search-guide.md` |
 | `errors.py` | `docs/plan/12-error-recovery.md` |

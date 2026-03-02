@@ -1,6 +1,6 @@
 # Due Diligence Agent SDK
 
-> **Status**: Implemented. Full pipeline, contract search, and auto-config commands operational with 1,544+ passing unit tests.
+> **Status**: Implemented. Full pipeline, contract search, and auto-config commands operational with 1,680+ passing unit tests.
 
 Standalone Python application for forensic M&A due diligence. Migrates a Claude Code Skill (3,100+ lines across 9 files) to a programmatic pipeline using `claude-agent-sdk` v0.1.39+. Six agents (4 specialists + optional Judge + Reporting Lead) analyze contract data rooms, extract clauses, build governance graphs, detect gaps, and produce a 14-sheet Excel report — all under deterministic Python orchestration with hook-enforced quality gates.
 

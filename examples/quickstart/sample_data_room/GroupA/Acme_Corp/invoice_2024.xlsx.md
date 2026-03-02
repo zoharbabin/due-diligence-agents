@@ -31,9 +31,9 @@
 
 **Payment Terms:** Net 30
 **Remit To:** NovaBridge Solutions, Inc., 1200 Innovation Drive, Suite 400, Austin, TX 78701
-**Wire Instructions:** Silicon Valley Bank, Routing 121140399, Account 33041587920
+**Wire Instructions:** Silicon Valley Bank, Routing 000000000, Account 0000000000
 
 ---
 
 *Agreement Reference: MSA-2024-00412*
-*Questions? Contact billing@novabridge.io*
+*Questions? Contact billing@novabridge.example.com*

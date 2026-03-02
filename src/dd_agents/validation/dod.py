@@ -434,14 +434,12 @@ class DefinitionOfDoneChecker:
                 rule="Check 12b: merged output covers all assigned agents per customer.",
             )
 
-        import json as _json
-
         # Load per-customer agent assignments from metadata if available.
         # Falls back to expecting all 4 agents when metadata is absent.
         customer_assignments: dict[str, list[str]] = {}
         metadata_path = self.run_dir / "metadata.json"
         try:
-            meta = _json.loads(metadata_path.read_text())
+            meta = json.loads(metadata_path.read_text())
             customer_assignments = meta.get("customer_assignments", {})
         except (ValueError, OSError):
             pass
@@ -451,7 +449,7 @@ class DefinitionOfDoneChecker:
 
         for jf in sorted(merged_dir.glob("*.json")):
             try:
-                data = _json.loads(jf.read_text())
+                data = json.loads(jf.read_text())
             except (ValueError, OSError):
                 continue
             # Use the actual assignment for this customer, or all 4 as fallback

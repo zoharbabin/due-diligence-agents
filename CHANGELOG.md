@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.1] - 2026-03-02
+
+### Fixed
+
+- Replaced real bank routing/account numbers in sample invoice with zeroed placeholders.
+- Replaced `.io` email domain in sample data with `.example.com` per RFC 2606.
+- Replaced real company names (Salesforce, Twilio) in test fixtures with fictional names.
+- Removed phantom `reasoning/*` module reference from CLAUDE.md spec table.
+
+### Changed
+
+- Added `authors`, `keywords`, `classifiers`, and `[project.urls]` metadata to `pyproject.toml`.
+- Added `data_room` section to `config/deal-config.template.json`.
+- Added `node_modules/` and `*.db` to `.gitignore`.
+- Updated test counts in README and IMPLEMENTATION_PLAN to reflect current totals (1,680+).
+
 ## [0.3.0] - 2026-02-28
 
 ### Added
