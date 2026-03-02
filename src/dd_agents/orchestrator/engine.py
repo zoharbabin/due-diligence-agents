@@ -2180,6 +2180,7 @@ class PipelineEngine:
         # Quality scores (for Quality_Audit sheet)
         for candidate in [
             state.run_dir / "quality_scores.json",
+            state.run_dir / "judge" / "quality_scores.json",
             state.run_dir / "audit" / "quality_scores.json",
             state.run_dir / "audit" / "judge" / "quality_scores.json",
         ]:
@@ -2493,6 +2494,7 @@ class PipelineEngine:
         """Collect judge agent scores from quality_scores.json."""
         for candidate in [
             state.run_dir / "quality_scores.json",
+            state.run_dir / "judge" / "quality_scores.json",
             state.run_dir / "audit" / "quality_scores.json",
             state.run_dir / "audit" / "judge" / "quality_scores.json",
         ]:
