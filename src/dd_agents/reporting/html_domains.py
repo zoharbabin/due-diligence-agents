@@ -57,7 +57,7 @@ class DomainRenderer(SectionRenderer):
                 for cf in cat_findings:
                     cat_sev[cf.get("severity", "P3")] += 1
                     customer_counts[str(cf.get("_customer", ""))] += 1
-                top_customer = max(customer_counts, key=customer_counts.get) if customer_counts else ""  # type: ignore[arg-type]
+                top_customer = max(customer_counts, key=lambda c: customer_counts.get(c, 0)) if customer_counts else ""
                 sev_mix = ", ".join(f"{k}:{v}" for k, v in sorted(cat_sev.items()) if v > 0)
 
                 parts.append(

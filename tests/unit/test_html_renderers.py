@@ -75,7 +75,7 @@ def _make_merged_data() -> dict[str, object]:
 
 
 def _compute(merged: dict[str, object] | None = None) -> ReportComputedData:
-    data = merged or _make_merged_data()
+    data = _make_merged_data() if merged is None else merged
     return ReportDataComputer().compute(data)  # type: ignore[arg-type]
 
 
@@ -543,3 +543,127 @@ class TestStrategyRenderer:
         assert "AI-Enhanced Acquirer Analysis" in html_out
         assert "Strong strategic fit" in html_out
         assert "Proceed with acquisition" in html_out
+
+
+# ===========================================================================
+# Edge cases: XSS protection
+# ===========================================================================
+
+
+class TestXSSProtection:
+    """Verify HTML-special characters are escaped in rendered output."""
+
+    def test_customer_name_xss_escaped(self) -> None:
+        merged = {
+            "xss_test": {
+                "customer": '<script>alert("xss")</script>',
+                "findings": [_make_finding()],
+                "gaps": [],
+            }
+        }
+        computed = _compute(merged)
+        r = CustomerRenderer(computed, merged)
+        html_out = r.render()
+        assert "<script>" not in html_out
+        assert "&lt;script&gt;" in html_out
+
+    def test_finding_title_xss_escaped(self) -> None:
+        merged = {
+            "c": {
+                "customer": "C",
+                "findings": [_make_finding(title='<img src=x onerror="alert(1)">')],
+                "gaps": [],
+            }
+        }
+        computed = _compute(merged)
+        r = DomainRenderer(computed, merged)
+        html_out = r.render()
+        assert 'onerror="alert(1)"' not in html_out
+        assert "&lt;img" in html_out
+
+    def test_category_name_xss_escaped(self) -> None:
+        merged = {
+            "c": {
+                "customer": "C",
+                "findings": [_make_finding(category='<b onclick="hack()">bad</b>')],
+                "gaps": [],
+            }
+        }
+        computed = _compute(merged)
+        r = DomainRenderer(computed, merged)
+        html_out = r.render()
+        assert 'onclick="hack()"' not in html_out
+
+    def test_strategy_thesis_xss_escaped(self) -> None:
+        computed = _compute()
+        computed.buyer_strategy = {"thesis": "<script>steal()</script>"}
+        r = StrategyRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        assert "<script>" not in html_out
+        assert "&lt;script&gt;" in html_out
+
+
+# ===========================================================================
+# Edge cases: Dashboard None handling
+# ===========================================================================
+
+
+class TestDashboardEdgeCases:
+    def test_null_buyer_and_target(self) -> None:
+        """When buyer/target are None, dashboard should not display 'None'."""
+        computed = _compute()
+        config = {"_deal_config": {"buyer": None, "target": None, "deal": {"type": "acquisition"}}}
+        r = DashboardRenderer(computed, _make_merged_data(), config)
+        html_out = r.render()
+        assert "None" not in html_out
+
+    def test_missing_deal_config(self) -> None:
+        computed = _compute()
+        r = DashboardRenderer(computed, _make_merged_data(), {})
+        html_out = r.render()
+        assert "Overall Risk:" in html_out
+
+    def test_deal_config_string_buyer(self) -> None:
+        """When buyer is a bare string (legacy format), don't crash."""
+        computed = _compute()
+        config = {"_deal_config": {"buyer": "Simple Corp", "target": "Other Inc"}}
+        r = DashboardRenderer(computed, _make_merged_data(), config)
+        html_out = r.render()
+        # Bare string is not a dict — we return empty, not "Simple Corp"
+        assert "Overall Risk:" in html_out
+
+    def test_empty_merged_data(self) -> None:
+        """Empty merged data should render cleanly."""
+        computed = _compute({})
+        r = DashboardRenderer(computed, {})
+        html_out = r.render()
+        assert "Overall Risk:" in html_out
+        assert ">0</div>" in html_out  # zero counts
+
+
+# ===========================================================================
+# Edge cases: Malformed finding data
+# ===========================================================================
+
+
+class TestMalformedData:
+    def test_findings_as_dict_not_list(self) -> None:
+        """If findings is a dict instead of list, ReportDataComputer handles gracefully."""
+        merged = {"c": {"customer": "C", "findings": {"wrong": "format"}, "gaps": []}}
+        computed = _compute(merged)
+        assert computed.total_findings == 0
+
+    def test_customer_with_no_findings_key(self) -> None:
+        """Missing 'findings' key handled gracefully."""
+        merged = {"c": {"customer": "C"}}
+        computed = _compute(merged)
+        assert computed.total_findings == 0
+        assert computed.total_customers == 1
+
+    def test_gap_missing_fields_handled(self) -> None:
+        """Gaps with missing fields don't crash the renderer."""
+        merged = {"c": {"customer": "C", "findings": [], "gaps": [{"priority": "P1"}]}}
+        computed = _compute(merged)
+        r = GapRenderer(computed, merged)
+        html_out = r.render()
+        assert "Gap Analysis" in html_out

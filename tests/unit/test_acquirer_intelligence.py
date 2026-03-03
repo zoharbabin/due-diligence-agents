@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from dd_agents.agents.acquirer_intelligence import (
     ACQUIRER_INTELLIGENCE_TOOLS,
-    AcquirerIntelligenceAgent,
+    AcquirerIntelligenceAgent,  # noqa: TC001 — runtime use in tests
 )
 from dd_agents.agents.prompt_builder import AgentType, PromptBuilder
 
@@ -140,6 +140,65 @@ class TestAcquirerIntelligenceAgent:
         raw = '```json\n{"summary": "Analysis complete"}\n```'
         result = agent.parse_acquirer_output(raw)
         assert result["summary"] == "Analysis complete"
+
+    def test_parse_fills_missing_fields_with_defaults(self, tmp_path: Path) -> None:
+        """Pydantic validation fills missing fields with safe defaults."""
+        agent = self._make_agent(tmp_path)
+        raw = '{"summary": "Partial output"}'
+        result = agent.parse_acquirer_output(raw)
+        assert result["summary"] == "Partial output"
+        assert result["recommendations"] == []
+        assert result["risk_alignment"] == []
+        assert result["deal_impact"] == ""
+        assert result["key_concerns"] == []
+
+    def test_parse_validates_risk_alignment_structure(self, tmp_path: Path) -> None:
+        """Risk alignment list items are validated through Pydantic."""
+        agent = self._make_agent(tmp_path)
+        raw = (
+            '{"summary": "Test", "risk_alignment": ['
+            '{"focus_area": "ip", "finding_count": 3, "assessment": "High risk"}'
+            "]}"
+        )
+        result = agent.parse_acquirer_output(raw)
+        assert len(result["risk_alignment"]) == 1
+        assert result["risk_alignment"][0]["focus_area"] == "ip"
+        assert result["risk_alignment"][0]["finding_count"] == 3
+
+    def test_parse_whitespace_only_returns_empty(self, tmp_path: Path) -> None:
+        agent = self._make_agent(tmp_path)
+        result = agent.parse_acquirer_output("   \n\t  ")
+        assert result == {}
+
+    def test_parse_none_returns_empty(self, tmp_path: Path) -> None:
+        agent = self._make_agent(tmp_path)
+        result = agent.parse_acquirer_output("")  # type: ignore[arg-type]
+        assert result == {}
+
+    def test_output_model_defaults(self) -> None:
+        """AcquirerIntelligenceOutput has safe defaults for all fields."""
+        from dd_agents.agents.acquirer_intelligence import AcquirerIntelligenceOutput
+
+        model = AcquirerIntelligenceOutput()
+        assert model.summary == ""
+        assert model.recommendations == []
+        assert model.risk_alignment == []
+        assert model.deal_impact == ""
+        assert model.key_concerns == []
+
+    def test_output_model_roundtrip(self) -> None:
+        """Model can be serialized and deserialized."""
+        from dd_agents.agents.acquirer_intelligence import AcquirerIntelligenceOutput
+
+        model = AcquirerIntelligenceOutput(
+            summary="Test",
+            recommendations=["Do X"],
+            deal_impact="moderate",
+        )
+        data = model.model_dump()
+        restored = AcquirerIntelligenceOutput.model_validate(data)
+        assert restored.summary == "Test"
+        assert restored.deal_impact == "moderate"
 
 
 # ---------------------------------------------------------------------------

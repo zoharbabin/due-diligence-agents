@@ -5,6 +5,7 @@ from __future__ import annotations
 from dd_agents.agents.acquirer_intelligence import (
     ACQUIRER_INTELLIGENCE_TOOLS,
     AcquirerIntelligenceAgent,
+    AcquirerIntelligenceOutput,
 )
 from dd_agents.agents.base import BaseAgentRunner
 from dd_agents.agents.judge import (
@@ -42,6 +43,7 @@ __all__ = [
     "SPECIALIST_FOCUS",
     # Acquirer Intelligence
     "AcquirerIntelligenceAgent",
+    "AcquirerIntelligenceOutput",
     "ACQUIRER_INTELLIGENCE_TOOLS",
     # Specialists
     "LegalAgent",

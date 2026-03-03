@@ -29,11 +29,11 @@ class DashboardRenderer(SectionRenderer):
         target = ""
         deal_type = ""
         if deal_config and isinstance(deal_config, dict):
-            buyer_obj = deal_config.get("buyer", {})
-            buyer = buyer_obj.get("name", "") if isinstance(buyer_obj, dict) else str(buyer_obj)
-            target_obj = deal_config.get("target", {})
-            target = target_obj.get("name", "") if isinstance(target_obj, dict) else str(target_obj)
-            deal_obj = deal_config.get("deal", {})
+            buyer_obj = deal_config.get("buyer") or {}
+            buyer = buyer_obj.get("name", "") if isinstance(buyer_obj, dict) else ""
+            target_obj = deal_config.get("target") or {}
+            target = target_obj.get("name", "") if isinstance(target_obj, dict) else ""
+            deal_obj = deal_config.get("deal") or {}
             deal_type = deal_obj.get("type", "") if isinstance(deal_obj, dict) else ""
 
         parts: list[str] = ["<div class='deal-header' id='sec-header'>"]

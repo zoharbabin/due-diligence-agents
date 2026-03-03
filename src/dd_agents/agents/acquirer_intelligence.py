@@ -17,9 +17,38 @@ import logging
 import re
 from typing import Any
 
+from pydantic import BaseModel, Field  # noqa: TC001 — runtime use for output schema
+
 from dd_agents.agents.base import BaseAgentRunner
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Pydantic output schema
+# ---------------------------------------------------------------------------
+
+
+class _RiskAlignment(BaseModel):  # noqa: TC001 — runtime use
+    """Risk alignment for a single focus area."""
+
+    focus_area: str = ""
+    finding_count: int = 0
+    assessment: str = ""
+
+
+class AcquirerIntelligenceOutput(BaseModel):  # noqa: TC001 — runtime use
+    """Validated output from the acquirer intelligence agent.
+
+    Fields with defaults allow partial LLM output to be captured
+    gracefully — missing fields get safe zero-values.
+    """
+
+    summary: str = Field(default="", description="Strategic assessment of findings impact on acquisition thesis")
+    recommendations: list[str] = Field(default_factory=list, description="Actionable recommendations")
+    risk_alignment: list[_RiskAlignment] = Field(default_factory=list, description="Focus area risk assessments")
+    deal_impact: str = Field(default="", description="Overall deal impact: low, moderate, high, critical")
+    key_concerns: list[str] = Field(default_factory=list, description="Key concern strings")
+
 
 # ---------------------------------------------------------------------------
 # Read-only tools -- this agent should never modify pipeline outputs
@@ -142,7 +171,9 @@ class AcquirerIntelligenceAgent(BaseAgentRunner):
     def parse_acquirer_output(self, raw_output: str) -> dict[str, Any]:
         """Parse the acquirer intelligence agent's JSON output.
 
-        Returns an empty dict if parsing fails — this is a non-blocking agent.
+        Uses Pydantic validation to normalise partial LLM output — missing
+        fields get safe defaults.  Returns an empty dict if parsing fails
+        entirely (this is a non-blocking agent).
         """
         if not raw_output or not raw_output.strip():
             return {}
@@ -155,20 +186,33 @@ class AcquirerIntelligenceAgent(BaseAgentRunner):
         if fence_match:
             text = fence_match.group(1)
 
+        data: dict[str, Any] | None = None
+
         try:
-            data = json.loads(text)
-            if isinstance(data, dict):
-                return data
+            parsed = json.loads(text)
+            if isinstance(parsed, dict):
+                data = parsed
         except (json.JSONDecodeError, ValueError):
             pass
 
-        # Try repair
-        repaired = self._repair_json_text(text)
-        try:
-            data = json.loads(repaired)
-            if isinstance(data, dict):
-                return data
-        except (json.JSONDecodeError, ValueError):
-            logger.warning("Failed to parse acquirer intelligence output (%d chars)", len(raw_output))
+        # Try repair if first parse failed
+        if data is None:
+            repaired = self._repair_json_text(text)
+            try:
+                parsed = json.loads(repaired)
+                if isinstance(parsed, dict):
+                    data = parsed
+            except (json.JSONDecodeError, ValueError):
+                logger.warning("Failed to parse acquirer intelligence output (%d chars)", len(raw_output))
+                return {}
 
-        return {}
+        if data is None:
+            return {}
+
+        # Validate through Pydantic — fills missing fields with safe defaults
+        try:
+            validated = AcquirerIntelligenceOutput.model_validate(data)
+            return validated.model_dump()
+        except Exception:  # noqa: BLE001 — graceful degradation
+            logger.debug("Pydantic validation of acquirer output failed; returning raw dict")
+            return data
