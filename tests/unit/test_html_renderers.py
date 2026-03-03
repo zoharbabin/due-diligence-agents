@@ -375,9 +375,9 @@ class TestGapRenderer:
         computed = _compute()
         r = GapRenderer(computed, _make_merged_data())
         html_out = r.render()
-        assert "<th>Customer</th>" in html_out
-        assert "<th>Priority</th>" in html_out
-        assert "<th>Missing Item</th>" in html_out
+        assert "Customer</th>" in html_out
+        assert "Priority</th>" in html_out
+        assert "Missing Item</th>" in html_out
 
     def test_no_gaps_message(self) -> None:
         merged = {"c": {"customer": "C", "findings": [], "gaps": []}}
@@ -761,3 +761,227 @@ class TestContentWrapperClosing:
     def test_css_content_wrapper_defined(self) -> None:
         css = render_css()
         assert ".content {" in css or ".content{" in css
+
+
+# ===========================================================================
+# P1 badge contrast (WCAG AA) — white on #fd7e14 = 3.1:1, needs dark text
+# ===========================================================================
+
+
+class TestP1BadgeContrast:
+    def test_p1_badge_has_dark_text_class(self) -> None:
+        badge = SectionRenderer.severity_badge("P1")
+        assert "sev-p1" in badge
+
+    def test_p0_badge_no_p1_class(self) -> None:
+        badge = SectionRenderer.severity_badge("P0")
+        assert "sev-p1" not in badge
+
+    def test_p3_badge_no_p1_class(self) -> None:
+        badge = SectionRenderer.severity_badge("P3")
+        assert "sev-p1" not in badge
+
+    def test_css_has_sev_p1_rule(self) -> None:
+        css = render_css()
+        assert ".severity-badge.sev-p1" in css
+        assert "color: #333" in css
+
+
+# ===========================================================================
+# Table scope='col' attributes (WCAG 2.1 AA)
+# ===========================================================================
+
+
+class TestTableScopeAttributes:
+    """All sortable tables must have scope='col' on header cells."""
+
+    def test_gap_table_has_scope(self) -> None:
+        computed = _compute()
+        r = GapRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        assert "scope='col'" in html_out
+
+    def test_domain_table_has_scope(self) -> None:
+        computed = _compute()
+        r = DomainRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        assert "scope='col'" in html_out
+
+    def test_cross_ref_table_has_scope(self) -> None:
+        computed = _compute()
+        r = CrossRefRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        assert "scope='col'" in html_out
+
+    def test_customer_xref_table_has_scope(self) -> None:
+        computed = _compute()
+        r = CustomerRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        assert "scope='col'" in html_out
+
+    def test_quality_table_has_scope(self) -> None:
+        computed = _compute()
+        config = {"_run_metadata": {"quality_scores": {"agent_scores": {"legal": {"score": 90}}}}}
+        r = QualityRenderer(computed, _make_merged_data(), config)
+        html_out = r.render()
+        assert "scope='col'" in html_out
+
+
+# ===========================================================================
+# Print CSS: tables in break-inside avoid
+# ===========================================================================
+
+
+class TestPrintTableBreak:
+    def test_tables_in_break_inside_avoid(self) -> None:
+        css = render_css()
+        # table.sortable should be in the break-inside: avoid rule
+        assert "table.sortable" in css
+        # Verify it appears in the print section near break-inside
+        print_block = css.split("@media print")[1]
+        assert "table.sortable" in print_block
+        assert "break-inside: avoid" in print_block
+
+
+# ===========================================================================
+# Heading hierarchy: h2 → h3 (no skip to h4 in category groups)
+# ===========================================================================
+
+
+class TestHeadingHierarchy:
+    def test_category_group_uses_h3_not_h4(self) -> None:
+        """Customer names in category groups should use h3, not h4."""
+        computed = _compute()
+        r = DomainRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        # Category body should contain h3 for customer names
+        assert "<h3>" in html_out
+        # Should NOT have h4 in domain sections (that would skip h3)
+        # h4 should only appear in customer sections, not domain sections
+        domain_sections = html_out.split("id='sec-domain-")
+        for section in domain_sections[1:]:  # skip first (before first domain)
+            section_content = section.split("</section>")[0]
+            if "<h3>" in section_content:
+                assert "<h4>" not in section_content
+
+
+# ===========================================================================
+# Risk label boundary values
+# ===========================================================================
+
+
+class TestRiskLabelBoundaries:
+    """Test exact thresholds in _compute_risk_label."""
+
+    def test_3_p1_findings_is_high(self) -> None:
+        """Exactly 3 P1 findings → High."""
+        merged = {
+            "c": {
+                "customer": "C",
+                "findings": [_make_finding(severity="P1") for _ in range(3)],
+                "gaps": [],
+            }
+        }
+        computed = _compute(merged)
+        assert computed.deal_risk_label == "High"
+
+    def test_2_p1_findings_is_medium(self) -> None:
+        """Exactly 2 P1 findings → Medium (below High threshold)."""
+        merged = {
+            "c": {
+                "customer": "C",
+                "findings": [_make_finding(severity="P1") for _ in range(2)],
+                "gaps": [],
+            }
+        }
+        computed = _compute(merged)
+        assert computed.deal_risk_label == "Medium"
+
+    def test_5_p2_findings_is_medium(self) -> None:
+        """Exactly 5 P2 findings → Medium."""
+        merged = {
+            "c": {
+                "customer": "C",
+                "findings": [_make_finding(severity="P2") for _ in range(5)],
+                "gaps": [],
+            }
+        }
+        computed = _compute(merged)
+        assert computed.deal_risk_label == "Medium"
+
+    def test_4_p2_findings_is_low(self) -> None:
+        """Exactly 4 P2 findings → Low (below Medium threshold)."""
+        merged = {
+            "c": {
+                "customer": "C",
+                "findings": [_make_finding(severity="P2") for _ in range(4)],
+                "gaps": [],
+            }
+        }
+        computed = _compute(merged)
+        assert computed.deal_risk_label == "Low"
+
+    def test_only_p3_is_clean(self) -> None:
+        """Only P3 findings → Clean (P3 alone doesn't elevate risk)."""
+        merged = {
+            "c": {
+                "customer": "C",
+                "findings": [_make_finding(severity="P3") for _ in range(10)],
+                "gaps": [],
+            }
+        }
+        computed = _compute(merged)
+        assert computed.deal_risk_label == "Clean"
+
+
+# ===========================================================================
+# Verification badge rendering
+# ===========================================================================
+
+
+class TestVerificationBadge:
+    """Test conditional badge rendering in render_finding_detail."""
+
+    def test_verified_badge_class(self) -> None:
+        finding = {**_make_finding(), "verification_status": "verified"}
+        computed = _compute()
+        r = DomainRenderer(computed, _make_merged_data())
+        html_out = r.render_finding_detail(finding)
+        assert "vb-verified" in html_out
+
+    def test_failed_badge_class(self) -> None:
+        finding = {**_make_finding(), "verification_status": "failed"}
+        computed = _compute()
+        r = DomainRenderer(computed, _make_merged_data())
+        html_out = r.render_finding_detail(finding)
+        assert "vb-failed" in html_out
+
+    def test_unchecked_badge_class(self) -> None:
+        finding = {**_make_finding(), "verification_status": "pending"}
+        computed = _compute()
+        r = DomainRenderer(computed, _make_merged_data())
+        html_out = r.render_finding_detail(finding)
+        assert "vb-unchecked" in html_out
+
+    def test_no_verification_no_badge(self) -> None:
+        finding = _make_finding()
+        computed = _compute()
+        r = DomainRenderer(computed, _make_merged_data())
+        html_out = r.render_finding_detail(finding)
+        assert "verification-badge" not in html_out
+
+    def test_confidence_badge_rendered(self) -> None:
+        finding = {**_make_finding(), "confidence": "high"}
+        computed = _compute()
+        r = DomainRenderer(computed, _make_merged_data())
+        html_out = r.render_finding_detail(finding)
+        assert "Confidence:" in html_out
+        assert "high" in html_out
+
+    def test_detection_method_rendered(self) -> None:
+        finding = {**_make_finding(), "detection_method": "keyword_search"}
+        computed = _compute()
+        r = DomainRenderer(computed, _make_merged_data())
+        html_out = r.render_finding_detail(finding)
+        assert "Detection:" in html_out
+        assert "keyword_search" in html_out

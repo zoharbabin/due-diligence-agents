@@ -69,7 +69,7 @@ class QualityRenderer(SectionRenderer):
             if isinstance(agent_scores, dict):
                 parts.append(
                     "<table class='sortable'><thead><tr>"
-                    "<th>Agent</th><th>Score</th><th>Details</th>"
+                    "<th scope='col'>Agent</th><th scope='col'>Score</th><th scope='col'>Details</th>"
                     "</tr></thead><tbody>"
                 )
                 for agent_name, score_data in sorted(agent_scores.items()):

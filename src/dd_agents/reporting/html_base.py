@@ -90,7 +90,7 @@ class SectionRenderer(ABC):
     def severity_badge(severity: str) -> str:
         """Render a colored severity badge."""
         color = SEVERITY_COLORS.get(severity, "#6c757d")
-        extra_cls = " sev-p2" if severity == "P2" else ""
+        extra_cls = " sev-p1" if severity == "P1" else (" sev-p2" if severity == "P2" else "")
         return f"<span class='severity-badge{extra_cls}' style='background:{color}'>{_html.escape(severity)}</span>"
 
     @staticmethod
@@ -278,7 +278,7 @@ class SectionRenderer(ABC):
             by_customer[str(f.get("_customer", "Unknown"))].append(f)
 
         for cust, cust_findings in sorted(by_customer.items()):
-            parts.append(f"<h4>{self.escape(cust)}</h4>")
+            parts.append(f"<h3>{self.escape(cust)}</h3>")
             for f in cust_findings:
                 parts.append(self.render_finding_card(f))
                 parts.append(self.render_finding_detail(f))
@@ -417,7 +417,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 /* Severity badge */
 .severity-badge { display: inline-block; padding: 2px 10px; border-radius: 12px;
                   color: white; font-weight: 600; font-size: 0.8em; }
-.severity-badge.sev-p2 { color: #333; }  /* Dark text on yellow — WCAG AA contrast */
+.severity-badge.sev-p1 { color: #333; }  /* Dark text on orange — WCAG AA contrast (4.9:1) */
+.severity-badge.sev-p2 { color: #333; }  /* Dark text on yellow — WCAG AA contrast (12.6:1) */
 
 /* Verification badge */
 .verification-badge { display: inline-block; padding: 2px 10px; border-radius: 12px;
@@ -476,14 +477,13 @@ table.sortable th::after { content: ' \\2195'; color: #aaa; font-size: 0.8em; }
 @media print {
     .nav-bar, .filter-bar, .skip-link { display: none !important; }
     .domain-body, .customer-body, .category-body, .finding-detail { display: block !important; }
-    .domain-body.open, .customer-body.open, .category-body.open, .finding-detail.open { display: block !important; }
     body { background: white; font-size: 11pt; orphans: 3; widows: 3; }
     .deal-header { background: #1a1a2e !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .severity-badge { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .sev-bar span { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .content { max-width: 100%; padding: 0; }
     .heatmap-cell, .metric-card, .finding-card, .wolf-card, .customer-section,
-    .domain-section, .category-group, .citation { break-inside: avoid; }
+    .domain-section, .category-group, .citation, table.sortable { break-inside: avoid; }
     .report-section > h2 { break-after: avoid; }
     h3, h4 { break-after: avoid; }
     a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 0.8em; color: #666;

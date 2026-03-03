@@ -73,11 +73,13 @@ class AcquirerIntelligenceAgent(BaseAgentRunner):
         {
             "summary": "Strategic fit assessment...",
             "recommendations": ["Proceed with...", "Renegotiate..."],
-            "risk_alignment": {
-                "focus_area": "change_of_control",
-                "finding_count": 3,
-                "assessment": "Material risk to thesis"
-            },
+            "risk_alignment": [
+                {
+                    "focus_area": "change_of_control",
+                    "finding_count": 3,
+                    "assessment": "Material risk to thesis"
+                }
+            ],
             "deal_impact": "moderate",
             "key_concerns": ["CoC clauses in 5 contracts", ...]
         }
@@ -213,6 +215,6 @@ class AcquirerIntelligenceAgent(BaseAgentRunner):
         try:
             validated = AcquirerIntelligenceOutput.model_validate(data)
             return validated.model_dump()
-        except Exception:  # noqa: BLE001 — graceful degradation
+        except (ValueError, TypeError):
             logger.debug("Pydantic validation of acquirer output failed; returning raw dict")
             return data

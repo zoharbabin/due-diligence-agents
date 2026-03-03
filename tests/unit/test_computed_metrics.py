@@ -310,13 +310,12 @@ class TestReportDataComputer:
         result = computer.compute(data)
         assert "c" not in result.governance_scores
 
-    def test_deal_risk_moderate_for_few_p1(self) -> None:
-        """Single P1 finding should be moderate, not high."""
+    def test_deal_risk_medium_for_single_p1(self) -> None:
+        """Single P1 finding should be Medium (below High threshold of 3 P1s)."""
         computer = ReportDataComputer()
         data = {"c": {"customer": "C", "findings": [_make_finding(severity="P1")], "gaps": []}}
         result = computer.compute(data)
-        # 1 P1 = weight 5 → score 5 → should not be "High" (which needs many P1s)
-        assert result.deal_risk_label in ("Moderate", "Medium", "High")
+        assert result.deal_risk_label == "Medium"
 
     def test_xref_zero_total_returns_zero_rate(self) -> None:
         """Match rate should be 0.0 when there are no cross-references."""
@@ -325,3 +324,76 @@ class TestReportDataComputer:
         result = computer.compute(data)
         assert result.match_rate == pytest.approx(0.0)
         assert result.total_cross_refs == 0
+
+    def test_xref_status_case_insensitive(self) -> None:
+        """Cross-reference match_status should be case-insensitive."""
+        computer = ReportDataComputer()
+        data = {
+            "c": {
+                "customer": "C",
+                "findings": [],
+                "gaps": [],
+                "cross_references": [
+                    {"data_point": "ARR", "match_status": "MATCH"},
+                    {"data_point": "HC", "match_status": "Mismatch"},
+                ],
+            }
+        }
+        result = computer.compute(data)
+        assert result.cross_ref_matches == 1
+        assert result.cross_ref_mismatches == 1
+
+    def test_xref_status_synonyms(self) -> None:
+        """Cross-reference supports 'yes'/'no' as synonyms for match/mismatch."""
+        computer = ReportDataComputer()
+        data = {
+            "c": {
+                "customer": "C",
+                "findings": [],
+                "gaps": [],
+                "cross_references": [
+                    {"data_point": "ARR", "match_status": "yes"},
+                    {"data_point": "HC", "match_status": "no"},
+                    {"data_point": "Rev", "match_status": "true"},
+                    {"data_point": "Exp", "match_status": "false"},
+                ],
+            }
+        }
+        result = computer.compute(data)
+        assert result.total_cross_refs == 4
+        assert result.cross_ref_matches == 2
+        assert result.cross_ref_mismatches == 2
+
+    def test_xref_fallback_to_match_key(self) -> None:
+        """When match_status is missing, falls back to 'match' key."""
+        computer = ReportDataComputer()
+        data = {
+            "c": {
+                "customer": "C",
+                "findings": [],
+                "gaps": [],
+                "cross_references": [
+                    {"data_point": "ARR", "match": "true"},
+                    {"data_point": "HC", "match": "false"},
+                ],
+            }
+        }
+        result = computer.compute(data)
+        assert result.cross_ref_matches == 1
+        assert result.cross_ref_mismatches == 1
+
+    def test_xref_unrecognized_status_neither_match_nor_mismatch(self) -> None:
+        """Unrecognized status like 'partial' counts in total but not match/mismatch."""
+        computer = ReportDataComputer()
+        data = {
+            "c": {
+                "customer": "C",
+                "findings": [],
+                "gaps": [],
+                "cross_references": [{"data_point": "ARR", "match_status": "partial"}],
+            }
+        }
+        result = computer.compute(data)
+        assert result.total_cross_refs == 1
+        assert result.cross_ref_matches == 0
+        assert result.cross_ref_mismatches == 0

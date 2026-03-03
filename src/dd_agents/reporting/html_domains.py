@@ -48,8 +48,8 @@ class DomainRenderer(SectionRenderer):
         if categories:
             parts.append(
                 "<table class='sortable'><thead><tr>"
-                "<th>Category</th><th>Findings</th><th>Severity Mix</th>"
-                "<th>Top Customer</th></tr></thead><tbody>"
+                "<th scope='col'>Category</th><th scope='col'>Findings</th><th scope='col'>Severity Mix</th>"
+                "<th scope='col'>Top Customer</th></tr></thead><tbody>"
             )
             for cat, cat_findings in sorted(categories.items(), key=lambda x: -len(x[1])):
                 cat_sev: dict[str, int] = defaultdict(int)

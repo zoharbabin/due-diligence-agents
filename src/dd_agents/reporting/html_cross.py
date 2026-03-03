@@ -24,8 +24,8 @@ class CrossRefRenderer(SectionRenderer):
             "<section class='report-section' id='sec-xref'>",
             "<h2>Data Reconciliation</h2>",
             "<table class='sortable'><thead><tr>"
-            "<th>Customer</th><th>Field</th><th>Source A</th>"
-            "<th>Source B</th><th>Match</th></tr></thead><tbody>",
+            "<th scope='col'>Customer</th><th scope='col'>Field</th><th scope='col'>Source A</th>"
+            "<th scope='col'>Source B</th><th scope='col'>Match</th></tr></thead><tbody>",
         ]
 
         for csn, data in sorted(self.merged_data.items()):

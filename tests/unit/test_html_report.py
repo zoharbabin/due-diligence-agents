@@ -335,11 +335,11 @@ class TestHTMLReportGenerator:
 
         content = out.read_text(encoding="utf-8")
 
-        # Table structure
-        assert "<th>Priority</th>" in content
-        assert "<th>Type</th>" in content
-        assert "<th>Missing Item</th>" in content
-        assert "<th>Risk</th>" in content
+        # Table structure (th elements have scope='col' for WCAG)
+        assert "Priority</th>" in content
+        assert "Type</th>" in content
+        assert "Missing Item</th>" in content
+        assert "Risk</th>" in content
 
         # Gap data in rows
         assert "P0" in content
@@ -471,8 +471,8 @@ class TestHTMLReportGenerator:
         assert "By Priority" in content
         assert "By Type" in content
 
-        # Sortable table with customer column
-        assert "<th>Customer</th>" in content
+        # Sortable table with customer column (scope='col' for WCAG)
+        assert "Customer</th>" in content
 
     def test_governance_metrics_bars(self, tmp_path: Path) -> None:
         """Governance resolution section shows per-customer progress bars."""

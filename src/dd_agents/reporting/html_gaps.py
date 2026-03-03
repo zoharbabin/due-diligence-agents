@@ -40,8 +40,8 @@ class GapRenderer(SectionRenderer):
         # Full sortable table
         parts.append(
             "<table class='sortable'><thead><tr>"
-            "<th>Customer</th><th>Priority</th><th>Type</th>"
-            "<th>Missing Item</th><th>Risk</th></tr></thead><tbody>"
+            "<th scope='col'>Customer</th><th scope='col'>Priority</th><th scope='col'>Type</th>"
+            "<th scope='col'>Missing Item</th><th scope='col'>Risk</th></tr></thead><tbody>"
         )
         for csn, data in sorted(self.merged_data.items()):
             if not isinstance(data, dict):

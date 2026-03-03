@@ -72,7 +72,8 @@ class CustomerRenderer(SectionRenderer):
             parts.append("<h3>Cross-Reference Reconciliation</h3>")
             parts.append(
                 "<table class='sortable'><thead><tr>"
-                "<th>Field</th><th>Source A</th><th>Source B</th><th>Match</th>"
+                "<th scope='col'>Field</th><th scope='col'>Source A</th>"
+                "<th scope='col'>Source B</th><th scope='col'>Match</th>"
                 "</tr></thead><tbody>"
             )
             for xr in xrefs:
@@ -115,8 +116,8 @@ class CustomerRenderer(SectionRenderer):
             parts.append("<h3>Gaps</h3>")
             parts.append(
                 "<table class='sortable'><thead><tr>"
-                "<th>Priority</th><th>Type</th><th>Missing Item</th>"
-                "<th>Risk</th></tr></thead><tbody>"
+                "<th scope='col'>Priority</th><th scope='col'>Type</th><th scope='col'>Missing Item</th>"
+                "<th scope='col'>Risk</th></tr></thead><tbody>"
             )
             for g in gaps:
                 if isinstance(g, dict):
