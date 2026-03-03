@@ -262,6 +262,38 @@ class TestPipelineState:
         assert state.completed_steps == []
         assert state.execution_mode == "full"
 
+    def test_checkpoint_step_migration(self) -> None:
+        """Old checkpoint with legacy step values should deserialize correctly."""
+        legacy_data: dict[str, object] = {
+            "run_id": "migration_test",
+            "current_step": "30_generate_excel",  # old value
+            "completed_steps": [
+                "01_validate_config",
+                "30_generate_excel",  # old value in list
+            ],
+            "step_results": {
+                "30_generate_excel": {
+                    "step": "30_generate_excel",  # old value in step result
+                    "status": "success",
+                    "error": None,
+                    "duration_ms": 5000,
+                    "metadata": {},
+                }
+            },
+        }
+        state = PipelineState.from_checkpoint_dict(legacy_data)
+        assert state.current_step == PipelineStep.GENERATE_REPORTS
+        assert PipelineStep.GENERATE_REPORTS in state.completed_steps
+        sr = state.step_results["30_generate_excel"]
+        assert sr.step == PipelineStep.GENERATE_REPORTS
+        assert sr.status == "success"
+
+    def test_migrate_step_value_passthrough(self) -> None:
+        """Unknown step values should pass through unchanged."""
+        assert PipelineState._migrate_step_value("01_validate_config") == "01_validate_config"
+        assert PipelineState._migrate_step_value("30_generate_reports") == "30_generate_reports"
+        assert PipelineState._migrate_step_value("30_generate_excel") == "30_generate_reports"
+
     def test_state_roundtrip_with_deal_config(self, tmp_path: Path) -> None:
         """deal_config survives a to_checkpoint_dict / from_checkpoint_dict round-trip."""
         deal_cfg: dict[str, object] = {
