@@ -109,7 +109,7 @@ class Finding(BaseModel):
     """
     Full framework-schema-compliant finding.
     Conforms to dd-framework/schemas/finding.schema.json.
-    Produced by the Reporting Lead during merge (not by specialist agents directly).
+    Produced during the merge step (step 24), not by specialist agents directly.
     """
 
     id: str = Field(
@@ -159,7 +159,7 @@ class AgentFinding(BaseModel):
     """
     Agent-internal finding format (pre-transformation).
     Missing id/agent/skill/run_id/timestamp/analysis_unit fields.
-    These are added by the Reporting Lead during merge.
+    These are added during the merge step (step 24).
     From agent-prompts.md section 4c.
     """
 

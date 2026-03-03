@@ -483,7 +483,7 @@ class DefinitionOfDoneChecker:
     # ------------------------------------------------------------------ #
 
     def check_13_merge_dedup_complete(self) -> AuditCheck:
-        """Reporting Lead merged and deduplicated findings."""
+        """Merge step deduplicated findings from all 4 agents."""
         merged_dir = self.run_dir / "findings" / "merged"
         if not merged_dir.exists():
             return AuditCheck(
@@ -493,7 +493,7 @@ class DefinitionOfDoneChecker:
             )
         # Only count files whose stems match known customer safe names so that
         # non-customer artefacts (e.g. coverage_manifest.json, numerical_audit.json)
-        # written to merged/ by the Reporting Lead agent don't inflate the count.
+        # written to merged/ during the merge step don't inflate the count.
         expected = set(self.customer_safe_names)
         matched = [f for f in merged_dir.glob("*.json") if f.stem in expected]
         count = len(matched)

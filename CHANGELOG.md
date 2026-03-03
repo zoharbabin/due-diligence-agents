@@ -34,7 +34,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - Customer `safe_name` duplication — prompt enforcement + rapidfuzz validation in merge step.
 - Entity cache `save()` missing `run_id` argument (step 34 crash).
 - Extraction pipeline docstrings clarified as search-only purpose.
-- Stale "reporting_lead" references removed from all source code, tests, and output files.
+- All stale "reporting_lead" references removed from source code, tests, and output files (comments, docstrings, rule text).
 
 ## [0.3.1] - 2026-03-02
 
