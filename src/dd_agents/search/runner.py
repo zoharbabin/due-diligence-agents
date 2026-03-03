@@ -336,10 +336,19 @@ class SearchRunner:
                 text_dir=text_dir,
                 data_room_path=self._data_room,
             )
-            for result in analyzed:
-                verifier.verify_result(result)
         except Exception as exc:
-            logger.warning("Citation verification failed (non-blocking): %s", exc)
+            logger.warning("Citation verifier initialization failed (non-blocking): %s", exc)
+            return
+
+        for result in analyzed:
+            try:
+                verifier.verify_result(result)
+            except Exception as exc:
+                logger.warning(
+                    "Citation verification failed for %s (non-blocking): %s",
+                    result.customer_name,
+                    exc,
+                )
 
     # ------------------------------------------------------------------
     # Helpers

@@ -1,9 +1,12 @@
-"""Unit tests for the persistence module: TierManager, RunManager, IncrementalClassifier."""
+"""Unit tests for the persistence module: TierManager, RunManager, IncrementalClassifier, concurrency."""
 
 from __future__ import annotations
 
 import json
+import stat
 from typing import TYPE_CHECKING
+
+import pytest
 
 from dd_agents.models.enums import CustomerClassificationStatus
 from dd_agents.models.persistence import CustomerClassEntry
@@ -151,15 +154,17 @@ class TestRunManager:
     """Tests for run initialization and finalization."""
 
     def test_initialize_creates_run_id(self, tmp_path: Path) -> None:
-        """initialize_run should produce a timestamp-formatted run_id."""
+        """initialize_run should produce a run_id with timestamp and random suffix."""
         mgr = RunManager(tmp_path)
         meta = mgr.initialize_run(tmp_path)
 
-        # run_id format: YYYYMMDD_HHMMSS
-        assert len(meta.run_id) == 15
-        assert meta.run_id[8] == "_"
-        assert meta.run_id[:8].isdigit()
-        assert meta.run_id[9:].isdigit()
+        # run_id format: run_YYYYMMDD_HHMMSS_<6hex>  (Issue #63)
+        assert meta.run_id.startswith("run_")
+        parts = meta.run_id.split("_")
+        assert len(parts) == 4
+        assert parts[1].isdigit() and len(parts[1]) == 8  # YYYYMMDD
+        assert parts[2].isdigit() and len(parts[2]) == 6  # HHMMSS
+        assert len(parts[3]) == 6  # hex suffix
 
     def test_initialize_creates_directory_structure(self, tmp_path: Path) -> None:
         """initialize_run should create the full VERSIONED directory tree."""
@@ -179,7 +184,6 @@ class TestRunManager:
         assert (run_dir / "report").is_dir()
         assert (run_dir / "audit" / "legal").is_dir()
         assert (run_dir / "audit" / "judge").is_dir()
-        assert (run_dir / "audit" / "reporting_lead").is_dir()
 
     def test_initialize_writes_initial_metadata(self, tmp_path: Path) -> None:
         """initialize_run should write metadata.json with in_progress status."""
@@ -462,3 +466,330 @@ class TestIncrementalClassifier:
             staleness_threshold=3,
         )
         assert result.execution_mode == "incremental"
+
+    def test_files_modified_detected_correctly(self) -> None:
+        """files_modified should use filename-based comparison, not index-based.
+
+        Regression (Issue #66): the old code used ``list.index()`` which
+        compared positions instead of content, and returned [] when list
+        lengths differed.
+        """
+        classifier = IncrementalClassifier()
+        # Common files: file_a.pdf, file_b.pdf.
+        # file_c.pdf added, file_d.pdf removed.
+        result = classifier.classify_customers(
+            current_files={"acme": ["file_a.pdf", "file_b.pdf", "file_c.pdf"]},
+            prior_files={"acme": ["file_a.pdf", "file_b.pdf", "file_d.pdf"]},
+            staleness_threshold=3,
+        )
+        entry = result.customers[0]
+        assert entry.classification == CustomerClassificationStatus.CHANGED
+        assert "file_c.pdf" in entry.files_added
+        assert "file_d.pdf" in entry.files_removed
+        # Common files (file_a, file_b) should appear as potentially modified.
+        assert "file_a.pdf" in entry.files_modified
+        assert "file_b.pdf" in entry.files_modified
+
+    def test_files_modified_with_different_list_lengths(self) -> None:
+        """files_modified should work even when current and prior have different lengths.
+
+        Regression (Issue #66): old code returned [] when len(current) != len(prior).
+        """
+        classifier = IncrementalClassifier()
+        result = classifier.classify_customers(
+            current_files={"acme": ["file_a.pdf", "file_b.pdf", "file_c.pdf"]},
+            prior_files={"acme": ["file_a.pdf", "file_b.pdf"]},
+            staleness_threshold=3,
+        )
+        entry = result.customers[0]
+        assert entry.classification == CustomerClassificationStatus.CHANGED
+        assert "file_c.pdf" in entry.files_added
+        # Common files still detected
+        assert "file_a.pdf" in entry.files_modified
+        assert "file_b.pdf" in entry.files_modified
+
+
+# =========================================================================
+# Issue #62: archive_versioned with empty inventory_snapshot
+# =========================================================================
+
+
+class TestArchiveVersionedEmptySnapshot:
+    """Test that archiving works even when inventory_snapshot is an empty placeholder."""
+
+    def test_archive_versioned_overwrites_empty_snapshot(self, tmp_path: Path) -> None:
+        """archive_versioned should archive even if an empty inventory_snapshot exists.
+
+        Regression (Issue #62): ensure_run_dirs creates an empty
+        inventory_snapshot dir, which caused archive_versioned to skip
+        archiving because ``snapshot_dir.exists()`` was True.
+        """
+        mgr = TierManager(tmp_path)
+        runs_dir = tmp_path / "_dd" / "forensic-dd" / "runs"
+        prior_dir = runs_dir / "20260214_090000"
+        prior_dir.mkdir(parents=True)
+        latest_link = runs_dir / "latest"
+        latest_link.symlink_to("20260214_090000")
+
+        # Create the empty placeholder (as ensure_run_dirs would)
+        snapshot = prior_dir / "inventory_snapshot"
+        snapshot.mkdir(parents=True)
+        assert not any(snapshot.iterdir())  # empty
+
+        # Create inventory with content
+        inv_dir = tmp_path / "_dd" / "forensic-dd" / "inventory"
+        inv_dir.mkdir(parents=True)
+        (inv_dir / "tree.txt").write_text("tree data")
+        mgr.inventory_dir = inv_dir
+
+        new_run_dir = runs_dir / "20260215_100000"
+        new_run_dir.mkdir()
+        mgr.archive_versioned(new_run_dir, runs_dir)
+
+        # Snapshot should now have content
+        assert (snapshot / "tree.txt").exists()
+        assert (snapshot / "tree.txt").read_text() == "tree data"
+
+
+# =========================================================================
+# Issue #63: RunManager run_id collision and atomic writes
+# =========================================================================
+
+
+class TestRunManagerCollisionAndAtomicWrites:
+    """Tests for run_id uniqueness and atomic file writes."""
+
+    def test_run_id_has_random_suffix(self, tmp_path: Path) -> None:
+        """run_id should contain a random suffix to prevent collisions.
+
+        Regression (Issue #63): old format was just YYYYMMDD_HHMMSS which
+        could collide if two runs started in the same second.
+        """
+        mgr = RunManager(tmp_path)
+        meta = mgr.initialize_run(tmp_path)
+
+        # New format: run_YYYYMMDD_HHMMSS_<6hex>
+        assert meta.run_id.startswith("run_")
+        parts = meta.run_id.split("_")
+        assert len(parts) == 4  # run, YYYYMMDD, HHMMSS, hex
+        assert len(parts[3]) == 6  # 6-char hex suffix
+
+    def test_consecutive_run_ids_differ(self, tmp_path: Path) -> None:
+        """Two consecutive initializations should produce different run_ids."""
+        mgr1 = RunManager(tmp_path)
+        meta1 = mgr1.initialize_run(tmp_path)
+
+        mgr2 = RunManager(tmp_path)
+        meta2 = mgr2.initialize_run(tmp_path)
+
+        assert meta1.run_id != meta2.run_id
+
+    def test_atomic_write_metadata(self, tmp_path: Path) -> None:
+        """metadata.json should be written atomically (no .tmp residue)."""
+        mgr = RunManager(tmp_path)
+        meta = mgr.initialize_run(tmp_path)
+
+        run_dir = tmp_path / "_dd" / "forensic-dd" / "runs" / meta.run_id
+        # metadata.json exists
+        assert (run_dir / "metadata.json").exists()
+        # No .tmp file left behind
+        assert not (run_dir / "metadata.tmp").exists()
+
+    def test_atomic_write_history(self, tmp_path: Path) -> None:
+        """run_history.json should be written atomically (no .tmp residue)."""
+        mgr = RunManager(tmp_path)
+        meta = mgr.initialize_run(tmp_path)
+        mgr.finalize_run(meta)
+
+        history_path = tmp_path / "_dd" / "run_history.json"
+        assert history_path.exists()
+        assert not history_path.with_suffix(".tmp").exists()
+
+
+# =========================================================================
+# Issue #43: read_validate_write concurrency utility
+# =========================================================================
+
+
+class TestReadValidateWrite:
+    """Tests for the optimistic concurrency read_validate_write utility."""
+
+    def test_basic_write_to_new_file(self, tmp_path: Path) -> None:
+        """Should create a new file when it does not exist."""
+        from dd_agents.persistence.concurrency import read_validate_write
+
+        path = tmp_path / "test.json"
+
+        def transform(data: dict[str, object]) -> dict[str, object]:
+            return {"key": "value"}
+
+        result = read_validate_write(path, transform)
+        assert result is True
+        assert path.exists()
+        data = json.loads(path.read_text())
+        assert data["key"] == "value"
+
+    def test_update_existing_file(self, tmp_path: Path) -> None:
+        """Should update an existing file."""
+        from dd_agents.persistence.concurrency import read_validate_write
+
+        path = tmp_path / "test.json"
+        path.write_text(json.dumps({"count": 0}))
+
+        def transform(data: dict[str, object]) -> dict[str, object]:
+            count = int(data.get("count", 0))  # type: ignore[arg-type]
+            return {"count": count + 1}
+
+        read_validate_write(path, transform)
+        data = json.loads(path.read_text())
+        assert data["count"] == 1
+
+    def test_concurrent_modification_detected(self, tmp_path: Path) -> None:
+        """Should detect when another process modifies the file mid-flight.
+
+        Simulates concurrent modification by changing the file inside the
+        transform function.
+        """
+        from dd_agents.persistence.concurrency import ConcurrentModificationError, read_validate_write
+
+        path = tmp_path / "test.json"
+        path.write_text(json.dumps({"version": 1}))
+
+        call_count = 0
+
+        def sneaky_transform(data: dict[str, object]) -> dict[str, object]:
+            nonlocal call_count
+            call_count += 1
+            # Simulate another process writing to the file after we read it
+            path.write_text(json.dumps({"version": 999, "writer": "other_process"}))
+            return {"version": 2}
+
+        # With max_retries=0, only one attempt -- should fail
+        with pytest.raises(ConcurrentModificationError):
+            read_validate_write(path, sneaky_transform, max_retries=0)
+        assert call_count == 1
+
+    def test_concurrent_modification_retry_succeeds(self, tmp_path: Path) -> None:
+        """Should succeed on retry when the concurrent modification is temporary."""
+        from dd_agents.persistence.concurrency import read_validate_write
+
+        path = tmp_path / "test.json"
+        path.write_text(json.dumps({"version": 1}))
+
+        call_count = 0
+
+        def sometimes_sneaky_transform(data: dict[str, object]) -> dict[str, object]:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                # First call: simulate concurrent modification
+                path.write_text(json.dumps({"version": 888}))
+            # Second call: no interference
+            return {"version": 2}
+
+        result = read_validate_write(path, sometimes_sneaky_transform, max_retries=1)
+        assert result is True
+        assert call_count == 2
+        data = json.loads(path.read_text())
+        assert data["version"] == 2
+
+    def test_no_tmp_files_left_on_success(self, tmp_path: Path) -> None:
+        """No .tmp files should remain after a successful write."""
+        from dd_agents.persistence.concurrency import read_validate_write
+
+        path = tmp_path / "test.json"
+        read_validate_write(path, lambda d: {"ok": True})
+        tmp_files = list(tmp_path.glob("*.tmp"))
+        assert tmp_files == []
+
+    def test_no_tmp_files_left_on_write_failure(self, tmp_path: Path) -> None:
+        """No .tmp files should remain if the write itself fails."""
+        from dd_agents.persistence.concurrency import read_validate_write
+
+        path = tmp_path / "test.json"
+        path.write_text(json.dumps({"initial": True}))
+
+        # Make the parent directory read-only to cause write failure
+        # (only works on Unix-like systems)
+
+        readonly_dir = tmp_path / "readonly"
+        readonly_dir.mkdir()
+        target = readonly_dir / "test.json"
+        target.write_text(json.dumps({"initial": True}))
+
+        def transform(data: dict[str, object]) -> dict[str, object]:
+            return {"updated": True}
+
+        # Make the directory read-only
+        readonly_dir.chmod(stat.S_IRUSR | stat.S_IXUSR)
+        try:
+            with pytest.raises(PermissionError):
+                read_validate_write(target, transform)
+        finally:
+            # Restore permissions for cleanup
+            readonly_dir.chmod(stat.S_IRWXU)
+
+        # No tmp files should remain
+        tmp_files = list(readonly_dir.glob("*.tmp"))
+        assert tmp_files == []
+
+    def test_creates_parent_directories(self, tmp_path: Path) -> None:
+        """Should create parent directories if they don't exist."""
+        from dd_agents.persistence.concurrency import read_validate_write
+
+        path = tmp_path / "nested" / "deep" / "test.json"
+        read_validate_write(path, lambda d: {"nested": True})
+        assert path.exists()
+
+    def test_handles_corrupt_json(self, tmp_path: Path) -> None:
+        """Should handle a corrupted JSON file gracefully (treat as empty dict)."""
+        from dd_agents.persistence.concurrency import read_validate_write
+
+        path = tmp_path / "test.json"
+        path.write_text("not valid json {{{")
+
+        def transform(data: dict[str, object]) -> dict[str, object]:
+            # Should receive empty dict since the file was corrupt
+            assert data == {}
+            return {"recovered": True}
+
+        read_validate_write(path, transform)
+        data = json.loads(path.read_text())
+        assert data["recovered"] is True
+
+
+# =========================================================================
+# FindingCounts validator
+# =========================================================================
+
+
+class TestFindingCountsValidator:
+    """Tests for FindingCounts._validate_total_consistency."""
+
+    def test_all_zeros_valid(self) -> None:
+        """total=0 with all severity counts=0 should be valid."""
+        from dd_agents.models.persistence import FindingCounts
+
+        fc = FindingCounts(p0=0, p1=0, p2=0, p3=0, total=0)
+        assert fc.total == 0
+
+    def test_correct_total_valid(self) -> None:
+        """total matching sum of severity counts should be valid."""
+        from dd_agents.models.persistence import FindingCounts
+
+        fc = FindingCounts(p0=2, p1=3, p2=3, p3=2, total=10)
+        assert fc.total == 10
+
+    def test_total_zero_with_nonzero_severity_raises(self) -> None:
+        """total=0 but severity counts > 0 should raise ValueError."""
+        from dd_agents.models.persistence import FindingCounts
+
+        with pytest.raises(ValueError, match="total=0 but severity counts sum to"):
+            FindingCounts(p0=1, p1=0, p2=0, p3=0, total=0)
+
+    def test_total_mismatch_raises(self) -> None:
+        """total not equal to p0+p1+p2+p3 should raise ValueError."""
+        from dd_agents.models.persistence import FindingCounts
+
+        with pytest.raises(ValueError, match="total.*must equal p0\\+p1\\+p2\\+p3"):
+            FindingCounts(p0=2, p1=3, p2=3, p3=3, total=10)

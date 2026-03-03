@@ -1,3 +1,5 @@
+"""Pydantic models for entity resolution: matches, cache entries, and match logs."""
+
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field

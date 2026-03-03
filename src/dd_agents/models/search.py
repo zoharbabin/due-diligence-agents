@@ -62,13 +62,15 @@ class SearchColumnResult(BaseModel):
     @field_validator("confidence", mode="before")
     @classmethod
     def _normalize_confidence(cls, v: Any) -> str:
-        """Normalize confidence to uppercase (HIGH/MEDIUM/LOW).
+        """Normalize confidence to lowercase (high/medium/low).
 
-        Centralizes the normalization that was previously scattered across
-        4 locations in the analyzer (parse, merge, synthesis, validation).
+        Matches the Confidence enum in dd_agents.models.enums which uses
+        lowercase values.  Centralizes the normalization that was previously
+        scattered across 4 locations in the analyzer (parse, merge,
+        synthesis, validation).
         """
         if isinstance(v, str) and v.strip():
-            return v.strip().upper()
+            return v.strip().lower()
         return ""
 
 

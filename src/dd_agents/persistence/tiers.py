@@ -55,7 +55,6 @@ VERSIONED_SUBDIRS: list[str] = [
     f"{AUDIT_DIR}/finance",
     f"{AUDIT_DIR}/commercial",
     f"{AUDIT_DIR}/producttech",
-    f"{AUDIT_DIR}/reporting_lead",
     f"{AUDIT_DIR}/judge",
 ]
 
@@ -174,7 +173,14 @@ class TierManager:
         prior_run_dir = prior_runs_dir / prior_run_id
         snapshot_dir = prior_run_dir / "inventory_snapshot"
 
-        if self.inventory_dir.exists() and not snapshot_dir.exists():
+        # Check whether the snapshot directory already has content (not just
+        # the empty placeholder created by ensure_run_dirs).  Issue #62.
+        snapshot_has_content = snapshot_dir.exists() and any(snapshot_dir.iterdir())
+
+        if self.inventory_dir.exists() and not snapshot_has_content:
+            if snapshot_dir.exists():
+                # Remove the empty placeholder so copytree can create it.
+                shutil.rmtree(snapshot_dir)
             shutil.copytree(self.inventory_dir, snapshot_dir)
             logger.info(
                 "Archived VERSIONED inventory to %s",
@@ -182,11 +188,11 @@ class TierManager:
             )
         else:
             logger.debug(
-                "Skipping archive: inventory=%s exists=%s, snapshot=%s exists=%s",
+                "Skipping archive: inventory=%s exists=%s, snapshot=%s has_content=%s",
                 self.inventory_dir,
                 self.inventory_dir.exists(),
                 snapshot_dir,
-                snapshot_dir.exists(),
+                snapshot_has_content,
             )
 
     # -- FRESH tier wipe ----------------------------------------------------

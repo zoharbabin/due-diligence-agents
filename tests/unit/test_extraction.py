@@ -700,6 +700,40 @@ class TestExtractionPipeline:
         content = md_file.read_text(encoding="utf-8")
         assert "substantial contract" in content
 
+    def test_empty_cache_skips_reextraction_when_output_readable(self, tmp_path: Path) -> None:
+        """When cache file is empty/missing but readable output exists, skip re-extraction."""
+        src = tmp_path / "sources"
+        src.mkdir()
+        f = src / "contract.txt"
+        f.write_text(
+            "This is a substantial contract with enough text to pass the threshold.\n" * 5,
+            encoding="utf-8",
+        )
+
+        output_dir = tmp_path / "output"
+        cache_path = tmp_path / "cache" / "checksums.sha256"
+
+        pipeline = ExtractionPipeline()
+
+        # First run: extract normally (builds cache + output).
+        pipeline.extract_all([str(f)], output_dir, cache_path)
+        md_files = list(output_dir.glob("*.md"))
+        assert len(md_files) == 1
+        original_content = md_files[0].read_text(encoding="utf-8")
+        original_mtime = md_files[0].stat().st_mtime
+
+        # Wipe the cache file to simulate a lost/deleted checksums.sha256.
+        cache_path.unlink()
+
+        # Second run: should NOT re-extract because output is readable.
+        pipeline.extract_all([str(f)], output_dir, cache_path)
+
+        # Output file should be untouched (mtime unchanged = not rewritten).
+        assert md_files[0].stat().st_mtime == original_mtime
+        assert md_files[0].read_text(encoding="utf-8") == original_content
+        # Cache should be rebuilt with the file hash.
+        assert cache_path.exists()
+
     def test_count_pages_in_text(self) -> None:
         """_count_pages_in_text correctly counts page markers."""
         text_3_pages = (
@@ -1899,3 +1933,397 @@ class TestSharedConstants:
         """_check_text_quality accepts clean readable text."""
         sample = "This is perfectly clean readable text with normal characters.\n" * 10
         assert ExtractionPipeline._check_text_quality(sample) is True
+
+
+# ======================================================================
+# TestParallelExtraction — Issue #36: ThreadPoolExecutor in extract_all
+# ======================================================================
+
+
+class TestParallelExtraction:
+    """Tests for parallel extraction via ThreadPoolExecutor."""
+
+    def test_extract_all_uses_thread_pool_executor(self, tmp_path: Path) -> None:
+        """extract_all should use ThreadPoolExecutor for file processing."""
+        src = tmp_path / "sources"
+        src.mkdir()
+        f1 = src / "a.txt"
+        f1.write_text("File A content that is long enough to be extracted.\n", encoding="utf-8")
+        f2 = src / "b.txt"
+        f2.write_text("File B content that is long enough to be extracted.\n", encoding="utf-8")
+
+        output_dir = tmp_path / "output"
+        cache_path = tmp_path / "checksums.sha256"
+
+        pipeline = ExtractionPipeline()
+
+        with patch(
+            "dd_agents.extraction.pipeline.ThreadPoolExecutor",
+            wraps=__import__("concurrent.futures", fromlist=["ThreadPoolExecutor"]).ThreadPoolExecutor,
+        ) as mock_executor_cls:
+            pipeline.extract_all([str(f1), str(f2)], output_dir, cache_path)
+
+        # ThreadPoolExecutor was instantiated.
+        mock_executor_cls.assert_called_once()
+
+    def test_extract_all_default_worker_count(self) -> None:
+        """Default worker count should be min(8, os.cpu_count() or 4)."""
+        import os as _os
+
+        from dd_agents.extraction.pipeline import _DEFAULT_WORKERS
+
+        expected = min(8, _os.cpu_count() or 4)
+        assert expected == _DEFAULT_WORKERS
+
+    def test_extract_all_custom_worker_count(self, tmp_path: Path) -> None:
+        """extract_all accepts max_workers parameter."""
+        src = tmp_path / "sources"
+        src.mkdir()
+        f1 = src / "a.txt"
+        f1.write_text("File A content that is long enough to be extracted.\n", encoding="utf-8")
+
+        output_dir = tmp_path / "output"
+        cache_path = tmp_path / "checksums.sha256"
+
+        pipeline = ExtractionPipeline()
+
+        with patch(
+            "dd_agents.extraction.pipeline.ThreadPoolExecutor",
+            wraps=__import__("concurrent.futures", fromlist=["ThreadPoolExecutor"]).ThreadPoolExecutor,
+        ) as mock_executor_cls:
+            pipeline.extract_all([str(f1)], output_dir, cache_path, max_workers=3)
+
+        mock_executor_cls.assert_called_once_with(max_workers=3)
+
+    def test_extract_all_parallel_produces_correct_results(self, tmp_path: Path) -> None:
+        """Parallel extraction produces the same results as sequential would."""
+        src = tmp_path / "sources"
+        src.mkdir()
+
+        file_paths: list[str] = []
+        for i in range(20):
+            f = src / f"file_{i}.txt"
+            f.write_text(f"Content of file {i} with sufficient text length.\n", encoding="utf-8")
+            file_paths.append(str(f))
+
+        output_dir = tmp_path / "output"
+        cache_path = tmp_path / "checksums.sha256"
+
+        pipeline = ExtractionPipeline()
+        entries = pipeline.extract_all(file_paths, output_dir, cache_path, max_workers=4)
+
+        assert len(entries) == 20
+        assert all(e.method == "direct_read" for e in entries)
+        assert all(e.bytes_extracted > 0 for e in entries)
+
+        # All output files created.
+        md_files = list(output_dir.glob("*.md"))
+        # One extra file: extraction_quality.json is not .md so this should be 20.
+        assert len(md_files) == 20
+
+    def test_extract_all_handles_mixed_success_and_failure(self, tmp_path: Path) -> None:
+        """Parallel extraction correctly handles both successful and missing files."""
+        src = tmp_path / "sources"
+        src.mkdir()
+        f1 = src / "good.txt"
+        f1.write_text("Good file with enough content for extraction.\n", encoding="utf-8")
+
+        output_dir = tmp_path / "output"
+        cache_path = tmp_path / "checksums.sha256"
+
+        pipeline = ExtractionPipeline()
+        entries = pipeline.extract_all(
+            [str(f1), str(tmp_path / "missing.pdf")],
+            output_dir,
+            cache_path,
+        )
+
+        assert len(entries) == 2
+        methods = {e.method for e in entries}
+        assert "direct_read" in methods
+        assert "failed" in methods
+
+
+# ======================================================================
+# TestExtractionSummary — Issue #41: get_extraction_summary
+# ======================================================================
+
+
+class TestExtractionSummary:
+    """Tests for ExtractionPipeline.get_extraction_summary."""
+
+    def test_summary_empty_entries(self) -> None:
+        """Empty entries list produces zeroed summary."""
+        summary = ExtractionPipeline.get_extraction_summary([])
+        assert summary["total"] == 0
+        assert summary["succeeded"] == 0
+        assert summary["failed"] == 0
+        assert summary["failure_rate"] == 0.0
+        assert summary["by_method"] == {}
+
+    def test_summary_all_successful(self) -> None:
+        """All primary extractions produce 0% failure rate."""
+        entries = [
+            ExtractionQualityEntry(
+                file_path=f"file_{i}.pdf",
+                method="primary",
+                bytes_extracted=5000,
+                confidence=0.9,
+            )
+            for i in range(10)
+        ]
+        summary = ExtractionPipeline.get_extraction_summary(entries)
+        assert summary["total"] == 10
+        assert summary["succeeded"] == 10
+        assert summary["failed"] == 0
+        assert summary["failure_rate"] == 0.0
+        assert summary["by_method"]["primary"] == 10
+
+    def test_summary_mixed_methods(self) -> None:
+        """Summary correctly counts methods."""
+        entries = [
+            ExtractionQualityEntry(file_path="a.pdf", method="primary", bytes_extracted=5000, confidence=0.9),
+            ExtractionQualityEntry(file_path="b.pdf", method="fallback_ocr", bytes_extracted=2000, confidence=0.7),
+            ExtractionQualityEntry(file_path="c.pdf", method="fallback_ocr", bytes_extracted=1500, confidence=0.6),
+            ExtractionQualityEntry(file_path="d.pdf", method="failed", bytes_extracted=0, confidence=0.0),
+            ExtractionQualityEntry(file_path="e.txt", method="direct_read", bytes_extracted=500, confidence=0.5),
+        ]
+        summary = ExtractionPipeline.get_extraction_summary(entries)
+        assert summary["total"] == 5
+        assert summary["by_method"]["primary"] == 1
+        assert summary["by_method"]["fallback_ocr"] == 2
+        assert summary["by_method"]["failed"] == 1
+        assert summary["by_method"]["direct_read"] == 1
+
+    def test_summary_failure_rate_calculation(self) -> None:
+        """Failure rate is computed over non-plaintext files only."""
+        entries = [
+            ExtractionQualityEntry(file_path="a.pdf", method="failed", bytes_extracted=0, confidence=0.0),
+            ExtractionQualityEntry(file_path="b.pdf", method="failed", bytes_extracted=0, confidence=0.0),
+            ExtractionQualityEntry(file_path="c.pdf", method="primary", bytes_extracted=5000, confidence=0.9),
+            ExtractionQualityEntry(file_path="d.pdf", method="primary", bytes_extracted=5000, confidence=0.9),
+            # Plaintext files (direct_read with confidence >= 0.1) are excluded
+            ExtractionQualityEntry(file_path="e.txt", method="direct_read", bytes_extracted=500, confidence=0.5),
+        ]
+        summary = ExtractionPipeline.get_extraction_summary(entries)
+        # 4 non-plaintext files, 2 failed => 50%
+        assert summary["failure_rate"] == 0.5
+
+    def test_summary_low_confidence_counted_as_failure(self) -> None:
+        """Entries with confidence < 0.1 are counted as failures."""
+        entries = [
+            ExtractionQualityEntry(file_path="a.pdf", method="primary", bytes_extracted=100, confidence=0.05),
+            ExtractionQualityEntry(file_path="b.pdf", method="primary", bytes_extracted=5000, confidence=0.9),
+        ]
+        summary = ExtractionPipeline.get_extraction_summary(entries)
+        assert summary["failed"] == 1
+
+    def test_systemic_failure_gate_with_parallel(self, tmp_path: Path) -> None:
+        """Systemic failure gate still triggers with parallel extraction."""
+        src = tmp_path / "sources"
+        src.mkdir()
+
+        # Create non-plaintext files that will fail extraction (empty PDFs).
+        for i in range(4):
+            f = src / f"bad_{i}.pdf"
+            f.write_bytes(b"")
+
+        output_dir = tmp_path / "output"
+        cache_path = tmp_path / "checksums.sha256"
+
+        pipeline = ExtractionPipeline()
+        with pytest.raises(ExtractionPipelineError, match="Systemic"):
+            pipeline.extract_all(
+                [str(src / f"bad_{i}.pdf") for i in range(4)],
+                output_dir,
+                cache_path,
+                max_workers=2,
+            )
+
+    def test_worker_thread_crash_does_not_terminate_pipeline(self, tmp_path: Path) -> None:
+        """A worker that raises an exception should be recorded as failed, not crash pipeline."""
+        from unittest.mock import patch
+
+        src = tmp_path / "sources"
+        src.mkdir()
+        good1 = src / "good1.txt"
+        good1.write_text("This file should extract successfully with enough content.\n", encoding="utf-8")
+        good2 = src / "good2.txt"
+        good2.write_text("Another good file with enough content for extraction test.\n", encoding="utf-8")
+        bad = src / "crash.txt"
+        bad.write_text("This file will trigger a simulated crash during extraction.\n", encoding="utf-8")
+
+        output_dir = tmp_path / "output"
+        cache_path = tmp_path / "checksums.sha256"
+
+        _real = (
+            ExtractionPipeline.extract_single.__wrapped__
+            if hasattr(ExtractionPipeline.extract_single, "__wrapped__")
+            else ExtractionPipeline.extract_single
+        )  # noqa: B009
+
+        def _crashing_extract(inst: ExtractionPipeline, filepath: Path, out_dir: Path) -> ExtractionQualityEntry:
+            if "crash" in filepath.name:
+                raise RuntimeError("Simulated native library crash")
+            return _real(inst, filepath, out_dir)
+
+        pipeline = ExtractionPipeline()
+        with patch.object(ExtractionPipeline, "extract_single", _crashing_extract):
+            entries = pipeline.extract_all([str(good1), str(good2), str(bad)], output_dir, cache_path, max_workers=1)
+
+        methods = {e.file_path: e.method for e in entries}
+        assert methods[str(good1)] == "direct_read"
+        assert methods[str(good2)] == "direct_read"
+        assert methods[str(bad)] == "failed"
+        crashed_entry = next(e for e in entries if e.file_path == str(bad))
+        assert crashed_entry.confidence == 0.0
+        assert "crashed" in crashed_entry.fallback_chain
+
+
+# ===================================================================== #
+# Priority 4: Thread safety tests for parallel extraction
+# ===================================================================== #
+
+
+class TestParallelExtractionThreadSafety:
+    """Tests for thread safety in extract_all with multiple workers."""
+
+    def test_extract_all_multiple_workers_no_tracker_corruption(self, tmp_path: Path) -> None:
+        """Multiple workers extracting concurrently should not corrupt the tracker."""
+        src = tmp_path / "src"
+        src.mkdir()
+
+        # Create 20 text files to exercise parallelism
+        file_paths = []
+        for i in range(20):
+            f = src / f"file_{i}.txt"
+            f.write_text(f"Content for file number {i}. " * 50)
+            file_paths.append(str(f))
+
+        output_dir = tmp_path / "output"
+        cache_path = tmp_path / "checksums.sha256"
+
+        pipeline = ExtractionPipeline()
+        entries = pipeline.extract_all(file_paths, output_dir, cache_path, max_workers=4)
+
+        # Every file should have produced an entry
+        assert len(entries) == 20
+
+        # No duplicate file entries
+        filepaths_in_entries = [e.file_path for e in entries]
+        assert len(filepaths_in_entries) == len(set(filepaths_in_entries))
+
+        # All entries should have non-zero bytes_extracted for text files
+        for entry in entries:
+            assert entry.bytes_extracted > 0, f"File {entry.file_path} had zero bytes"
+
+        # extraction_quality.json should exist and be valid JSON
+        quality_path = output_dir / "extraction_quality.json"
+        assert quality_path.exists()
+        import json as _json
+
+        quality_data = _json.loads(quality_path.read_text())
+        assert len(quality_data) == 20
+
+    def test_extract_all_mixed_fast_and_slow_files(self, tmp_path: Path) -> None:
+        """Mix of fast (small) and slow (large) files should all be tracked correctly."""
+        src = tmp_path / "src"
+        src.mkdir()
+
+        file_paths = []
+        # Fast files: small text
+        for i in range(5):
+            f = src / f"fast_{i}.txt"
+            f.write_text(f"Quick file {i}")
+            file_paths.append(str(f))
+
+        # Slow files: larger text
+        for i in range(5):
+            f = src / f"slow_{i}.txt"
+            f.write_text(f"Large content for file {i}. " * 5000)
+            file_paths.append(str(f))
+
+        output_dir = tmp_path / "output"
+        cache_path = tmp_path / "checksums.sha256"
+
+        pipeline = ExtractionPipeline()
+        entries = pipeline.extract_all(file_paths, output_dir, cache_path, max_workers=4)
+
+        assert len(entries) == 10
+
+        # Every output file should exist
+        for entry in entries:
+            filepath_str = entry.file_path
+            safe_name = ExtractionPipeline._safe_text_name(filepath_str)
+            out_file = output_dir / safe_name
+            assert out_file.exists(), f"Output missing for {filepath_str}"
+
+    def test_extract_all_with_missing_and_valid_files_concurrent(self, tmp_path: Path) -> None:
+        """Missing files mixed with valid files should not cause errors in the tracker."""
+        src = tmp_path / "src"
+        src.mkdir()
+
+        file_paths = []
+        # Valid files
+        for i in range(5):
+            f = src / f"valid_{i}.txt"
+            f.write_text(f"Valid content {i}. " * 100)
+            file_paths.append(str(f))
+
+        # Missing files
+        for i in range(3):
+            file_paths.append(str(src / f"missing_{i}.txt"))
+
+        output_dir = tmp_path / "output"
+        cache_path = tmp_path / "checksums.sha256"
+
+        pipeline = ExtractionPipeline()
+        entries = pipeline.extract_all(file_paths, output_dir, cache_path, max_workers=4)
+
+        # 5 valid + 3 missing = 8 entries
+        assert len(entries) == 8
+
+        # Check that missing files are recorded as failed
+        missing_entries = [e for e in entries if e.method == "failed"]
+        assert len(missing_entries) == 3
+
+        # Check that valid files are recorded successfully
+        valid_entries = [e for e in entries if e.method != "failed"]
+        assert len(valid_entries) == 5
+        for entry in valid_entries:
+            assert entry.bytes_extracted > 0
+
+    def test_extract_all_single_worker_produces_same_results(self, tmp_path: Path) -> None:
+        """Single worker and multiple workers should produce identical results."""
+        src = tmp_path / "src"
+        src.mkdir()
+
+        file_paths = []
+        for i in range(8):
+            f = src / f"file_{i}.txt"
+            f.write_text(f"Content for file {i}. " * 100)
+            file_paths.append(str(f))
+
+        # Run with 1 worker
+        output_dir_1 = tmp_path / "output_1"
+        cache_path_1 = tmp_path / "checksums_1.sha256"
+        pipeline1 = ExtractionPipeline()
+        entries_1 = pipeline1.extract_all(file_paths, output_dir_1, cache_path_1, max_workers=1)
+
+        # Run with 4 workers
+        output_dir_4 = tmp_path / "output_4"
+        cache_path_4 = tmp_path / "checksums_4.sha256"
+        pipeline4 = ExtractionPipeline()
+        entries_4 = pipeline4.extract_all(file_paths, output_dir_4, cache_path_4, max_workers=4)
+
+        assert len(entries_1) == len(entries_4) == 8
+
+        # Sort by filepath for comparison
+        entries_1_sorted = sorted(entries_1, key=lambda e: e.file_path)
+        entries_4_sorted = sorted(entries_4, key=lambda e: e.file_path)
+
+        for e1, e4 in zip(entries_1_sorted, entries_4_sorted, strict=True):
+            assert e1.file_path == e4.file_path
+            assert e1.method == e4.method
+            assert e1.bytes_extracted == e4.bytes_extracted
+            assert e1.confidence == e4.confidence

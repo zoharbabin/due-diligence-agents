@@ -46,7 +46,9 @@ class PipelineStep(StrEnum):
     JUDGE_ROUND2 = "22_judge_round2"  # CONDITIONAL
 
     # Phase 6: Reporting (Steps 23-31)
-    SPAWN_REPORTING_LEAD = "23_spawn_reporting_lead"
+    SPAWN_REPORTING_LEAD = (
+        "23_spawn_reporting_lead"  # Pre-merge validation (was: Reporting Lead agent, removed as redundant)
+    )
     MERGE_DEDUP = "24_merge_dedup"
     MERGE_GAPS = "25_merge_gaps"
     BUILD_NUMERICAL_MANIFEST = "26_build_numerical_manifest"

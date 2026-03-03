@@ -141,7 +141,7 @@ pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/ && ruff
 ---
 
 ## Phase 4: Agent Implementation
-**Goal**: Prompt assembly, specialist spawning, Judge iteration, Reporting Lead.
+**Goal**: Prompt assembly, specialist spawning, Judge iteration. (Reporting Lead removed in v0.4.0 — replaced by deterministic pre-merge validation.)
 **Dependencies**: Phase 3 complete
 **Status**: COMPLETE
 
@@ -178,7 +178,7 @@ pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/ && ruff
 ### 5.2 Validation
 **Status**: Complete — 33 tests
 - [x] Implement `src/dd_agents/validation/coverage.py` — CoverageValidator
-- [x] Implement `src/dd_agents/validation/numerical_audit.py` — 5-layer NumericalAuditor
+- [x] Implement `src/dd_agents/validation/numerical_audit.py` — 6-layer NumericalAuditor (Layer 6: financial citation verification)
 - [x] Implement `src/dd_agents/validation/qa_audit.py` — 17-check QAAuditor
 - [x] Implement `src/dd_agents/validation/dod.py` — 30-check DefinitionOfDoneChecker
 - [x] Implement `src/dd_agents/validation/schema_validator.py` — SchemaValidator
@@ -186,8 +186,8 @@ pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/ && ruff
 
 ### Phase 5 Acceptance
 - [x] Merge correctly combines findings from 4 agents
-- [x] 5 numerical audit layers validate correctly
-- [x] All 30 DoD checks implemented
+- [x] 6 numerical audit layers validate correctly (including Layer 6: financial citation verification)
+- [x] All 31 DoD checks implemented (30 original + 12b agent coverage)
 - [x] 14-sheet Excel matches report_schema.json
 - [x] Full quality gates pass
 
@@ -238,20 +238,22 @@ pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/ && ruff
 
 The project is complete when ALL of the following are true:
 - [x] All 6 phases have status "Complete"
-- [x] `pytest tests/ -x` passes — 1016 unit tests, 17 integration, 6 E2E (3 skipped without API key)
-- [x] `mypy src/ --strict` passes — 0 errors across 93 source files
+- [x] `pytest tests/ -x` passes — 1680+ unit tests, 17 integration, 9 E2E (3 skipped without API key)
+- [x] `mypy src/ --strict` passes — 0 errors across 99 source files
 - [x] `ruff check src/ tests/` is clean
 - [x] `ruff format --check src/ tests/` is clean
+
+> **Status: COMPLETE** — All 6 phases implemented and verified. Production hardening (v0.3.0) added 253 additional unit tests. v0.3.1 adds security, documentation, and config cleanup. v0.3.2 adds executive HTML report (#9), runaway agent defense (#96), and respawn timeout protection. See `PRODUCTION_HARDENING_PLAN.md` for post-implementation hardening work.
 
 ## Test Summary
 
 | Category | Count |
 |----------|-------|
-| Unit tests (models, utils, entity resolution, extraction, config, hooks, tools, orchestrator, agents, reporting, validation, search, glm_ocr) | 1016 |
+| Unit tests (models, utils, entity resolution, extraction, config, hooks, tools, orchestrator, agents, reporting, validation, search, glm_ocr, type safety, visual grounding, entity dedup, OCR registry, layout PDF, HTML report, extraction backend, turn limits) | 1707 |
 | Integration tests (pipeline steps 1-11) | 17 |
 | E2E tests (pre-agent: config, tiers, discovery, registry, run manager, cache) | 6 |
 | E2E tests (API-dependent: dry run, full pipeline, incremental — skipped without key) | 3 |
-| **Total** | **1039 passed, 3 skipped** |
+| **Total** | **1707 passed, 3 skipped** |
 
 ## Git History
 

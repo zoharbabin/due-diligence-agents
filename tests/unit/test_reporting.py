@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -301,6 +302,802 @@ class TestFindingMerger:
         data = json.loads((out_dir / "acme_corp.json").read_text())
         assert data["customer"] == "Acme Corp"
 
+    # ------------------------------------------------------------------
+    # Citation normalisation / resilient promotion
+    # ------------------------------------------------------------------
+
+    def test_normalize_citation_maps_file_path_to_source_path(self) -> None:
+        """Agent-produced file_path should be mapped to source_path."""
+        merger = FindingMerger(run_id="test")
+        raw = {"file_path": "msa.pdf", "page": 5, "section_ref": "Section 3", "exact_quote": "q"}
+        normalised = merger._normalize_citation(raw)
+        assert normalised["source_path"] == "msa.pdf"
+        assert normalised["source_type"] == "file"
+        assert normalised["location"] == "Section 3, p. 5"
+        assert normalised["exact_quote"] == "q"
+        assert "file_path" not in normalised
+
+    def test_normalize_citation_preserves_correct_schema(self) -> None:
+        """When agent already provides source_type + source_path, they are preserved."""
+        merger = FindingMerger(run_id="test")
+        raw = {"source_type": "file", "source_path": "sow.pdf", "location": "S1", "exact_quote": "q"}
+        normalised = merger._normalize_citation(raw)
+        assert normalised == raw
+
+    def test_normalize_citation_defaults_missing_fields(self) -> None:
+        """When only exact_quote is present, defaults are filled in."""
+        merger = FindingMerger(run_id="test")
+        raw = {"exact_quote": "some text"}
+        normalised = merger._normalize_citation(raw)
+        assert normalised["source_type"] == "file"
+        assert normalised["source_path"] == ""
+        assert normalised["location"] == ""
+        assert normalised["exact_quote"] == "some text"
+
+    # ------------------------------------------------------------------ #
+    # Citation path resolution against file inventory
+    # ------------------------------------------------------------------ #
+
+    def test_resolve_citation_path_exact_match(self) -> None:
+        """Exact match in inventory is returned unchanged."""
+        inventory = ["1. Legal/1.1 MSA/msa.pdf", "2. Finance/2.1 Tax/tax.xlsx"]
+        merger = FindingMerger(run_id="test", file_inventory=inventory)
+        assert merger._resolve_citation_path("1. Legal/1.1 MSA/msa.pdf") == "1. Legal/1.1 MSA/msa.pdf"
+
+    def test_resolve_citation_path_strips_md_suffix(self) -> None:
+        """Extraction artifact .md suffix is stripped and resolved."""
+        inventory = ["1. Legal/1.1 MSA/msa.pdf"]
+        merger = FindingMerger(run_id="test", file_inventory=inventory)
+        assert merger._resolve_citation_path("1. Legal/1.1 MSA/msa.pdf.md") == "1. Legal/1.1 MSA/msa.pdf"
+
+    def test_resolve_citation_path_strips_absolute_prefix(self) -> None:
+        """Absolute /Users/.../data-room/ prefix is stripped to data-room root."""
+        inventory = ["1. Legal/1.1 MSA/msa.pdf"]
+        merger = FindingMerger(run_id="test", file_inventory=inventory)
+        result = merger._resolve_citation_path("/Users/me/data/1. Legal/1.1 MSA/msa.pdf")
+        assert result == "1. Legal/1.1 MSA/msa.pdf"
+
+    def test_resolve_citation_path_basename_unique(self) -> None:
+        """When basename is unique in inventory, resolve to the full path."""
+        inventory = ["1. Legal/1.1 MSA/master_services_agreement.pdf"]
+        merger = FindingMerger(run_id="test", file_inventory=inventory)
+        assert merger._resolve_citation_path("master_services_agreement.pdf") == (
+            "1. Legal/1.1 MSA/master_services_agreement.pdf"
+        )
+
+    def test_resolve_citation_path_basename_ambiguous_suffix_disambiguates(self) -> None:
+        """When multiple files share a basename, the matching suffix wins."""
+        inventory = [
+            "1. Legal/1.1 MSA/contract.pdf",
+            "2. Finance/2.1 Tax/contract.pdf",
+        ]
+        merger = FindingMerger(run_id="test", file_inventory=inventory)
+        assert merger._resolve_citation_path("2.1 Tax/contract.pdf") == "2. Finance/2.1 Tax/contract.pdf"
+
+    def test_resolve_citation_path_no_inventory(self) -> None:
+        """When no inventory is provided, path is returned unchanged."""
+        merger = FindingMerger(run_id="test")
+        assert merger._resolve_citation_path("msa.pdf") == "msa.pdf"
+
+    def test_resolve_citation_path_no_match(self) -> None:
+        """When path doesn't match anything, it's returned unchanged."""
+        inventory = ["1. Legal/msa.pdf"]
+        merger = FindingMerger(run_id="test", file_inventory=inventory)
+        assert merger._resolve_citation_path("nonexistent.docx") == "nonexistent.docx"
+
+    def test_resolve_citation_path_md_suffix_then_basename(self) -> None:
+        """.md stripping + basename lookup works in combination."""
+        inventory = ["1. Legal/1.1 MSA/msa.pdf"]
+        merger = FindingMerger(run_id="test", file_inventory=inventory)
+        assert merger._resolve_citation_path("msa.pdf.md") == "1. Legal/1.1 MSA/msa.pdf"
+
+    def test_normalize_citation_resolves_path_with_inventory(self) -> None:
+        """End-to-end: _normalize_citation resolves source_path via inventory."""
+        inventory = ["1. Legal/1.1 MSA/msa.pdf"]
+        merger = FindingMerger(run_id="test", file_inventory=inventory)
+        raw = {"file_path": "msa.pdf", "exact_quote": "test"}
+        normalised = merger._normalize_citation(raw)
+        assert normalised["source_path"] == "1. Legal/1.1 MSA/msa.pdf"
+
+    def test_normalize_citation_skips_synthetic_paths(self) -> None:
+        """Paths starting with [ (synthetic) should not be resolved."""
+        inventory = ["1. Legal/msa.pdf"]
+        merger = FindingMerger(run_id="test", file_inventory=inventory)
+        raw = {"source_path": "[synthetic:no_citation_provided]", "source_type": "file", "location": ""}
+        normalised = merger._normalize_citation(raw)
+        assert normalised["source_path"] == "[synthetic:no_citation_provided]"
+
+    def test_promote_findings_with_flat_citation_fields(self) -> None:
+        """Findings with flat file_path/page/exact_quote (no citations array) are promoted."""
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        raw_findings = [
+            {
+                "agent": "legal",
+                "severity": "P2",
+                "category": "change_of_control",
+                "title": "CoC clause",
+                "description": "desc",
+                "confidence": "high",
+                "file_path": "msa.pdf",
+                "page": 12,
+                "section_ref": "Section 8.2",
+                "exact_quote": "In the event of a change of control...",
+            },
+        ]
+        promoted = merger._promote_findings(raw_findings, "Acme Corp", "acme_corp")
+        assert len(promoted) == 1
+        cit = promoted[0].citations[0]
+        assert cit.source_path == "msa.pdf"
+        assert cit.source_type == "file"
+        assert "Section 8.2" in cit.location
+        assert "p. 12" in cit.location
+        assert "change of control" in (cit.exact_quote or "")
+
+    def test_promote_findings_with_missing_citation_fields(self) -> None:
+        """Citations missing source_type/source_path are handled gracefully."""
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        raw_findings = [
+            {
+                "agent": "finance",
+                "severity": "P3",
+                "category": "pricing",
+                "title": "Pricing concern",
+                "description": "desc",
+                "confidence": "medium",
+                "citations": [
+                    {"exact_quote": "The price shall be...", "page": 3},
+                ],
+            },
+        ]
+        promoted = merger._promote_findings(raw_findings, "Acme Corp", "acme_corp")
+        assert len(promoted) == 1
+        cit = promoted[0].citations[0]
+        assert cit.source_type == "file"
+        assert cit.exact_quote == "The price shall be..."
+
+    def test_promote_findings_no_citations_gets_synthetic(self) -> None:
+        """A finding with no citation info at all gets a synthetic placeholder."""
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        raw_findings = [
+            {
+                "agent": "commercial",
+                "severity": "P3",
+                "category": "pricing",
+                "title": "General concern",
+                "description": "desc",
+                "confidence": "low",
+            },
+        ]
+        promoted = merger._promote_findings(raw_findings, "Acme Corp", "acme_corp")
+        assert len(promoted) == 1
+        cit = promoted[0].citations[0]
+        assert "[synthetic:" in cit.source_path
+
+    def test_collect_gaps_handles_string_entries(self) -> None:
+        """String gap entries should be wrapped, not crash."""
+        agent_outputs = {
+            "legal": {
+                "gaps": [
+                    "Missing MSA document",
+                    {
+                        "missing_item": "SOW",
+                        "gap_type": "Missing_Doc",
+                        "why_needed": "Required",
+                        "risk_if_missing": "High",
+                        "request_to_company": "Please provide",
+                        "evidence": "Referenced in amendment",
+                        "detection_method": "cross_reference",
+                        "customer": "Acme Corp",
+                        "priority": "P2",
+                    },
+                ],
+            },
+        }
+        # The string entry will be wrapped and then fail Gap validation
+        # (missing required fields), but the dict entry should survive.
+        gaps = FindingMerger._collect_gaps(agent_outputs, "Acme Corp")
+        assert len(gaps) >= 1
+        assert any(g.missing_item == "SOW" for g in gaps)
+
+    def test_merge_skips_non_dict_findings(self) -> None:
+        """Non-dict finding entries should be skipped without crashing."""
+        agent_output = {
+            "customer": "Acme Corp",
+            "findings": [
+                "this is a string, not a finding",
+                _make_finding(source_path="a.pdf", location="S1"),
+            ],
+            "governance_graph": {"edges": []},
+            "cross_references": [],
+        }
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        result = merger.merge_customer(
+            agent_outputs={"legal": agent_output},
+            customer_name="Acme Corp",
+            customer_safe_name="acme_corp",
+        )
+        # Only the valid dict finding should survive
+        assert len(result.findings) == 1
+
+
+# ===========================================================================
+# Merge normalization tests (gaps, governance, cross-references)
+# ===========================================================================
+
+
+class TestMergeNormalization:
+    """Tests for normalization layers that map agent output → Pydantic models."""
+
+    def test_normalize_gap_maps_simplified_fields(self) -> None:
+        """Agent-produced gap with simplified fields is normalised to Gap model."""
+        raw = {
+            "gap_type": "missing document",
+            "description": "MSA not found in data room",
+            "file_path": "sow.pdf",
+            "severity": "P1",
+        }
+        normalised = FindingMerger._normalize_gap(raw, "Acme Corp", "legal")
+        assert normalised["customer"] == "Acme Corp"
+        assert normalised["agent"] == "legal"
+        assert normalised["gap_type"] == "Missing_Doc"
+        assert normalised["priority"] == "P1"
+        assert normalised["why_needed"] == "MSA not found in data room"
+        assert "sow.pdf" in normalised["evidence"]
+        assert normalised["detection_method"] == "checklist"
+        assert "missing_item" in normalised
+
+    def test_normalize_gap_preserves_full_fields(self) -> None:
+        """When agent provides all Gap model fields, they are preserved."""
+        raw = _make_gap(customer="Beta Inc", priority="P0", gap_type="Missing_Doc", missing_item="NDA")
+        normalised = FindingMerger._normalize_gap(raw, "Beta Inc", "legal")
+        assert normalised["customer"] == "Beta Inc"
+        assert normalised["missing_item"] == "NDA"
+        assert normalised["priority"] == "P0"
+
+    def test_collect_gaps_with_agent_format(self) -> None:
+        """Gaps produced in agent-simplified format are accepted after normalization."""
+        agent_outputs = {
+            "legal": {
+                "customer": "Acme Corp",
+                "findings": [],
+                "gaps": [
+                    {
+                        "gap_type": "missing document",
+                        "description": "Certificate of incorporation not found",
+                        "title": "Certificate of Incorporation",
+                        "severity": "P1",
+                        "file_path": "sow.pdf",
+                    }
+                ],
+            }
+        }
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        result = merger.merge_customer(agent_outputs, customer_name="Acme Corp", customer_safe_name="acme_corp")
+        assert len(result.gaps) == 1
+        assert result.gaps[0].gap_type == "Missing_Doc"
+        assert result.gaps[0].customer == "Acme Corp"
+
+    # -- _coerce_gap_type keyword classification --
+
+    @pytest.mark.parametrize(
+        ("raw_type", "expected"),
+        [
+            # Exact enum values pass through
+            ("Missing_Doc", "Missing_Doc"),
+            ("Missing_Data", "Missing_Data"),
+            ("Ambiguous_Link", "Ambiguous_Link"),
+            ("Unreadable", "Unreadable"),
+            ("Contradiction", "Contradiction"),
+            ("Data_Mismatch", "Data_Mismatch"),
+            # Missing_Doc variants
+            ("Not_Found", "Missing_Doc"),
+            ("not_found", "Missing_Doc"),
+            ("missing document", "Missing_Doc"),
+            ("missing_document", "Missing_Doc"),
+            ("document_missing", "Missing_Doc"),
+            ("not_provided", "Missing_Doc"),
+            ("absent", "Missing_Doc"),
+            ("unavailable", "Missing_Doc"),
+            ("missing_file", "Missing_Doc"),
+            ("missing_contract", "Missing_Doc"),
+            ("missing_policy", "Missing_Doc"),
+            # Missing_Data variants
+            ("Incomplete", "Missing_Data"),
+            ("incomplete_data", "Missing_Data"),
+            ("partial", "Missing_Data"),
+            ("redacted", "Missing_Data"),
+            ("blank", "Missing_Data"),
+            ("empty", "Missing_Data"),
+            ("missing_information", "Missing_Data"),
+            ("missing_detail", "Missing_Data"),
+            ("missing_analysis", "Missing_Data"),
+            ("missing_metrics", "Missing_Data"),
+            ("missing_content", "Missing_Data"),
+            ("missing_category", "Missing_Data"),
+            ("no_data", "Missing_Data"),
+            # Unreadable variants
+            ("unreadable_document", "Unreadable"),
+            ("ocr_failure", "Unreadable"),
+            ("scan_quality", "Unreadable"),
+            ("garbled", "Unreadable"),
+            ("image_only", "Unreadable"),
+            # Data_Mismatch variants
+            ("mismatch", "Data_Mismatch"),
+            ("discrepancy", "Data_Mismatch"),
+            ("data_inconsistency", "Data_Mismatch"),
+            # Contradiction variants
+            ("conflict", "Contradiction"),
+            ("contradicts_prior", "Contradiction"),
+            # Ambiguous_Link variants
+            ("ambiguous", "Ambiguous_Link"),
+            ("unclear_reference", "Ambiguous_Link"),
+            # Unknown → default Missing_Doc
+            ("something_random", "Missing_Doc"),
+            ("xyz", "Missing_Doc"),
+        ],
+    )
+    def test_coerce_gap_type(self, raw_type: str, expected: str) -> None:
+        """_coerce_gap_type maps agent strings to valid GapType enum values."""
+        assert FindingMerger._coerce_gap_type(raw_type, "test") == expected
+
+    def test_coerce_gap_type_none_defaults_to_missing_doc(self) -> None:
+        """None or empty gap_type defaults to Missing_Doc."""
+        assert FindingMerger._coerce_gap_type(None, "test") == "Missing_Doc"
+        assert FindingMerger._coerce_gap_type("", "test") == "Missing_Doc"
+        assert FindingMerger._coerce_gap_type("  ", "test") == "Missing_Doc"
+
+    def test_coerce_gap_type_specificity_ordering(self) -> None:
+        """More specific keywords win over broad ones (e.g. 'unreadable' beats 'missing')."""
+        # 'unreadable_document' should be Unreadable, not Missing_Doc
+        assert FindingMerger._coerce_gap_type("unreadable_document", "test") == "Unreadable"
+        # 'data_mismatch_found' should be Data_Mismatch, not Missing_Doc
+        assert FindingMerger._coerce_gap_type("data_mismatch_found", "test") == "Data_Mismatch"
+        # 'incomplete_document' should be Missing_Data, not Missing_Doc
+        assert FindingMerger._coerce_gap_type("incomplete_document", "test") == "Missing_Data"
+
+    # -- priority coercion --
+
+    def test_normalize_gap_priority_high_to_p1(self) -> None:
+        """Agent-produced priority 'high' maps to P1."""
+        raw = {"gap_type": "Missing_Doc", "title": "Test", "description": "Test", "severity": "high"}
+        normalised = FindingMerger._normalize_gap(raw, "Test Corp", "commercial")
+        assert normalised["priority"] == "P1"
+
+    def test_normalize_gap_priority_low_to_p3(self) -> None:
+        """Agent-produced priority 'low' maps to P3."""
+        raw = {"gap_type": "Missing_Doc", "title": "Test", "description": "Test", "severity": "low"}
+        normalised = FindingMerger._normalize_gap(raw, "Test Corp", "commercial")
+        assert normalised["priority"] == "P3"
+
+    # -- end-to-end: gaps survive normalization + Pydantic validation --
+
+    def test_collect_gaps_agent_variants_survive_validation(self) -> None:
+        """Gaps with agent-produced types survive normalization + validation."""
+        agent_outputs = {
+            "producttech": {
+                "customer": "Acme Corp",
+                "findings": [],
+                "gaps": [
+                    {"gap_type": "Not_Found", "title": "Privacy Policy", "description": "Empty file"},
+                    {"gap_type": "Incomplete", "title": "SOC2 Report", "description": "Partial"},
+                    {"gap_type": "missing_information", "title": "Revenue Data", "description": "Missing"},
+                ],
+            }
+        }
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        result = merger.merge_customer(agent_outputs, customer_name="Acme Corp", customer_safe_name="acme_corp")
+        assert len(result.gaps) == 3
+        gap_types = {g.gap_type.value for g in result.gaps}
+        assert "Missing_Doc" in gap_types
+        assert "Missing_Data" in gap_types
+
+    def test_normalize_governance_edge_maps_from_to(self) -> None:
+        """Agent-produced 'from'/'to' mapped to 'from_file'/'to_file'."""
+        raw = {"from": "sow.pdf", "to": "msa.pdf", "relationship": "governs"}
+        normalised = FindingMerger._normalize_governance_edge(raw)
+        assert normalised["from_file"] == "sow.pdf"
+        assert normalised["to_file"] == "msa.pdf"
+        assert "from" not in normalised
+        assert "to" not in normalised
+
+    def test_consolidate_governance_with_agent_format(self) -> None:
+        """Governance edges using 'from'/'to' are accepted after normalization."""
+        agent_outputs = {
+            "legal": {
+                "customer": "Acme Corp",
+                "findings": [],
+                "governance_graph": {
+                    "edges": [
+                        {"from": "sow.pdf", "to": "msa.pdf", "relationship": "governs"},
+                        {"from": "amendment.pdf", "to": "msa.pdf", "relationship": "amends"},
+                    ]
+                },
+            }
+        }
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        result = merger.merge_customer(agent_outputs, customer_name="Acme Corp", customer_safe_name="acme_corp")
+        assert len(result.governance_graph.edges) == 2
+        assert result.governance_graph.edges[0].from_file == "sow.pdf"
+        assert result.governance_graph.edges[0].to_file == "msa.pdf"
+
+    def test_normalize_cross_reference_maps_flat_fields(self) -> None:
+        """Agent-produced cross-ref with flat fields is normalised."""
+        raw = {
+            "data_point": "ARR",
+            "contract_value": "$1.2M",
+            "reference_value": "$1.1M",
+            "source_file": "msa.pdf",
+            "reference_file": "financials.xlsx",
+            "target_category": "Revenue",
+            "status": "mismatch",
+            "variance": "-8.3%",
+        }
+        normalised = FindingMerger._normalize_cross_reference(raw)
+        assert normalised["match_status"] == "mismatch"
+        assert normalised["contract_source"]["file"] == "msa.pdf"
+        assert normalised["reference_source"]["file"] == "financials.xlsx"
+        assert normalised["reference_source"]["tab"] == "Revenue"
+        assert "source_file" not in normalised
+        assert "status" not in normalised
+
+    def test_union_cross_refs_with_agent_format(self) -> None:
+        """Cross-references with agent field names are accepted after normalization."""
+        agent_outputs = {
+            "finance": {
+                "customer": "Acme Corp",
+                "findings": [],
+                "cross_references": [
+                    {
+                        "data_point": "Contract Value",
+                        "contract_value": "$500K",
+                        "reference_value": "$500K",
+                        "source_file": "order_form.pdf",
+                        "reference_file": "pricing.xlsx",
+                        "status": "match",
+                    }
+                ],
+            }
+        }
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        result = merger.merge_customer(agent_outputs, customer_name="Acme Corp", customer_safe_name="acme_corp")
+        assert len(result.cross_references) == 1
+        assert result.cross_references[0].data_point == "Contract Value"
+        assert result.cross_references[0].match_status == "match"
+
+    def test_union_cross_refs_recovers_string_entries(self) -> None:
+        """String entries in cross_references should be auto-recovered, not dropped."""
+        agent_outputs = {
+            "finance": {
+                "customer": "Acme Corp",
+                "findings": [],
+                "cross_references": [
+                    "Revenue terms match between MSA and Order Form",
+                    42,
+                    {
+                        "data_point": "Revenue",
+                        "contract_value": "$1M",
+                        "reference_value": "$1M",
+                        "source_file": "contract.pdf",
+                        "reference_file": "financials.xlsx",
+                        "status": "match",
+                    },
+                ],
+            }
+        }
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        result = merger.merge_customer(agent_outputs, customer_name="Acme Corp", customer_safe_name="acme_corp")
+        # The string is recovered as a cross-reference; the int is dropped
+        assert len(result.cross_references) == 2
+        # Recovered entry should have the string as data_point
+        recovered = [cr for cr in result.cross_references if "Revenue terms" in cr.data_point]
+        assert len(recovered) == 1
+        assert recovered[0].match_status == "match"  # "match" keyword detected
+        # The dict entry also survives
+        assert any(cr.data_point == "Revenue" for cr in result.cross_references)
+
+    def test_cross_ref_string_mismatch_keyword_detected(self) -> None:
+        """Bare string cross-refs with mismatch keywords get status='mismatch'."""
+        agent_outputs = {
+            "finance": {
+                "customer": "Acme Corp",
+                "findings": [],
+                "cross_references": [
+                    "ARR discrepancy between contract ($1.2M) and revenue cube ($1.0M)",
+                ],
+            }
+        }
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        result = merger.merge_customer(agent_outputs, customer_name="Acme Corp", customer_safe_name="acme_corp")
+        assert len(result.cross_references) == 1
+        assert result.cross_references[0].match_status == "mismatch"
+        assert "ARR discrepancy" in result.cross_references[0].data_point
+
+    def test_cross_ref_string_unknown_status(self) -> None:
+        """Bare string cross-refs without match/mismatch keywords get 'not_available'."""
+        agent_outputs = {
+            "finance": {
+                "customer": "Acme Corp",
+                "findings": [],
+                "cross_references": [
+                    "Payment terms reference Section 4.2 of the Order Form",
+                ],
+            }
+        }
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        result = merger.merge_customer(agent_outputs, customer_name="Acme Corp", customer_safe_name="acme_corp")
+        assert len(result.cross_references) == 1
+        assert result.cross_references[0].match_status == "not_available"
+
+    def test_cross_ref_empty_string_dropped(self) -> None:
+        """Empty or whitespace-only string cross-refs are dropped."""
+        agent_outputs = {
+            "finance": {
+                "customer": "Acme Corp",
+                "findings": [],
+                "cross_references": ["", "   ", None],
+            }
+        }
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        result = merger.merge_customer(agent_outputs, customer_name="Acme Corp", customer_safe_name="acme_corp")
+        assert len(result.cross_references) == 0
+
+    def test_gap_string_recovery_preserves_full_text(self) -> None:
+        """Bare string gaps should be recovered with the full text preserved."""
+        agent_outputs = {
+            "legal": {
+                "gaps": [
+                    "Missing DPA for data processing. Required under GDPR compliance obligations.",
+                ],
+            },
+        }
+        gaps = FindingMerger._collect_gaps(agent_outputs, "Acme Corp")
+        assert len(gaps) == 1
+        assert gaps[0].missing_item == "Missing DPA for data processing"
+        # Full text preserved in why_needed
+        assert "GDPR" in gaps[0].why_needed
+
+    def test_gap_string_recovery_infers_gap_type(self) -> None:
+        """Bare string gaps should infer gap_type from keywords."""
+        agent_outputs = {
+            "producttech": {
+                "gaps": [
+                    "Unreadable scanned document: security_addendum_scan.pdf",
+                    "Contradiction between MSA liability cap and Order Form cap",
+                    "Missing SOC 2 Type II audit report",
+                ],
+            },
+        }
+        gaps = FindingMerger._collect_gaps(agent_outputs, "Acme Corp")
+        assert len(gaps) == 3
+        gap_types = {g.missing_item[:20]: str(g.gap_type) for g in gaps}
+        assert gap_types["Unreadable scanned d"] == "Unreadable"
+        assert gap_types["Contradiction betwee"] == "Contradiction"
+        assert gap_types["Missing SOC 2 Type I"] == "Missing_Doc"
+
+    def test_gap_string_recovery_infers_priority(self) -> None:
+        """Bare string gaps with critical keywords should get P1 priority."""
+        agent_outputs = {
+            "legal": {
+                "gaps": [
+                    "CRITICAL: Missing master services agreement for largest customer",
+                    "Minor documentation gap in archived SOW",
+                ],
+            },
+        }
+        gaps = FindingMerger._collect_gaps(agent_outputs, "Acme Corp")
+        assert len(gaps) == 2
+        critical_gap = next(g for g in gaps if "CRITICAL" in g.missing_item)
+        minor_gap = next(g for g in gaps if "Minor" in g.missing_item)
+        assert str(critical_gap.priority) == "P1"
+        assert str(minor_gap.priority) == "P2"
+
+    # -----------------------------------------------------------------------
+    # Empty-shell cross-reference filtering
+    # -----------------------------------------------------------------------
+
+    def test_empty_shell_cross_ref_unknown_data_point(self) -> None:
+        """Cross-ref with data_point='unknown' and empty values is an empty shell."""
+        cr = {"data_point": "unknown", "contract_value": "", "reference_value": ""}
+        assert FindingMerger._is_empty_shell_cross_ref(cr) is True
+
+    def test_empty_shell_cross_ref_na_data_point(self) -> None:
+        """Cross-ref with data_point='n/a' is an empty shell."""
+        cr = {"data_point": "n/a"}
+        assert FindingMerger._is_empty_shell_cross_ref(cr) is True
+
+    def test_empty_shell_cross_ref_with_value_kept(self) -> None:
+        """Cross-ref with data_point='unknown' but populated value is NOT an empty shell."""
+        cr = {"data_point": "unknown", "contract_value": "$50,000"}
+        assert FindingMerger._is_empty_shell_cross_ref(cr) is False
+
+    def test_empty_shell_cross_ref_with_source_content_kept(self) -> None:
+        """Cross-ref with data_point='unknown' but populated source object is NOT empty."""
+        cr = {
+            "data_point": "unknown",
+            "contract_source": {"file": "msa.pdf", "quote": "Payment terms: Net 30"},
+        }
+        assert FindingMerger._is_empty_shell_cross_ref(cr) is False
+
+    def test_real_cross_ref_is_not_empty_shell(self) -> None:
+        """Normal cross-ref with real data_point passes through."""
+        cr = {"data_point": "ARR", "contract_value": "$1.2M", "reference_value": "$1.0M"}
+        assert FindingMerger._is_empty_shell_cross_ref(cr) is False
+
+    def test_union_cross_refs_filters_empty_shells(self) -> None:
+        """_union_cross_refs should drop empty-shell entries."""
+        agent_outputs = {
+            "finance": {
+                "cross_references": [
+                    {
+                        "data_point": "unknown",
+                        "contract_value": "",
+                        "reference_value": "",
+                        "match_status": "not_available",
+                    },
+                    {
+                        "data_point": "ARR",
+                        "contract_value": "$1.2M",
+                        "reference_value": "$1.0M",
+                        "match_status": "mismatch",
+                        "variance": "-16.7%",
+                    },
+                ],
+            },
+        }
+        refs = FindingMerger._union_cross_refs(agent_outputs)
+        assert len(refs) == 1
+        assert refs[0].data_point == "ARR"
+
+    # -----------------------------------------------------------------------
+    # match_status validation (#84)
+    # -----------------------------------------------------------------------
+
+
+class TestMatchStatusValidation:
+    """Tests for cross-reference match_status validation (#84)."""
+
+    def test_empty_match_status_defaults_to_unverified(self) -> None:
+        from dd_agents.models.finding import CrossReference
+
+        cr = CrossReference(data_point="ARR", match_status="")
+        assert cr.match_status == "unverified"
+
+    def test_valid_match_status_accepted(self) -> None:
+        from dd_agents.models.finding import CrossReference
+
+        for status in ("match", "mismatch", "not_available", "unverified"):
+            cr = CrossReference(data_point="ARR", match_status=status)
+            assert cr.match_status == status
+
+    def test_confirmed_coerced_to_match(self) -> None:
+        from dd_agents.models.finding import CrossReference
+
+        cr = CrossReference(data_point="ARR", match_status="confirmed")
+        assert cr.match_status == "match"
+
+    def test_unable_to_verify_coerced_to_not_available(self) -> None:
+        from dd_agents.models.finding import CrossReference
+
+        cr = CrossReference(data_point="ARR", match_status="unable_to_verify")
+        assert cr.match_status == "not_available"
+
+    def test_unknown_status_coerced_to_unverified(self) -> None:
+        from dd_agents.models.finding import CrossReference
+
+        cr = CrossReference(data_point="ARR", match_status="maybe")
+        assert cr.match_status == "unverified"
+
+    def test_keyword_heuristic_no_false_positive_on_matching(self) -> None:
+        result = FindingMerger._coerce_cross_reference_entry("No matching reference found", "finance")
+        assert result is not None
+        assert result["match_status"] != "match"
+
+    def test_keyword_heuristic_detects_mismatch(self) -> None:
+        result = FindingMerger._coerce_cross_reference_entry("Values differ by 2%", "finance")
+        assert result is not None
+        assert result["match_status"] == "mismatch"
+
+    def test_keyword_heuristic_detects_match(self) -> None:
+        result = FindingMerger._coerce_cross_reference_entry("ARR values confirmed and consistent", "finance")
+        assert result is not None
+        assert result["match_status"] == "match"
+
+
+class TestMergeNormalizationContinued:
+    # -----------------------------------------------------------------------
+    # Citation singular → plural coercion
+    # -----------------------------------------------------------------------
+
+    def test_citation_singular_dict_coerced_to_citations_array(self) -> None:
+        """Finding with 'citation' (singular dict) should be coerced to 'citations' array."""
+        agent_outputs = {
+            "finance": {
+                "findings": [
+                    {
+                        "severity": "P2",
+                        "category": "revenue_recognition",
+                        "title": "Deferred revenue gap",
+                        "description": "Issue found",
+                        "confidence": "high",
+                        "citation": {
+                            "source_type": "primary_document",
+                            "source_path": "report.pdf",
+                            "location": "Section 3",
+                            "exact_quote": "Revenue was deferred",
+                        },
+                    }
+                ],
+            },
+        }
+        merger = FindingMerger(run_id="test_run")
+        result = merger.merge_customer(agent_outputs, "Test Co", "test_co")
+        assert len(result.findings) == 1
+        assert len(result.findings[0].citations) == 1
+        assert result.findings[0].citations[0].source_path == "report.pdf"
+
+    def test_citation_singular_list_coerced_to_citations(self) -> None:
+        """Finding with 'citation' as a list should be moved to 'citations'."""
+        agent_outputs = {
+            "legal": {
+                "findings": [
+                    {
+                        "severity": "P2",
+                        "category": "change_of_control",
+                        "title": "CoC clause",
+                        "description": "Found CoC",
+                        "confidence": "medium",
+                        "citation": [
+                            {
+                                "source_type": "primary_document",
+                                "source_path": "msa.pdf",
+                                "location": "Section 12",
+                                "exact_quote": "Change of control",
+                            }
+                        ],
+                    }
+                ],
+            },
+        }
+        merger = FindingMerger(run_id="test_run")
+        result = merger.merge_customer(agent_outputs, "Test Co", "test_co")
+        assert len(result.findings) == 1
+        assert len(result.findings[0].citations) == 1
+
+    def test_citations_plural_not_overwritten_by_coercion(self) -> None:
+        """When 'citations' already exists, singular 'citation' is ignored."""
+        agent_outputs = {
+            "legal": {
+                "findings": [
+                    {
+                        "severity": "P2",
+                        "category": "change_of_control",
+                        "title": "CoC clause",
+                        "description": "Found CoC",
+                        "confidence": "high",
+                        "citations": [
+                            {
+                                "source_type": "primary_document",
+                                "source_path": "msa.pdf",
+                                "location": "Section 12",
+                                "exact_quote": "Change of control",
+                            }
+                        ],
+                        "citation": {
+                            "source_type": "primary_document",
+                            "source_path": "other.pdf",
+                            "location": "Page 1",
+                            "exact_quote": "Should be ignored",
+                        },
+                    }
+                ],
+            },
+        }
+        merger = FindingMerger(run_id="test_run")
+        result = merger.merge_customer(agent_outputs, "Test Co", "test_co")
+        assert len(result.findings) == 1
+        # Should use the existing 'citations', not the singular 'citation'
+        assert result.findings[0].citations[0].source_path == "msa.pdf"
+
 
 # ===========================================================================
 # ReportDiffBuilder tests
@@ -571,9 +1368,9 @@ class TestExcelReportGenerator:
         for sheet_def in always_active:
             assert sheet_def.name in wb.sheetnames, f"Missing always-active sheet: {sheet_def.name}"
 
-        # Conditional sheets should NOT be present when conditions are not met
-        assert "Quality_Audit" not in wb.sheetnames
-        assert "_Metadata" not in wb.sheetnames
+        # All 14 sheets are always generated (even conditional ones get headers)
+        assert "Quality_Audit" in wb.sheetnames
+        assert "_Metadata" in wb.sheetnames
 
     def test_sheet_column_headers_match_schema(
         self,
@@ -997,3 +1794,1059 @@ class TestContractDateReconciler:
         data = json.loads(out.read_text())
         assert data["run_id"] == "test_run"
         assert len(data["entries"]) == 1
+
+
+# ===========================================================================
+# Issue #35 / #53 regression tests
+# ===========================================================================
+
+
+class TestReportSchemaValidation:
+    """Test that ReportSchema rejects empty sheets (Issue #35)."""
+
+    def test_empty_sheets_raises_value_error(self) -> None:
+        """ReportSchema with zero sheets must fail-fast with ValueError."""
+        with pytest.raises(ValueError, match="at least one sheet"):
+            ReportSchema(schema_version="1.0.0", sheets=[])
+
+    def test_empty_sheets_default_raises_value_error(self) -> None:
+        """ReportSchema with default (omitted) sheets must also fail."""
+        with pytest.raises(ValueError, match="at least one sheet"):
+            ReportSchema(schema_version="1.0.0")
+
+    def test_valid_schema_with_one_sheet(self) -> None:
+        """A schema with at least one sheet should construct successfully."""
+        from dd_agents.models.reporting import ColumnDef, SheetDef
+
+        sheet = SheetDef(
+            name="Summary",
+            columns=[ColumnDef(name="Customer", key="customer", type="string")],
+        )
+        schema = ReportSchema(schema_version="1.0.0", sheets=[sheet])
+        assert len(schema.sheets) == 1
+
+
+class TestExcelGeneratorGuards:
+    """Test guards and edge cases in ExcelReportGenerator (Issue #35 / #53)."""
+
+    def test_generate_raises_on_zero_sheets(self, tmp_path: Path) -> None:
+        """generate() raises ValueError when schema has zero sheets.
+
+        NOTE: The ReportSchema validator itself will reject empty sheets,
+        but if somehow bypassed the generator must still guard.
+        """
+        from dd_agents.models.reporting import ColumnDef, SheetDef
+
+        # Build a schema with one sheet, then forcibly empty it
+        sheet = SheetDef(
+            name="Summary",
+            columns=[ColumnDef(name="Customer", key="customer", type="string")],
+        )
+        schema = ReportSchema(schema_version="1.0.0", sheets=[sheet])
+        # Bypass the validator by mutating after construction
+        schema.sheets = []
+
+        gen = ExcelReportGenerator()
+        with pytest.raises(ValueError, match="zero sheet"):
+            gen.generate({}, schema, tmp_path / "out.xlsx")
+
+    def test_list_values_joined_with_semicolon(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """List values in cells should be joined with '; ' not repr (Issue #53).
+
+        Uses the Missing_Docs_Gaps sheet because ``_data_gaps`` passes raw
+        gap dicts through, so a list-typed field reaches ``_write_sheet``.
+        """
+        from dd_agents.models.reporting import ColumnDef, SheetDef
+
+        sheet = SheetDef(
+            name="Missing_Docs_Gaps",
+            columns=[
+                ColumnDef(name="Customer", key="customer", type="string"),
+                ColumnDef(name="Evidence", key="evidence", type="string", width=30),
+            ],
+        )
+        schema = ReportSchema(schema_version="1.0.0", sheets=[sheet])
+
+        merged = {
+            "acme": {
+                "customer": "Acme",
+                "findings": [],
+                "gaps": [
+                    {
+                        "customer": "Acme",
+                        "evidence": ["contract.pdf", "sow.pdf", "amendment.pdf"],
+                    },
+                ],
+                "cross_references": [],
+                "governance_graph": {"edges": []},
+                "governance_resolved_pct": 0.0,
+            },
+        }
+
+        out_path = tmp_path / "report.xlsx"
+        gen = ExcelReportGenerator()
+        gen.generate(merged, schema, out_path)
+
+        from openpyxl import load_workbook
+
+        wb = load_workbook(str(out_path))
+        ws = wb["Missing_Docs_Gaps"]
+
+        # Find Evidence column
+        ev_col = None
+        for c in range(1, ws.max_column + 1):
+            if ws.cell(row=1, column=c).value == "Evidence":
+                ev_col = c
+                break
+
+        assert ev_col is not None
+        cell_value = ws.cell(row=2, column=ev_col).value
+        assert cell_value == "contract.pdf; sow.pdf; amendment.pdf"
+        # Must NOT contain Python list repr
+        assert "[" not in str(cell_value)
+
+    def test_empty_sheets_logged_as_warning(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Non-Summary sheets with zero data rows should emit a warning (Issue #53)."""
+        from dd_agents.models.reporting import ColumnDef, SheetDef
+
+        sheets = [
+            SheetDef(
+                name="Summary",
+                columns=[ColumnDef(name="Customer", key="customer", type="string")],
+            ),
+            SheetDef(
+                name="Wolf_Pack",
+                columns=[ColumnDef(name="Customer", key="analysis_unit", type="string")],
+            ),
+        ]
+        schema = ReportSchema(schema_version="1.0.0", sheets=sheets)
+
+        merged: dict[str, dict] = {
+            "acme": {
+                "customer": "Acme",
+                "findings": [],
+                "gaps": [],
+                "cross_references": [],
+                "governance_graph": {"edges": []},
+                "governance_resolved_pct": 0.0,
+            },
+        }
+
+        out_path = tmp_path / "report.xlsx"
+        gen = ExcelReportGenerator()
+
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="dd_agents.reporting.excel"):
+            gen.generate(merged, schema, out_path)
+
+        assert any("Wolf_Pack" in rec.message and "zero data rows" in rec.message for rec in caplog.records)
+
+
+class TestStep30SchemaFallback:
+    """Test that _step_30 loads schema from config/ fallback (Issue #35)."""
+
+    @pytest.fixture()
+    def _pipeline_state(self, tmp_path: Path) -> dict:
+        """Create a minimal pipeline state-like structure for testing."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        # No report_schema.json in run_dir on purpose
+        project_dir = tmp_path / "project"
+        config_dir = project_dir / "config"
+        config_dir.mkdir(parents=True)
+        return {"run_dir": run_dir, "project_dir": project_dir, "config_dir": config_dir}
+
+    def test_fallback_to_config_dir(self, _pipeline_state: dict) -> None:
+        """When run_dir has no schema, step 30 should load from config/."""
+
+        run_dir: Path = _pipeline_state["run_dir"]
+        config_dir: Path = _pipeline_state["config_dir"]
+
+        # Write a valid schema to config/
+        minimal_schema = {
+            "schema_version": "1.0.0",
+            "sheets": [
+                {
+                    "name": "Summary",
+                    "columns": [{"name": "Customer", "key": "customer", "type": "string"}],
+                }
+            ],
+        }
+        (config_dir / "report_schema.json").write_text(json.dumps(minimal_schema))
+
+        # Verify run_dir has no schema
+        assert not (run_dir / "report_schema.json").exists()
+
+        # Load following the same resolution order as step 30
+        schema: ReportSchema | None = None
+
+        run_schema_path = run_dir / "report_schema.json"
+        if run_schema_path.exists():
+            schema = ReportSchema.model_validate_json(run_schema_path.read_text())
+
+        if schema is None:
+            config_schema_path = config_dir / "report_schema.json"
+            if config_schema_path.exists():
+                schema = ReportSchema.model_validate_json(config_schema_path.read_text())
+
+        assert schema is not None
+        assert len(schema.sheets) == 1
+        assert schema.sheets[0].name == "Summary"
+
+    def test_fallback_to_builtin_minimal(self, _pipeline_state: dict) -> None:
+        """When neither run_dir nor config/ has a schema, use built-in minimal."""
+        run_dir: Path = _pipeline_state["run_dir"]
+        config_dir: Path = _pipeline_state["config_dir"]
+
+        # Neither location has a schema
+        assert not (run_dir / "report_schema.json").exists()
+        assert not (config_dir / "report_schema.json").exists()
+
+        # Reproduce fallback logic
+        schema: ReportSchema | None = None
+
+        run_schema_path = run_dir / "report_schema.json"
+        if run_schema_path.exists():
+            schema = ReportSchema.model_validate_json(run_schema_path.read_text())
+
+        if schema is None:
+            config_schema_path = config_dir / "report_schema.json"
+            if config_schema_path.exists():
+                schema = ReportSchema.model_validate_json(config_schema_path.read_text())
+
+        if schema is None:
+            schema = ReportSchema.model_validate(
+                {
+                    "schema_version": "1.0.0",
+                    "description": "Built-in minimal schema (fallback)",
+                    "sheets": [
+                        {
+                            "name": "Summary",
+                            "required": True,
+                            "activation_condition": "always",
+                            "columns": [
+                                {"name": "Customer", "key": "customer", "type": "string", "width": 30},
+                                {
+                                    "name": "Overall Risk Rating",
+                                    "key": "overall_risk_rating",
+                                    "type": "string",
+                                    "width": 20,
+                                },
+                                {"name": "Total Findings", "key": "total_findings", "type": "integer", "width": 14},
+                                {"name": "Gap Count", "key": "gap_count", "type": "integer", "width": 12},
+                            ],
+                        },
+                    ],
+                }
+            )
+
+        assert schema is not None
+        assert len(schema.sheets) == 1
+        assert schema.sheets[0].name == "Summary"
+        assert len(schema.sheets[0].columns) == 4
+
+
+# ===========================================================================
+# Severity normalization tests (#77)
+# ===========================================================================
+
+
+class TestSeverityNormalization:
+    """Tests for severity normalization in _promote_findings (Issue #77)."""
+
+    @staticmethod
+    def _make_raw_finding(severity: str = "P2", **kwargs: Any) -> dict[str, Any]:
+        return {
+            "severity": severity,
+            "category": "test",
+            "title": kwargs.get("title", "Test finding"),
+            "description": "Test description",
+            "confidence": "medium",
+            "citations": [
+                {
+                    "source_type": "file",
+                    "source_path": "test.pdf",
+                    "location": "page 1",
+                    "exact_quote": "test quote",
+                }
+            ],
+            "agent": kwargs.get("agent", "legal"),
+            **{k: v for k, v in kwargs.items() if k not in ("title", "agent")},
+        }
+
+    def test_normalize_severity_high_to_p1(self) -> None:
+        assert FindingMerger._normalize_severity("high") == "P1"
+
+    def test_normalize_severity_critical_to_p0(self) -> None:
+        assert FindingMerger._normalize_severity("CRITICAL") == "P0"
+
+    def test_normalize_severity_medium_to_p2(self) -> None:
+        assert FindingMerger._normalize_severity("medium") == "P2"
+
+    def test_normalize_severity_low_to_p3(self) -> None:
+        assert FindingMerger._normalize_severity("low") == "P3"
+
+    def test_normalize_severity_already_standard(self) -> None:
+        assert FindingMerger._normalize_severity("P0") == "P0"
+        assert FindingMerger._normalize_severity("P1") == "P1"
+
+    def test_normalize_severity_unknown_defaults_p3(self) -> None:
+        assert FindingMerger._normalize_severity("unknown") == "P3"
+
+    def test_promote_findings_normalizes_high_severity(self) -> None:
+        """Finding with severity='high' should be promoted as P1, not dropped."""
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        raw = [self._make_raw_finding(severity="high")]
+        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        assert len(result) == 1
+        assert result[0].severity.value == "P1"
+
+    def test_promote_findings_normalizes_critical_severity(self) -> None:
+        """Finding with severity='CRITICAL' should be promoted as P0."""
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        raw = [self._make_raw_finding(severity="CRITICAL")]
+        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        assert len(result) == 1
+        assert result[0].severity.value == "P0"
+
+    def test_promote_findings_no_findings_dropped_by_severity(self) -> None:
+        """Findings with non-standard severity should NOT be dropped."""
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        raw = [
+            self._make_raw_finding(severity="high"),
+            self._make_raw_finding(severity="medium"),
+            self._make_raw_finding(severity="low"),
+            self._make_raw_finding(severity="CRITICAL"),
+            self._make_raw_finding(severity="P0"),
+        ]
+        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        assert len(result) == 5
+
+
+# ===========================================================================
+# Agent name normalization tests (#78)
+# ===========================================================================
+
+
+class TestAgentNameNormalization:
+    """Tests for agent name normalization in _promote_findings (Issue #78)."""
+
+    def test_normalize_agent_name_standard(self) -> None:
+        assert FindingMerger._normalize_agent_name("legal") == "legal"
+        assert FindingMerger._normalize_agent_name("finance") == "finance"
+
+    def test_normalize_agent_name_case_insensitive(self) -> None:
+        assert FindingMerger._normalize_agent_name("Legal") == "legal"
+        assert FindingMerger._normalize_agent_name("FINANCE") == "finance"
+
+    def test_normalize_agent_name_hyphenated(self) -> None:
+        assert FindingMerger._normalize_agent_name("product-tech") == "producttech"
+
+    def test_normalize_agent_name_underscore(self) -> None:
+        assert FindingMerger._normalize_agent_name("product_tech") == "producttech"
+
+
+# ===========================================================================
+# Title truncation tests (#78)
+# ===========================================================================
+
+
+class TestTitleTruncation:
+    """Tests for title truncation in _promote_findings (Issue #78)."""
+
+    def test_long_title_truncated_to_120_chars(self) -> None:
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        long_title = "A" * 200
+        raw = [
+            {
+                "severity": "P2",
+                "category": "test",
+                "title": long_title,
+                "description": "desc",
+                "confidence": "medium",
+                "agent": "legal",
+                "citations": [{"source_type": "file", "source_path": "f.pdf", "location": "p1", "exact_quote": "q"}],
+            }
+        ]
+        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        assert len(result) == 1
+        assert len(result[0].title) == 120
+
+
+# ===========================================================================
+# P0/P1 downgrade on missing exact_quote (#78)
+# ===========================================================================
+
+
+class TestSeverityDowngradeOnMissingQuote:
+    """Test P0/P1 findings are downgraded to P2 when citations lack exact_quote."""
+
+    def test_p0_downgraded_when_no_exact_quote(self) -> None:
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        raw = [
+            {
+                "severity": "P0",
+                "category": "test",
+                "title": "Critical finding",
+                "description": "desc",
+                "confidence": "high",
+                "agent": "legal",
+                "citations": [
+                    {"source_type": "file", "source_path": "f.pdf", "location": "p1"}
+                    # No exact_quote
+                ],
+            }
+        ]
+        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        assert len(result) == 1
+        # Downgraded from P0 to P2 because citations lack exact_quote
+        assert result[0].severity.value == "P2"
+
+    def test_p1_with_exact_quote_stays_p1(self) -> None:
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        raw = [
+            {
+                "severity": "P1",
+                "category": "test",
+                "title": "High finding",
+                "description": "desc",
+                "confidence": "high",
+                "agent": "legal",
+                "citations": [
+                    {"source_type": "file", "source_path": "f.pdf", "location": "p1", "exact_quote": "actual quote"}
+                ],
+            }
+        ]
+        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        assert len(result) == 1
+        assert result[0].severity.value == "P1"
+
+
+# ===========================================================================
+# Stale file cleanup tests (#69)
+# ===========================================================================
+
+
+class TestStaleFileCleanup:
+    """Tests for stale file cleanup in write_merged (Issue #69)."""
+
+    def test_write_merged_removes_stale_files(self, tmp_path: Path) -> None:
+        """Non-customer JSON files in merged/ should be removed."""
+        merged_dir = tmp_path / "merged"
+        merged_dir.mkdir()
+
+        # Pre-existing stale files
+        (merged_dir / "numerical_manifest.json").write_text("{}")
+        (merged_dir / "coverage_manifest.json").write_text("{}")
+        (merged_dir / "report_diff.json").write_text("{}")
+
+        # Write merged output for one customer
+        from dd_agents.models.finding import MergedCustomerOutput
+
+        mco = MergedCustomerOutput(customer="Acme Corp", customer_safe_name="acme_corp")
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        merger.write_merged({"acme_corp": mco}, merged_dir)
+
+        # Customer file should exist
+        assert (merged_dir / "acme_corp.json").exists()
+        # Stale files should be removed
+        assert not (merged_dir / "numerical_manifest.json").exists()
+        assert not (merged_dir / "coverage_manifest.json").exists()
+        assert not (merged_dir / "report_diff.json").exists()
+
+    def test_write_merged_preserves_customer_files(self, tmp_path: Path) -> None:
+        """Customer files from a previous run that are still valid should stay."""
+        from dd_agents.models.finding import MergedCustomerOutput
+
+        merged_dir = tmp_path / "merged"
+        merged_dir.mkdir()
+
+        mco_a = MergedCustomerOutput(customer="A", customer_safe_name="a")
+        mco_b = MergedCustomerOutput(customer="B", customer_safe_name="b")
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        merger.write_merged({"a": mco_a, "b": mco_b}, merged_dir)
+
+        assert (merged_dir / "a.json").exists()
+        assert (merged_dir / "b.json").exists()
+
+    def test_write_merged_clean_stale_false_preserves_all(self, tmp_path: Path) -> None:
+        """When clean_stale=False, no files are removed."""
+        from dd_agents.models.finding import MergedCustomerOutput
+
+        merged_dir = tmp_path / "merged"
+        merged_dir.mkdir()
+        (merged_dir / "stale.json").write_text("{}")
+
+        mco = MergedCustomerOutput(customer="X", customer_safe_name="x")
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        merger.write_merged({"x": mco}, merged_dir, clean_stale=False)
+
+        assert (merged_dir / "x.json").exists()
+        assert (merged_dir / "stale.json").exists()
+
+
+# ===========================================================================
+# Judge prose extraction tests (#72)
+# ===========================================================================
+
+
+class TestJudgeProseExtraction:
+    """Tests for Judge agent prose output parsing (Issue #72)."""
+
+    def test_extract_scores_from_prose_basic(self) -> None:
+        from dd_agents.agents.judge import JudgeAgent
+
+        prose = """
+        Quality Assessment Results:
+        Legal: 85/100
+        Finance: 78/100
+        Commercial: 72/100
+        ProductTech: 90/100
+        Overall quality: 81
+        """
+        result = JudgeAgent._extract_scores_from_prose(prose)
+        assert result is not None
+        assert "legal" in result["agent_scores"]
+        assert result["agent_scores"]["legal"]["score"] == 85
+        assert result["agent_scores"]["finance"]["score"] == 78
+        assert result["agent_scores"]["commercial"]["score"] == 72
+        assert result["agent_scores"]["producttech"]["score"] == 90
+        assert result["overall_quality"] == 81
+
+    def test_extract_scores_from_prose_with_dimensions(self) -> None:
+        from dd_agents.agents.judge import JudgeAgent
+
+        prose = """
+        Legal score: 82
+        citation_verification: 90
+        contextual_validation: 80
+        financial_accuracy: 75
+        """
+        result = JudgeAgent._extract_scores_from_prose(prose)
+        assert result is not None
+        assert result["agent_scores"]["legal"]["score"] == 82
+        dims = result["agent_scores"]["legal"]["dimensions"]
+        assert dims["citation_verification"] == 90
+        assert dims["contextual_validation"] == 80
+        assert dims["financial_accuracy"] == 75
+
+    def test_extract_scores_from_prose_no_scores(self) -> None:
+        from dd_agents.agents.judge import JudgeAgent
+
+        prose = "The findings look good overall. No specific scores to report."
+        result = JudgeAgent._extract_scores_from_prose(prose)
+        assert result is None
+
+    def test_extract_scores_overall_computed_from_agents(self) -> None:
+        from dd_agents.agents.judge import JudgeAgent
+
+        prose = """
+        Legal: 80
+        Finance: 90
+        """
+        result = JudgeAgent._extract_scores_from_prose(prose)
+        assert result is not None
+        assert result["overall_quality"] == 85  # (80 + 90) / 2
+
+    def test_extract_scores_from_markdown_table(self) -> None:
+        """Scores are extracted from markdown table format with pipe delimiters."""
+        from dd_agents.agents.judge import JudgeAgent
+
+        prose = (
+            "### Agent Scores (all PASS, threshold = 70)\n\n"
+            "| Agent | Score | Citation | Context | Financial | Consistency | Completeness |\n"
+            "|-------|-------|----------|---------|-----------|-------------|-------------|\n"
+            "| **Finance** | **87** | 85 | 88 | 92 | 85 | 88 |\n"
+            "| **Legal** | **86** | 82 | 90 | 85 | 88 | 85 |\n"
+            "| **ProductTech** | **85** | 84 | 86 | 88 | 85 | 83 |\n"
+            "| **Commercial** | **71** | 68 | 75 | 65 | 72 | 80 |\n\n"
+            "**Overall Run Score: 82**\n"
+        )
+        result = JudgeAgent._extract_scores_from_prose(prose)
+        assert result is not None
+        assert result["agent_scores"]["finance"]["score"] == 87
+        assert result["agent_scores"]["legal"]["score"] == 86
+        assert result["agent_scores"]["producttech"]["score"] == 85
+        assert result["agent_scores"]["commercial"]["score"] == 71
+        assert result["overall_quality"] == 82
+        # Verify dimension extraction from table columns.
+        fin_dims = result["agent_scores"]["finance"]["dimensions"]
+        assert fin_dims.get("citation_verification") == 85
+        assert fin_dims.get("contextual_validation") == 88
+        assert fin_dims.get("financial_accuracy") == 92
+
+    def test_extract_overall_run_score_variant(self) -> None:
+        """Overall score is extracted from 'Overall Run Score' wording."""
+        from dd_agents.agents.judge import JudgeAgent
+
+        prose = "| **Legal** | **90** |\n**Overall Run Score: 88**\n"
+        result = JudgeAgent._extract_scores_from_prose(prose)
+        assert result is not None
+        assert result["overall_quality"] == 88
+
+    def test_build_scores_with_prose_fallback(self) -> None:
+        """When JSON parsing yields no agent_scores, prose extraction is tried."""
+        from dd_agents.agents.judge import JudgeAgent
+
+        result = {
+            "run_id": "test_run",
+            "output": [{"summary": "Legal: 85, Finance: 78"}],
+            "raw_output": "Legal: 85\nFinance: 78\nOverall quality: 82",
+        }
+        scores = JudgeAgent._build_scores_from_result(result, round_num=1)
+        assert scores.overall_quality == 82
+        assert "legal" in scores.agent_scores
+        assert scores.agent_scores["legal"].score == 85
+
+
+# ===========================================================================
+# Report schema package-relative resolution tests (#71)
+# ===========================================================================
+
+
+class TestReportSchemaPackageResolution:
+    """Test that report schema can be found via package-relative path (Issue #71)."""
+
+    def test_config_schema_exists_in_repo(self) -> None:
+        """The 14-sheet report schema exists at repo_root/config/report_schema.json."""
+        import dd_agents
+
+        pkg_root = Path(dd_agents.__file__).resolve().parent
+        repo_root = pkg_root.parent.parent
+        schema_path = repo_root / "config" / "report_schema.json"
+        assert schema_path.exists(), f"Expected schema at {schema_path}"
+
+        schema = ReportSchema.model_validate_json(schema_path.read_text())
+        assert len(schema.sheets) == 14
+
+    def test_package_relative_resolution_order(self, tmp_path: Path) -> None:
+        """Resolution finds schema via package path when project_dir is wrong."""
+        import dd_agents
+
+        pkg_root = Path(dd_agents.__file__).resolve().parent
+        repo_config = pkg_root.parent.parent / "config" / "report_schema.json"
+
+        # Simulate: project_dir points to data room (no config/)
+        fake_project_dir = tmp_path / "data_room"
+        fake_project_dir.mkdir()
+
+        # Resolution order should find it via package-relative path
+        candidate_paths = [
+            fake_project_dir / "config" / "report_schema.json",
+            pkg_root.parent.parent / "config" / "report_schema.json",
+            pkg_root / "config" / "report_schema.json",
+        ]
+        found = None
+        for p in candidate_paths:
+            if p.exists():
+                found = p
+                break
+
+        assert found is not None
+        assert found == repo_config
+
+
+# ===========================================================================
+# P0/P1 downgrade on empty source_path + empty description fallback
+# ===========================================================================
+
+
+class TestSeverityDowngradeOnEmptySourcePath:
+    """P0/P1 findings with empty source_path should be downgraded to P2."""
+
+    def test_p1_downgraded_when_source_path_empty(self) -> None:
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        raw = [
+            {
+                "severity": "P1",
+                "category": "test",
+                "title": "High finding",
+                "description": "desc",
+                "confidence": "high",
+                "agent": "finance",
+                "citations": [
+                    {"source_type": "file", "source_path": "", "location": "p1", "exact_quote": "some quote"}
+                ],
+            }
+        ]
+        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        assert len(result) == 1
+        assert result[0].severity.value == "P2"
+
+    def test_p0_downgraded_when_source_path_synthetic(self) -> None:
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        raw = [
+            {
+                "severity": "P0",
+                "category": "test",
+                "title": "Critical finding",
+                "description": "desc",
+                "confidence": "high",
+                "agent": "legal",
+                "citations": [
+                    {
+                        "source_type": "file",
+                        "source_path": "[synthetic:no_citation_provided]",
+                        "location": "",
+                        "exact_quote": "quoted text",
+                    }
+                ],
+            }
+        ]
+        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        assert len(result) == 1
+        assert result[0].severity.value == "P2"
+
+    def test_p1_stays_when_source_path_present(self) -> None:
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        raw = [
+            {
+                "severity": "P1",
+                "category": "test",
+                "title": "High finding",
+                "description": "desc",
+                "confidence": "high",
+                "agent": "legal",
+                "citations": [
+                    {"source_type": "file", "source_path": "contract.pdf", "location": "p1", "exact_quote": "real"}
+                ],
+            }
+        ]
+        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        assert len(result) == 1
+        assert result[0].severity.value == "P1"
+
+    def test_p2_downgraded_to_p3_with_empty_source(self) -> None:
+        """P2 findings with empty source_path are downgraded to P3 (#83)."""
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        raw = [
+            {
+                "severity": "P2",
+                "category": "test",
+                "title": "Medium finding",
+                "description": "desc",
+                "confidence": "high",
+                "agent": "finance",
+                "citations": [{"source_type": "file", "source_path": "", "location": "", "exact_quote": "text"}],
+            }
+        ]
+        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        assert len(result) == 1
+        assert result[0].severity.value == "P3"
+
+
+class TestEmptyDescriptionFallback:
+    """Findings with empty description should fall back to title."""
+
+    def test_empty_description_uses_title(self) -> None:
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        raw = [
+            {
+                "severity": "P2",
+                "category": "test",
+                "title": "Important finding about data",
+                "description": "",
+                "confidence": "high",
+                "agent": "commercial",
+                "citations": [{"source_type": "file", "source_path": "f.pdf", "location": "p1", "exact_quote": "text"}],
+            }
+        ]
+        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        assert len(result) == 1
+        assert result[0].description == "Important finding about data"
+
+    def test_missing_description_uses_title(self) -> None:
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        raw = [
+            {
+                "severity": "P3",
+                "category": "test",
+                "title": "Minor note",
+                "confidence": "low",
+                "agent": "legal",
+                "citations": [{"source_type": "file", "source_path": "f.pdf", "location": "", "exact_quote": "q"}],
+            }
+        ]
+        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        assert len(result) == 1
+        assert result[0].description == "Minor note"
+
+    def test_present_description_preserved(self) -> None:
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        raw = [
+            {
+                "severity": "P2",
+                "category": "test",
+                "title": "Title text",
+                "description": "Detailed description here",
+                "confidence": "high",
+                "agent": "finance",
+                "citations": [{"source_type": "file", "source_path": "f.pdf", "location": "", "exact_quote": "q"}],
+            }
+        ]
+        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        assert len(result) == 1
+        assert result[0].description == "Detailed description here"
+
+
+class TestCitationEnforcement:
+    """Tests for P2/P3 citation enforcement (#83)."""
+
+    def test_p2_without_citation_downgraded_to_p3(self) -> None:
+        """P2 finding with synthetic-only citation gets downgraded to P3."""
+        from dd_agents.reporting.merge import FindingMerger
+
+        merger = FindingMerger(run_id="test_run", timestamp="2026-01-01T00:00:00Z")
+        raw_findings = [
+            {
+                "severity": "P2",
+                "category": "test",
+                "title": "Uncited finding",
+                "description": "No real source",
+                "confidence": "medium",
+                "agent": "finance",
+            }
+        ]
+        promoted = merger._promote_findings(raw_findings, "Customer A", "customer_a")
+        assert len(promoted) == 1
+        assert promoted[0].severity.value == "P3"
+
+    def test_p2_with_real_citation_stays_p2(self) -> None:
+        """P2 finding with real citation remains P2."""
+        from dd_agents.reporting.merge import FindingMerger
+
+        merger = FindingMerger(run_id="test_run", timestamp="2026-01-01T00:00:00Z")
+        raw_findings = [
+            {
+                "severity": "P2",
+                "category": "test",
+                "title": "Cited finding",
+                "description": "Has real source",
+                "confidence": "medium",
+                "agent": "finance",
+                "citations": [
+                    {
+                        "source_type": "file",
+                        "source_path": "contracts/msa.pdf",
+                        "location": "Section 5",
+                        "exact_quote": "Actual quote from document",
+                    }
+                ],
+            }
+        ]
+        promoted = merger._promote_findings(raw_findings, "Customer A", "customer_a")
+        assert len(promoted) == 1
+        assert promoted[0].severity.value == "P2"
+
+    def test_p1_without_citation_downgraded_to_p2(self) -> None:
+        """P1 finding without exact_quote gets downgraded to P2 (existing behavior)."""
+        from dd_agents.reporting.merge import FindingMerger
+
+        merger = FindingMerger(run_id="test_run", timestamp="2026-01-01T00:00:00Z")
+        raw_findings = [
+            {
+                "severity": "P1",
+                "category": "test",
+                "title": "P1 no quote",
+                "description": "Missing quote",
+                "confidence": "high",
+                "agent": "legal",
+                "citations": [
+                    {
+                        "source_type": "file",
+                        "source_path": "contracts/msa.pdf",
+                        "location": "Section 5",
+                    }
+                ],
+            }
+        ]
+        promoted = merger._promote_findings(raw_findings, "Customer A", "customer_a")
+        assert len(promoted) == 1
+        assert promoted[0].severity.value == "P2"
+
+    def test_validate_finding_citations_warns_all_severities(self, caplog: pytest.LogCaptureFixture) -> None:
+        """_validate_finding_citations warns for all severity levels."""
+        import logging
+
+        from dd_agents.models.enums import AgentName, Confidence, Severity, SourceType
+        from dd_agents.models.finding import Citation, Finding
+        from dd_agents.reporting.merge import FindingMerger
+
+        findings = [
+            Finding(
+                id="forensic-dd_finance_test_0001",
+                severity=Severity.P2,
+                category="test",
+                title="Test finding",
+                description="Test",
+                citations=[
+                    Citation(
+                        source_type=SourceType.FILE,
+                        source_path="[synthetic:no_citation_provided]",
+                        location="",
+                    )
+                ],
+                confidence=Confidence.MEDIUM,
+                agent=AgentName.FINANCE,
+                run_id="test",
+                timestamp="2026-01-01T00:00:00Z",
+                analysis_unit="test",
+            )
+        ]
+        with caplog.at_level(logging.WARNING, logger="dd_agents.reporting.merge"):
+            FindingMerger._validate_finding_citations(findings)
+        assert any(
+            "P2 finding" in record.message and "synthetic/empty citation" in record.message for record in caplog.records
+        )
+
+
+class TestCommercialAgentQuality:
+    """Tests for commercial agent quality enforcement (#82)."""
+
+    def test_commercial_prompt_has_domain_boundary(self):
+        from dd_agents.agents.prompt_builder import SPECIALIST_FOCUS, AgentType
+
+        focus = SPECIALIST_FOCUS[AgentType.COMMERCIAL]
+        assert "defer to the Finance agent" in focus
+        assert "DOMAIN BOUNDARY" in focus
+
+    def test_quality_tiers_assigned(self):
+        from dd_agents.agents.judge import JudgeAgent
+        from dd_agents.models.audit import AgentScore, AgentScoreDimensions, QualityScores
+
+        dims = AgentScoreDimensions(
+            citation_verification=70,
+            contextual_validation=70,
+            financial_accuracy=70,
+            cross_agent_consistency=70,
+            completeness=70,
+        )
+        scores = QualityScores(
+            run_id="test",
+            overall_quality=75,
+            agent_scores={
+                "finance": AgentScore(score=87, dimensions=dims),
+                "legal": AgentScore(score=86, dimensions=dims),
+                "commercial": AgentScore(score=71, dimensions=dims),
+                "producttech": AgentScore(score=65, dimensions=dims),
+            },
+        )
+        JudgeAgent._apply_quality_caveats(scores, ["commercial", "producttech"])
+        assert scores.agent_scores["finance"].quality_tier == "full_pass"
+        assert scores.agent_scores["legal"].quality_tier == "full_pass"
+        assert scores.agent_scores["commercial"].quality_tier == "conditional"
+        assert scores.agent_scores["producttech"].quality_tier == "fail"
+
+    def test_cross_agent_conflict_detection(self):
+        from dd_agents.models.finding import CrossReference
+        from dd_agents.reporting.merge import FindingMerger
+
+        refs = [
+            CrossReference(data_point="deferred_revenue_ratio", contract_value="34.1%"),
+            CrossReference(data_point="deferred_revenue_ratio", contract_value="51.2%"),
+        ]
+        conflicts = FindingMerger._detect_cross_agent_conflicts(refs)
+        assert len(conflicts) == 1
+        assert conflicts[0]["data_point"] == "deferred_revenue_ratio"
+
+    def test_no_conflict_when_values_agree(self):
+        from dd_agents.models.finding import CrossReference
+        from dd_agents.reporting.merge import FindingMerger
+
+        refs = [
+            CrossReference(data_point="ARR", contract_value="$1.2M"),
+            CrossReference(data_point="ARR", contract_value="$1.2M"),
+        ]
+        conflicts = FindingMerger._detect_cross_agent_conflicts(refs)
+        assert len(conflicts) == 0
+
+
+# ===================================================================== #
+# Agent coverage validation (#85)
+# ===================================================================== #
+
+
+class TestAgentCoverage:
+    """Tests for per-customer agent coverage validation (#85)."""
+
+    def test_full_coverage_returns_no_gaps(self) -> None:
+        from dd_agents.models.enums import AgentName, Confidence, Severity, SourceType
+        from dd_agents.models.finding import Citation, Finding, MergedCustomerOutput
+
+        findings = []
+        for agent in ("legal", "finance", "commercial", "producttech"):
+            findings.append(
+                Finding(
+                    id=f"forensic-dd_{agent}_test_0001",
+                    severity=Severity.P2,
+                    category="test",
+                    title=f"Finding from {agent}",
+                    description="Test",
+                    citations=[
+                        Citation(
+                            source_type=SourceType.FILE,
+                            source_path="test.pdf",
+                            location="p1",
+                            exact_quote="quote",
+                        )
+                    ],
+                    confidence=Confidence.MEDIUM,
+                    agent=AgentName(agent),
+                    run_id="test",
+                    timestamp="2026-01-01T00:00:00Z",
+                    analysis_unit="test",
+                )
+            )
+        mco = MergedCustomerOutput(
+            customer="Test",
+            customer_safe_name="test",
+            findings=findings,
+        )
+        gaps = FindingMerger.check_agent_coverage({"test": mco})
+        assert len(gaps) == 0
+
+    def test_missing_agent_detected(self) -> None:
+        from dd_agents.models.enums import AgentName, Confidence, Severity, SourceType
+        from dd_agents.models.finding import Citation, Finding, MergedCustomerOutput
+
+        findings = []
+        for agent in ("legal", "finance", "commercial"):  # Missing producttech
+            findings.append(
+                Finding(
+                    id=f"forensic-dd_{agent}_test_0001",
+                    severity=Severity.P2,
+                    category="test",
+                    title=f"Finding from {agent}",
+                    description="Test",
+                    citations=[
+                        Citation(
+                            source_type=SourceType.FILE,
+                            source_path="test.pdf",
+                            location="p1",
+                            exact_quote="quote",
+                        )
+                    ],
+                    confidence=Confidence.MEDIUM,
+                    agent=AgentName(agent),
+                    run_id="test",
+                    timestamp="2026-01-01T00:00:00Z",
+                    analysis_unit="test",
+                )
+            )
+        mco = MergedCustomerOutput(
+            customer="Test",
+            customer_safe_name="test",
+            findings=findings,
+        )
+        gaps = FindingMerger.check_agent_coverage({"test": mco})
+        assert len(gaps) == 1
+        assert gaps[0]["customer"] == "test"
+        assert "producttech" in gaps[0]["missing_agents"]

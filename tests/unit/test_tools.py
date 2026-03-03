@@ -574,12 +574,6 @@ class TestCreateToolDefinitions:
         assert "verify_citation" in tools
         assert "validate_finding" not in tools
 
-    def test_reporting_lead_tools(self) -> None:
-        tools = get_tools_for_agent("reporting_lead")
-        assert "validate_finding" in tools
-        assert "verify_citation" in tools
-        assert "resolve_entity" in tools
-
     def test_unknown_agent_type(self) -> None:
         tools = get_tools_for_agent("unknown")
         assert tools == []

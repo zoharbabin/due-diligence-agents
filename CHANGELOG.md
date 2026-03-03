@@ -4,6 +4,84 @@ All notable changes to this project will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.0] - 2026-03-03
+
+### Added
+
+- Pre-merge validation and cross-agent anomaly detection (step 23) — deterministic Python replacing the redundant Reporting Lead agent.
+  - File completeness checks (4 agent files per customer).
+  - JSON integrity validation (catch corrupt/truncated files before merge).
+  - Schema spot-checks (required keys in findings and citations).
+  - Citation path verification against file inventory.
+  - Cross-agent asymmetric risk detection (P0/P1 from one agent + zero from another).
+  - Cross-agent severity disagreement detection (2+ level gap on shared categories).
+  - Summary matrix (findings-per-agent x customer) for operator visibility.
+- Client-side turn enforcement for agents — soft limit at `max_turns`, hard kill at `3x max_turns`.
+- `max_budget_usd` now passed to SDK options for cost-based agent termination.
+- Respawn timeout wrapper (`asyncio.wait_for`) prevents indefinite agent runs.
+- Per-customer agent retry for coverage gaps (step 17 respawn logic).
+- Finance agent batch size reduced to 10 customers for better citation quality.
+- Citation verification mandate in agent prompts for P0/P1 findings.
+- Structured JSON output enforcement in agent system prompts.
+- Agent direct file access — Read tool instructions replace extraction indirection.
+
+### Removed
+
+- **Reporting Lead agent** (`reporting_lead.py`) — eliminated entirely. All responsibilities (merge, audit, report generation) are handled by deterministic Python in steps 24-30. Step 23 now completes in <200ms instead of 30-60+ minutes, saving ~$8/run.
+
+### Fixed
+
+- Customer `safe_name` duplication — prompt enforcement + rapidfuzz validation in merge step.
+- Entity cache `save()` missing `run_id` argument (step 34 crash).
+- Extraction pipeline docstrings clarified as search-only purpose.
+- All stale "reporting_lead" references removed from source code, tests, and output files (comments, docstrings, rule text).
+
+## [0.3.1] - 2026-03-02
+
+### Fixed
+
+- Replaced real bank routing/account numbers in sample invoice with zeroed placeholders.
+- Replaced `.io` email domain in sample data with `.example.com` per RFC 2606.
+- Replaced real company names (Salesforce, Twilio) in test fixtures with fictional names.
+- Removed phantom `reasoning/*` module reference from CLAUDE.md spec table.
+
+### Changed
+
+- Added `authors`, `keywords`, `classifiers`, and `[project.urls]` metadata to `pyproject.toml`.
+- Added `data_room` section to `config/deal-config.template.json`.
+- Added `node_modules/` and `*.db` to `.gitignore`.
+- Updated test counts in README and IMPLEMENTATION_PLAN to reflect current totals (1,680+).
+
+## [0.3.0] - 2026-02-28
+
+### Added
+
+- Entity deduplication module (`entity_resolution/dedup.py`) for post-resolution duplicate detection.
+- Pluggable OCR registry (`extraction/ocr_registry.py`) replacing hardcoded OCR backend selection.
+- Pluggable document extraction backend (`extraction/backend.py`) replacing hardcoded markitdown dependency.
+- Layout-aware PDF extraction (`extraction/layout_pdf.py`) preserving table structure and spatial relationships.
+- Visual grounding with bounding-box coordinate support (`extraction/coordinates.py`) for citation anchoring.
+- Interactive HTML review report generation (`reporting/html.py`) alongside Excel output.
+- Type-safety tests (`test_type_safety.py`) enforcing enum usage over raw strings in models.
+- Visual grounding tests (`test_visual_grounding.py`) for citation bounding-box serialization.
+- 253 new unit tests (1,291 → 1,544) covering entity dedup, extraction backends, layout PDF, OCR registry, HTML reports, type safety, and visual grounding.
+
+### Fixed
+
+- Citation path resolution now validates against file inventory instead of filesystem, fixing false negatives in containerized environments.
+- Gap type normalization uses keyword-stem logic (e.g., "missing" → MISSING_DOCUMENT) instead of exact string matching.
+- Cross-reference fields accept both `dict` and `str` types, fixing `AttributeError` on agent output with string cross-references.
+- Priority coercion for gaps: string priorities (e.g., "high") are normalized to enum values before validation.
+- Numerical audit N008/N009 rederivation formulas now match manifest field names.
+- Worker crash handling in concurrent extraction no longer loses the error context.
+- Search analyzer answer merging: YES-prefixed free text now correctly beats NO in priority.
+
+### Changed
+
+- Finding model (`models/finding.py`) extended with gap-specific fields and flexible cross-reference types.
+- Merge module (`reporting/merge.py`) rewritten with proper gap preservation, citation dedup, and conflict resolution.
+- Extraction pipeline hardened with backend abstraction and graceful degradation on missing optional dependencies.
+
 ## [0.2.1] - 2026-02-25
 
 ### Added

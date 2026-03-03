@@ -10,9 +10,11 @@ due-diligence-agents/
 ├── src/
 │   └── dd_agents/
 │       ├── __init__.py
-│       ├── cli.py                    # Click/Typer CLI entry point
+│       ├── cli.py                    # Click CLI entry point
+│       ├── cli_auto_config.py        # Auto-config command implementation
+│       ├── cli_init.py               # Interactive init command implementation
 │       ├── config.py                 # DealConfig loader + validation
-│       ├── constants.py              # Path constants, severity enums
+│       ├── errors.py                 # Custom exceptions + error taxonomy
 │       ├── models/
 │       │   ├── __init__.py
 │       │   ├── config.py             # DealConfig, BuyerInfo, TargetInfo, etc.
@@ -99,6 +101,17 @@ due-diligence-agents/
 │       │   ├── get_customer_files.py  # get_customer_files tool
 │       │   ├── resolve_entity.py     # resolve_entity tool
 │       │   └── report_progress.py    # report_progress tool
+│       ├── search/
+│       │   ├── __init__.py
+│       │   ├── runner.py             # Search orchestration (CLI entry point)
+│       │   ├── analyzer.py           # Multi-phase search analyzer (map/merge/synthesis/validation)
+│       │   ├── chunker.py            # Page-aware document chunking
+│       │   ├── citation_verifier.py  # Citation accuracy verification
+│       │   └── excel_writer.py       # Search results Excel export
+│       ├── utils/
+│       │   ├── __init__.py
+│       │   ├── constants.py          # Path constants, severity enums, shared config
+│       │   └── naming.py             # customer_safe_name + Unicode transliteration
 │       └── vector_store/
 │           ├── __init__.py
 │           ├── store.py              # ChromaDB wrapper (optional)
@@ -136,9 +149,11 @@ due-diligence-agents/
 | File | Responsibilities |
 |------|-----------------|
 | `__init__.py` | Package root. Exports version string and key public classes. |
-| `cli.py` | Click/Typer CLI entry point. Accepts `deal-config.json` path, execution mode overrides, and verbosity flags. Wires up the orchestrator and starts the pipeline run. |
-| `config.py` | Loads `deal-config.json`, validates against JSON Schema and Pydantic `DealConfig` model, resolves schema version compatibility, and provides a typed `DealConfig` object to the rest of the system. **Note**: The orchestrator (05) imports from `config.deal_config`. To support this, `config.py` can be refactored into a `config/` package with `config/__init__.py` re-exporting from `config/deal_config.py`, or the orchestrator import can use `from dd_agents.config import DealConfig` directly. |
-| `constants.py` | Path constants (`_DD_DIR`, `SKILL_DIR`, `INDEX_DIR`, `INVENTORY_DIR`), exclude patterns for file discovery, severity labels, and audit action enums shared across modules. |
+| `cli.py` | Click CLI entry point. Accepts `deal-config.json` path, execution mode overrides, and verbosity flags. Wires up the orchestrator and starts the pipeline run. |
+| `cli_auto_config.py` | Auto-config command implementation. Uses Claude to analyze data room structure and generate deal config. |
+| `cli_init.py` | Interactive init command implementation. Walks through config fields with prompts. |
+| `config.py` | Loads `deal-config.json`, validates against Pydantic `DealConfig` model, and provides a typed `DealConfig` object to the rest of the system. |
+| `errors.py` | Custom exceptions and error taxonomy: `ErrorSeverity`, `ErrorCategory`, `PipelineErrorRecord`, `ConfigurationError`, `ExtractionError`, `AgentOutputParseError`, `PipelineValidationError`. |
 
 ### Models (`src/dd_agents/models/`)
 
@@ -265,6 +280,23 @@ due-diligence-agents/
 | `resolve_entity.py` | `resolve_entity` tool: checks entity resolution cache for a given name, returns canonical name, match method, and confidence, or "unresolved" if not found. |
 | `report_progress.py` | `report_progress` tool: allows agents to report progress back to the orchestrator (e.g., customers processed so far). Used for liveness monitoring and progress tracking. |
 
+### Search (`src/dd_agents/search/`)
+
+| File | Responsibilities |
+|------|-----------------|
+| `runner.py` | Search orchestration: discovers data room files, groups by customer, runs analyzer per customer, writes Excel output. Entry point for the `dd-agents search` CLI command. |
+| `analyzer.py` | Multi-phase search analyzer implementing 4-phase analysis: map (per chunk) → merge → synthesis (conflicts) → validation (NOT_ADDRESSED). Uses page-aware chunking with 150K char target per chunk. |
+| `chunker.py` | Page-aware document chunking. Splits at `--- Page N ---` markers with 15% overlap. Produces `AnalysisChunk` objects with page ranges and source tracking. |
+| `citation_verifier.py` | Citation accuracy verification. Checks that `exact_quote` appears in the referenced file/page with fuzzy matching. |
+| `excel_writer.py` | Writes search results to Excel with Summary (one row per customer, color-coded) and Details (one row per citation) sheets. |
+
+### Utils (`src/dd_agents/utils/`)
+
+| File | Responsibilities |
+|------|-----------------|
+| `constants.py` | Path constants (`_DD_DIR`, `SKILL_DIR`, `INDEX_DIR`, `INVENTORY_DIR`), exclude patterns for file discovery, severity labels, and audit action enums shared across modules. |
+| `naming.py` | `customer_safe_name()` convention: lowercase, strip legal suffixes (Inc/Corp/LLC/Ltd), replace special chars with `_`, collapse underscores. Includes full Unicode transliteration table (ø→o, ß→ss, é→e, etc.). |
+
 ### Vector Store (`src/dd_agents/vector_store/`)
 
 | File | Responsibilities |
@@ -281,9 +313,10 @@ This table shows which modules import from which, establishing the dependency gr
 
 | Module | Imports From |
 |--------|-------------|
-| `cli` | `config`, `orchestrator.engine`, `constants` |
-| `config` | `models.config`, `constants` |
-| `constants` | (none -- leaf module) |
+| `cli` | `config`, `orchestrator.engine`, `utils.constants` |
+| `config` | `models.config` |
+| `utils.constants` | (none -- leaf module) |
+| `utils.naming` | (none -- leaf module) |
 | `models.config` | (pydantic only -- leaf model) |
 | `models.finding` | `models.config` (for `AgentName` re-use) |
 | `models.inventory` | (pydantic only -- leaf model) |
@@ -300,11 +333,13 @@ This table shows which modules import from which, establishing the dependency gr
 | `orchestrator.checkpoints` | `orchestrator.state` |
 | `orchestrator.team` | `agents.base`, `agents.specialists`, `agents.judge`, `agents.reporting_lead` |
 | `agents.base` | `models.*`, `hooks.*`, `tools.server`, `config` |
-| `agents.prompt_builder` | `models.config`, `models.inventory`, `models.finding`, `entity_resolution.safe_name`, `constants` |
+| `agents.prompt_builder` | `models.config`, `models.inventory`, `models.finding`, `entity_resolution.safe_name`, `utils.constants` |
 | `agents.specialists` | `agents.base`, `agents.prompt_builder` |
 | `agents.judge` | `agents.base`, `agents.prompt_builder`, `models.audit` |
 | `agents.reporting_lead` | `agents.base`, `agents.prompt_builder`, `models.reporting` |
-| `extraction.pipeline` | `extraction.markitdown`, `extraction.ocr`, `extraction.cache`, `extraction.quality`, `constants` |
+| `extraction.pipeline` | `extraction.markitdown`, `extraction.ocr`, `extraction.glm_ocr`, `extraction.cache`, `extraction.quality`, `extraction._constants`, `extraction._helpers` |
+| `search.runner` | `search.analyzer`, `search.chunker`, `search.excel_writer`, `utils.constants` |
+| `search.analyzer` | `search.chunker`, `search.citation_verifier`, `models.*` |
 | `extraction.markitdown` | `constants` |
 | `extraction.ocr` | `constants` |
 | `extraction.cache` | `constants` |

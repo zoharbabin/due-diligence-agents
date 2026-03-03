@@ -1,3 +1,5 @@
+"""Pydantic models for deal configuration (deal-config.json schema)."""
+
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -145,6 +147,17 @@ class JudgeConfig(BaseModel):
     cross_agent_contradiction_check: bool = True
 
 
+class ExtractionConfig(BaseModel):
+    """Extraction pipeline configuration."""
+
+    model_config = ConfigDict(extra="allow")
+
+    ocr_backend: str = Field(
+        default="auto",
+        description='OCR backend selection: "auto", "glm_ocr", or "pytesseract"',
+    )
+
+
 class ExecutionConfig(BaseModel):
     """Pipeline execution configuration. From SKILL.md section 0e."""
 
@@ -153,6 +166,14 @@ class ExecutionConfig(BaseModel):
     execution_mode: ExecutionMode = ExecutionMode.FULL
     staleness_threshold: int = Field(default=3, ge=1, le=100)
     force_full_on_config_change: bool = True
+    batch_concurrency: int = Field(
+        default=6,
+        ge=1,
+        le=10,
+        description="Max concurrent batches per agent in step 16. "
+        "Each batch is an independent SDK session processing different "
+        "customers, so parallelism is safe. Default 6.",
+    )
 
 
 class ReportingConfig(BaseModel):
@@ -209,6 +230,7 @@ class DealConfig(BaseModel):
     key_executives: list[KeyExecutive] = Field(default_factory=list)
     deal: DealInfo
     judge: JudgeConfig = Field(default_factory=JudgeConfig)
+    extraction: ExtractionConfig = Field(default_factory=ExtractionConfig)
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
     reporting: ReportingConfig = Field(default_factory=ReportingConfig)
     forensic_dd: ForensicDDConfig = Field(default_factory=ForensicDDConfig)

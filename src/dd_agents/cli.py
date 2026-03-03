@@ -10,6 +10,7 @@ import json
 import logging
 import traceback
 from pathlib import Path
+from typing import Any
 
 import click
 from rich.console import Console
@@ -144,6 +145,12 @@ def run(
         deal_config_path=config_path.resolve(),
     )
 
+    # Pass CLI overrides through options dict so step 1 can apply them
+    # after loading the raw config file.
+    run_options: dict[str, Any] = {}
+    if mode is not None:
+        run_options["execution_mode"] = mode
+
     console.print()
     console.print(
         Panel(
@@ -157,7 +164,7 @@ def run(
     )
 
     try:
-        state = asyncio.run(engine.run(resume_from_step=resume_from))
+        state = asyncio.run(engine.run(resume_from_step=resume_from, options=run_options))
 
         # Print completion summary
         console.print()
@@ -179,6 +186,23 @@ def run(
             summary_parts.append("Audit: [bold green]PASSED[/bold green]")
         elif state.validation_results:
             summary_parts.append("Audit: [bold yellow]INCOMPLETE[/bold yellow]")
+
+        # List key output files so the user can click to open them.
+        run_dir = state.run_dir
+        key_files: list[tuple[str, Path]] = [
+            ("Excel Report", run_dir / "report" / "dd_report.xlsx"),
+            ("HTML Report", run_dir / "report" / "dd_report.html"),
+            ("Audit Report", run_dir / "audit.json"),
+            ("DoD Results", run_dir / "dod_results.json"),
+            ("Numerical Manifest", run_dir / "numerical_manifest.json"),
+            ("Findings", run_dir / "findings" / "merged"),
+        ]
+        existing = [(label, p) for label, p in key_files if p.exists()]
+        if existing:
+            summary_parts.append("")
+            summary_parts.append("[bold]Key outputs:[/bold]")
+            for label, p in existing:
+                summary_parts.append(f"  {label}: [link=file://{p}]{p}[/link]")
 
         console.print(
             Panel(

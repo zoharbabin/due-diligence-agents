@@ -28,10 +28,17 @@ class SchemaValidator:
     ----------
     report_schema:
         The parsed :class:`ReportSchema` to validate against.
+    deal_config:
+        Optional deal configuration dict used to evaluate activation conditions.
     """
 
-    def __init__(self, report_schema: ReportSchema) -> None:
+    def __init__(
+        self,
+        report_schema: ReportSchema,
+        deal_config: dict[str, Any] | None = None,
+    ) -> None:
         self.schema = report_schema
+        self.deal_config: dict[str, Any] = deal_config or {}
 
     # ------------------------------------------------------------------ #
     # public API
@@ -255,16 +262,37 @@ class SchemaValidator:
     # ------------------------------------------------------------------ #
 
     def _sheet_is_active(self, sheet_def: SheetDef) -> bool:
-        """Determine whether a sheet should be present based on activation."""
-        if sheet_def.activation_condition in ("always", ""):
+        """Determine whether a sheet should be present based on activation.
+
+        Evaluates the ``activation_condition`` field:
+        - ``"always"`` or empty: sheet is active if required
+        - ``"never"``: sheet is never active
+        - Other conditions: evaluated against the deal_config context
+          (e.g. ``"judge.enabled"``, ``"execution.mode == incremental"``)
+        """
+        condition = sheet_def.activation_condition
+        if not condition or condition == "always":
             return sheet_def.required
-        return sheet_def.required
+        if condition == "never":
+            return False
+        # Evaluate dotted-path conditions like "judge.enabled"
+        # or "source_of_truth.customer_database"
+        return self._evaluate_condition(condition)
 
     def _column_is_active(self, col: Any) -> bool:
-        """Determine whether a column should be present."""
-        if hasattr(col, "activation_condition") and col.activation_condition:
-            return True  # assume active unless we have context to evaluate
-        return True
+        """Determine whether a column should be present.
+
+        Columns without an activation_condition are always active.
+        Columns with a condition are evaluated against the deal_config context.
+        """
+        condition = getattr(col, "activation_condition", None)
+        if not condition:
+            return True
+        if condition == "always":
+            return True
+        if condition == "never":
+            return False
+        return self._evaluate_condition(condition)
 
     @staticmethod
     def _is_sorted(values: list[Any], reverse: bool = False) -> bool:
@@ -279,3 +307,47 @@ class SchemaValidator:
         except TypeError:
             # Incomparable types -- treat as sorted
             return True
+
+    def _evaluate_condition(self, condition: str) -> bool:
+        """Evaluate an activation condition against the deal config.
+
+        Supports:
+        - Dotted paths: ``"judge.enabled"`` -> deal_config["judge"]["enabled"]
+        - Equality: ``"execution.mode == incremental"``
+        - Truthy: ``"source_of_truth.customer_database"``
+
+        Returns False when the path is missing or the condition is not met.
+        """
+        condition = condition.strip()
+
+        # Handle equality conditions
+        if "==" in condition:
+            parts = condition.split("==", 1)
+            path = parts[0].strip()
+            expected = parts[1].strip().strip("'\"")
+            value = self._resolve_path(path)
+            return str(value) == expected
+
+        # Handle "!=" conditions
+        if "!=" in condition:
+            parts = condition.split("!=", 1)
+            path = parts[0].strip()
+            expected = parts[1].strip().strip("'\"")
+            value = self._resolve_path(path)
+            return str(value) != expected
+
+        # Truthy evaluation of dotted path
+        value = self._resolve_path(condition)
+        return bool(value)
+
+    def _resolve_path(self, path: str) -> Any:
+        """Resolve a dotted path like ``"judge.enabled"`` in deal_config."""
+        current: Any = self.deal_config
+        for part in path.split("."):
+            if isinstance(current, dict):
+                current = current.get(part)
+            else:
+                return None
+            if current is None:
+                return None
+        return current

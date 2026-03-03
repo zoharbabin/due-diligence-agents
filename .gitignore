@@ -47,5 +47,9 @@ _inventory/
 # ChromaDB local storage
 chroma_data/
 
+# Node / misc
+node_modules/
+*.db
+
 # Generated reports
 *.xlsx

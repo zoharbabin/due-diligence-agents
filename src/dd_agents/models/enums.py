@@ -1,3 +1,5 @@
+"""Shared enumerations used across the pipeline (severity, confidence, agent names, etc.)."""
+
 from __future__ import annotations
 
 from enum import StrEnum
@@ -13,12 +15,16 @@ class Severity(StrEnum):
 
 
 class Confidence(StrEnum):
+    """Confidence level for a finding or citation."""
+
     HIGH = "high"
     MEDIUM = "medium"
     LOW = "low"
 
 
 class SourceType(StrEnum):
+    """Source type for evidence backing a finding."""
+
     FILE = "file"
     URL = "url"
     REFERENCE_FILE = "reference_file"
@@ -27,6 +33,8 @@ class SourceType(StrEnum):
 
 
 class AgentName(StrEnum):
+    """The four specialist agent identifiers."""
+
     LEGAL = "legal"
     FINANCE = "finance"
     COMMERCIAL = "commercial"
@@ -86,9 +94,20 @@ class SpotCheckDimension(StrEnum):
 
 
 class SpotCheckResult(StrEnum):
+    """Outcome of a judge spot-check on a single dimension."""
+
     PASS = "PASS"
     PARTIAL = "PARTIAL"
     FAIL = "FAIL"
+
+
+class MatchStatus(StrEnum):
+    """Cross-reference match status values."""
+
+    MATCH = "match"
+    MISMATCH = "mismatch"
+    NOT_AVAILABLE = "not_available"
+    UNVERIFIED = "unverified"
 
 
 class CustomerClassificationStatus(StrEnum):
@@ -143,11 +162,23 @@ class DealType(StrEnum):
 
 
 class ExecutionMode(StrEnum):
+    """Pipeline execution mode: full reprocessing or incremental (changed-only)."""
+
     FULL = "full"
     INCREMENTAL = "incremental"
 
 
+class CompletionStatus(StrEnum):
+    """Pipeline or step completion status."""
+
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class ReferenceFileCategory(StrEnum):
+    """Category for reference files in the data room ``_reference/`` directory."""
+
     FINANCIAL = "Financial"
     PRICING = "Pricing"
     CORPORATE_LEGAL = "Corporate/Legal"

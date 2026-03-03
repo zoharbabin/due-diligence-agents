@@ -27,6 +27,7 @@ from __future__ import annotations
 import logging
 import shutil
 import tempfile
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -117,19 +118,22 @@ def _render_pdf_pages(filepath: Path, work_dir: Path) -> list[Path]:
         return []
 
     paths: list[Path] = []
-    num_pages = min(len(doc), _MAX_PAGES)
-    for i in range(num_pages):
-        try:
-            page = doc[i]
-            bitmap = page.render(scale=DPI / 72)
-            img = bitmap.to_pil()
-            img = _resize_image(img)
+    try:
+        num_pages = min(len(doc), _MAX_PAGES)
+        for i in range(num_pages):
+            try:
+                page = doc[i]
+                bitmap = page.render(scale=DPI / 72)
+                img = bitmap.to_pil()
+                img = _resize_image(img)
 
-            out_path = work_dir / f"page_{i + 1:03d}.png"
-            img.save(str(out_path), optimize=True)
-            paths.append(out_path)
-        except Exception:
-            logger.warning("Failed to render page %d of %s", i + 1, filepath)
+                out_path = work_dir / f"page_{i + 1:03d}.png"
+                img.save(str(out_path), optimize=True)
+                paths.append(out_path)
+            except Exception:
+                logger.warning("Failed to render page %d of %s", i + 1, filepath)
+    finally:
+        doc.close()
 
     return paths
 
@@ -148,11 +152,14 @@ def _render_image_for_ocr(filepath: Path, work_dir: Path) -> list[Path]:
 
     try:
         img: Any = Image.open(str(filepath))
-        img = _resize_image(img)
+        try:
+            img = _resize_image(img)
 
-        out_path = work_dir / "page_001.png"
-        img.save(str(out_path), optimize=True)
-        return [out_path]
+            out_path = work_dir / "page_001.png"
+            img.save(str(out_path), optimize=True)
+            return [out_path]
+        finally:
+            img.close()
     except Exception:
         logger.exception("Failed to prepare image %s for GLM-OCR", filepath)
         return []
@@ -314,6 +321,9 @@ def _try_ollama_extract(filepath: Path) -> tuple[str, float]:
 # ── Public extractor class ───────────────────────────────────────────
 
 
+_GLM_OCR_EXTENSIONS: frozenset[str] = frozenset({".pdf"} | IMAGE_EXTENSIONS)
+
+
 class GlmOcrExtractor:
     """Extracts text from scanned PDFs and images using GLM-OCR.
 
@@ -324,25 +334,45 @@ class GlmOcrExtractor:
     lifetime of the extractor instance — subsequent files reuse the
     same model without re-downloading or re-loading.
 
+    Thread-safety: all MLX/Metal operations are serialized through
+    ``_lock`` because Apple Metal command buffers are not thread-safe.
+    Concurrent Metal submissions cause a hard process abort:
+    ``[IOGPUMetalCommandBuffer validate]: failed assertion``.
+
     Usage::
 
         extractor = GlmOcrExtractor()
         text, confidence = extractor.extract(Path("scanned_doc.pdf"))
     """
 
+    @property
+    def name(self) -> str:
+        return "glm_ocr"
+
+    @property
+    def supported_extensions(self) -> frozenset[str]:
+        return _GLM_OCR_EXTENSIONS
+
     def __init__(self) -> None:
         self._mlx_model: Any = None
         self._mlx_processor: Any = None
         self._mlx_checked = False
+        # Serializes MLX model loading and inference — Metal GPU is
+        # not thread-safe and concurrent command buffer submissions
+        # crash the process.
+        self._lock = threading.Lock()
 
     def _ensure_mlx_model(self) -> bool:
-        """Load the MLX model/processor on first call.  Returns *True* if available."""
+        """Load the MLX model/processor on first call.  Returns *True* if available.
+
+        Must be called while holding ``self._lock``.
+        """
         if self._mlx_checked:
             return self._mlx_model is not None
 
-        self._mlx_checked = True
         imports = _import_mlx_vlm()
         if imports is None:
+            self._mlx_checked = True
             logger.debug("mlx-vlm not available -- skipping MLX backend")
             return False
 
@@ -354,6 +384,11 @@ class GlmOcrExtractor:
         except Exception:
             logger.warning("Failed to load MLX model %s", MODEL_ID_MLX, exc_info=True)
             return False
+        finally:
+            # Set _mlx_checked AFTER model load completes (or fails) to
+            # prevent other threads from seeing checked=True + model=None
+            # during the download/load window.
+            self._mlx_checked = True
 
     def extract(self, filepath: Path) -> tuple[str, float]:
         """Extract text from *filepath* using GLM-OCR.
@@ -372,13 +407,16 @@ class GlmOcrExtractor:
             logger.debug("GLM-OCR does not support extension %s", suffix)
             return "", CONFIDENCE_FAILURE
 
-        # Backend 1: mlx-vlm (Apple Silicon)
-        if self._ensure_mlx_model():
-            text, conf = _try_mlx_extract(filepath, self._mlx_model, self._mlx_processor)
-            if text.strip():
-                return text, conf
+        # Backend 1: mlx-vlm (Apple Silicon).
+        # Lock serializes model loading AND inference — Metal command
+        # buffers crash the process if submitted from multiple threads.
+        with self._lock:
+            if self._ensure_mlx_model():
+                text, conf = _try_mlx_extract(filepath, self._mlx_model, self._mlx_processor)
+                if text.strip():
+                    return text, conf
 
-        # Backend 2: Ollama (cross-platform)
+        # Backend 2: Ollama (HTTP-based, thread-safe without lock).
         text, conf = _try_ollama_extract(filepath)
         if text.strip():
             return text, conf

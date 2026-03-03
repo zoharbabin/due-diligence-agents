@@ -39,6 +39,8 @@ from dd_agents.utils.naming import preprocess_name
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from dd_agents.entity_resolution.dedup import CrossDocumentDeduplicator
+
 # ======================================================================
 # Individual pass functions
 # ======================================================================
@@ -189,23 +191,19 @@ def _pass_5_parent_child(
     # exhaust the chain.
     visited: set[str] = set()
     current = preprocessed_source
-    last_parent_raw: str | None = None
 
     while current in child_to_parent and current not in visited:
         visited.add(current)
         parent_raw = child_to_parent[current]
-        last_parent_raw = parent_raw
         preprocessed_parent = preprocess_name(parent_raw)
         if preprocessed_parent in target_names:
             return target_names[preprocessed_parent]
         current = preprocessed_parent
 
-    # If we found at least one parent but it was not in targets, return
-    # the most immediate parent (spec behaviour for direct child match
-    # when parent is not a canonical target).
-    if last_parent_raw is not None:
-        return last_parent_raw
-
+    # If we found a parent but it was not in targets, do NOT return it.
+    # Returning a constructed parent name that doesn't exist in the known
+    # entity set produces phantom matches.  Only target-validated parents
+    # are returned (handled inside the loop above).
     return None
 
 
@@ -286,6 +284,7 @@ class EntityResolver:
 
         # Load cache
         self.cache = EntityResolutionCache(cache_path)
+        self._entity_aliases = entity_aliases
         self.config_hash = self._compute_config_hash(entity_aliases)
 
         # Match logger
@@ -562,12 +561,61 @@ class EntityResolver:
     ) -> dict[str, str | None]:
         """Resolve a list of names.
 
+        Calls :meth:`cache.compute_invalidation` before resolution and
+        :meth:`cache.save` after resolution completes so that the
+        PERMANENT cache is always up to date.
+
         Returns ``{source_name: canonical_name | None}``.
         """
+        self.cache.compute_invalidation(self._entity_aliases, self.config_hash)
+
         results: dict[str, str | None] = {}
         for name in names:
             results[name] = self.resolve_name(name, source_type)
+
+        self.cache.save(self.run_id)
         return results
+
+    # ------------------------------------------------------------------
+    # Batch resolution with cross-document dedup (Issue #11)
+    # ------------------------------------------------------------------
+
+    def resolve_all_with_dedup(
+        self,
+        names_by_source: dict[str, list[str]],
+        source_type: str = "reference_file",
+    ) -> tuple[dict[str, str | None], CrossDocumentDeduplicator]:
+        """Resolve names grouped by source file, tracking cross-document dedup.
+
+        Parameters
+        ----------
+        names_by_source:
+            ``{source_file: [name1, name2, ...]}``.
+        source_type:
+            Source type label for the match log.
+
+        Returns
+        -------
+        tuple[dict[str, str | None], CrossDocumentDeduplicator]
+            A flat ``{source_name: canonical | None}`` resolution map
+            and the populated deduplicator.
+        """
+        from dd_agents.entity_resolution.dedup import CrossDocumentDeduplicator
+
+        self.cache.compute_invalidation(self._entity_aliases, self.config_hash)
+
+        dedup = CrossDocumentDeduplicator()
+        all_results: dict[str, str | None] = {}
+
+        for source_file, names in names_by_source.items():
+            for name in names:
+                canonical = self.resolve_name(name, source_type)
+                all_results[name] = canonical
+                if canonical is not None:
+                    dedup.add_resolution(name, canonical, source_file)
+
+        self.cache.save(self.run_id)
+        return all_results, dedup
 
     # ------------------------------------------------------------------
     # Match log

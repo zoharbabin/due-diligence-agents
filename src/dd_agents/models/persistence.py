@@ -1,8 +1,16 @@
+"""Pydantic models for run metadata, customer classifications, and incremental state."""
+
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from typing import Any
 
-from dd_agents.models.enums import CustomerClassificationStatus  # noqa: TC001
+from pydantic import BaseModel, Field, field_validator
+
+from dd_agents.models.enums import (
+    CompletionStatus,
+    CustomerClassificationStatus,  # noqa: TC001
+    ExecutionMode,
+)
 
 
 class RunMetadata(BaseModel):
@@ -14,7 +22,7 @@ class RunMetadata(BaseModel):
     run_id: str
     timestamp: str  # ISO-8601
     skill: str = "forensic-dd"
-    execution_mode: str  # "full" or "incremental"
+    execution_mode: ExecutionMode  # "full" or "incremental"
     config_hash: str  # SHA-256 of deal-config.json
     framework_version: str = "unknown"
     cross_skill_run_ids: dict[str, str] = Field(
@@ -26,10 +34,26 @@ class RunMetadata(BaseModel):
     finding_counts: dict[str, int] = Field(default_factory=dict)
     gap_counts: dict[str, int] = Field(default_factory=dict)
     agent_scores: dict[str, int] = Field(default_factory=dict)
-    completion_status: str = "in_progress"  # in_progress, completed, failed
+    completion_status: CompletionStatus = CompletionStatus.IN_PROGRESS
     batch_counts: dict[str, int] = Field(
         default_factory=dict, description="Number of batch instances spawned per agent type"
     )
+
+    @field_validator("execution_mode", mode="before")
+    @classmethod
+    def _coerce_execution_mode(cls, v: Any) -> ExecutionMode:
+        """Coerce string values to ExecutionMode enum for backward compatibility."""
+        if isinstance(v, str) and not isinstance(v, ExecutionMode):
+            return ExecutionMode(v)
+        return v  # type: ignore[no-any-return]
+
+    @field_validator("completion_status", mode="before")
+    @classmethod
+    def _coerce_completion_status(cls, v: Any) -> CompletionStatus:
+        """Coerce string values to CompletionStatus enum for backward compatibility."""
+        if isinstance(v, str) and not isinstance(v, CompletionStatus):
+            return CompletionStatus(v)
+        return v  # type: ignore[no-any-return]
 
 
 class CustomerClassEntry(BaseModel):
@@ -68,10 +92,18 @@ class Classification(BaseModel):
     """
 
     run_id: str
-    execution_mode: str  # "incremental"
+    execution_mode: ExecutionMode  # "incremental"
     prior_run_id: str | None = None
     classification_summary: ClassificationSummary = Field(default_factory=ClassificationSummary)
     customers: list[CustomerClassEntry] = Field(default_factory=list)
+
+    @field_validator("execution_mode", mode="before")
+    @classmethod
+    def _coerce_execution_mode(cls, v: Any) -> ExecutionMode:
+        """Coerce string values to ExecutionMode enum for backward compatibility."""
+        if isinstance(v, str) and not isinstance(v, ExecutionMode):
+            return ExecutionMode(v)
+        return v  # type: ignore[no-any-return]
 
 
 class AnalysisUnitCounts(BaseModel):
@@ -95,6 +127,31 @@ class FindingCounts(BaseModel):
     p3: int = 0
     total: int = 0
 
+    @field_validator("total", mode="after")
+    @classmethod
+    def _validate_total_consistency(cls, v: int, info: Any) -> int:
+        """Validate that total equals sum of p0+p1+p2+p3 when explicitly set.
+
+        When total is 0 (default), it is accepted as-is only if all
+        severity counts are also 0 (to allow incremental construction).
+        Raises ValueError if total=0 but severity counts are non-zero.
+        """
+        if v == 0:
+            p0 = info.data.get("p0", 0)
+            p1 = info.data.get("p1", 0)
+            p2 = info.data.get("p2", 0)
+            p3 = info.data.get("p3", 0)
+            if p0 + p1 + p2 + p3 > 0:
+                msg = f"FindingCounts total=0 but severity counts sum to {p0 + p1 + p2 + p3}"
+                raise ValueError(msg)
+            return v
+        data = info.data
+        expected = data.get("p0", 0) + data.get("p1", 0) + data.get("p2", 0) + data.get("p3", 0)
+        if v != expected:
+            msg = f"total ({v}) must equal p0+p1+p2+p3 ({expected})"
+            raise ValueError(msg)
+        return v
+
 
 class RunHistoryEntry(BaseModel):
     """
@@ -105,9 +162,17 @@ class RunHistoryEntry(BaseModel):
     run_id: str
     skill: str = "forensic-dd"
     timestamp: str  # ISO-8601
-    execution_mode: str  # "full" or "incremental"
+    execution_mode: ExecutionMode  # "full" or "incremental"
     analysis_unit_counts: AnalysisUnitCounts = Field(default_factory=AnalysisUnitCounts)
     finding_counts: FindingCounts = Field(default_factory=FindingCounts)
     agent_scores: dict[str, int] = Field(default_factory=dict)
     judge_enabled: bool = False
     iteration_rounds: int = 0
+
+    @field_validator("execution_mode", mode="before")
+    @classmethod
+    def _coerce_execution_mode(cls, v: Any) -> ExecutionMode:
+        """Coerce string values to ExecutionMode enum for backward compatibility."""
+        if isinstance(v, str) and not isinstance(v, ExecutionMode):
+            return ExecutionMode(v)
+        return v  # type: ignore[no-any-return]

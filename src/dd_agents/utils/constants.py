@@ -36,7 +36,6 @@ AGENT_FINANCE = "finance"
 AGENT_COMMERCIAL = "commercial"
 AGENT_PRODUCTTECH = "producttech"
 AGENT_JUDGE = "judge"
-AGENT_REPORTING_LEAD = "reporting_lead"
 
 ALL_SPECIALIST_AGENTS: list[str] = [
     AGENT_LEGAL,

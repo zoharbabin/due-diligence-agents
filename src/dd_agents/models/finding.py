@@ -1,5 +1,8 @@
+"""Pydantic models for findings, citations, gaps, and cross-references."""
+
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
@@ -9,10 +12,59 @@ from dd_agents.models.enums import (
     Confidence,
     DetectionMethod,
     GapType,
+    MatchStatus,
     Severity,
     SourceType,
 )
 from dd_agents.models.governance import GovernanceGraph
+
+_logger = logging.getLogger(__name__)
+
+_MATCH_STATUS_ALIASES: dict[str, str] = {
+    "": "unverified",
+    "confirmed": "match",
+    "unable_to_verify": "not_available",
+    "partial_match": "mismatch",
+}
+
+_VALID_MATCH_STATUSES: set[str] = {s.value for s in MatchStatus}
+
+
+def _coerce_severity(v: Any) -> Severity:
+    """Coerce string values to Severity enum."""
+    if isinstance(v, Severity):
+        return v
+    if isinstance(v, str):
+        return Severity(v)
+    raise ValueError(f"Cannot coerce {v!r} to Severity")
+
+
+def _coerce_confidence(v: Any) -> Confidence:
+    """Coerce string values to Confidence enum."""
+    if isinstance(v, Confidence):
+        return v
+    if isinstance(v, str):
+        return Confidence(v)
+    raise ValueError(f"Cannot coerce {v!r} to Confidence")
+
+
+def _coerce_agent_name(v: Any) -> AgentName:
+    """Coerce string values to AgentName enum."""
+    if isinstance(v, AgentName):
+        return v
+    if isinstance(v, str):
+        return AgentName(v)
+    raise ValueError(f"Cannot coerce {v!r} to AgentName")
+
+
+class BoundingBox(BaseModel):
+    """Page-level bounding box for visual grounding of findings."""
+
+    x0: float = Field(description="Left edge in points")
+    y0: float = Field(description="Top edge in points")
+    x1: float = Field(description="Right edge in points")
+    y1: float = Field(description="Bottom edge in points")
+    page: int = Field(description="1-based page number")
 
 
 class Citation(BaseModel):
@@ -39,6 +91,12 @@ class Citation(BaseModel):
     # JSON string escaping. No custom serializer needed -- Pydantic v2 handles
     # this natively via model_dump_json().
     access_date: str | None = None  # Required when source_type == web_research
+    page_number: int | None = Field(default=None, description="1-based page number for visual grounding")
+    bounding_box: BoundingBox | None = Field(default=None, description="Coordinate box for visual grounding")
+    verification_status: str | None = Field(
+        default=None,
+        description="Result of verify_citation tool call: 'verified', 'failed', or None if not checked.",
+    )
 
     @model_validator(mode="after")
     def web_research_needs_access_date(self) -> Citation:
@@ -51,7 +109,7 @@ class Finding(BaseModel):
     """
     Full framework-schema-compliant finding.
     Conforms to dd-framework/schemas/finding.schema.json.
-    Produced by the Reporting Lead during merge (not by specialist agents directly).
+    Produced during the merge step (step 24), not by specialist agents directly.
     """
 
     id: str = Field(
@@ -71,6 +129,21 @@ class Finding(BaseModel):
     analysis_unit: str  # customer name
     metadata: dict[str, Any] = Field(default_factory=dict)
 
+    @field_validator("severity", mode="before")
+    @classmethod
+    def coerce_severity(cls, v: Any) -> Severity:
+        return _coerce_severity(v)
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def coerce_confidence(cls, v: Any) -> Confidence:
+        return _coerce_confidence(v)
+
+    @field_validator("agent", mode="before")
+    @classmethod
+    def coerce_agent(cls, v: Any) -> AgentName:
+        return _coerce_agent_name(v)
+
     @field_validator("citations")
     @classmethod
     def p0_p1_require_exact_quote(cls, v: list[Citation], info: ValidationInfo) -> list[Citation]:
@@ -86,7 +159,7 @@ class AgentFinding(BaseModel):
     """
     Agent-internal finding format (pre-transformation).
     Missing id/agent/skill/run_id/timestamp/analysis_unit fields.
-    These are added by the Reporting Lead during merge.
+    These are added during the merge step (step 24).
     From agent-prompts.md section 4c.
     """
 
@@ -96,6 +169,16 @@ class AgentFinding(BaseModel):
     description: str
     citations: list[Citation] = Field(min_length=1)
     confidence: Confidence
+
+    @field_validator("severity", mode="before")
+    @classmethod
+    def coerce_severity(cls, v: Any) -> Severity:
+        return _coerce_severity(v)
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def coerce_confidence(cls, v: Any) -> Confidence:
+        return _coerce_confidence(v)
 
 
 class Gap(BaseModel):
@@ -116,6 +199,18 @@ class Gap(BaseModel):
     source_file: str | None = None  # Recommended
     agent: AgentName | None = None  # Recommended
     run_id: str | None = None  # Recommended
+
+    @field_validator("priority", mode="before")
+    @classmethod
+    def coerce_priority(cls, v: Any) -> Severity:
+        return _coerce_severity(v)
+
+    @field_validator("agent", mode="before")
+    @classmethod
+    def coerce_agent(cls, v: Any) -> AgentName | None:
+        if v is None:
+            return None
+        return _coerce_agent_name(v)
 
 
 class CrossReferenceData(BaseModel):
@@ -181,10 +276,28 @@ class CrossReference(BaseModel):
     contract_source: CrossReferenceSource = Field(default_factory=CrossReferenceSource)
     reference_value: str = ""
     reference_source: CrossReferenceSource = Field(default_factory=CrossReferenceSource)
-    match_status: str = ""  # match, mismatch, not_available
+    match_status: str = Field(default="unverified", description="match, mismatch, not_available, or unverified")
     variance: str = ""  # e.g., "-20.8%"
     severity: Severity | None = None
     interpretation: str = ""
+
+    @field_validator("match_status", mode="before")
+    @classmethod
+    def coerce_match_status(cls, v: Any) -> str:
+        """Coerce common match_status variants to canonical values."""
+        if not isinstance(v, str):
+            _logger.warning("Non-string match_status %r coerced to 'unverified'", v)
+            return "unverified"
+        raw: str = v.strip()
+        # Check aliases first
+        if raw in _MATCH_STATUS_ALIASES:
+            return _MATCH_STATUS_ALIASES[raw]
+        # Accept canonical values
+        if raw in _VALID_MATCH_STATUSES:
+            return raw
+        # Unknown value -> unverified with warning
+        _logger.warning("Unknown match_status %r coerced to 'unverified'", raw)
+        return "unverified"
 
 
 class CrossReferenceSummary(BaseModel):
@@ -236,6 +349,9 @@ class MergedCustomerOutput(BaseModel):
     customer_safe_name: str
     findings: list[Finding] = Field(
         default_factory=list, description="Fully transformed findings conforming to finding.schema.json"
+    )
+    gaps: list[Gap] = Field(
+        default_factory=list, description="Collected gaps from all specialist agents (step 6 of merge protocol)"
     )
     cross_references: list[CrossReference] = Field(default_factory=list)
     cross_reference_summary: CrossReferenceSummary | None = None

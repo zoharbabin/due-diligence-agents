@@ -102,6 +102,11 @@
     "include_diff_sheet": true,
     "include_metadata_sheet": true
   },
+  "data_room": {
+    "path": "PATH_TO_DATA_ROOM",
+    "groups": {},
+    "reference_dir": "_reference"
+  },
   "forensic_dd": {
     "enabled": true,
     "domains": {

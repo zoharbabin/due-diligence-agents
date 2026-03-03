@@ -14,7 +14,7 @@ import json
 import logging
 from typing import TYPE_CHECKING
 
-from dd_agents.models.enums import CustomerClassificationStatus
+from dd_agents.models.enums import CustomerClassificationStatus, ExecutionMode
 from dd_agents.models.persistence import (
     Classification,
     ClassificationSummary,
@@ -98,14 +98,18 @@ class IncrementalClassifier:
                 prior_cksum = _joined_checksum(prior)
 
                 if current_cksum != prior_cksum:
-                    # CHANGED: files differ
-                    files_added = [f for f in current if f not in prior]
-                    files_removed = [f for f in prior if f not in current]
-                    files_modified = (
-                        [f for f in current if f in prior and current.index(f) != prior.index(f)]
-                        if len(current) == len(prior)
-                        else []
-                    )
+                    # CHANGED: files differ.
+                    # Use set-based comparison instead of index-based.  Issue #66.
+                    prior_set = set(prior)
+                    current_set = set(current)
+                    files_added = [f for f in current if f not in prior_set]
+                    files_removed = [f for f in prior if f not in current_set]
+                    # Files present in both sets are candidates for modification.
+                    # Without per-file checksums we cannot distinguish a rename from
+                    # a content change, but we reliably report files that persisted
+                    # across runs while the overall checksum shifted.
+                    common = current_set & prior_set
+                    files_modified = sorted(common - set(files_added) - set(files_removed))
 
                     entry = CustomerClassEntry(
                         customer=customer,
@@ -153,7 +157,7 @@ class IncrementalClassifier:
 
         classification = Classification(
             run_id="",  # Populated by caller
-            execution_mode="incremental",
+            execution_mode=ExecutionMode.INCREMENTAL,
             classification_summary=summary,
             customers=entries,
         )

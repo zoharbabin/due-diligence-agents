@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Python application for forensic M&A due diligence. 6 AI agents analyze contract data rooms under a 35-step pipeline with 5 blocking gates, producing a 14-sheet Excel report. Python orchestrates; agents are workers.
+Python application for forensic M&A due diligence. 5 AI agents (4 specialists + optional Judge) analyze contract data rooms under a 35-step pipeline with 5 blocking gates, producing a 14-sheet Excel report. Python orchestrates; agents are workers.
 
 **Package**: `dd_agents` under `src/dd_agents/`
 **SDK**: `claude-agent-sdk` v0.1.39+ (Python 3.12+)
@@ -36,7 +36,7 @@ dd-agents run path/to/deal-config.json
 ## Architecture
 
 - **Orchestrator** (`orchestrator/engine.py`): 35 async steps as methods on `PipelineEngine`. State machine with checkpoint/resume.
-- **Agents** (`agents/`): 4 specialists (Legal, Finance, Commercial, ProductTech) + optional Judge + Reporting Lead. Spawned via `claude-agent-sdk`.
+- **Agents** (`agents/`): 4 specialists (Legal, Finance, Commercial, ProductTech) + optional Judge. Spawned via `claude-agent-sdk`.
 - **Persistence**: Three tiers — PERMANENT (never wiped), VERSIONED (archived per run), FRESH (rebuilt each run).
 - **Hooks** (`hooks/`): Flat return format `{"decision": "block"|"allow", "reason": "..."}` for ALL hook types. Never nest under `hookSpecificOutput`.
 - **Models** (`models/`): Pydantic v2 for all schemas. `model_json_schema()` for structured outputs.
@@ -88,7 +88,6 @@ Update the phase status in IMPLEMENTATION_PLAN.md after completing each phase.
 | `agents/*` | `docs/plan/06-agents.md` |
 | `reporting/*` | `docs/plan/10-reporting.md` |
 | `validation/*` | `docs/plan/11-qa-validation.md` |
-| `reasoning/*` | `docs/plan/21-ontology-and-reasoning.md` |
 | `vector_store/*` | `docs/plan/14-vector-store.md` |
 | `search/*` | `docs/plan/22-llm-robustness.md` + `docs/search-guide.md` |
 | `errors.py` | `docs/plan/12-error-recovery.md` |

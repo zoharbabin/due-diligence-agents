@@ -1,5 +1,11 @@
 """Extraction pipeline -- orchestrates the fallback chain for all files.
 
+PURPOSE: Extraction serves the **search/vector index** (TF-IDF, chunking,
+vector store).  Specialist agents read original files directly via the
+SDK Read tool — they do NOT depend on extracted text for analysis (Issue #87).
+The verify_citation tool uses extracted text as a fallback for quote
+verification.
+
 The pipeline converts every data-room file to a single canonical
 markdown representation.  PDFs are pre-inspected to route the chain:
 
@@ -15,11 +21,15 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import re
 import subprocess
+import threading
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from dd_agents.extraction._constants import IMAGE_EXTENSIONS, PLAINTEXT_EXTENSIONS
 from dd_agents.extraction._helpers import read_text
@@ -96,6 +106,21 @@ _EXPECTED_TEXT_RATIOS: dict[str, float] = {
 # Extensions that trigger the PDF branch of the fallback chain.
 _PDF_EXTENSIONS: frozenset[str] = frozenset({".pdf"})
 
+# Default number of parallel extraction workers (Issue #36).
+_DEFAULT_WORKERS: int = min(8, os.cpu_count() or 4)
+
+
+@dataclass
+class _FileResult:
+    """Result of processing a single file in a worker thread."""
+
+    filepath_str: str
+    current_hash: str | None = None
+    entry: ExtractionQualityEntry | None = None
+    is_missing: bool = False
+    is_cache_hit: bool = False
+    is_plaintext: bool = False
+
 
 class ExtractionPipelineError(Exception):
     """Raised when >50 % of non-plaintext files fail extraction."""
@@ -134,6 +159,8 @@ class ExtractionPipeline:
         files: list[str],
         output_dir: Path,
         cache_path: Path,
+        *,
+        max_workers: int | None = None,
     ) -> list[ExtractionQualityEntry]:
         """Extract all *files*, writing markdown output to *output_dir*.
 
@@ -145,6 +172,9 @@ class ExtractionPipeline:
             Directory for extracted ``.md`` files.
         cache_path:
             Path to ``checksums.sha256`` for caching.
+        max_workers:
+            Number of parallel extraction threads.  Defaults to
+            ``min(8, os.cpu_count())``.
 
         Returns
         -------
@@ -158,63 +188,154 @@ class ExtractionPipeline:
         """
         output_dir.mkdir(parents=True, exist_ok=True)
 
+        # Suppress MuPDF C-level stderr globally for the entire extraction
+        # run.  Without this, the per-method toggle (False/True) races across
+        # threads: Thread A restores True in its finally block while Thread B
+        # is still mid-extraction, causing MuPDF to dump raw warnings to stderr.
+        # Warnings are still captured via fitz.TOOLS.mupdf_warnings() in each
+        # method and logged at debug level.
+        try:
+            import fitz
+
+            fitz.TOOLS.mupdf_display_errors(False)
+        except ImportError:
+            pass
+
         # --- cache ---
+        # Thread-safety note: cache.is_cached() (read) is called from
+        # worker threads, while cache.update() (write) is called only
+        # in the main thread's as_completed() loop below.  Python's GIL
+        # guarantees dict reads are atomic, so no lock is needed.
         cache = ExtractionCache(cache_path)
         cache.load()
+        # Snapshot empty-state before workers start: if the cache file was
+        # wiped/missing we trust existing readable output on disk.  Captured
+        # once so that main-thread cache.update() calls don't invalidate the
+        # flag mid-run (race between main thread writes and worker reads).
+        cache_was_empty = len(cache) == 0
+        if cache_was_empty:
+            logger.info("Checksum cache is empty — will skip extraction for files with existing readable output")
 
-        # --- quality tracker ---
+        # --- quality tracker (protected by lock for thread safety) ---
         tracker = ExtractionQualityTracker()
         quality_json_path = output_dir / "extraction_quality.json"
         tracker.load(quality_json_path)
+        tracker_lock = threading.Lock()
 
         primary_failures = 0
         total_non_plaintext = 0
+        cache_hits = 0
+        fresh_extractions = 0
 
-        for filepath_str in files:
+        workers = max_workers if max_workers is not None else _DEFAULT_WORKERS
+        total_files = len(files)
+        # Progress logging interval: every 10 files or 10%, whichever is larger.
+        progress_interval = max(10, total_files // 10) if total_files > 0 else 10
+        completed = 0
+
+        def _process_file(filepath_str: str) -> _FileResult:
+            """Process a single file in a worker thread."""
             filepath = Path(filepath_str)
             if not filepath.exists():
-                tracker.record(
-                    filepath=filepath_str,
-                    method="failed",
-                    bytes_extracted=0,
-                    confidence=0.0,
-                    fallback_chain=["missing"],
+                return _FileResult(
+                    filepath_str=filepath_str,
+                    is_missing=True,
                 )
-                continue
 
             # Check cache
             current_hash = ExtractionCache.compute_checksum(filepath)
             out_file = output_dir / self._safe_text_name(filepath_str)
 
             if (
-                cache.is_cached(filepath_str, current_hash)
-                and out_file.exists()
+                out_file.exists()
                 and out_file.stat().st_size >= _SCANNED_PDF_THRESHOLD
                 and self._is_cached_output_readable(out_file)
+                and (cache.is_cached(filepath_str, current_hash) or cache_was_empty)
             ):
-                # Cache hit -- keep existing quality entry.
-                cache.update(filepath_str, current_hash)
-                continue
+                # Cache hit, or cache is empty but readable output exists
+                # from a prior run (e.g. checksums file was wiped).
+                return _FileResult(
+                    filepath_str=filepath_str,
+                    current_hash=current_hash,
+                    is_cache_hit=True,
+                )
 
             # Not cached -- run extraction
             is_plaintext = filepath.suffix.lower() in PLAINTEXT_EXTENSIONS
-            if not is_plaintext:
-                total_non_plaintext += 1
-
             entry = self.extract_single(filepath, output_dir)
-            tracker.record(
-                filepath=filepath_str,
-                method=entry.method,
-                bytes_extracted=entry.bytes_extracted,
-                confidence=entry.confidence,
-                fallback_chain=entry.fallback_chain,
-                failure_reasons=entry.failure_reasons,
+            return _FileResult(
+                filepath_str=filepath_str,
+                current_hash=current_hash,
+                entry=entry,
+                is_plaintext=is_plaintext,
             )
 
-            if entry.confidence == 0.0 and not is_plaintext:
-                primary_failures += 1
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            future_to_filepath = {executor.submit(_process_file, fp): fp for fp in files}
 
-            cache.update(filepath_str, current_hash)
+            for future in as_completed(future_to_filepath):
+                try:
+                    result = future.result()
+                except Exception:
+                    fp = future_to_filepath[future]
+                    logger.exception("Worker thread crashed processing %s", fp)
+                    result = _FileResult(
+                        filepath_str=fp,
+                        is_missing=False,
+                        is_cache_hit=False,
+                        is_plaintext=Path(fp).suffix.lower() in PLAINTEXT_EXTENSIONS,
+                        current_hash=None,
+                        entry=ExtractionQualityEntry(
+                            file_path=fp,
+                            method="failed",
+                            bytes_extracted=0,
+                            confidence=0.0,
+                            fallback_chain=["crashed"],
+                            failure_reasons=["Worker thread crashed"],
+                        ),
+                    )
+
+                if result.is_missing:
+                    with tracker_lock:
+                        tracker.record(
+                            filepath=result.filepath_str,
+                            method="failed",
+                            bytes_extracted=0,
+                            confidence=0.0,
+                            fallback_chain=["missing"],
+                        )
+                elif result.is_cache_hit:
+                    cache_hits += 1
+                    cache.update(result.filepath_str, result.current_hash or "")
+                elif result.entry is not None:
+                    fresh_extractions += 1
+                    if not result.is_plaintext:
+                        total_non_plaintext += 1
+
+                    with tracker_lock:
+                        tracker.record(
+                            filepath=result.filepath_str,
+                            method=result.entry.method,
+                            bytes_extracted=result.entry.bytes_extracted,
+                            confidence=result.entry.confidence,
+                            fallback_chain=result.entry.fallback_chain,
+                            failure_reasons=result.entry.failure_reasons,
+                        )
+
+                    if result.entry.confidence == 0.0 and not result.is_plaintext:
+                        primary_failures += 1
+
+                    cache.update(result.filepath_str, result.current_hash or "")
+
+                completed += 1
+                if completed % progress_interval == 0 or completed == total_files:
+                    pct = (completed / total_files * 100) if total_files > 0 else 100
+                    logger.info(
+                        "Extraction progress: %d/%d files (%.0f%%)",
+                        completed,
+                        total_files,
+                        pct,
+                    )
 
         # Remove stale cache entries for deleted files.
         cache.remove_stale(files)
@@ -222,6 +343,23 @@ class ExtractionPipeline:
 
         # Persist quality.
         tracker.save(quality_json_path)
+
+        # Log extraction summary.
+        if cache_hits > 0:
+            logger.info(
+                "Extraction: %d/%d files cached (skipped), %d extracted",
+                cache_hits,
+                total_files,
+                fresh_extractions,
+            )
+        summary = self.get_extraction_summary(tracker.entries)
+        logger.info(
+            "Extraction complete: %d/%d files succeeded (%.0f%%), methods: %s",
+            summary["succeeded"],
+            summary["total"],
+            (1.0 - summary["failure_rate"]) * 100 if summary["total"] > 0 else 100,
+            ", ".join(f"{m}={c}" for m, c in sorted(summary["by_method"].items())),
+        )
 
         # Systemic failure gate.
         if total_non_plaintext > 0:
@@ -234,6 +372,50 @@ class ExtractionPipeline:
                 )
 
         return tracker.entries
+
+    @staticmethod
+    def get_extraction_summary(
+        entries: list[ExtractionQualityEntry],
+    ) -> dict[str, Any]:
+        """Return a summary dict with method counts and failure rate.
+
+        Parameters
+        ----------
+        entries:
+            Quality entries from an extraction run.
+
+        Returns
+        -------
+        dict
+            Keys: ``total``, ``succeeded``, ``failed``,
+            ``failure_rate``, ``by_method``.
+        """
+        total = len(entries)
+        by_method: dict[str, int] = {}
+        failed = 0
+        total_non_plaintext = 0
+
+        for entry in entries:
+            by_method[entry.method] = by_method.get(entry.method, 0) + 1
+            # Count non-plaintext failures: method == "failed" or confidence < 0.1
+            # Plaintext files (direct_read with confidence > 0) are excluded.
+            is_failure = entry.method == "failed" or entry.confidence < 0.1
+            # Heuristic: direct_read with decent confidence are plaintext files.
+            is_likely_plaintext = entry.method == "direct_read" and entry.confidence >= 0.1
+            if not is_likely_plaintext:
+                total_non_plaintext += 1
+                if is_failure:
+                    failed += 1
+
+        failure_rate = (failed / total_non_plaintext) if total_non_plaintext > 0 else 0.0
+
+        return {
+            "total": total,
+            "succeeded": total - by_method.get("failed", 0),
+            "failed": failed,
+            "failure_rate": round(failure_rate, 4),
+            "by_method": by_method,
+        }
 
     def extract_single(
         self,
@@ -290,9 +472,6 @@ class ExtractionPipeline:
         except ImportError:
             return "normal"
 
-        # Suppress MuPDF C-level stderr messages (e.g. "premature end in
-        # aes filter") — capture them via mupdf_warnings() instead.
-        fitz.TOOLS.mupdf_display_errors(False)
         try:
             doc = fitz.open(str(filepath))
         except Exception:
@@ -331,11 +510,10 @@ class ExtractionPipeline:
         except Exception:
             return "normal"
         finally:
-            # Log any MuPDF warnings at debug level, then restore display.
+            # Capture MuPDF warnings at debug level (stderr suppressed globally).
             warnings = fitz.TOOLS.mupdf_warnings()
             if warnings:
                 logger.debug("MuPDF warnings for %s: %s", filepath, warnings)
-            fitz.TOOLS.mupdf_display_errors(True)
             doc.close()
 
     @staticmethod
@@ -485,11 +663,12 @@ class ExtractionPipeline:
         pdf_type = self._inspect_pdf(filepath)
 
         # Skip text extractors for PDFs that would produce garbage.
-        skip_text_extractors = pdf_type in ("scanned", "missing_tounicode")
+        skip_text_extractors = pdf_type in ("scanned", "missing_tounicode", "encrypted")
 
         # 1. pymupdf — per-page extraction with explicit page markers.
         if not skip_text_extractors:
-            text = self._run_pymupdf(filepath)
+            pymupdf_result = self._run_pymupdf(filepath)
+            text = pymupdf_result if isinstance(pymupdf_result, str) else pymupdf_result[0]
             entry = self._try_method(
                 "pymupdf",
                 text,
@@ -758,44 +937,73 @@ class ExtractionPipeline:
         return f"{truncated}_{digest}.md"
 
     @staticmethod
-    def _run_pymupdf(filepath: Path) -> str:
+    def _run_pymupdf(
+        filepath: Path,
+        *,
+        capture_blocks: bool = False,
+    ) -> str | tuple[str, list[dict[str, Any]]]:
         """Extract text page-by-page using ``pymupdf`` with explicit page markers.
 
         Injects ``--- Page N ---`` headers so that downstream LLM analysis
         can cite page numbers accurately.
 
-        Returns empty string if pymupdf is not installed or extraction fails.
+        Parameters
+        ----------
+        capture_blocks:
+            When *True*, also capture block-level coordinate data for
+            visual grounding (Issue #7).  Returns ``(text, blocks)``
+            instead of just ``text``.
+
+        Returns empty string (or ``("", [])``) if pymupdf is not installed
+        or extraction fails.
         """
         try:
             import fitz  # pymupdf
         except ImportError:
-            return ""
+            return ("", []) if capture_blocks else ""
 
-        # Suppress MuPDF C-level stderr messages; capture via warnings API.
-        fitz.TOOLS.mupdf_display_errors(False)
         try:
             doc = fitz.open(str(filepath))
         except Exception as exc:
             logger.debug("pymupdf failed to open %s: %s", filepath, exc)
-            fitz.TOOLS.mupdf_display_errors(True)
-            return ""
+            return ("", []) if capture_blocks else ""
 
         parts: list[str] = []
+        blocks: list[dict[str, Any]] = []
         try:
             for page_num, page in enumerate(doc, start=1):
                 page_text = page.get_text()
                 if page_text and page_text.strip():
                     parts.append(f"\n--- Page {page_num} ---\n\n{page_text}")
+                if capture_blocks:
+                    for block in page.get_text("blocks"):
+                        # block: (x0, y0, x1, y1, text, block_no, type)
+                        if len(block) >= 7 and block[6] == 0:  # type 0 = text
+                            text_content = str(block[4]).strip()
+                            if text_content:
+                                blocks.append(
+                                    {
+                                        "page": page_num,
+                                        "x0": float(block[0]),
+                                        "y0": float(block[1]),
+                                        "x1": float(block[2]),
+                                        "y1": float(block[3]),
+                                        "text": text_content,
+                                    }
+                                )
         except Exception as exc:
             logger.debug("pymupdf extraction error for %s: %s", filepath, exc)
         finally:
+            # Capture MuPDF warnings at debug level (stderr suppressed globally).
             warnings = fitz.TOOLS.mupdf_warnings()
             if warnings:
                 logger.debug("MuPDF warnings for %s: %s", filepath, warnings)
-            fitz.TOOLS.mupdf_display_errors(True)
             doc.close()
 
-        return "\n".join(parts)
+        text = "\n".join(parts)
+        if capture_blocks:
+            return text, blocks
+        return text
 
     @staticmethod
     def _run_pdftotext(filepath: Path) -> str:

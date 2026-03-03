@@ -135,7 +135,10 @@ def split_by_pages(
 
     for i, match in enumerate(matches):
         page_num = int(match.group(1))
-        start = match.end()
+        # Preserve the page marker itself as part of the page text so
+        # downstream consumers (LLM prompts, citation verifier) can see
+        # which page they are reading.  Issue #61.
+        start = match.start()
         end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
         pages.append((page_num, text[start:end]))
 

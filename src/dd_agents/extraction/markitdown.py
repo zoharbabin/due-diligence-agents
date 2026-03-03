@@ -57,6 +57,14 @@ class MarkitdownExtractor:
         text, confidence = extractor.extract(Path("contract.pdf"))
     """
 
+    @property
+    def name(self) -> str:
+        return "markitdown"
+
+    @property
+    def supported_extensions(self) -> frozenset[str]:
+        return MARKITDOWN_EXTENSIONS
+
     def extract(self, filepath: Path) -> tuple[str, float]:
         """Extract text from *filepath*.
 

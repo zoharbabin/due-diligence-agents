@@ -96,7 +96,7 @@ def _make_file_text(
 
 def _make_column_result(
     answer: str = "YES",
-    confidence: str = "HIGH",
+    confidence: str = "high",
     citations: list[SearchCitation] | None = None,
 ) -> SearchColumnResult:
     """Create a SearchColumnResult for testing."""
@@ -157,8 +157,8 @@ class TestConfidenceNormalization:
         with patch.object(analyzer, "_call_claude", mock_call):
             results = await analyzer.analyze_all([customer])
 
-        assert results[0].columns["Consent Required"].confidence == "HIGH"
-        assert results[0].columns["Notice Required"].confidence == "LOW"
+        assert results[0].columns["Consent Required"].confidence == "high"
+        assert results[0].columns["Notice Required"].confidence == "low"
 
     def test_confidence_normalized_on_merge(self, tmp_path: Path) -> None:
         """Merge phase normalizes confidence to uppercase."""
@@ -180,8 +180,8 @@ class TestConfidenceNormalization:
 
         merged, _ = analyzer._merge_chunk_results([chunk1, chunk2], customer, 1, [])
 
-        assert merged.columns["Consent Required"].confidence == "HIGH"
-        assert merged.columns["Notice Required"].confidence == "MEDIUM"
+        assert merged.columns["Consent Required"].confidence == "high"
+        assert merged.columns["Notice Required"].confidence == "medium"
 
     @pytest.mark.asyncio
     async def test_confidence_normalized_in_synthesis(self, tmp_path: Path) -> None:
@@ -191,8 +191,8 @@ class TestConfidenceNormalization:
 
         merged = _make_customer_result(
             columns={
-                "Consent Required": _make_column_result(answer="YES", confidence="MEDIUM"),
-                "Notice Required": _make_column_result(answer="YES", confidence="HIGH"),
+                "Consent Required": _make_column_result(answer="YES", confidence="medium"),
+                "Notice Required": _make_column_result(answer="YES", confidence="high"),
             }
         )
         chunk_results = [
@@ -224,7 +224,7 @@ class TestConfidenceNormalization:
         with patch.object(analyzer, "_call_claude", mock_call):
             result = await analyzer._synthesis_pass(merged, chunk_results, ["Consent Required"], customer)
 
-        assert result.columns["Consent Required"].confidence == "HIGH"
+        assert result.columns["Consent Required"].confidence == "high"
 
     @pytest.mark.asyncio
     async def test_confidence_normalized_in_validation(self, tmp_path: Path) -> None:
@@ -234,8 +234,8 @@ class TestConfidenceNormalization:
 
         result = _make_customer_result(
             columns={
-                "Consent Required": _make_column_result(answer="YES", confidence="HIGH"),
-                "Notice Required": _make_column_result(answer="NOT_ADDRESSED", confidence="HIGH"),
+                "Consent Required": _make_column_result(answer="YES", confidence="high"),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED", confidence="high"),
             }
         )
         file_texts = [_make_file_text(text="Contract text with notice clauses.")]
@@ -254,7 +254,7 @@ class TestConfidenceNormalization:
         with patch.object(analyzer, "_call_claude", mock_call):
             updated = await analyzer._validation_pass(result, file_texts, customer)
 
-        assert updated.columns["Notice Required"].confidence == "MEDIUM"
+        assert updated.columns["Notice Required"].confidence == "medium"
 
 
 # ===================================================================
@@ -403,7 +403,7 @@ class TestAnalysis:
         mock_response_data = {
             "Consent Required": {
                 "answer": "YES",
-                "confidence": "HIGH",
+                "confidence": "high",
                 "citations": [
                     {
                         "file_path": "GroupA/Acme Corp/msa.pdf",
@@ -415,7 +415,7 @@ class TestAnalysis:
             },
             "Notice Required": {
                 "answer": "NOT_ADDRESSED",
-                "confidence": "HIGH",
+                "confidence": "high",
                 "citations": [],
             },
         }
@@ -496,7 +496,7 @@ class TestAnalysis:
         mock_response_data = {
             "Consent Required": {
                 "answer": "YES",
-                "confidence": "HIGH",
+                "confidence": "high",
                 "citations": [],
             },
             # "Notice Required" is deliberately missing.
@@ -700,8 +700,8 @@ class TestParallelChunkAnalysis:
             call_count += 1
             return json.dumps(
                 {
-                    "Consent Required": {"answer": "NOT_ADDRESSED", "confidence": "HIGH", "citations": []},
-                    "Notice Required": {"answer": "NOT_ADDRESSED", "confidence": "HIGH", "citations": []},
+                    "Consent Required": {"answer": "NOT_ADDRESSED", "confidence": "high", "citations": []},
+                    "Notice Required": {"answer": "NOT_ADDRESSED", "confidence": "high", "citations": []},
                 }
             )
 
@@ -731,14 +731,14 @@ class TestMergeChunkResults:
 
         chunk1 = _make_customer_result(
             columns={
-                "Consent Required": _make_column_result(answer="YES", confidence="HIGH"),
-                "Notice Required": _make_column_result(answer="NOT_ADDRESSED", confidence="HIGH"),
+                "Consent Required": _make_column_result(answer="YES", confidence="high"),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED", confidence="high"),
             }
         )
         chunk2 = _make_customer_result(
             columns={
-                "Consent Required": _make_column_result(answer="NOT_ADDRESSED", confidence="HIGH"),
-                "Notice Required": _make_column_result(answer="NOT_ADDRESSED", confidence="HIGH"),
+                "Consent Required": _make_column_result(answer="NOT_ADDRESSED", confidence="high"),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED", confidence="high"),
             }
         )
 
@@ -755,14 +755,14 @@ class TestMergeChunkResults:
 
         chunk1 = _make_customer_result(
             columns={
-                "Consent Required": _make_column_result(answer="YES", confidence="HIGH"),
-                "Notice Required": _make_column_result(answer="YES", confidence="HIGH"),
+                "Consent Required": _make_column_result(answer="YES", confidence="high"),
+                "Notice Required": _make_column_result(answer="YES", confidence="high"),
             }
         )
         chunk2 = _make_customer_result(
             columns={
-                "Consent Required": _make_column_result(answer="NO", confidence="MEDIUM"),
-                "Notice Required": _make_column_result(answer="YES", confidence="HIGH"),
+                "Consent Required": _make_column_result(answer="NO", confidence="medium"),
+                "Notice Required": _make_column_result(answer="YES", confidence="high"),
             }
         )
 
@@ -865,7 +865,7 @@ class TestMergeChunkResults:
             columns={
                 "Consent Required": _make_column_result(
                     answer="Section 12.1 requires prior written consent for any change of control.",
-                    confidence="HIGH",
+                    confidence="high",
                 ),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
             }
@@ -989,13 +989,13 @@ class TestMergeChunkResults:
         # The _max_confidence fix should still promote the confidence to HIGH.
         chunk1 = _make_customer_result(
             columns={
-                "Consent Required": _make_column_result(answer="YES", confidence="MEDIUM"),
+                "Consent Required": _make_column_result(answer="YES", confidence="medium"),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
             }
         )
         chunk2 = _make_customer_result(
             columns={
-                "Consent Required": _make_column_result(answer="YES", confidence="HIGH"),
+                "Consent Required": _make_column_result(answer="YES", confidence="high"),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
             }
         )
@@ -1003,7 +1003,7 @@ class TestMergeChunkResults:
         merged, _ = analyzer._merge_chunk_results([chunk1, chunk2], customer, 1, [])
 
         assert merged.columns["Consent Required"].answer == "YES"
-        assert merged.columns["Consent Required"].confidence == "HIGH"
+        assert merged.columns["Consent Required"].confidence == "high"
 
     def test_confidence_takes_max_for_free_text(self, tmp_path: Path) -> None:
         """When a longer free-text answer wins, a shorter answer's higher confidence is kept."""
@@ -1015,7 +1015,7 @@ class TestMergeChunkResults:
             columns={
                 "Consent Required": _make_column_result(
                     answer="Section 12.1 requires prior written consent for any change of control.",
-                    confidence="MEDIUM",
+                    confidence="medium",
                 ),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
             }
@@ -1025,7 +1025,7 @@ class TestMergeChunkResults:
             columns={
                 "Consent Required": _make_column_result(
                     answer="Consent is required.",
-                    confidence="HIGH",
+                    confidence="high",
                 ),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
             }
@@ -1035,7 +1035,7 @@ class TestMergeChunkResults:
 
         # Chunk 1's longer answer wins, but chunk 2's HIGH confidence should be kept.
         assert "Section 12.1" in merged.columns["Consent Required"].answer
-        assert merged.columns["Consent Required"].confidence == "HIGH"
+        assert merged.columns["Consent Required"].confidence == "high"
 
     def test_free_text_no_triggers_conflict_with_yes(self, tmp_path: Path) -> None:
         """Free-text starting with 'NO' should conflict with literal 'YES'.  Issue #18."""
@@ -1044,7 +1044,7 @@ class TestMergeChunkResults:
 
         chunk1 = _make_customer_result(
             columns={
-                "Consent Required": _make_column_result(answer="YES", confidence="HIGH"),
+                "Consent Required": _make_column_result(answer="YES", confidence="high"),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
             }
         )
@@ -1052,7 +1052,7 @@ class TestMergeChunkResults:
             columns={
                 "Consent Required": _make_column_result(
                     answer="NO - the amendment removed the consent requirement.",
-                    confidence="MEDIUM",
+                    confidence="medium",
                 ),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
             }
@@ -1070,7 +1070,7 @@ class TestMergeChunkResults:
 
         chunk1 = _make_customer_result(
             columns={
-                "Consent Required": _make_column_result(answer="NO", confidence="HIGH"),
+                "Consent Required": _make_column_result(answer="NO", confidence="high"),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
             }
         )
@@ -1078,7 +1078,7 @@ class TestMergeChunkResults:
             columns={
                 "Consent Required": _make_column_result(
                     answer="YES, consent is required per Section 12.",
-                    confidence="MEDIUM",
+                    confidence="medium",
                 ),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
             }
@@ -1097,7 +1097,7 @@ class TestMergeChunkResults:
             columns={
                 "Consent Required": _make_column_result(
                     answer="Section 12 requires consent from both parties.",
-                    confidence="HIGH",
+                    confidence="high",
                 ),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
             }
@@ -1106,7 +1106,7 @@ class TestMergeChunkResults:
             columns={
                 "Consent Required": _make_column_result(
                     answer="The agreement stipulates mutual consent is needed.",
-                    confidence="MEDIUM",
+                    confidence="medium",
                 ),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
             }
@@ -1135,8 +1135,8 @@ class TestSynthesisPass:
         # Merged result has conflicted "Consent Required".
         merged = _make_customer_result(
             columns={
-                "Consent Required": _make_column_result(answer="YES", confidence="MEDIUM"),
-                "Notice Required": _make_column_result(answer="YES", confidence="HIGH"),
+                "Consent Required": _make_column_result(answer="YES", confidence="medium"),
+                "Notice Required": _make_column_result(answer="YES", confidence="high"),
             }
         )
 
@@ -1159,7 +1159,7 @@ class TestSynthesisPass:
             {
                 "Consent Required": {
                     "answer": "NO",
-                    "confidence": "HIGH",
+                    "confidence": "high",
                     "citations": [
                         {
                             "file_path": "GroupA/Acme Corp/msa.pdf",
@@ -1179,7 +1179,7 @@ class TestSynthesisPass:
 
         # Conflicted column should be updated to synthesis result.
         assert result.columns["Consent Required"].answer == "NO"
-        assert result.columns["Consent Required"].confidence == "HIGH"
+        assert result.columns["Consent Required"].confidence == "high"
         assert len(result.columns["Consent Required"].citations) == 1
         # Non-conflicted column should be unchanged.
         assert result.columns["Notice Required"].answer == "YES"
@@ -1192,8 +1192,8 @@ class TestSynthesisPass:
 
         merged = _make_customer_result(
             columns={
-                "Consent Required": _make_column_result(answer="YES", confidence="MEDIUM"),
-                "Notice Required": _make_column_result(answer="YES", confidence="HIGH"),
+                "Consent Required": _make_column_result(answer="YES", confidence="medium"),
+                "Notice Required": _make_column_result(answer="YES", confidence="high"),
             }
         )
 
@@ -1219,7 +1219,7 @@ class TestSynthesisPass:
 
         # On failure, original merged result is returned unchanged.
         assert result.columns["Consent Required"].answer == "YES"
-        assert result.columns["Consent Required"].confidence == "MEDIUM"
+        assert result.columns["Consent Required"].confidence == "medium"
 
     @pytest.mark.asyncio
     async def test_synthesis_preserves_non_conflicted(self, tmp_path: Path) -> None:
@@ -1229,8 +1229,8 @@ class TestSynthesisPass:
 
         merged = _make_customer_result(
             columns={
-                "Consent Required": _make_column_result(answer="YES", confidence="MEDIUM"),
-                "Notice Required": _make_column_result(answer="NO", confidence="HIGH"),
+                "Consent Required": _make_column_result(answer="YES", confidence="medium"),
+                "Notice Required": _make_column_result(answer="NO", confidence="high"),
             }
         )
 
@@ -1254,7 +1254,7 @@ class TestSynthesisPass:
             {
                 "Consent Required": {
                     "answer": "NO",
-                    "confidence": "HIGH",
+                    "confidence": "high",
                     "citations": [],
                 },
             }
@@ -1267,7 +1267,7 @@ class TestSynthesisPass:
 
         # Non-conflicted column must remain exactly as it was.
         assert result.columns["Notice Required"].answer == "NO"
-        assert result.columns["Notice Required"].confidence == "HIGH"
+        assert result.columns["Notice Required"].confidence == "high"
 
     @pytest.mark.asyncio
     async def test_synthesis_preserves_long_quotes(self, tmp_path: Path) -> None:
@@ -1279,8 +1279,8 @@ class TestSynthesisPass:
 
         merged = _make_customer_result(
             columns={
-                "Consent Required": _make_column_result(answer="YES", confidence="MEDIUM"),
-                "Notice Required": _make_column_result(answer="YES", confidence="HIGH"),
+                "Consent Required": _make_column_result(answer="YES", confidence="medium"),
+                "Notice Required": _make_column_result(answer="YES", confidence="high"),
             }
         )
 
@@ -1313,7 +1313,7 @@ class TestSynthesisPass:
             {
                 "Consent Required": {
                     "answer": "YES",
-                    "confidence": "HIGH",
+                    "confidence": "high",
                     "citations": [],
                 },
             }
@@ -1349,8 +1349,8 @@ class TestValidationPass:
 
         result = _make_customer_result(
             columns={
-                "Consent Required": _make_column_result(answer="YES", confidence="HIGH"),
-                "Notice Required": _make_column_result(answer="NOT_ADDRESSED", confidence="HIGH"),
+                "Consent Required": _make_column_result(answer="YES", confidence="high"),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED", confidence="high"),
             }
         )
 
@@ -1360,7 +1360,7 @@ class TestValidationPass:
             {
                 "Notice Required": {
                     "answer": "YES",
-                    "confidence": "MEDIUM",
+                    "confidence": "medium",
                     "citations": [
                         {
                             "file_path": "GroupA/Acme Corp/msa.pdf",
@@ -1455,8 +1455,8 @@ class TestValidationPass:
 
         validation_response = json.dumps(
             {
-                "Consent Required": {"answer": "NOT_ADDRESSED", "confidence": "HIGH", "citations": []},
-                "Notice Required": {"answer": "NOT_ADDRESSED", "confidence": "HIGH", "citations": []},
+                "Consent Required": {"answer": "NOT_ADDRESSED", "confidence": "high", "citations": []},
+                "Notice Required": {"answer": "NOT_ADDRESSED", "confidence": "high", "citations": []},
             }
         )
 
@@ -1503,8 +1503,8 @@ class TestValidationPass:
 
         validation_response = json.dumps(
             {
-                "Consent Required": {"answer": "NOT_ADDRESSED", "confidence": "HIGH", "citations": []},
-                "Notice Required": {"answer": "NOT_ADDRESSED", "confidence": "HIGH", "citations": []},
+                "Consent Required": {"answer": "NOT_ADDRESSED", "confidence": "high", "citations": []},
+                "Notice Required": {"answer": "NOT_ADDRESSED", "confidence": "high", "citations": []},
             }
         )
 
@@ -1573,8 +1573,8 @@ class TestExtractJsonText:
         _extract_json_text returns from the first brace onward (callers
         handle the json.loads error).  Issue #4.
         """
-        obj1 = '{"col": {"answer": "NOT_ADDRESSED", "confidence": "MEDIUM", "citations": []}}'
-        obj2 = '{"col": {"answer": "YES", "confidence": "HIGH", "citations": []}}'
+        obj1 = '{"col": {"answer": "NOT_ADDRESSED", "confidence": "medium", "citations": []}}'
+        obj2 = '{"col": {"answer": "YES", "confidence": "high", "citations": []}}'
         raw = obj1 + "\n" + obj2
         result = SearchAnalyzer._extract_json_text(raw)
         # Returns from { onward — caller's json.loads will raise on extra data.
@@ -1657,39 +1657,46 @@ class TestMaxConfidence:
     """Tests for _max_confidence helper (Issue #22)."""
 
     def test_high_beats_medium(self) -> None:
-        assert _max_confidence("HIGH", "MEDIUM") == "HIGH"
+        assert _max_confidence("high", "medium") == "high"
 
     def test_medium_beats_low(self) -> None:
-        assert _max_confidence("LOW", "MEDIUM") == "MEDIUM"
+        assert _max_confidence("low", "medium") == "medium"
 
     def test_high_beats_low(self) -> None:
-        assert _max_confidence("HIGH", "LOW") == "HIGH"
+        assert _max_confidence("high", "low") == "high"
 
     def test_equal_returns_first(self) -> None:
-        assert _max_confidence("HIGH", "HIGH") == "HIGH"
+        assert _max_confidence("high", "high") == "high"
 
     def test_empty_loses(self) -> None:
-        assert _max_confidence("", "LOW") == "LOW"
-        assert _max_confidence("MEDIUM", "") == "MEDIUM"
+        assert _max_confidence("", "low") == "low"
+        assert _max_confidence("medium", "") == "medium"
 
     def test_both_empty(self) -> None:
         result = _max_confidence("", "")
         assert result == ""
 
-    def test_mixed_case_returns_uppercase(self) -> None:
-        """_max_confidence should always return normalized uppercase."""
-        # "high" (rank 3) > "MEDIUM" (rank 2), result normalized to uppercase.
-        assert _max_confidence("high", "MEDIUM") == "HIGH"
-        assert _max_confidence("high", "low") == "HIGH"
-        # "medium" (rank 2) > "low" (rank 1).
-        assert _max_confidence("medium", "low") == "MEDIUM"
+    def test_mixed_case_returns_lowercase(self) -> None:
+        """_max_confidence should always return normalized lowercase."""
+        # "HIGH" (rank 3) > "medium" (rank 2), result normalized to lowercase.
+        assert _max_confidence("HIGH", "medium") == "high"
+        assert _max_confidence("HIGH", "LOW") == "high"
+        # "MEDIUM" (rank 2) > "LOW" (rank 1).
+        assert _max_confidence("MEDIUM", "LOW") == "medium"
 
     def test_whitespace_stripped(self) -> None:
-        assert _max_confidence(" HIGH ", " LOW ") == "HIGH"
+        assert _max_confidence(" high ", " low ") == "high"
 
     def test_unknown_value_ranks_below_low(self) -> None:
-        assert _max_confidence("CRITICAL", "LOW") == "LOW"
-        assert _max_confidence("LOW", "UNKNOWN") == "LOW"
+        assert _max_confidence("CRITICAL", "low") == "low"
+        assert _max_confidence("low", "UNKNOWN") == "low"
+
+    def test_non_string_input_handled(self) -> None:
+        """Non-string values (e.g. numeric) should not crash."""
+        result = _max_confidence(42, "high")  # type: ignore[arg-type]
+        assert isinstance(result, str)
+        result2 = _max_confidence("medium", 3.14)  # type: ignore[arg-type]
+        assert isinstance(result2, str)
 
 
 # ===================================================================
@@ -1795,26 +1802,26 @@ class TestMergeEdgeCases:
         chunks = [
             _make_customer_result(
                 columns={
-                    "Consent Required": _make_column_result(answer="YES", confidence="LOW"),
+                    "Consent Required": _make_column_result(answer="YES", confidence="low"),
                     "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
                 }
             ),
             _make_customer_result(
                 columns={
-                    "Consent Required": _make_column_result(answer="YES", confidence="MEDIUM"),
+                    "Consent Required": _make_column_result(answer="YES", confidence="medium"),
                     "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
                 }
             ),
             _make_customer_result(
                 columns={
-                    "Consent Required": _make_column_result(answer="YES", confidence="HIGH"),
+                    "Consent Required": _make_column_result(answer="YES", confidence="high"),
                     "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
                 }
             ),
         ]
 
         merged, _ = analyzer._merge_chunk_results(chunks, customer, 1, [])
-        assert merged.columns["Consent Required"].confidence == "HIGH"
+        assert merged.columns["Consent Required"].confidence == "high"
 
     def test_notice_answer_does_not_conflict_with_yes(self, tmp_path: Path) -> None:
         """'NOTICE IS REQUIRED' is free-text, not NO — should not conflict with YES."""
@@ -1861,6 +1868,56 @@ class TestMergeEdgeCases:
         merged, _ = analyzer._merge_chunk_results([chunk1, chunk2], customer, 1, [])
         assert len(merged.columns["Consent Required"].citations) == 1
 
+    def test_yes_prefixed_free_text_beats_no(self, tmp_path: Path) -> None:
+        """'YES, consent required per Section 12' should beat 'NO' (YES priority > NO)."""
+        analyzer = _make_analyzer(tmp_path)
+        customer = _make_customer()
+
+        chunk1 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(
+                    answer="YES, consent is required per Section 12", confidence="high"
+                ),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
+        chunk2 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="NO", confidence="high"),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
+
+        merged, conflicted = analyzer._merge_chunk_results([chunk1, chunk2], customer, 1, [])
+        # YES-prefixed answer should win over bare NO (priority 3 > 2).
+        assert merged.columns["Consent Required"].answer == "YES, consent is required per Section 12"
+        # Conflict should still be detected (YES vs NO signals present).
+        assert "Consent Required" in conflicted
+
+    def test_no_prefixed_free_text_same_priority_as_bare_no(self, tmp_path: Path) -> None:
+        """'NO - amendment removed this' has same priority as bare 'NO'; longer wins."""
+        analyzer = _make_analyzer(tmp_path)
+        customer = _make_customer()
+
+        chunk1 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(answer="NO", confidence="high"),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
+        chunk2 = _make_customer_result(
+            columns={
+                "Consent Required": _make_column_result(
+                    answer="NO - the amendment removed this requirement", confidence="medium"
+                ),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
+            }
+        )
+
+        merged, _ = analyzer._merge_chunk_results([chunk1, chunk2], customer, 1, [])
+        # Both are NO-priority (2), longer answer wins.
+        assert merged.columns["Consent Required"].answer == "NO - the amendment removed this requirement"
+
 
 # ===================================================================
 # TestSynthesis — Additional Edge Cases
@@ -1897,7 +1954,7 @@ class TestSynthesisEdgeCases:
             ),
         ]
 
-        synthesis_response = json.dumps({"Consent Required": {"answer": "YES", "confidence": "HIGH", "citations": []}})
+        synthesis_response = json.dumps({"Consent Required": {"answer": "YES", "confidence": "high", "citations": []}})
         mock_call = AsyncMock(return_value=synthesis_response)
 
         with patch.object(analyzer, "_call_claude", mock_call):
@@ -1938,8 +1995,8 @@ class TestValidationEdgeCases:
 
         validation_response = json.dumps(
             {
-                "Consent Required": {"answer": "NOT_ADDRESSED", "confidence": "HIGH", "citations": []},
-                "Notice Required": {"answer": "NOT_ADDRESSED", "confidence": "HIGH", "citations": []},
+                "Consent Required": {"answer": "NOT_ADDRESSED", "confidence": "high", "citations": []},
+                "Notice Required": {"answer": "NOT_ADDRESSED", "confidence": "high", "citations": []},
             }
         )
 
@@ -1981,8 +2038,8 @@ class TestValidationEdgeCases:
 
         validation_response = json.dumps(
             {
-                "Consent Required": {"answer": "NOT_ADDRESSED", "confidence": "HIGH", "citations": []},
-                "Notice Required": {"answer": "NOT_ADDRESSED", "confidence": "HIGH", "citations": []},
+                "Consent Required": {"answer": "NOT_ADDRESSED", "confidence": "high", "citations": []},
+                "Notice Required": {"answer": "NOT_ADDRESSED", "confidence": "high", "citations": []},
             }
         )
 
@@ -2041,8 +2098,8 @@ class TestParallelChunkFailure:
                 raise RuntimeError("Simulated chunk failure")
             return json.dumps(
                 {
-                    "Consent Required": {"answer": "YES", "confidence": "HIGH", "citations": []},
-                    "Notice Required": {"answer": "NOT_ADDRESSED", "confidence": "HIGH", "citations": []},
+                    "Consent Required": {"answer": "YES", "confidence": "high", "citations": []},
+                    "Notice Required": {"answer": "NOT_ADDRESSED", "confidence": "high", "citations": []},
                 }
             )
 
@@ -2216,7 +2273,7 @@ class TestAnswerNormalization:
         result = parse_column_result(
             {
                 "answer": "Unable to determine from the provided document whether consent is required",
-                "confidence": "LOW",
+                "confidence": "low",
                 "citations": [],
             }
         )
@@ -2237,7 +2294,7 @@ class TestParseTimeCitationDedup:
         result = parse_column_result(
             {
                 "answer": "YES",
-                "confidence": "HIGH",
+                "confidence": "high",
                 "citations": [
                     {
                         "file_path": "GroupA/Customer/msa.pdf",
@@ -2262,7 +2319,7 @@ class TestParseTimeCitationDedup:
         result = parse_column_result(
             {
                 "answer": "YES",
-                "confidence": "HIGH",
+                "confidence": "high",
                 "citations": [
                     {
                         "file_path": "GroupA/Customer/msa.pdf",
@@ -2288,7 +2345,7 @@ class TestParseTimeCitationDedup:
         result = parse_column_result(
             {
                 "answer": "YES",
-                "confidence": "HIGH",
+                "confidence": "high",
                 "citations": [
                     {
                         "file_path": "GroupA/Customer/msa.pdf",
@@ -2346,7 +2403,7 @@ class TestAnswerNormalizationAdditional:
             {
                 "answer": "Unable to determine from the provided document."
                 " The one-page PO does not contain relevant provisions.",
-                "confidence": "LOW",
+                "confidence": "low",
                 "citations": [],
             }
         )
@@ -2360,7 +2417,7 @@ class TestAnswerNormalizationAdditional:
         result = parse_column_result(
             {
                 "answer": "Not determinable from these documents",
-                "confidence": "LOW",
+                "confidence": "low",
                 "citations": [],
             }
         )
@@ -2399,7 +2456,7 @@ class TestAnalysisSchema:
         assert col["additionalProperties"] is False
 
         # Confidence is enum-constrained.
-        assert col["properties"]["confidence"]["enum"] == ["HIGH", "MEDIUM", "LOW"]
+        assert col["properties"]["confidence"]["enum"] == ["high", "medium", "low"]
 
         # Citations is an array of objects.
         assert col["properties"]["citations"]["type"] == "array"
@@ -2458,8 +2515,8 @@ class TestStructuredOutputWiring:
             captured_schemas.append(output_schema)
             return json.dumps(
                 {
-                    "Consent Required": {"answer": "YES", "confidence": "HIGH", "citations": []},
-                    "Notice Required": {"answer": "YES", "confidence": "HIGH", "citations": []},
+                    "Consent Required": {"answer": "YES", "confidence": "high", "citations": []},
+                    "Notice Required": {"answer": "YES", "confidence": "high", "citations": []},
                 }
             )
 
@@ -2481,8 +2538,8 @@ class TestStructuredOutputWiring:
 
         merged = _make_customer_result(
             columns={
-                "Consent Required": _make_column_result(answer="YES", confidence="MEDIUM"),
-                "Notice Required": _make_column_result(answer="YES", confidence="HIGH"),
+                "Consent Required": _make_column_result(answer="YES", confidence="medium"),
+                "Notice Required": _make_column_result(answer="YES", confidence="high"),
             }
         )
         chunk_results = [
@@ -2504,7 +2561,7 @@ class TestStructuredOutputWiring:
 
         async def mock_call(system: str, user: str, output_schema: dict[str, Any] | None = None) -> str:
             captured_schemas.append(output_schema)
-            return json.dumps({"Consent Required": {"answer": "NO", "confidence": "HIGH", "citations": []}})
+            return json.dumps({"Consent Required": {"answer": "NO", "confidence": "high", "citations": []}})
 
         with patch.object(analyzer, "_call_claude", side_effect=mock_call):
             await analyzer._synthesis_pass(merged, chunk_results, ["Consent Required"], customer)
@@ -2524,8 +2581,8 @@ class TestStructuredOutputWiring:
 
         result = _make_customer_result(
             columns={
-                "Consent Required": _make_column_result(answer="YES", confidence="HIGH"),
-                "Notice Required": _make_column_result(answer="NOT_ADDRESSED", confidence="HIGH"),
+                "Consent Required": _make_column_result(answer="YES", confidence="high"),
+                "Notice Required": _make_column_result(answer="NOT_ADDRESSED", confidence="high"),
             }
         )
         file_texts = [_make_file_text(text="Contract with notice clauses.")]
@@ -2534,7 +2591,7 @@ class TestStructuredOutputWiring:
 
         async def mock_call(system: str, user: str, output_schema: dict[str, Any] | None = None) -> str:
             captured_schemas.append(output_schema)
-            return json.dumps({"Notice Required": {"answer": "YES", "confidence": "MEDIUM", "citations": []}})
+            return json.dumps({"Notice Required": {"answer": "YES", "confidence": "medium", "citations": []}})
 
         with patch.object(analyzer, "_call_claude", side_effect=mock_call):
             await analyzer._validation_pass(result, file_texts, customer)
