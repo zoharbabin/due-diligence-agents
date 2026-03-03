@@ -280,7 +280,7 @@ class PipelineEngine:
             PipelineStep.NUMERICAL_AUDIT: self._step_27_numerical_audit,
             PipelineStep.FULL_QA_AUDIT: self._step_28_full_qa_audit,
             PipelineStep.BUILD_REPORT_DIFF: self._step_29_build_report_diff,
-            PipelineStep.GENERATE_EXCEL: self._step_30_generate_excel,
+            PipelineStep.GENERATE_REPORTS: self._step_30_generate_reports,
             PipelineStep.POST_GENERATION_VALIDATION: self._step_31_post_generation_validation,
             PipelineStep.FINALIZE_METADATA: self._step_32_finalize_metadata,
             PipelineStep.UPDATE_RUN_HISTORY: self._step_33_update_run_history,
@@ -2356,10 +2356,14 @@ class PipelineEngine:
 
         return run_metadata
 
-    async def _step_30_generate_excel(self, state: PipelineState) -> PipelineState:
-        """Generate Excel workbook from report_schema.json.
+    async def _step_30_generate_reports(self, state: PipelineState) -> PipelineState:
+        """Generate Excel and HTML reports from merged findings.
 
-        Schema resolution order (Issue #35):
+        Produces:
+        - ``dd_report.xlsx`` — schema-driven Excel workbook
+        - ``dd_report.html`` — board-ready interactive HTML report
+
+        Excel schema resolution order (Issue #35):
         1. ``{run_dir}/report_schema.json`` -- written by earlier pipeline steps
         2. ``{project_root}/config/report_schema.json`` -- shipped with the project
         3. Built-in minimal schema with a single Summary sheet

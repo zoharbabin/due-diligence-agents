@@ -55,7 +55,7 @@ class PipelineStep(StrEnum):
     NUMERICAL_AUDIT = "27_numerical_audit"  # BLOCKING GATE
     FULL_QA_AUDIT = "28_full_qa_audit"  # BLOCKING GATE
     BUILD_REPORT_DIFF = "29_build_report_diff"  # CONDITIONAL
-    GENERATE_EXCEL = "30_generate_excel"
+    GENERATE_REPORTS = "30_generate_reports"
     POST_GENERATION_VALIDATION = "31_post_generation_validation"  # BLOCKING GATE
 
     # Phase 7: Finalization (Steps 32-35)
