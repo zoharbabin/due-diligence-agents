@@ -22,13 +22,14 @@ if TYPE_CHECKING:
 
 
 class AgentType(StrEnum):
-    """All agent roles in the pipeline: 4 specialists + judge."""
+    """All agent roles in the pipeline: 4 specialists + judge + optional acquirer intelligence."""
 
     LEGAL = "legal"
     FINANCE = "finance"
     COMMERCIAL = "commercial"
     PRODUCTTECH = "producttech"
     JUDGE = "judge"
+    ACQUIRER_INTELLIGENCE = "acquirer_intelligence"
 
 
 # ---------------------------------------------------------------------------
@@ -279,6 +280,79 @@ class PromptBuilder:
             sections.append(f"## FINDINGS DIRECTORY\n\nRead specialist outputs from: {findings_dir}")
 
         sections.append(f"## OUTPUT\n\nWrite quality_scores.json to: {self.run_dir}/judge/quality_scores.json\n")
+
+        return "\n\n---\n\n".join(sections)
+
+    # ------------------------------------------------------------------
+    # Acquirer Intelligence prompt (Issue #110)
+    # ------------------------------------------------------------------
+
+    def build_acquirer_intelligence_prompt(
+        self,
+        buyer_strategy: dict[str, Any],
+        findings_summary: dict[str, Any],
+        merged_findings_dir: str | None = None,
+    ) -> str:
+        """Build the Acquirer Intelligence agent prompt.
+
+        Parameters
+        ----------
+        buyer_strategy:
+            Buyer strategy dict from deal config.
+        findings_summary:
+            Summary statistics of merged findings (total, by severity, by domain).
+        merged_findings_dir:
+            Path to merged findings directory for the agent to read.
+        """
+        sections: list[str] = []
+
+        sections.append(
+            "# ACQUIRER INTELLIGENCE ANALYSIS\n\n"
+            "You are the Acquirer Intelligence analyst for forensic M&A due diligence.\n"
+            f"Run ID: {self.run_id}\n\n"
+            "Analyse the merged due diligence findings through the buyer's strategic "
+            "lens. Produce a structured assessment of how findings impact the "
+            "acquisition thesis."
+        )
+
+        # Buyer strategy context
+        strategy_lines = ["## BUYER STRATEGY"]
+        if buyer_strategy.get("thesis"):
+            strategy_lines.append(f"Acquisition Thesis: {buyer_strategy['thesis']}")
+        if buyer_strategy.get("key_synergies"):
+            strategy_lines.append(f"Expected Synergies: {', '.join(buyer_strategy['key_synergies'])}")
+        if buyer_strategy.get("integration_priorities"):
+            strategy_lines.append(f"Integration Priorities: {', '.join(buyer_strategy['integration_priorities'])}")
+        if buyer_strategy.get("risk_tolerance"):
+            strategy_lines.append(f"Risk Tolerance: {buyer_strategy['risk_tolerance']}")
+        if buyer_strategy.get("focus_areas"):
+            strategy_lines.append(f"Focus Areas: {', '.join(buyer_strategy['focus_areas'])}")
+        sections.append("\n".join(strategy_lines))
+
+        # Findings summary
+        summary_lines = ["## FINDINGS SUMMARY"]
+        if findings_summary:
+            for key, value in sorted(findings_summary.items()):
+                summary_lines.append(f"- {key}: {value}")
+        else:
+            summary_lines.append("No findings summary available.")
+        sections.append("\n".join(summary_lines))
+
+        # Merged findings location
+        if merged_findings_dir:
+            sections.append(f"## MERGED FINDINGS\n\nRead merged findings from: {merged_findings_dir}")
+
+        # Output format
+        sections.append(
+            "## OUTPUT FORMAT\n\n"
+            "Return a single JSON object with:\n"
+            '- "summary": Strategic assessment of findings impact on acquisition thesis\n'
+            '- "recommendations": List of actionable recommendations\n'
+            '- "risk_alignment": List of {focus_area, finding_count, assessment}\n'
+            '- "deal_impact": "low" | "moderate" | "high" | "critical"\n'
+            '- "key_concerns": List of key concern strings\n\n'
+            "Output ONLY the JSON object. No explanatory text."
+        )
 
         return "\n\n---\n\n".join(sections)
 

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from dd_agents.reporting.computed_metrics import ReportComputedData, ReportDataComputer
 from dd_agents.reporting.contract_dates import ContractDateReconciler
 from dd_agents.reporting.diff import ReportDiffBuilder
 from dd_agents.reporting.excel import ExcelReportGenerator
 from dd_agents.reporting.html import HTMLReportGenerator
+from dd_agents.reporting.html_base import SectionRenderer
 from dd_agents.reporting.merge import FindingMerger
 
 __all__ = [
@@ -13,5 +15,8 @@ __all__ = [
     "ExcelReportGenerator",
     "FindingMerger",
     "HTMLReportGenerator",
+    "ReportComputedData",
+    "ReportDataComputer",
     "ReportDiffBuilder",
+    "SectionRenderer",
 ]

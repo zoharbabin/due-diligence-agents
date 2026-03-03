@@ -2475,6 +2475,39 @@ class PipelineEngine:
 
         logger.info("Excel report generated: %s", output_path)
 
+        # Optional: Acquirer Intelligence analysis (Issue #110)
+        # Runs only when buyer_strategy is present. Non-blocking — failure
+        # does not prevent report generation.
+        acquirer_intel: dict[str, Any] | None = None
+        deal_config_dict = state.deal_config if isinstance(state.deal_config, dict) else None
+        if deal_config_dict and deal_config_dict.get("buyer_strategy"):
+            try:
+                from dd_agents.agents.acquirer_intelligence import AcquirerIntelligenceAgent
+
+                ai_agent = AcquirerIntelligenceAgent(
+                    project_dir=self.project_dir,
+                    run_dir=state.run_dir,
+                    run_id=state.run_id,
+                )
+                ai_state = {
+                    "buyer_strategy": deal_config_dict["buyer_strategy"],
+                    "merged_findings_summary": {
+                        "total_customers": len(merged_findings),
+                        "total_findings": sum(
+                            len(v.get("findings", [])) for v in merged_findings.values() if isinstance(v, dict)
+                        ),
+                    },
+                    "merged_findings_dir": str(state.run_dir / "findings" / "merged"),
+                }
+                ai_result = await ai_agent.run(ai_state)
+                if ai_result.get("status") == "success" and ai_result.get("output"):
+                    outputs = ai_result["output"]
+                    if outputs and isinstance(outputs, list) and isinstance(outputs[0], dict):
+                        acquirer_intel = outputs[0]
+                        logger.info("Acquirer intelligence analysis completed")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Acquirer intelligence analysis failed (non-blocking): %s", exc)
+
         # Generate interactive HTML report alongside Excel (Issue #9)
         try:
             from dd_agents.reporting.html import HTMLReportGenerator
@@ -2488,6 +2521,7 @@ class PipelineEngine:
                 title="Due Diligence Report",
                 run_metadata=run_metadata,
                 deal_config=state.deal_config,
+                acquirer_intelligence=acquirer_intel,
             )
             logger.info("HTML report generated: %s", html_path)
         except Exception as exc:  # noqa: BLE001

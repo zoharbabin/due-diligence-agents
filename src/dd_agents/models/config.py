@@ -214,6 +214,33 @@ class ForensicDDConfig(BaseModel):
     domains: DomainConfig = Field(default_factory=DomainConfig)
 
 
+class BuyerStrategy(BaseModel):
+    """Optional buyer strategy context for acquirer-specific analysis.
+
+    When present, enables the Acquirer Intelligence Agent (#110)
+    and the Buyer Strategy report section (#111). When absent,
+    the report is a generic DD report with no buyer-specific content.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    thesis: str = Field(default="", description="Buyer's acquisition thesis / strategic rationale")
+    key_synergies: list[str] = Field(default_factory=list, description="Expected synergies")
+    integration_priorities: list[str] = Field(default_factory=list, description="Post-close integration priorities")
+    risk_tolerance: str = Field(default="moderate", description="Risk tolerance: conservative, moderate, aggressive")
+    focus_areas: list[str] = Field(default_factory=list, description="Buyer-specific focus areas for analysis")
+    budget_range: str = Field(default="", description="Deal budget range context")
+    notes: str = ""
+
+    @field_validator("risk_tolerance")
+    @classmethod
+    def validate_risk_tolerance(cls, v: str) -> str:
+        allowed = {"conservative", "moderate", "aggressive"}
+        if v and v not in allowed:
+            raise ValueError(f"risk_tolerance must be one of {allowed}, got '{v}'")
+        return v
+
+
 class DealConfig(BaseModel):
     """
     Root configuration model. Validated from deal-config.json.
@@ -234,6 +261,10 @@ class DealConfig(BaseModel):
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
     reporting: ReportingConfig = Field(default_factory=ReportingConfig)
     forensic_dd: ForensicDDConfig = Field(default_factory=ForensicDDConfig)
+    buyer_strategy: BuyerStrategy | None = Field(
+        default=None,
+        description="Optional buyer strategy context. When absent, all buyer-specific features are disabled.",
+    )
 
     @field_validator("config_version")
     @classmethod

@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from dd_agents.agents.acquirer_intelligence import (
+    ACQUIRER_INTELLIGENCE_TOOLS,
+    AcquirerIntelligenceAgent,
+)
 from dd_agents.agents.base import BaseAgentRunner
 from dd_agents.agents.judge import (
     DEFAULT_SAMPLING_RATES,
@@ -36,6 +40,9 @@ __all__ = [
     "AgentType",
     "PromptBuilder",
     "SPECIALIST_FOCUS",
+    # Acquirer Intelligence
+    "AcquirerIntelligenceAgent",
+    "ACQUIRER_INTELLIGENCE_TOOLS",
     # Specialists
     "LegalAgent",
     "FinanceAgent",

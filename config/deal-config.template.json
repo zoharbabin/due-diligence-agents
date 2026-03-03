@@ -113,5 +113,6 @@
       "disabled": [],
       "custom": []
     }
-  }
+  },
+  "buyer_strategy": null
 }
