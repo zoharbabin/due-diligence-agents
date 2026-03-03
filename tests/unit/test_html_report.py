@@ -424,12 +424,12 @@ class TestHTMLReportGenerator:
         assert "id='sec-domain-commercial'" in content
         assert "id='sec-domain-producttech'" in content
 
-        # Category groups are rendered
+        # Category groups are rendered (canonical category names after normalization)
         assert "category-group" in content
-        assert "change_of_control_clauses" in content
-        assert "revenue_recognition" in content
-        assert "customer_concentration" in content
-        assert "technical_debt" in content
+        assert "Change of Control" in content
+        assert "Revenue Recognition" in content
+        assert "Customer Concentration" in content
+        assert "Technical Debt" in content
 
     def test_cross_reference_mismatch_highlighting(self, tmp_path: Path) -> None:
         """Cross-reference mismatches are highlighted with xref-mismatch class."""
@@ -471,8 +471,8 @@ class TestHTMLReportGenerator:
         assert "By Priority" in content
         assert "By Type" in content
 
-        # Sortable table with customer column (scope='col' for WCAG)
-        assert "Customer</th>" in content
+        # Sortable table with entity column (scope='col' for WCAG)
+        assert "Entity</th>" in content
 
     def test_governance_metrics_bars(self, tmp_path: Path) -> None:
         """Governance resolution section shows per-customer progress bars."""

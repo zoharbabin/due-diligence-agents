@@ -23,11 +23,13 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from dd_agents.reporting.computed_metrics import ReportDataComputer
-from dd_agents.reporting.html_base import render_css, render_js, render_nav_bar
+from dd_agents.reporting.html_base import SectionRenderer, render_css, render_js, render_nav_bar
 from dd_agents.reporting.html_cross import CrossRefRenderer
 from dd_agents.reporting.html_customers import CustomerRenderer
 from dd_agents.reporting.html_dashboard import DashboardRenderer
+from dd_agents.reporting.html_diff import DiffRenderer
 from dd_agents.reporting.html_domains import DomainRenderer
+from dd_agents.reporting.html_executive import ExecutiveSummaryRenderer
 from dd_agents.reporting.html_gaps import GapRenderer
 from dd_agents.reporting.html_quality import QualityRenderer
 from dd_agents.reporting.html_risk import RiskRenderer
@@ -56,6 +58,7 @@ class HTMLReportGenerator:
         run_metadata: dict[str, Any] | None = None,
         deal_config: dict[str, Any] | None = None,
         acquirer_intelligence: dict[str, Any] | None = None,
+        run_dir: Path | None = None,
     ) -> None:
         """Write the HTML report to *output_path*.
 
@@ -75,6 +78,8 @@ class HTMLReportGenerator:
             Raw deal configuration dict (buyer, target, deal type, etc.).
         acquirer_intelligence:
             Optional output from the AcquirerIntelligenceAgent (Issue #110).
+        run_dir:
+            Pipeline run directory (for loading audit.json, report_diff.json, etc.).
         """
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -114,16 +119,20 @@ class HTMLReportGenerator:
             render_nav_bar(),
         ]
 
-        # Section renderers
-        renderers = [
+        # Section renderers (order matches report layout)
+        renderers: list[SectionRenderer] = [
             DashboardRenderer(computed, merged_data, renderer_config),
+            ExecutiveSummaryRenderer(computed, merged_data, renderer_config),
             RiskRenderer(computed, merged_data, renderer_config),
             DomainRenderer(computed, merged_data, renderer_config),
             GapRenderer(computed, merged_data, renderer_config),
             CrossRefRenderer(computed, merged_data, renderer_config),
-            QualityRenderer(computed, merged_data, renderer_config),
+            QualityRenderer(computed, merged_data, renderer_config, run_dir=run_dir),
             CustomerRenderer(computed, merged_data, renderer_config),
         ]
+
+        # Conditional diff section (only for incremental runs)
+        renderers.append(DiffRenderer(computed, merged_data, renderer_config, run_dir=run_dir))
 
         # Conditional buyer strategy section
         if computed.buyer_strategy:

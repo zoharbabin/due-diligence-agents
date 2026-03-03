@@ -22,6 +22,77 @@ _SEVERITY_WEIGHTS: dict[str, float] = {"P0": 10.0, "P1": 5.0, "P2": 2.0, "P3": 1
 
 _DOMAIN_AGENTS: list[str] = ["legal", "finance", "commercial", "producttech"]
 
+# ---------------------------------------------------------------------------
+# Canonical category mapping (per domain)
+# ---------------------------------------------------------------------------
+# Maps freeform agent-produced category strings to ~12 canonical categories
+# per domain using keyword matching.  If no keyword matches, falls through
+# as-is (no data loss).
+
+CANONICAL_CATEGORIES: dict[str, dict[str, list[str]]] = {
+    "legal": {
+        "Change of Control": ["change_of_control", "coc", "assignment_restriction"],
+        "Termination & Exit": ["terminat", "exit", "expir", "wind_down"],
+        "IP & Ownership": ["ip_", "intellectual_property", "ownership", "patent", "copyright", "trade_secret"],
+        "Liability & Indemnification": ["liabil", "indemnif", "limitation_of", "cap_on"],
+        "Data Privacy & Security": ["data_priv", "gdpr", "ccpa", "security", "breach_notif", "pii"],
+        "Regulatory & Compliance": ["regulat", "compliance", "anti_", "sanction", "export_control"],
+        "Governance & Structure": ["governance", "corporate_struct", "board", "voting", "shareholder"],
+        "Contract Terms": ["payment_term", "pricing", "fee_", "rate_", "billing", "invoice"],
+        "Non-Compete & Restrictive": ["non_compete", "non_solicit", "restrictive", "exclusiv"],
+        "Warranty & Representation": ["warrant", "representat", "covenant"],
+        "Insurance & Risk Transfer": ["insurance", "risk_transfer", "force_majeure"],
+        "Employment & Benefits": ["employ", "benefit", "compensation", "equity_", "stock_option"],
+    },
+    "finance": {
+        "Revenue Recognition": ["revenue", "arr_", "mrr_", "booking", "deferred_revenue"],
+        "Profitability & Margins": ["profit", "margin", "ebitda", "cost_struct", "gross_margin"],
+        "Cash Flow & Liquidity": ["cash_flow", "liquidity", "working_capital", "burn_rate"],
+        "Debt & Obligations": ["debt", "loan", "credit_facil", "obligation", "covenant"],
+        "Tax": ["tax_", "transfer_pricing", "nexus", "vat_"],
+        "Audit & Controls": ["audit", "internal_control", "sox_", "material_weakness"],
+        "Financial Reporting": ["financial_report", "restatement", "accounting_polic"],
+        "Customer Economics": ["customer_econom", "ltv", "cac", "churn", "retention"],
+        "Concentration Risk": ["concentrat", "customer_concentrat", "revenue_concentrat"],
+        "Projections & Forecasts": ["project", "forecast", "budget", "plan_"],
+    },
+    "commercial": {
+        "Customer Concentration": ["concentrat", "top_customer", "key_account", "revenue_concentrat"],
+        "Market Position": ["market_", "competitive", "positioning", "market_share"],
+        "Sales Pipeline": ["pipeline", "sales_", "bookings", "quota"],
+        "Pricing & Packaging": ["pricing", "discount", "packaging", "rate_card"],
+        "Customer Satisfaction": ["satisfact", "nps", "churn", "retention", "renewal"],
+        "Channel & Partnerships": ["channel", "partner", "reseller", "distributor"],
+        "Go-to-Market": ["go_to_market", "gtm", "expansion", "upsell", "cross_sell"],
+        "Contract Portfolio": ["contract_portf", "backlog", "committed", "renewal_risk"],
+    },
+    "producttech": {
+        "Architecture & Scalability": ["architect", "scal", "infrastructure", "cloud"],
+        "Technical Debt": ["technical_debt", "legacy", "deprecat", "end_of_life"],
+        "Security": ["security", "vulnerab", "penetrat", "access_control", "encrypt"],
+        "Data & Analytics": ["data_", "analytics", "ml_", "ai_", "database"],
+        "Development Process": ["dev_process", "ci_cd", "agile", "sprint", "sdlc"],
+        "Performance": ["performance", "latency", "uptime", "sla_", "reliability"],
+        "IP & Innovation": ["ip_", "patent", "open_source", "licens"],
+        "Team & Capabilities": ["team_", "hiring", "talent", "skill_gap", "key_person"],
+    },
+}
+
+
+def _normalize_category(category: str, domain: str) -> str:
+    """Map a freeform category string to its canonical name for the given domain.
+
+    Uses keyword matching against ``CANONICAL_CATEGORIES``.
+    Falls through unchanged if no keyword matches.
+    """
+    cat_lower = category.lower().replace(" ", "_")
+    domain_map = CANONICAL_CATEGORIES.get(domain, {})
+    for canonical, keywords in domain_map.items():
+        for kw in keywords:
+            if kw in cat_lower:
+                return canonical
+    return category
+
 
 class ReportComputedData(BaseModel):
     """All pre-computed metrics for the HTML report.
@@ -78,6 +149,9 @@ class ReportComputedData(BaseModel):
 
     # Wolf pack (P0+P1 findings, sorted)
     wolf_pack: list[dict[str, Any]] = Field(default_factory=list)
+
+    # Wolf pack P0 only (capped at 15, for Deal Breakers section)
+    wolf_pack_p0: list[dict[str, Any]] = Field(default_factory=list)
 
     # All findings enriched with _customer_safe_name and _customer
     all_findings: list[dict[str, Any]] = Field(default_factory=list)
@@ -231,7 +305,8 @@ class ReportDataComputer:
                 if domain in domain_severity and sev in domain_severity[domain]:
                     domain_severity[domain][sev] += 1
 
-                cat = str(f.get("category", "uncategorized")).lower()
+                raw_cat = str(f.get("category", "uncategorized")).lower()
+                cat = _normalize_category(raw_cat, domain)
                 if domain in category_groups:
                     category_groups[domain][cat].append(enriched)
                 findings_by_category[cat].append(enriched)
@@ -253,6 +328,9 @@ class ReportDataComputer:
 
         # Sort wolf pack: P0 first, then alphabetical
         wolf_pack.sort(key=lambda f: (0 if f.get("severity") == "P0" else 1, str(f.get("title", ""))))
+
+        # Wolf pack P0 only, capped at 15
+        wolf_pack_p0 = [f for f in wolf_pack if f.get("severity") == "P0"][:15]
 
         # Compute derived metrics
         deal_risk_label = self._compute_risk_label(severity_counts)
@@ -304,6 +382,7 @@ class ReportDataComputer:
             governance_scores=governance_scores,
             unresolved_governance_count=unresolved,
             wolf_pack=wolf_pack,
+            wolf_pack_p0=wolf_pack_p0,
             all_findings=all_findings,
             category_domain_matrix={k: dict(v) for k, v in category_domain_matrix.items()},
             severity_domain_matrix={k: dict(v) for k, v in severity_domain_matrix.items()},

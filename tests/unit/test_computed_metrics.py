@@ -218,8 +218,8 @@ class TestReportDataComputer:
     def test_category_domain_matrix(self) -> None:
         computer = ReportDataComputer()
         result = computer.compute(_make_merged_data())
-        assert "change_of_control" in result.category_domain_matrix
-        assert result.category_domain_matrix["change_of_control"]["legal"] == 1
+        assert "Change of Control" in result.category_domain_matrix
+        assert result.category_domain_matrix["Change of Control"]["legal"] == 1
 
     def test_severity_domain_matrix(self) -> None:
         computer = ReportDataComputer()

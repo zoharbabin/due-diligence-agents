@@ -20,13 +20,37 @@ class CrossRefRenderer(SectionRenderer):
         if not has_xrefs:
             return ""
 
+        # Summary stats
+        total = self.data.total_cross_refs
+        matches = self.data.cross_ref_matches
+        mismatches = self.data.cross_ref_mismatches
+        rate = self.data.match_rate
+
         parts: list[str] = [
             "<section class='report-section' id='sec-xref'>",
             "<h2>Data Reconciliation</h2>",
-            "<table class='sortable'><thead><tr>"
-            "<th scope='col'>Customer</th><th scope='col'>Field</th><th scope='col'>Source A</th>"
-            "<th scope='col'>Source B</th><th scope='col'>Match</th></tr></thead><tbody>",
         ]
+
+        # Summary cards
+        parts.append(
+            "<div class='metrics-strip'>"
+            f"<div class='metric-card'><div class='value'>{total}</div>"
+            "<div class='label'>Data Points</div></div>"
+            f"<div class='metric-card'><div class='value' style='color:#28a745'>{matches}</div>"
+            "<div class='label'>Matches</div></div>"
+            f"<div class='metric-card'><div class='value' style='color:#dc3545'>{mismatches}</div>"
+            "<div class='label'>Mismatches</div></div>"
+            f"<div class='metric-card'><div class='value'>{rate:.0%}</div>"
+            "<div class='label'>Match Rate</div></div>"
+            "</div>"
+        )
+
+        parts.append(
+            "<table class='sortable'><thead><tr>"
+            "<th scope='col'>Entity</th><th scope='col'>Field</th>"
+            "<th scope='col'>Contract Value</th><th scope='col'>Reference Value</th>"
+            "<th scope='col'>Match</th></tr></thead><tbody>"
+        )
 
         for csn, data in sorted(self.merged_data.items()):
             if not isinstance(data, dict):
@@ -38,12 +62,13 @@ class CrossRefRenderer(SectionRenderer):
             for xr in xrefs:
                 if not isinstance(xr, dict):
                     continue
-                field = html.escape(str(xr.get("field", "")))
-                src_a = html.escape(str(xr.get("source_a", xr.get("value_a", ""))))
-                src_b = html.escape(str(xr.get("source_b", xr.get("value_b", ""))))
-                match = xr.get("match", xr.get("matches", True))
-                match_str = "Yes" if match else "No"
-                row_class = "xref-mismatch" if not match else "xref-match"
+                field = html.escape(str(xr.get("data_point", xr.get("field", ""))))
+                src_a = html.escape(str(xr.get("contract_value", xr.get("source_a", xr.get("value_a", "")))))
+                src_b = html.escape(str(xr.get("reference_value", xr.get("source_b", xr.get("value_b", "")))))
+                raw_status = str(xr.get("match_status", xr.get("match", ""))).lower()
+                is_match = raw_status in ("match", "true", "yes", "")
+                match_str = "Yes" if is_match else "No"
+                row_class = "xref-mismatch" if not is_match else "xref-match"
                 parts.append(
                     f"<tr class='{row_class}'><td>{customer}</td><td>{field}</td>"
                     f"<td>{src_a}</td><td>{src_b}</td><td>{match_str}</td></tr>"

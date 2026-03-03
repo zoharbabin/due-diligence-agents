@@ -40,8 +40,10 @@ class GapRenderer(SectionRenderer):
         # Full sortable table
         parts.append(
             "<table class='sortable'><thead><tr>"
-            "<th scope='col'>Customer</th><th scope='col'>Priority</th><th scope='col'>Type</th>"
-            "<th scope='col'>Missing Item</th><th scope='col'>Risk</th></tr></thead><tbody>"
+            "<th scope='col'>Entity</th><th scope='col'>Priority</th><th scope='col'>Type</th>"
+            "<th scope='col'>Missing Item</th><th scope='col'>Risk</th>"
+            "<th scope='col'>Why Needed</th><th scope='col'>Request to Company</th>"
+            "<th scope='col'>Agent</th></tr></thead><tbody>"
         )
         for csn, data in sorted(self.merged_data.items()):
             if not isinstance(data, dict):
@@ -54,8 +56,12 @@ class GapRenderer(SectionRenderer):
                 gtype = html.escape(str(g.get("gap_type", "")))
                 item = html.escape(str(g.get("missing_item", "")))
                 risk = html.escape(str(g.get("risk_if_missing", "")))
+                why = html.escape(str(g.get("why_needed", "")))
+                request = html.escape(str(g.get("request_to_company", "")))
+                agent = html.escape(str(g.get("agent", "")))
                 parts.append(
-                    f"<tr><td>{customer}</td><td>{prio}</td><td>{gtype}</td><td>{item}</td><td>{risk}</td></tr>"
+                    f"<tr><td>{customer}</td><td>{prio}</td><td>{gtype}</td>"
+                    f"<td>{item}</td><td>{risk}</td><td>{why}</td><td>{request}</td><td>{agent}</td></tr>"
                 )
         parts.append("</tbody></table>")
         parts.append("</section>")

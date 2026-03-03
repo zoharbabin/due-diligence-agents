@@ -149,7 +149,7 @@ class SectionRenderer(ABC):
             f"tabindex='0' role='button' aria-expanded='false'>"
             f"<div class='fc-title'>{self.severity_badge(severity)} {title} "
             f"<span class='arrow'>&#9654;</span></div>"
-            f"<div class='fc-meta'>Customer: {customer} | Agent: {agent}</div>"
+            f"<div class='fc-meta'>Entity: {customer} | Agent: {agent}</div>"
             f"</div>"
         )
 
@@ -703,7 +703,7 @@ def render_nav_bar() -> str:
         "<a href='#sec-domain-producttech'>Product&amp;Tech</a>"
         "<a href='#sec-gaps'>Gaps</a>"
         "<a href='#sec-governance'>Governance</a>"
-        "<a href='#sec-customers'>Customers</a>"
+        "<a href='#sec-customers'>Entities</a>"
         "</nav>"
         "<div class='filter-bar' role='search' aria-label='Filter findings'>"
         "<input type='text' id='global-search' placeholder='Search all content...' aria-label='Search findings'>"

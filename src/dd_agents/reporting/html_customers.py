@@ -21,7 +21,7 @@ class CustomerRenderer(SectionRenderer):
     def render(self) -> str:
         parts: list[str] = [
             "<section id='sec-customers' class='report-section'>",
-            "<h2>Customer Detail</h2>",
+            "<h2>Entity Detail</h2>",
         ]
         for customer, data in sorted(self.merged_data.items()):
             parts.append(self._render_customer_section(customer, data))
@@ -79,10 +79,11 @@ class CustomerRenderer(SectionRenderer):
             for xr in xrefs:
                 if not isinstance(xr, dict):
                     continue
-                field = html.escape(str(xr.get("field", "")))
-                src_a = html.escape(str(xr.get("source_a", xr.get("value_a", ""))))
-                src_b = html.escape(str(xr.get("source_b", xr.get("value_b", ""))))
-                match = xr.get("match", xr.get("matches", True))
+                field = html.escape(str(xr.get("data_point", xr.get("field", ""))))
+                src_a = html.escape(str(xr.get("contract_value", xr.get("source_a", xr.get("value_a", "")))))
+                src_b = html.escape(str(xr.get("reference_value", xr.get("source_b", xr.get("value_b", "")))))
+                raw_status = str(xr.get("match_status", xr.get("match", ""))).lower()
+                match = raw_status in ("match", "true", "yes", "")
                 match_str = "Yes" if match else "No"
                 row_class = "xref-mismatch" if not match else "xref-match"
                 parts.append(

@@ -74,7 +74,10 @@ class StrategyRenderer(SectionRenderer):
         if focus and self.data.findings_by_category:
             relevant_findings = 0
             for cat, findings in self.data.findings_by_category.items():
-                if any(fa.lower() in cat.lower() for fa in focus):
+                cat_norm = cat.lower().replace(" ", "_").replace("&", "and")
+                if any(
+                    fa.lower().replace(" ", "_") in cat_norm or cat_norm in fa.lower().replace(" ", "_") for fa in focus
+                ):
                     relevant_findings += len(findings)
             if relevant_findings > 0:
                 parts.append(

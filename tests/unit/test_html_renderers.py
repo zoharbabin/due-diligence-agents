@@ -332,8 +332,8 @@ class TestDomainRenderer:
         r = DomainRenderer(computed, _make_merged_data())
         html_out = r.render()
         assert "category-group" in html_out
-        assert "change_of_control" in html_out
-        assert "revenue_recognition" in html_out
+        assert "Change of Control" in html_out
+        assert "Revenue Recognition" in html_out
 
     def test_severity_bar(self) -> None:
         computed = _compute()
@@ -375,7 +375,7 @@ class TestGapRenderer:
         computed = _compute()
         r = GapRenderer(computed, _make_merged_data())
         html_out = r.render()
-        assert "Customer</th>" in html_out
+        assert "Entity</th>" in html_out
         assert "Priority</th>" in html_out
         assert "Missing Item</th>" in html_out
 
@@ -426,7 +426,7 @@ class TestCustomerRenderer:
         r = CustomerRenderer(computed, _make_merged_data())
         html_out = r.render()
         assert "id='sec-customers'" in html_out
-        assert "Customer Detail" in html_out
+        assert "Entity Detail" in html_out
         assert "Customer A" in html_out
         assert "Customer B" in html_out
 
