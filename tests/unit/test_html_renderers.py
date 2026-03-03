@@ -667,3 +667,97 @@ class TestMalformedData:
         r = GapRenderer(computed, merged)
         html_out = r.render()
         assert "Gap Analysis" in html_out
+
+
+# ===========================================================================
+# Deduplicated domain_risk method
+# ===========================================================================
+
+
+class TestDomainRiskBaseMethod:
+    """The domain_risk() method was deduplicated to SectionRenderer."""
+
+    def test_p0_is_critical(self) -> None:
+        assert SectionRenderer.domain_risk({"P0": 1, "P1": 2}) == "Critical"
+
+    def test_p1_is_high(self) -> None:
+        assert SectionRenderer.domain_risk({"P1": 3}) == "High"
+
+    def test_p2_is_medium(self) -> None:
+        assert SectionRenderer.domain_risk({"P2": 5}) == "Medium"
+
+    def test_p3_is_low(self) -> None:
+        assert SectionRenderer.domain_risk({"P3": 1}) == "Low"
+
+    def test_empty_is_clean(self) -> None:
+        assert SectionRenderer.domain_risk({}) == "Clean"
+
+
+# ===========================================================================
+# Severity bar accessibility
+# ===========================================================================
+
+
+class TestSeverityBarAccessibility:
+    def test_severity_bar_has_aria_label(self) -> None:
+        computed = _compute()
+        r = DomainRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        assert "role='img'" in html_out
+        assert "aria-label='Severity distribution:" in html_out
+
+    def test_severity_bar_describes_distribution(self) -> None:
+        computed = _compute()
+        r = DomainRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        assert "P0:" in html_out  # Legal has P0
+
+
+# ===========================================================================
+# Expand all / collapse all aria-expanded
+# ===========================================================================
+
+
+class TestExpandCollapseAriaExpanded:
+    def test_js_expand_all_updates_aria(self) -> None:
+        js = render_js()
+        assert "setAttribute('aria-expanded', 'true')" in js
+
+    def test_js_collapse_all_updates_aria(self) -> None:
+        js = render_js()
+        assert "setAttribute('aria-expanded', 'false')" in js
+
+
+# ===========================================================================
+# P2 badge contrast (WCAG AA)
+# ===========================================================================
+
+
+class TestP2BadgeContrast:
+    def test_p2_badge_has_dark_text_class(self) -> None:
+        badge = SectionRenderer.severity_badge("P2")
+        assert "sev-p2" in badge
+
+    def test_p0_badge_no_dark_text_class(self) -> None:
+        badge = SectionRenderer.severity_badge("P0")
+        assert "sev-p2" not in badge
+
+    def test_css_has_sev_p2_rule(self) -> None:
+        css = render_css()
+        assert ".severity-badge.sev-p2" in css
+        assert "color: #333" in css
+
+
+# ===========================================================================
+# Content wrapper closing tag
+# ===========================================================================
+
+
+class TestContentWrapperClosing:
+    def test_nav_bar_opens_content_div(self) -> None:
+        nav = render_nav_bar()
+        assert "<div class='content'" in nav
+
+    def test_css_content_wrapper_defined(self) -> None:
+        css = render_css()
+        assert ".content {" in css or ".content{" in css

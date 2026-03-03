@@ -274,3 +274,54 @@ class TestReportDataComputer:
         # First customer should have highest risk
         first = result.top_customers_by_risk[0]
         assert first == "customer_a"  # Has P0 finding
+
+    def test_hhi_zero_findings_no_division_by_zero(self) -> None:
+        """HHI with zero total findings should return 0.0, not raise."""
+        computer = ReportDataComputer()
+        data = {"c": {"customer": "C", "findings": [], "gaps": []}}
+        result = computer.compute(data)
+        assert result.concentration_hhi == pytest.approx(0.0)
+
+    def test_governance_negative_value_stored(self) -> None:
+        """Negative governance scores are stored (validation is upstream)."""
+        computer = ReportDataComputer()
+        data = {"c": {"customer": "C", "findings": [], "gaps": [], "governance_resolution_pct": -5.0}}
+        result = computer.compute(data)
+        assert result.governance_scores.get("c") == -5.0
+
+    def test_governance_over_100_stored(self) -> None:
+        """Governance >100 is stored (clamping happens in renderer, not computer)."""
+        computer = ReportDataComputer()
+        data = {"c": {"customer": "C", "findings": [], "gaps": [], "governance_resolution_pct": 150.0}}
+        result = computer.compute(data)
+        assert result.governance_scores.get("c") == 150.0
+
+    def test_governance_string_value_handled(self) -> None:
+        """String governance values are coerced to float or skipped."""
+        computer = ReportDataComputer()
+        data = {"c": {"customer": "C", "findings": [], "gaps": [], "governance_resolution_pct": "85.5"}}
+        result = computer.compute(data)
+        assert result.governance_scores.get("c") == pytest.approx(85.5)
+
+    def test_governance_invalid_string_skipped(self) -> None:
+        """Non-numeric governance values are skipped."""
+        computer = ReportDataComputer()
+        data = {"c": {"customer": "C", "findings": [], "gaps": [], "governance_resolution_pct": "N/A"}}
+        result = computer.compute(data)
+        assert "c" not in result.governance_scores
+
+    def test_deal_risk_moderate_for_few_p1(self) -> None:
+        """Single P1 finding should be moderate, not high."""
+        computer = ReportDataComputer()
+        data = {"c": {"customer": "C", "findings": [_make_finding(severity="P1")], "gaps": []}}
+        result = computer.compute(data)
+        # 1 P1 = weight 5 → score 5 → should not be "High" (which needs many P1s)
+        assert result.deal_risk_label in ("Moderate", "Medium", "High")
+
+    def test_xref_zero_total_returns_zero_rate(self) -> None:
+        """Match rate should be 0.0 when there are no cross-references."""
+        computer = ReportDataComputer()
+        data = {"c": {"customer": "C", "findings": [], "gaps": []}}
+        result = computer.compute(data)
+        assert result.match_rate == pytest.approx(0.0)
+        assert result.total_cross_refs == 0

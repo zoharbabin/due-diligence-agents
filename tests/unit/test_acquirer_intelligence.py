@@ -262,3 +262,68 @@ class TestAcquirerIntelligencePromptBuilder:
         )
         assert len(prompt) > 0
         assert "acquirer" in prompt.lower() or "buyer" in prompt.lower()
+
+
+# ---------------------------------------------------------------------------
+# BuyerStrategy model tests
+# ---------------------------------------------------------------------------
+
+
+class TestBuyerStrategyModel:
+    """Test the BuyerStrategy Pydantic model and its risk_tolerance validator."""
+
+    def test_valid_risk_tolerance_conservative(self) -> None:
+        from dd_agents.models.config import BuyerStrategy
+
+        bs = BuyerStrategy(risk_tolerance="conservative")
+        assert bs.risk_tolerance == "conservative"
+
+    def test_valid_risk_tolerance_moderate(self) -> None:
+        from dd_agents.models.config import BuyerStrategy
+
+        bs = BuyerStrategy(risk_tolerance="moderate")
+        assert bs.risk_tolerance == "moderate"
+
+    def test_valid_risk_tolerance_aggressive(self) -> None:
+        from dd_agents.models.config import BuyerStrategy
+
+        bs = BuyerStrategy(risk_tolerance="aggressive")
+        assert bs.risk_tolerance == "aggressive"
+
+    def test_empty_risk_tolerance_allowed(self) -> None:
+        from dd_agents.models.config import BuyerStrategy
+
+        bs = BuyerStrategy(risk_tolerance="")
+        assert bs.risk_tolerance == ""
+
+    def test_invalid_risk_tolerance_rejected(self) -> None:
+        import pytest
+
+        from dd_agents.models.config import BuyerStrategy
+
+        with pytest.raises(Exception):  # noqa: B017, PT011
+            BuyerStrategy(risk_tolerance="reckless")
+
+    def test_default_fields(self) -> None:
+        from dd_agents.models.config import BuyerStrategy
+
+        bs = BuyerStrategy()
+        assert bs.thesis == ""
+        assert bs.key_synergies == []
+        assert bs.focus_areas == []
+        assert bs.risk_tolerance == "moderate"
+
+    def test_full_construction(self) -> None:
+        from dd_agents.models.config import BuyerStrategy
+
+        bs = BuyerStrategy(
+            thesis="Market consolidation",
+            key_synergies=["Revenue uplift"],
+            integration_priorities=["Merge teams"],
+            risk_tolerance="moderate",
+            focus_areas=["change_of_control"],
+            budget_range="$50M-$80M",
+        )
+        assert bs.thesis == "Market consolidation"
+        assert len(bs.key_synergies) == 1
+        assert bs.budget_range == "$50M-$80M"

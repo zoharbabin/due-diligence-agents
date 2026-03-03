@@ -136,6 +136,7 @@ class HTMLReportGenerator:
 
         parts.extend(
             [
+                "</div>",  # close <div class='content'> opened in render_nav_bar()
                 f"<script>{render_js()}</script>",
                 "</body>",
                 "</html>",

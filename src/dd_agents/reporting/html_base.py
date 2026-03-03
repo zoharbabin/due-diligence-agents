@@ -90,7 +90,8 @@ class SectionRenderer(ABC):
     def severity_badge(severity: str) -> str:
         """Render a colored severity badge."""
         color = SEVERITY_COLORS.get(severity, "#6c757d")
-        return f"<span class='severity-badge' style='background:{color}'>{_html.escape(severity)}</span>"
+        extra_cls = " sev-p2" if severity == "P2" else ""
+        return f"<span class='severity-badge{extra_cls}' style='background:{color}'>{_html.escape(severity)}</span>"
 
     @staticmethod
     def risk_color(risk: str) -> str:
@@ -102,6 +103,19 @@ class SectionRenderer(ABC):
             "Low": "#6c757d",
             "Clean": "#28a745",
         }.get(risk, "#6c757d")
+
+    @staticmethod
+    def domain_risk(sev: dict[str, int]) -> str:
+        """Compute risk label from severity distribution."""
+        if sev.get("P0", 0) > 0:
+            return "Critical"
+        if sev.get("P1", 0) > 0:
+            return "High"
+        if sev.get("P2", 0) > 0:
+            return "Medium"
+        if sev.get("P3", 0) > 0:
+            return "Low"
+        return "Clean"
 
     @staticmethod
     def agent_to_domain(agent: str) -> str:
@@ -231,9 +245,12 @@ class SectionRenderer(ABC):
         return "\n".join(parts)
 
     def render_severity_bar(self, severity_counts: dict[str, int]) -> str:
-        """Render a severity distribution bar."""
+        """Render a severity distribution bar with screen-reader text."""
         total = max(sum(severity_counts.values()), 1)
-        parts: list[str] = ["<div class='sev-bar'>"]
+        # Screen-reader-accessible description
+        sr_parts = [f"{s}: {severity_counts.get(s, 0)}" for s in ("P0", "P1", "P2", "P3") if severity_counts.get(s, 0)]
+        sr_text = self.escape(", ".join(sr_parts) or "No findings")
+        parts: list[str] = [f"<div class='sev-bar' role='img' aria-label='Severity distribution: {sr_text}'>"]
         for s in ("P0", "P1", "P2", "P3"):
             pct = (severity_counts.get(s, 0) / total) * 100
             if pct > 0:
@@ -246,7 +263,7 @@ class SectionRenderer(ABC):
         sev_counts: dict[str, int] = defaultdict(int)
         for f in findings:
             sev_counts[f.get("severity", "P3")] += 1
-        sev_str = ", ".join(f"{k}:{v}" for k, v in sorted(sev_counts.items()) if v > 0)
+        sev_str = self.escape(", ".join(f"{k}:{v}" for k, v in sorted(sev_counts.items()) if v > 0))
 
         parts: list[str] = [
             "<div class='category-group'>",
@@ -400,6 +417,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 /* Severity badge */
 .severity-badge { display: inline-block; padding: 2px 10px; border-radius: 12px;
                   color: white; font-weight: 600; font-size: 0.8em; }
+.severity-badge.sev-p2 { color: #333; }  /* Dark text on yellow — WCAG AA contrast */
 
 /* Verification badge */
 .verification-badge { display: inline-block; padding: 2px 10px; border-radius: 12px;
@@ -629,6 +647,9 @@ def render_js() -> str:
                 el.classList.add('open');
             });
             document.querySelectorAll('.arrow').forEach(function(a) { a.classList.add('open'); });
+            document.querySelectorAll('[aria-expanded]').forEach(function(h) {
+                h.setAttribute('aria-expanded', 'true');
+            });
         });
     }
     if (collapseBtn) {
@@ -637,6 +658,9 @@ def render_js() -> str:
                 el.classList.remove('open');
             });
             document.querySelectorAll('.arrow').forEach(function(a) { a.classList.remove('open'); });
+            document.querySelectorAll('[aria-expanded]').forEach(function(h) {
+                h.setAttribute('aria-expanded', 'false');
+            });
         });
     }
 

@@ -26,7 +26,7 @@ class DomainRenderer(SectionRenderer):
         display = DOMAIN_DISPLAY.get(domain, domain)
         domain_color = DOMAIN_COLORS.get(domain, "#666")
         sev = self.data.domain_severity.get(domain, {})
-        risk = self._domain_risk(sev)
+        risk = self.domain_risk(sev)
         risk_color = self.risk_color(risk)
         total = sum(sev.values())
         categories = self.data.category_groups.get(domain, {})
@@ -73,15 +73,3 @@ class DomainRenderer(SectionRenderer):
 
         parts.extend(["</div>", "</div>", "</section>"])
         return "\n".join(parts)
-
-    @staticmethod
-    def _domain_risk(sev: dict[str, int]) -> str:
-        if sev.get("P0", 0) > 0:
-            return "Critical"
-        if sev.get("P1", 0) > 0:
-            return "High"
-        if sev.get("P2", 0) > 0:
-            return "Medium"
-        if sev.get("P3", 0) > 0:
-            return "Low"
-        return "Clean"
