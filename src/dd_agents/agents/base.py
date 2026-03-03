@@ -62,6 +62,11 @@ class BaseAgentRunner(ABC):
     max_turns: int = 200
     max_budget_usd: float = 5.0
 
+    # Set by the orchestrator to identify which batch this runner is
+    # processing.  When non-empty, all log lines use this label instead
+    # of the plain agent name so concurrent batches are distinguishable.
+    batch_label: str = ""
+
     # Hard-limit multiplier: if an agent exceeds max_turns * HARD_LIMIT_MULTIPLIER,
     # the session is forcibly cancelled.  The gap between soft (max_turns) and hard
     # allows agents that are legitimately finishing work (writing final files) to
@@ -317,7 +322,7 @@ class BaseAgentRunner(ABC):
             max_buffer_size=self._compute_buffer_size(),
         )
 
-        agent_name = self.get_agent_name()
+        agent_name = self.batch_label or self.get_agent_name()
         hard_limit = self.max_turns * self.HARD_LIMIT_MULTIPLIER
         prompt_tokens = len(prompt) // 4
         buffer_mb = self._compute_buffer_size() / (1024 * 1024)

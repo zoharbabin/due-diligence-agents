@@ -287,6 +287,7 @@ class AgentTeam:
                 run_dir=self.state.run_dir,
                 run_id=self.state.run_id,
             )
+            runner.batch_label = batch_label
             if runner_kwargs.get("max_turns"):
                 runner.max_turns = runner_kwargs["max_turns"]
             if runner_kwargs.get("max_budget_usd"):
