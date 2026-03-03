@@ -234,8 +234,8 @@ class BaseAgentRunner(ABC):
         """Delegate prompt construction to :class:`PromptBuilder`.
 
         Default implementation calls ``build_specialist_prompt`` which is
-        correct for all four specialist agents.  Judge and ReportingLead
-        override this to call their own builder methods.
+        correct for all four specialist agents.  Judge overrides this
+        to call its own builder method.
         """
         from dd_agents.agents.prompt_builder import PromptBuilder
 

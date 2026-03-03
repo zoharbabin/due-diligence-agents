@@ -1,7 +1,7 @@
 """Unit tests for the dd_agents.agents module.
 
 Covers PromptBuilder, all four specialist agents, JudgeAgent,
-ReportingLeadAgent, and BaseAgentRunner (abstract enforcement).
+and BaseAgentRunner (abstract enforcement).
 No actual API calls -- all agent behaviour is tested via class
 attributes, prompt construction, and score calculations.
 """
@@ -29,7 +29,6 @@ from dd_agents.agents.prompt_builder import (
     AgentType,
     PromptBuilder,
 )
-from dd_agents.agents.reporting_lead import ReportingLeadAgent
 from dd_agents.agents.specialists import (
     COMMERCIAL_FOCUS_AREAS,
     FINANCE_FOCUS_AREAS,
@@ -232,16 +231,6 @@ class TestPromptBuilder:
         assert "20%" in prompt  # P1
         assert "SPOT-CHECK PROTOCOL" in prompt
         assert "quality_scores.json" in prompt
-
-    def test_build_reporting_lead_prompt(self, builder: PromptBuilder) -> None:
-        prompt = builder.build_reporting_lead_prompt(
-            findings_dir="/tmp/findings",
-            schema_path="/config/report_schema.json",
-        )
-        assert "REPORTING LEAD AGENT" in prompt
-        assert "merge" in prompt.lower() or "Merge" in prompt
-        assert "/tmp/findings" in prompt
-        assert "report_schema.json" in prompt
 
     def test_estimate_tokens(self) -> None:
         text = "a" * 400
@@ -708,49 +697,6 @@ class TestJudgeAgent:
 
 
 # =========================================================================
-# ReportingLeadAgent tests
-# =========================================================================
-
-
-class TestReportingLeadAgent:
-    """Tests for ReportingLeadAgent."""
-
-    def test_name(self, tmp_project: Path, tmp_run_dir: Path, run_id: str) -> None:
-        agent = ReportingLeadAgent(tmp_project, tmp_run_dir, run_id)
-        assert agent.get_agent_name() == "reporting_lead"
-
-    def test_model(self, tmp_project: Path, tmp_run_dir: Path, run_id: str) -> None:
-        agent = ReportingLeadAgent(tmp_project, tmp_run_dir, run_id)
-        assert agent.get_model_id() is None
-
-    def test_max_turns(self, tmp_project: Path, tmp_run_dir: Path, run_id: str) -> None:
-        agent = ReportingLeadAgent(tmp_project, tmp_run_dir, run_id)
-        assert agent.max_turns == 300
-
-    def test_max_budget(self, tmp_project: Path, tmp_run_dir: Path, run_id: str) -> None:
-        agent = ReportingLeadAgent(tmp_project, tmp_run_dir, run_id)
-        assert agent.max_budget_usd == 8.0
-
-    def test_tools_include_bash(self, tmp_project: Path, tmp_run_dir: Path, run_id: str) -> None:
-        agent = ReportingLeadAgent(tmp_project, tmp_run_dir, run_id)
-        tools = agent.get_tools()
-        assert "Bash" in tools
-        assert "Read" in tools
-        assert "validate_manifest" in tools
-
-    def test_system_prompt_mentions_reporting(self, tmp_project: Path, tmp_run_dir: Path, run_id: str) -> None:
-        agent = ReportingLeadAgent(tmp_project, tmp_run_dir, run_id)
-        prompt = agent.get_system_prompt()
-        assert "Reporting Lead" in prompt
-
-    def test_build_prompt_includes_merge(self, tmp_project: Path, tmp_run_dir: Path, run_id: str) -> None:
-        agent = ReportingLeadAgent(tmp_project, tmp_run_dir, run_id)
-        prompt = agent.build_prompt({"findings_dir": "/tmp/findings"})
-        assert "REPORTING LEAD" in prompt
-        assert "merge" in prompt.lower() or "Merge" in prompt
-
-
-# =========================================================================
 # BaseAgentRunner abstract enforcement
 # =========================================================================
 
@@ -1013,11 +959,9 @@ class TestAgentType:
         assert AgentType.COMMERCIAL == "commercial"
         assert AgentType.PRODUCTTECH == "producttech"
         assert AgentType.JUDGE == "judge"
-        assert AgentType.REPORTING_LEAD == "reporting_lead"
 
-    def test_judge_and_reporting_not_in_specialist_focus(self) -> None:
+    def test_judge_not_in_specialist_focus(self) -> None:
         assert AgentType.JUDGE not in SPECIALIST_FOCUS
-        assert AgentType.REPORTING_LEAD not in SPECIALIST_FOCUS
 
 
 # =========================================================================

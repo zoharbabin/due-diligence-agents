@@ -34,7 +34,6 @@ from dd_agents.models.inventory import CustomerEntry
 from dd_agents.reporting.merge import FindingMerger
 from dd_agents.tools.server import (
     JUDGE_CUSTOM_TOOLS,
-    REPORTING_LEAD_CUSTOM_TOOLS,
     SPECIALIST_CUSTOM_TOOLS,
     get_tools_for_agent,
 )
@@ -474,11 +473,6 @@ class TestToolListNaming:
         assert "verify_citation" in JUDGE_CUSTOM_TOOLS
         assert "Read" not in JUDGE_CUSTOM_TOOLS
 
-    def test_reporting_lead_custom_tools_exist(self) -> None:
-        assert isinstance(REPORTING_LEAD_CUSTOM_TOOLS, list)
-        assert "validate_finding" in REPORTING_LEAD_CUSTOM_TOOLS
-        assert "Read" not in REPORTING_LEAD_CUSTOM_TOOLS
-
     def test_get_tools_for_agent_specialist(self) -> None:
         tools = get_tools_for_agent("specialist")
         assert tools == SPECIALIST_CUSTOM_TOOLS
@@ -486,10 +480,6 @@ class TestToolListNaming:
     def test_get_tools_for_agent_judge(self) -> None:
         tools = get_tools_for_agent("judge")
         assert tools == JUDGE_CUSTOM_TOOLS
-
-    def test_get_tools_for_agent_reporting_lead(self) -> None:
-        tools = get_tools_for_agent("reporting_lead")
-        assert tools == REPORTING_LEAD_CUSTOM_TOOLS
 
     def test_get_tools_for_agent_unknown(self) -> None:
         tools = get_tools_for_agent("unknown_agent_type")

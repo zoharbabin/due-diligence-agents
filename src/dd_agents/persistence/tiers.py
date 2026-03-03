@@ -55,7 +55,6 @@ VERSIONED_SUBDIRS: list[str] = [
     f"{AUDIT_DIR}/finance",
     f"{AUDIT_DIR}/commercial",
     f"{AUDIT_DIR}/producttech",
-    f"{AUDIT_DIR}/reporting_lead",
     f"{AUDIT_DIR}/judge",
 ]
 

@@ -7,7 +7,6 @@ from dd_agents.tools.report_progress import report_progress
 from dd_agents.tools.resolve_entity import resolve_entity
 from dd_agents.tools.server import (
     JUDGE_CUSTOM_TOOLS,
-    REPORTING_LEAD_CUSTOM_TOOLS,
     SPECIALIST_CUSTOM_TOOLS,
     create_tool_definitions,
     get_tools_for_agent,
@@ -23,7 +22,6 @@ __all__ = [
     "get_tools_for_agent",
     "SPECIALIST_CUSTOM_TOOLS",
     "JUDGE_CUSTOM_TOOLS",
-    "REPORTING_LEAD_CUSTOM_TOOLS",
     # Tool functions
     "validate_finding",
     "validate_gap",

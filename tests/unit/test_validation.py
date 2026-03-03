@@ -210,7 +210,7 @@ def _populate_run_dir(
         (merged_dir / f"{customer}.json").write_text(json.dumps(_make_merged_json(customer)))
 
     # Audit logs
-    for agent in [*AGENTS, "reporting_lead"]:
+    for agent in AGENTS:
         log_dir = run_dir / "audit" / agent
         log_dir.mkdir(parents=True, exist_ok=True)
         (log_dir / "audit_log.jsonl").write_text(
@@ -2610,7 +2610,7 @@ class TestDoDCheck30ReportDiff:
         # Write customer files
         for c in CUSTOMERS:
             (merged_dir / f"{c}.json").write_text(json.dumps(_make_merged_json(c)))
-        # Write stale non-customer files (e.g. Reporting Lead artefacts)
+        # Write non-customer files (pipeline artefacts that should be excluded)
         (merged_dir / "coverage_manifest.json").write_text("{}")
         (merged_dir / "numerical_audit.json").write_text("{}")
         (merged_dir / "report_diff.json").write_text("{}")

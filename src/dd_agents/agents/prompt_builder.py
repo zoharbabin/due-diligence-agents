@@ -22,14 +22,13 @@ if TYPE_CHECKING:
 
 
 class AgentType(StrEnum):
-    """All agent roles in the pipeline: 4 specialists + judge + reporting lead."""
+    """All agent roles in the pipeline: 4 specialists + judge."""
 
     LEGAL = "legal"
     FINANCE = "finance"
     COMMERCIAL = "commercial"
     PRODUCTTECH = "producttech"
     JUDGE = "judge"
-    REPORTING_LEAD = "reporting_lead"
 
 
 # ---------------------------------------------------------------------------
@@ -280,49 +279,6 @@ class PromptBuilder:
             sections.append(f"## FINDINGS DIRECTORY\n\nRead specialist outputs from: {findings_dir}")
 
         sections.append(f"## OUTPUT\n\nWrite quality_scores.json to: {self.run_dir}/judge/quality_scores.json\n")
-
-        return "\n\n---\n\n".join(sections)
-
-    # ------------------------------------------------------------------
-    # Reporting Lead prompt
-    # ------------------------------------------------------------------
-
-    def build_reporting_lead_prompt(
-        self,
-        findings_dir: str | Path | None = None,
-        schema_path: str | Path | None = None,
-        deal_config: DealConfig | dict[str, Any] | None = None,
-    ) -> str:
-        """Build the Reporting Lead agent prompt."""
-        deal_config = self._coerce_deal_config(deal_config)
-        sections: list[str] = []
-
-        sections.append(
-            "# REPORTING LEAD AGENT\n\n"
-            "You are the Reporting Lead for forensic M&A due diligence.\n"
-            "You do NOT perform new analysis. Your job is to:\n"
-            "1. Merge and deduplicate specialist findings\n"
-            "2. Build the numerical manifest\n"
-            "3. Run the 5-layer numerical audit\n"
-            "4. Generate the 14-sheet Excel report from report_schema.json\n"
-            "5. Build the report diff (if prior run exists)\n\n"
-            f"Run ID: {self.run_id}"
-        )
-
-        if findings_dir:
-            sections.append(f"## FINDINGS DIRECTORY\n\n{findings_dir}")
-
-        if schema_path:
-            sections.append(f"## REPORT SCHEMA\n\n{schema_path}")
-
-        if deal_config:
-            sections.append(f"## DEAL CONTEXT\n\nBuyer: {deal_config.buyer.name}\nTarget: {deal_config.target.name}")
-
-        sections.append(
-            "## OUTPUT\n\n"
-            f"Write merged findings to: {self.run_dir}/findings/merged/\n"
-            f"Write report to: {self.run_dir}/report/"
-        )
 
         return "\n\n---\n\n".join(sections)
 

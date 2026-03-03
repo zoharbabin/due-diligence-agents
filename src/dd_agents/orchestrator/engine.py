@@ -1904,13 +1904,33 @@ class PipelineEngine:
     # Phase 6: Reporting ----------------------------------------------------
 
     async def _step_23_spawn_reporting_lead(self, state: PipelineState) -> PipelineState:
-        """Spawn the Reporting Lead agent."""
-        team = self._ensure_team(state)
+        """Pre-merge validation and cross-agent anomaly detection.
 
-        result = await team.spawn_reporting_lead()
-        state.agent_results["reporting_lead"] = result
-        state.agent_sessions["reporting_lead"] = result.get("session_id", "")
-        state.agent_costs["reporting_lead"] = result.get("cost_usd", 0.0)
+        Replaced the legacy Reporting Lead agent (which duplicated steps 24-30).
+        Now performs deterministic validation of specialist outputs.
+        """
+        from dd_agents.validation.pre_merge import PreMergeValidator
+
+        # Load file inventory for citation path verification.
+        files_txt = self._inventory_dir(state) / "files.txt"
+        file_inventory: list[str] = []
+        if files_txt.exists():
+            file_inventory = [line.strip() for line in files_txt.read_text().strip().splitlines() if line.strip()]
+
+        findings_dir = state.run_dir / "findings"
+        validator = PreMergeValidator(
+            run_dir=state.run_dir,
+            findings_dir=findings_dir,
+            customer_safe_names=state.customer_safe_names or [],
+            file_inventory=file_inventory,
+        )
+        report = validator.validate()
+
+        # Write structured report for downstream consumption (HTML report).
+        output_path = state.run_dir / "pre_merge_validation.json"
+        output_path.write_text(report.model_dump_json(indent=2))
+        logger.info("Pre-merge validation report written to %s", output_path)
+
         return state
 
     async def _step_24_merge_dedup(self, state: PipelineState) -> PipelineState:

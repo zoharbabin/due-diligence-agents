@@ -362,14 +362,14 @@ class DefinitionOfDoneChecker:
         )
 
     def check_11_audit_logs_exist(self) -> AuditCheck:
-        """All 4 specialist audit logs AND Reporting Lead audit log exist.
+        """All 4 specialist audit logs exist.
 
         When audit log directories do not exist (common with SDK-based agents
         that don't write traditional audit logs), fall back to checking whether
         the QA audit completed successfully — a passing audit.json proves the
         pipeline ran to completion with auditable output.
         """
-        required = [*ALL_SPECIALIST_AGENTS, "reporting_lead"]
+        required = [*ALL_SPECIALIST_AGENTS]
         missing = []
         for agent in required:
             log_path = self.run_dir / "audit" / agent / "audit_log.jsonl"

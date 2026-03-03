@@ -16,7 +16,6 @@ from dd_agents.agents.prompt_builder import (
     AgentType,
     PromptBuilder,
 )
-from dd_agents.agents.reporting_lead import ReportingLeadAgent
 from dd_agents.agents.specialists import (
     COMMERCIAL_FOCUS_AREAS,
     FINANCE_FOCUS_AREAS,
@@ -55,6 +54,4 @@ __all__ = [
     "DIMENSION_WEIGHTS",
     "calculate_agent_score",
     "blend_round_scores",
-    # Reporting Lead
-    "ReportingLeadAgent",
 ]

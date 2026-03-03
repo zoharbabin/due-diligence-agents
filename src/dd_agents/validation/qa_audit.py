@@ -21,8 +21,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Required audit log agents (4 specialists + reporting lead)
-_REQUIRED_LOG_AGENTS = [*ALL_SPECIALIST_AGENTS, "reporting_lead"]
+# Required audit log agents (4 specialists)
+_REQUIRED_LOG_AGENTS = [*ALL_SPECIALIST_AGENTS]
 
 # Required Excel sheets
 _REQUIRED_SHEETS = [
@@ -287,7 +287,7 @@ class QAAuditor:
                     "missing_logs": missing_logs,
                     "note": "No audit logs found -- deferred (pipeline does not yet write them)",
                 },
-                rule="ALL 4 specialist agents AND reporting_lead MUST have non-empty audit_log.jsonl.",
+                rule="ALL 4 specialist agents MUST have non-empty audit_log.jsonl.",
             )
 
         return "audit_logs", AuditCheck(
@@ -297,7 +297,7 @@ class QAAuditor:
                 "agents_with_logs": agents_with_logs,
                 "missing_logs": missing_logs,
             },
-            rule="ALL 4 specialist agents AND reporting_lead MUST have non-empty audit_log.jsonl.",
+            rule="ALL 4 specialist agents MUST have non-empty audit_log.jsonl.",
         )
 
     # ------------------------------------------------------------------ #

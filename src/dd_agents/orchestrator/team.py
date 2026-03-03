@@ -18,7 +18,6 @@ from typing import TYPE_CHECKING, Any
 
 from dd_agents.utils.constants import (
     AGENT_JUDGE,
-    AGENT_REPORTING_LEAD,
     ALL_SPECIALIST_AGENTS,
 )
 
@@ -427,50 +426,6 @@ class AgentTeam:
             "duration_ms": elapsed_ms,
             "is_error": False,
             "quality_scores": scores,
-        }
-
-    # ------------------------------------------------------------------
-    # Reporting Lead agent
-    # ------------------------------------------------------------------
-
-    async def spawn_reporting_lead(self) -> dict[str, Any]:
-        """Spawn the Reporting Lead agent.
-
-        Returns
-        -------
-        dict[str, Any]
-            Result dict from the Reporting Lead agent.
-        """
-        from dd_agents.agents.reporting_lead import ReportingLeadAgent
-
-        logger.info("Spawning Reporting Lead agent")
-        self._agent_start_times[AGENT_REPORTING_LEAD] = time.monotonic()
-        self._agent_last_activity[AGENT_REPORTING_LEAD] = time.monotonic()
-
-        runner = ReportingLeadAgent(
-            project_dir=self.state.project_dir,
-            run_dir=self.state.run_dir,
-            run_id=self.state.run_id,
-        )
-
-        agent_state: dict[str, Any] = {
-            "findings_dir": str(self.state.run_dir / "findings"),
-            "deal_config": self.state.deal_config,
-        }
-
-        start_ms = time.monotonic()
-        result = await runner.run_reporting(agent_state)
-        elapsed_ms = int((time.monotonic() - start_ms) * 1000)
-
-        return {
-            "agent": AGENT_REPORTING_LEAD,
-            "status": "completed" if result.get("status") == "success" else result.get("status", "failed"),
-            "cost_usd": 0.0,
-            "session_id": "",
-            "num_turns": 0,
-            "duration_ms": elapsed_ms,
-            "is_error": result.get("status") != "success",
-            "output": result.get("output"),
         }
 
     # ------------------------------------------------------------------

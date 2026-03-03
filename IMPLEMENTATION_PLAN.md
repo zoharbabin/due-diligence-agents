@@ -141,7 +141,7 @@ pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/ && ruff
 ---
 
 ## Phase 4: Agent Implementation
-**Goal**: Prompt assembly, specialist spawning, Judge iteration, Reporting Lead.
+**Goal**: Prompt assembly, specialist spawning, Judge iteration. (Reporting Lead removed in v0.4.0 — replaced by deterministic pre-merge validation.)
 **Dependencies**: Phase 3 complete
 **Status**: COMPLETE
 

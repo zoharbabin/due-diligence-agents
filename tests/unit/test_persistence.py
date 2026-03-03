@@ -184,7 +184,6 @@ class TestRunManager:
         assert (run_dir / "report").is_dir()
         assert (run_dir / "audit" / "legal").is_dir()
         assert (run_dir / "audit" / "judge").is_dir()
-        assert (run_dir / "audit" / "reporting_lead").is_dir()
 
     def test_initialize_writes_initial_metadata(self, tmp_path: Path) -> None:
         """initialize_run should write metadata.json with in_progress status."""
