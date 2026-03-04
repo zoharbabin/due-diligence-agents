@@ -83,9 +83,10 @@ class CustomerRenderer(SectionRenderer):
                 src_a = html.escape(str(xr.get("contract_value", xr.get("source_a", xr.get("value_a", "")))))
                 src_b = html.escape(str(xr.get("reference_value", xr.get("source_b", xr.get("value_b", "")))))
                 raw_status = str(xr.get("match_status", xr.get("match", ""))).lower()
-                match = raw_status in ("match", "true", "yes", "")
-                match_str = "Yes" if match else "No"
-                row_class = "xref-mismatch" if not match else "xref-match"
+                is_match = raw_status in ("match", "true", "yes")
+                is_mismatch = raw_status in ("mismatch", "false", "no")
+                match_str = "Yes" if is_match else ("No" if is_mismatch else "Unverified")
+                row_class = "xref-mismatch" if is_mismatch else ("xref-match" if is_match else "xref-unverified")
                 parts.append(
                     f"<tr class='{row_class}'><td>{field}</td><td>{src_a}</td><td>{src_b}</td><td>{match_str}</td></tr>"
                 )
@@ -118,7 +119,9 @@ class CustomerRenderer(SectionRenderer):
             parts.append(
                 "<table class='sortable'><thead><tr>"
                 "<th scope='col'>Priority</th><th scope='col'>Type</th><th scope='col'>Missing Item</th>"
-                "<th scope='col'>Risk</th></tr></thead><tbody>"
+                "<th scope='col'>Risk</th><th scope='col'>Why Needed</th>"
+                "<th scope='col'>Request to Company</th><th scope='col'>Agent</th>"
+                "</tr></thead><tbody>"
             )
             for g in gaps:
                 if isinstance(g, dict):
@@ -126,7 +129,13 @@ class CustomerRenderer(SectionRenderer):
                     gtype = html.escape(str(g.get("gap_type", "")))
                     item = html.escape(str(g.get("missing_item", "")))
                     risk = html.escape(str(g.get("risk_if_missing", "")))
-                    parts.append(f"<tr><td>{prio}</td><td>{gtype}</td><td>{item}</td><td>{risk}</td></tr>")
+                    why = html.escape(str(g.get("why_needed", "")))
+                    request = html.escape(str(g.get("request_to_company", "")))
+                    agent = html.escape(str(g.get("agent", "")))
+                    parts.append(
+                        f"<tr><td>{prio}</td><td>{gtype}</td><td>{item}</td><td>{risk}</td>"
+                        f"<td>{why}</td><td>{request}</td><td>{agent}</td></tr>"
+                    )
             parts.append("</tbody></table>")
 
         parts.extend(["</div>", "</div>"])

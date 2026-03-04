@@ -61,8 +61,13 @@ def _make_merged_data() -> dict[str, object]:
             ],
             "governance_resolution_pct": 85.0,
             "cross_references": [
-                {"field": "ARR", "source_a": "100K", "source_b": "100K", "match": True},
-                {"field": "Headcount", "source_a": "50", "source_b": "45", "match": False},
+                {"data_point": "ARR", "contract_value": "100K", "reference_value": "100K", "match_status": "match"},
+                {
+                    "data_point": "Headcount",
+                    "contract_value": "50",
+                    "reference_value": "45",
+                    "match_status": "mismatch",
+                },
             ],
         },
         "customer_b": {

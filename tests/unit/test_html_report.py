@@ -114,8 +114,18 @@ def _make_merged_data_rich() -> dict[str, object]:
             ],
             "governance_resolution_pct": 85.5,
             "cross_references": [
-                {"field": "Annual Revenue", "source_a": "100000", "source_b": "100000", "match": True},
-                {"field": "Employee Count", "source_a": "50", "source_b": "45", "match": False},
+                {
+                    "data_point": "Annual Revenue",
+                    "contract_value": "100000",
+                    "reference_value": "100000",
+                    "match_status": "match",
+                },
+                {
+                    "data_point": "Employee Count",
+                    "contract_value": "50",
+                    "reference_value": "45",
+                    "match_status": "mismatch",
+                },
             ],
         },
         "customer_b": {

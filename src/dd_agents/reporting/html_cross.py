@@ -66,9 +66,10 @@ class CrossRefRenderer(SectionRenderer):
                 src_a = html.escape(str(xr.get("contract_value", xr.get("source_a", xr.get("value_a", "")))))
                 src_b = html.escape(str(xr.get("reference_value", xr.get("source_b", xr.get("value_b", "")))))
                 raw_status = str(xr.get("match_status", xr.get("match", ""))).lower()
-                is_match = raw_status in ("match", "true", "yes", "")
-                match_str = "Yes" if is_match else "No"
-                row_class = "xref-mismatch" if not is_match else "xref-match"
+                is_match = raw_status in ("match", "true", "yes")
+                is_mismatch = raw_status in ("mismatch", "false", "no")
+                match_str = "Yes" if is_match else ("No" if is_mismatch else "Unverified")
+                row_class = "xref-mismatch" if is_mismatch else ("xref-match" if is_match else "xref-unverified")
                 parts.append(
                     f"<tr class='{row_class}'><td>{customer}</td><td>{field}</td>"
                     f"<td>{src_a}</td><td>{src_b}</td><td>{match_str}</td></tr>"

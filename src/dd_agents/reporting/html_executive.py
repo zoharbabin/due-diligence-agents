@@ -49,11 +49,15 @@ class ExecutiveSummaryRenderer(SectionRenderer):
             signal = "Proceed with Caution"
             signal_color = "#fd7e14"
             signal_desc = "High risks identified. Material issues require negotiation and risk mitigation."
-        elif label in ("Medium", "Low"):
+        elif label == "Medium":
             signal = "Conditional Go"
             signal_color = "#ffc107"
             signal_desc = "Moderate risks identified. Standard due diligence conditions apply."
-        else:
+        elif label == "Low":
+            signal = "Conditional Go"
+            signal_color = "#ffc107"
+            signal_desc = "Low risks identified. Standard due diligence conditions apply."
+        else:  # "Clean" or any unexpected value
             signal = "Go"
             signal_color = "#28a745"
             signal_desc = "No material risks identified. Deal fundamentals are sound."

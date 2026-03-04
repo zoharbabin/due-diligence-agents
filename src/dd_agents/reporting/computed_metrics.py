@@ -82,16 +82,20 @@ CANONICAL_CATEGORIES: dict[str, dict[str, list[str]]] = {
 def _normalize_category(category: str, domain: str) -> str:
     """Map a freeform category string to its canonical name for the given domain.
 
-    Uses keyword matching against ``CANONICAL_CATEGORIES``.
+    Uses keyword matching against ``CANONICAL_CATEGORIES``.  When multiple
+    keywords match, the **longest** keyword wins (most specific match).
     Falls through unchanged if no keyword matches.
     """
     cat_lower = category.lower().replace(" ", "_")
     domain_map = CANONICAL_CATEGORIES.get(domain, {})
+    best_canonical: str | None = None
+    best_keyword_len = 0
     for canonical, keywords in domain_map.items():
         for kw in keywords:
-            if kw in cat_lower:
-                return canonical
-    return category
+            if kw in cat_lower and len(kw) > best_keyword_len:
+                best_canonical = canonical
+                best_keyword_len = len(kw)
+    return best_canonical if best_canonical is not None else category
 
 
 class ReportComputedData(BaseModel):

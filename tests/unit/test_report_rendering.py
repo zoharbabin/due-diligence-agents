@@ -514,3 +514,514 @@ class TestTerminology:
         # Finding card meta should say "Entity:" not "Customer:"
         # Check for the specific meta label
         assert "Entity:" in content
+
+
+# ===========================================================================
+# Category normalization — all domains & edge cases
+# ===========================================================================
+
+
+class TestCategoryNormalizationExtended:
+    """Extended tests for _normalize_category covering all domains and edge cases."""
+
+    def test_keyword_overlap_longest_match_wins(self) -> None:
+        """When 'revenue' and 'revenue_concentrat' both match, the longer keyword wins."""
+        from dd_agents.reporting.computed_metrics import _normalize_category
+
+        # "revenue_concentration" contains both "revenue" (len 7) and "concentrat" (len 10)
+        # "concentrat" is longer, so Concentration Risk should win
+        result = _normalize_category("revenue_concentration", "finance")
+        assert result == "Concentration Risk"
+
+    def test_keyword_overlap_renewal_risk(self) -> None:
+        """'renewal_risk' should match 'renewal_risk' not just 'renewal'."""
+        from dd_agents.reporting.computed_metrics import _normalize_category
+
+        result = _normalize_category("renewal_risk", "commercial")
+        assert result == "Contract Portfolio"
+
+    def test_normalize_finance_domain(self) -> None:
+        """Finance domain categories are normalized correctly."""
+        from dd_agents.reporting.computed_metrics import _normalize_category
+
+        assert _normalize_category("cash_flow_issues", "finance") == "Cash Flow & Liquidity"
+        assert _normalize_category("tax_compliance", "finance") == "Tax"
+        assert _normalize_category("ebitda_margin_decline", "finance") == "Profitability & Margins"
+
+    def test_normalize_commercial_domain(self) -> None:
+        """Commercial domain categories are normalized correctly."""
+        from dd_agents.reporting.computed_metrics import _normalize_category
+
+        assert _normalize_category("customer_concentration_risk", "commercial") == "Customer Concentration"
+        assert _normalize_category("market_positioning", "commercial") == "Market Position"
+        assert _normalize_category("pipeline_weakness", "commercial") == "Sales Pipeline"
+
+    def test_normalize_producttech_domain(self) -> None:
+        """ProductTech domain categories are normalized correctly."""
+        from dd_agents.reporting.computed_metrics import _normalize_category
+
+        assert _normalize_category("technical_debt_issues", "producttech") == "Technical Debt"
+        assert _normalize_category("security_vulnerability", "producttech") == "Security"
+        assert _normalize_category("architecture_scalability", "producttech") == "Architecture & Scalability"
+
+    def test_normalize_unknown_domain_passthrough(self) -> None:
+        """Unknown domain returns the category unchanged."""
+        from dd_agents.reporting.computed_metrics import _normalize_category
+
+        assert _normalize_category("some_category", "unknown_domain") == "some_category"
+
+    def test_normalize_empty_category(self) -> None:
+        """Empty category string is returned unchanged."""
+        from dd_agents.reporting.computed_metrics import _normalize_category
+
+        assert _normalize_category("", "legal") == ""
+
+    def test_normalize_case_insensitive(self) -> None:
+        """Normalization is case-insensitive."""
+        from dd_agents.reporting.computed_metrics import _normalize_category
+
+        assert _normalize_category("CHANGE_OF_CONTROL", "legal") == "Change of Control"
+        assert _normalize_category("Change_Of_Control", "legal") == "Change of Control"
+
+    def test_normalize_spaces_converted(self) -> None:
+        """Spaces in input are converted to underscores for matching."""
+        from dd_agents.reporting.computed_metrics import _normalize_category
+
+        assert _normalize_category("change of control", "legal") == "Change of Control"
+
+
+# ===========================================================================
+# Wolf pack extended tests
+# ===========================================================================
+
+
+class TestWolfPackExtended:
+    """Extended tests for wolf_pack_p0 edge cases."""
+
+    def test_wolf_pack_p0_zero_findings(self) -> None:
+        """wolf_pack_p0 is empty when there are no P0 findings."""
+        merged: dict[str, Any] = {
+            "c": {
+                "customer": "C",
+                "findings": [_make_finding(severity="P1"), _make_finding(severity="P2")],
+                "gaps": [],
+            },
+        }
+        data = ReportDataComputer().compute(merged)
+        assert len(data.wolf_pack_p0) == 0
+
+    def test_wolf_pack_p0_exactly_15(self) -> None:
+        """wolf_pack_p0 returns exactly 15 when there are exactly 15 P0 findings."""
+        findings = [_make_finding(severity="P0", title=f"Issue {i}") for i in range(15)]
+        merged: dict[str, Any] = {"c": {"customer": "C", "findings": findings, "gaps": []}}
+        data = ReportDataComputer().compute(merged)
+        assert len(data.wolf_pack_p0) == 15
+
+    def test_wolf_pack_p0_excludes_p1(self) -> None:
+        """wolf_pack_p0 contains strictly P0, no P1 findings."""
+        merged: dict[str, Any] = {
+            "c": {
+                "customer": "C",
+                "findings": [
+                    _make_finding(severity="P0", title="Critical"),
+                    _make_finding(severity="P1", title="High"),
+                    _make_finding(severity="P1", title="Another high"),
+                ],
+                "gaps": [],
+            },
+        }
+        data = ReportDataComputer().compute(merged)
+        assert len(data.wolf_pack_p0) == 1
+        for f in data.wolf_pack_p0:
+            assert f["severity"] == "P0"
+
+
+# ===========================================================================
+# Dedup edge cases
+# ===========================================================================
+
+
+class TestDedupSimilarFindings:
+    """Tests for _dedup_similar_findings edge cases."""
+
+    def test_dedup_empty_input(self) -> None:
+        """Empty input returns empty list."""
+        from dd_agents.reporting.html_dashboard import _dedup_similar_findings
+
+        assert _dedup_similar_findings([]) == []
+
+    def test_dedup_single_finding(self) -> None:
+        """Single finding returns one group with zero similar."""
+        from dd_agents.reporting.html_dashboard import _dedup_similar_findings
+
+        findings = [{"title": "Some finding", "severity": "P0"}]
+        groups = _dedup_similar_findings(findings)
+        assert len(groups) == 1
+        assert groups[0][0] == findings[0]
+        assert groups[0][1] == []
+
+    def test_dedup_completely_different(self) -> None:
+        """Completely different titles produce separate groups."""
+        from dd_agents.reporting.html_dashboard import _dedup_similar_findings
+
+        findings = [
+            {"title": "Change of control clause found", "severity": "P0"},
+            {"title": "IP assignment missing entirely", "severity": "P0"},
+            {"title": "Tax nexus compliance failure", "severity": "P0"},
+        ]
+        groups = _dedup_similar_findings(findings)
+        assert len(groups) == 3  # Each is its own group
+
+    def test_dedup_identical_titles(self) -> None:
+        """Identical titles are grouped together."""
+        from dd_agents.reporting.html_dashboard import _dedup_similar_findings
+
+        findings = [
+            {"title": "Exact same title", "severity": "P0"},
+            {"title": "Exact same title", "severity": "P0"},
+            {"title": "Exact same title", "severity": "P0"},
+        ]
+        groups = _dedup_similar_findings(findings)
+        assert len(groups) == 1
+        assert len(groups[0][1]) == 2  # 2 similar to primary
+
+    def test_dedup_empty_titles(self) -> None:
+        """Empty titles don't crash; they get grouped as identical (1.0 ratio)."""
+        from dd_agents.reporting.html_dashboard import _dedup_similar_findings
+
+        findings = [
+            {"title": "", "severity": "P0"},
+            {"title": "", "severity": "P0"},
+        ]
+        groups = _dedup_similar_findings(findings)
+        assert len(groups) == 1
+
+
+# ===========================================================================
+# Cross-reference 3-way match status
+# ===========================================================================
+
+
+class TestCrossRef3WayStatus:
+    """Tests for the 3-way match status (Yes/No/Unverified)."""
+
+    def test_xref_unverified_status(self, tmp_path: Path) -> None:
+        """Cross-references with 'unverified' or 'partial' status show as Unverified."""
+        merged: dict[str, Any] = {
+            "c": {
+                "customer": "C",
+                "findings": [],
+                "gaps": [],
+                "cross_references": [
+                    {
+                        "data_point": "ARR",
+                        "contract_value": "100K",
+                        "reference_value": "100K",
+                        "match_status": "unverified",
+                    },
+                    {"data_point": "HC", "contract_value": "50", "reference_value": "45", "match_status": "partial"},
+                ],
+            },
+        }
+        gen = HTMLReportGenerator()
+        out = tmp_path / "report.html"
+        gen.generate(merged, out)
+        content = out.read_text(encoding="utf-8")
+
+        # Should display "Unverified" not "Yes" or "No"
+        assert "Unverified" in content
+        assert "xref-unverified" in content
+
+    def test_xref_empty_status_not_match(self, tmp_path: Path) -> None:
+        """Empty match_status should NOT be treated as a match."""
+        merged: dict[str, Any] = {
+            "c": {
+                "customer": "C",
+                "findings": [],
+                "gaps": [],
+                "cross_references": [
+                    {"data_point": "ARR", "match_status": ""},
+                ],
+            },
+        }
+        gen = HTMLReportGenerator()
+        out = tmp_path / "report.html"
+        gen.generate(merged, out)
+        content = out.read_text(encoding="utf-8")
+
+        # Empty status should show as Unverified, not as Yes
+        assert "xref-match" not in content or "xref-unverified" in content
+
+
+# ===========================================================================
+# Executive summary — all risk labels
+# ===========================================================================
+
+
+class TestExecutiveSummaryExtended:
+    """Extended tests for all Go/No-Go signal mappings."""
+
+    def test_go_no_go_critical(self, tmp_path: Path) -> None:
+        """Critical risk shows No-Go."""
+        merged: dict[str, Any] = {"c": {"customer": "C", "findings": [_make_finding(severity="P0")], "gaps": []}}
+        gen = HTMLReportGenerator()
+        out = tmp_path / "report.html"
+        gen.generate(merged, out)
+        assert "No-Go" in out.read_text(encoding="utf-8")
+
+    def test_go_no_go_high(self, tmp_path: Path) -> None:
+        """High risk shows Proceed with Caution."""
+        findings = [_make_finding(severity="P1") for _ in range(3)]
+        merged: dict[str, Any] = {"c": {"customer": "C", "findings": findings, "gaps": []}}
+        gen = HTMLReportGenerator()
+        out = tmp_path / "report.html"
+        gen.generate(merged, out)
+        assert "Proceed with Caution" in out.read_text(encoding="utf-8")
+
+    def test_go_no_go_medium(self, tmp_path: Path) -> None:
+        """Medium risk shows Conditional Go."""
+        merged: dict[str, Any] = {"c": {"customer": "C", "findings": [_make_finding(severity="P1")], "gaps": []}}
+        gen = HTMLReportGenerator()
+        out = tmp_path / "report.html"
+        gen.generate(merged, out)
+        assert "Conditional Go" in out.read_text(encoding="utf-8")
+
+    def test_go_no_go_clean(self, tmp_path: Path) -> None:
+        """Clean risk shows Go."""
+        merged: dict[str, Any] = {"c": {"customer": "C", "findings": [], "gaps": []}}
+        gen = HTMLReportGenerator()
+        out = tmp_path / "report.html"
+        gen.generate(merged, out)
+        content = out.read_text(encoding="utf-8")
+        # Go should appear in executive summary
+        assert ">Go<" in content or "Go</div>" in content
+
+    def test_concentration_hhi_thresholds(self) -> None:
+        """Concentration risk levels match HHI thresholds."""
+        from dd_agents.reporting.computed_metrics import ReportComputedData
+        from dd_agents.reporting.html_executive import ExecutiveSummaryRenderer
+
+        # High: HHI > 2500
+        data = ReportComputedData(concentration_hhi=3000.0)
+        r = ExecutiveSummaryRenderer(data, {})
+        html_out = r._render_concentration()
+        assert "High" in html_out
+
+        # Moderate: 1500 < HHI <= 2500
+        data = ReportComputedData(concentration_hhi=2000.0)
+        r = ExecutiveSummaryRenderer(data, {})
+        html_out = r._render_concentration()
+        assert "Moderate" in html_out
+
+        # Low: HHI <= 1500
+        data = ReportComputedData(concentration_hhi=1000.0)
+        r = ExecutiveSummaryRenderer(data, {})
+        html_out = r._render_concentration()
+        assert "Low" in html_out
+
+        # Zero: no section
+        data = ReportComputedData(concentration_hhi=0.0)
+        r = ExecutiveSummaryRenderer(data, {})
+        html_out = r._render_concentration()
+        assert html_out == ""
+
+
+# ===========================================================================
+# Diff renderer edge cases
+# ===========================================================================
+
+
+class TestDiffRendererExtended:
+    """Extended tests for diff renderer error handling."""
+
+    def test_diff_malformed_json(self, tmp_path: Path) -> None:
+        """Malformed report_diff.json is handled gracefully (no crash)."""
+        run_dir = tmp_path / "run_dir"
+        report_dir = run_dir / "report"
+        report_dir.mkdir(parents=True)
+        (report_dir / "report_diff.json").write_text("{invalid json!!")
+
+        gen = HTMLReportGenerator()
+        out = tmp_path / "report.html"
+        gen.generate({"c": {"customer": "C", "findings": [], "gaps": []}}, out, run_dir=run_dir)
+        content = out.read_text(encoding="utf-8")
+        # Should not crash; diff section should be absent
+        assert "Run-over-Run" not in content
+
+    def test_diff_missing_summary_keys(self, tmp_path: Path) -> None:
+        """Missing summary keys default to 0."""
+        run_dir = tmp_path / "run_dir"
+        report_dir = run_dir / "report"
+        report_dir.mkdir(parents=True)
+        (report_dir / "report_diff.json").write_text(json.dumps({"summary": {}, "changes": []}))
+
+        gen = HTMLReportGenerator()
+        out = tmp_path / "report.html"
+        gen.generate({"c": {"customer": "C", "findings": [], "gaps": []}}, out, run_dir=run_dir)
+        content = out.read_text(encoding="utf-8")
+        assert "Run-over-Run" in content
+        assert ">0</div>" in content
+
+    def test_diff_severity_change_table(self, tmp_path: Path) -> None:
+        """Severity change table shows Prior and Current columns."""
+        run_dir = tmp_path / "run_dir"
+        report_dir = run_dir / "report"
+        report_dir.mkdir(parents=True)
+        diff_data = {
+            "summary": {"new": 0, "resolved": 0, "changed_severity": 1},
+            "changes": [
+                {
+                    "change_type": "changed_severity",
+                    "customer": "C",
+                    "finding_summary": "Issue upgraded",
+                    "prior_severity": "P2",
+                    "current_severity": "P1",
+                },
+            ],
+        }
+        (report_dir / "report_diff.json").write_text(json.dumps(diff_data))
+
+        gen = HTMLReportGenerator()
+        out = tmp_path / "report.html"
+        gen.generate({"c": {"customer": "C", "findings": [], "gaps": []}}, out, run_dir=run_dir)
+        content = out.read_text(encoding="utf-8")
+        assert "Severity Changes" in content
+        assert "Prior</th>" in content
+        assert "Current</th>" in content
+        assert "Issue upgraded" in content
+
+
+# ===========================================================================
+# Quality audit checks edge cases
+# ===========================================================================
+
+
+class TestQualityAuditExtended:
+    """Extended tests for audit.json error paths."""
+
+    def test_audit_malformed_json(self, tmp_path: Path) -> None:
+        """Malformed audit.json is handled gracefully."""
+        run_dir = tmp_path / "run_dir"
+        report_dir = run_dir / "report"
+        report_dir.mkdir(parents=True)
+        (report_dir / "audit.json").write_text("not valid json")
+
+        gen = HTMLReportGenerator()
+        out = tmp_path / "report.html"
+        gen.generate({"c": {"customer": "C", "findings": [], "gaps": []}}, out, run_dir=run_dir)
+        content = out.read_text(encoding="utf-8")
+        assert "QA Audit Checks" not in content  # Section skipped
+
+    def test_audit_empty_checks(self, tmp_path: Path) -> None:
+        """Empty checks array returns no audit section."""
+        run_dir = tmp_path / "run_dir"
+        report_dir = run_dir / "report"
+        report_dir.mkdir(parents=True)
+        (report_dir / "audit.json").write_text(json.dumps({"checks": []}))
+
+        gen = HTMLReportGenerator()
+        out = tmp_path / "report.html"
+        gen.generate({"c": {"customer": "C", "findings": [], "gaps": []}}, out, run_dir=run_dir)
+        content = out.read_text(encoding="utf-8")
+        assert "QA Audit Checks" not in content
+
+    def test_audit_non_standard_status(self, tmp_path: Path) -> None:
+        """Non-pass/fail status gets vb-unchecked class."""
+        run_dir = tmp_path / "run_dir"
+        report_dir = run_dir / "report"
+        report_dir.mkdir(parents=True)
+        (report_dir / "audit.json").write_text(
+            json.dumps({"checks": [{"name": "Test check", "status": "warn", "detail": "Warning"}]})
+        )
+
+        gen = HTMLReportGenerator()
+        out = tmp_path / "report.html"
+        gen.generate({"c": {"customer": "C", "findings": [], "gaps": []}}, out, run_dir=run_dir)
+        content = out.read_text(encoding="utf-8")
+        assert "vb-unchecked" in content
+
+
+# ===========================================================================
+# Focus area normalization
+# ===========================================================================
+
+
+class TestFocusAreaNormalization:
+    """Tests for _normalize_for_match in html_strategy.py."""
+
+    def test_normalize_ampersand_removal(self) -> None:
+        """Ampersands are stripped for matching."""
+        from dd_agents.reporting.html_strategy import _normalize_for_match
+
+        assert _normalize_for_match("IP & Ownership") == "ip_ownership"
+        assert _normalize_for_match("Termination & Exit") == "termination_exit"
+
+    def test_normalize_spaces_to_underscores(self) -> None:
+        """Spaces are converted to underscores."""
+        from dd_agents.reporting.html_strategy import _normalize_for_match
+
+        assert _normalize_for_match("Change of Control") == "change_of_control"
+        assert _normalize_for_match("Revenue Recognition") == "revenue_recognition"
+
+    def test_normalize_double_underscores_collapsed(self) -> None:
+        """Double underscores from ampersand removal are collapsed."""
+        from dd_agents.reporting.html_strategy import _normalize_for_match
+
+        # "IP & Ownership" → "ip___ownership" → "ip_ownership"
+        result = _normalize_for_match("IP & Ownership")
+        assert "__" not in result
+
+    def test_normalize_leading_trailing_stripped(self) -> None:
+        """Leading/trailing underscores are stripped."""
+        from dd_agents.reporting.html_strategy import _normalize_for_match
+
+        assert _normalize_for_match("_test_") == "test"
+        assert _normalize_for_match("& test") == "test"
+
+    def test_focus_area_matching_with_canonical_ip(self, tmp_path: Path) -> None:
+        """Focus area 'ip_ownership' matches canonical category 'IP & Ownership'."""
+        merged: dict[str, Any] = {
+            "c": {
+                "customer": "C",
+                "findings": [_make_finding(severity="P0", agent="legal", category="ip_assignment_and_ownership")],
+                "gaps": [],
+            },
+        }
+        gen = HTMLReportGenerator()
+        out = tmp_path / "report.html"
+        gen.generate(merged, out, deal_config={"buyer_strategy": {"focus_areas": ["ip_ownership"]}})
+        content = out.read_text(encoding="utf-8")
+        assert "Findings in Buyer Focus Areas" in content
+
+
+# ===========================================================================
+# Nav bar completeness
+# ===========================================================================
+
+
+class TestNavBarCompleteness:
+    """Tests for navigation bar section links."""
+
+    def test_nav_bar_has_executive_link(self, tmp_path: Path) -> None:
+        """Nav bar includes link to Executive Summary section."""
+        gen = HTMLReportGenerator()
+        out = tmp_path / "report.html"
+        gen.generate({}, out)
+        content = out.read_text(encoding="utf-8")
+        assert "href='#sec-executive'" in content
+
+    def test_nav_bar_has_reconciliation_link(self, tmp_path: Path) -> None:
+        """Nav bar includes link to Data Reconciliation section."""
+        gen = HTMLReportGenerator()
+        out = tmp_path / "report.html"
+        gen.generate({}, out)
+        content = out.read_text(encoding="utf-8")
+        assert "href='#sec-xref'" in content
+
+    def test_nav_bar_has_risk_link(self, tmp_path: Path) -> None:
+        """Nav bar includes link to Risk section."""
+        gen = HTMLReportGenerator()
+        out = tmp_path / "report.html"
+        gen.generate({}, out)
+        content = out.read_text(encoding="utf-8")
+        assert "href='#sec-heatmap'" in content

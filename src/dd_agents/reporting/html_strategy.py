@@ -12,6 +12,16 @@ import html
 from dd_agents.reporting.html_base import SectionRenderer
 
 
+def _normalize_for_match(s: str) -> str:
+    """Normalize a category or focus area string for substring matching.
+
+    Strips whitespace, ampersands, and collapses underscores so that
+    canonical names like ``"IP & Ownership"`` match focus areas like
+    ``"ip_ownership"``.
+    """
+    return s.lower().replace(" ", "_").replace("&", "").replace("__", "_").strip("_")
+
+
 class StrategyRenderer(SectionRenderer):
     """Render the optional buyer strategy section."""
 
@@ -74,10 +84,8 @@ class StrategyRenderer(SectionRenderer):
         if focus and self.data.findings_by_category:
             relevant_findings = 0
             for cat, findings in self.data.findings_by_category.items():
-                cat_norm = cat.lower().replace(" ", "_").replace("&", "and")
-                if any(
-                    fa.lower().replace(" ", "_") in cat_norm or cat_norm in fa.lower().replace(" ", "_") for fa in focus
-                ):
+                cat_norm = _normalize_for_match(cat)
+                if any(_normalize_for_match(fa) in cat_norm or cat_norm in _normalize_for_match(fa) for fa in focus):
                     relevant_findings += len(findings)
             if relevant_findings > 0:
                 parts.append(

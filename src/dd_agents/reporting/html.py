@@ -23,7 +23,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from dd_agents.reporting.computed_metrics import ReportDataComputer
-from dd_agents.reporting.html_base import SectionRenderer, render_css, render_js, render_nav_bar
+from dd_agents.reporting.html_base import render_css, render_js, render_nav_bar
 from dd_agents.reporting.html_cross import CrossRefRenderer
 from dd_agents.reporting.html_customers import CustomerRenderer
 from dd_agents.reporting.html_dashboard import DashboardRenderer
@@ -37,6 +37,8 @@ from dd_agents.reporting.html_strategy import StrategyRenderer
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from dd_agents.reporting.html_base import SectionRenderer
 
 logger = logging.getLogger(__name__)
 
