@@ -155,13 +155,14 @@ class SectionRenderer(ABC):
         """Render a contextual alert box (C1).
 
         Levels: critical, high, info, good.
+        Both *title* and *body* are HTML-escaped to prevent XSS.
         """
         level = level.lower()
         css_class = f"alert alert-{level}"
         return (
             f"<div class='{css_class}'>"
             f"<div class='alert-title'>{_html.escape(title)}</div>"
-            f"<div class='alert-body'>{body}</div>"
+            f"<div class='alert-body'>{_html.escape(body)}</div>"
             f"</div>"
         )
 
@@ -890,12 +891,14 @@ def render_nav_bar(section_rag: dict[str, str] | None = None) -> str:
         "<span>DD Report</span>"
         "<span class='confidential'>Confidential</span>"
         "</div>"
-        # Risk & Legal
+        # Risk & Analysis
         "<div class='toc-group'>"
         "<div class='toc-group-label'>Risk &amp; Analysis</div>"
         f"<a href='#sec-executive'>{_rag('executive')} Executive Summary</a>"
         f"<a href='#sec-wolf-pack'>{_rag('executive')} Deal Breakers</a>"
         "<a href='#sec-key-risks'>Key Risks</a>"
+        "<a href='#sec-p0-table'>P0 Entities</a>"
+        "<a href='#sec-p1-table'>P1 Entities</a>"
         f"<a href='#sec-heatmap'>Risk Heatmap</a>"
         "</div>"
         # Business Analysis
@@ -903,7 +906,7 @@ def render_nav_bar(section_rag: dict[str, str] | None = None) -> str:
         "<div class='toc-group-label'>Business Analysis</div>"
         f"<a href='#sec-coc'>{_rag('coc')} Change of Control</a>"
         f"<a href='#sec-privacy'>{_rag('privacy')} Data Privacy</a>"
-        "<a href='#sec-health'>Customer Health</a>"
+        "<a href='#sec-health'>Entity Health</a>"
         "</div>"
         # Domains
         "<div class='toc-group'>"
@@ -919,6 +922,8 @@ def render_nav_bar(section_rag: dict[str, str] | None = None) -> str:
         f"<a href='#sec-gaps'>{_rag('gaps')} Gap Analysis</a>"
         f"<a href='#sec-xref'>{_rag('xref')} Reconciliation</a>"
         f"<a href='#sec-governance'>{_rag('governance')} Governance</a>"
+        "<a href='#sec-quality'>Quality Audit</a>"
+        "<a href='#sec-audit-checks'>QA Checks</a>"
         "<a href='#sec-customers'>Entity Detail</a>"
         "</div>"
         # Actions & Appendix

@@ -576,8 +576,8 @@ class TestHTMLReportGenerator:
         assert "Gap Analysis" in content
         assert "Governance Resolution" in content
 
-        # No quality section when no metadata
-        assert "Quality Audit" not in content
+        # No quality section body when no metadata (sidebar nav link is always present)
+        assert "id='sec-quality'" not in content
 
     def test_deal_header_with_config(self, tmp_path: Path) -> None:
         """Deal header shows buyer, target, and deal type from deal_config."""

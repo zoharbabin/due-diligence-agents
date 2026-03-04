@@ -788,11 +788,23 @@ class ReportDataComputer:
                 gap_priority_counts[str(g.get("priority", "unknown"))] += 1
                 gap_type_counts[str(g.get("gap_type", "unknown"))] += 1
 
-        # Sort wolf pack: P0 first, then alphabetical
-        wolf_pack.sort(key=lambda f: (0 if f.get("severity") == "P0" else 1, str(f.get("title", ""))))
+        # Sort wolf pack: P0 first, then by severity weight (highest impact first)
+        wolf_pack.sort(
+            key=lambda f: (
+                0 if f.get("severity") == "P0" else 1,
+                -_SEVERITY_WEIGHTS.get(str(f.get("severity", "P3")), 0),
+                str(f.get("title", "")),
+            )
+        )
 
         # Wolf pack P0 only, capped at 15
-        wolf_pack_p0 = [f for f in wolf_pack if f.get("severity") == "P0"][:15]
+        all_p0 = [f for f in wolf_pack if f.get("severity") == "P0"]
+        wolf_pack_p0 = all_p0[:15]
+        if len(all_p0) > 15:
+            logger.warning(
+                "P0 deal breakers capped at 15 (total: %d). Review the full findings list for complete P0 coverage.",
+                len(all_p0),
+            )
 
         # Compute derived metrics
         deal_risk_label = self._compute_risk_label(severity_counts)
@@ -1222,20 +1234,22 @@ class ReportDataComputer:
         else:
             rag["gaps"] = "green"
 
-        # CoC
-        coc_count = len(topic_findings.get("coc", []))
-        if coc_count > 10:
+        # CoC — severity-aware: any P0 CoC finding is red
+        coc = topic_findings.get("coc", [])
+        coc_has_p0 = any(f.get("severity") == "P0" for f in coc)
+        if coc_has_p0 or len(coc) > 10:
             rag["coc"] = "red"
-        elif coc_count > 0:
+        elif len(coc) > 0:
             rag["coc"] = "amber"
         else:
             rag["coc"] = "green"
 
-        # Privacy
-        privacy_count = len(topic_findings.get("privacy", []))
-        if privacy_count > 5:
+        # Privacy — severity-aware: any P0 privacy finding is red
+        privacy = topic_findings.get("privacy", [])
+        privacy_has_p0 = any(f.get("severity") == "P0" for f in privacy)
+        if privacy_has_p0 or len(privacy) > 5:
             rag["privacy"] = "red"
-        elif privacy_count > 0:
+        elif len(privacy) > 0:
             rag["privacy"] = "amber"
         else:
             rag["privacy"] = "green"

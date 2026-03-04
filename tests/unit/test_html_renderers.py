@@ -1353,10 +1353,17 @@ class TestAlertBoxes:
         assert "alert-good" in alert
         assert "All clear" in alert
 
-    def test_render_alert_xss(self) -> None:
+    def test_render_alert_xss_title(self) -> None:
         alert = SectionRenderer.render_alert("info", "<script>alert(1)</script>", "Test")
         assert "<script>" not in alert
         assert "&lt;script&gt;" in alert
+
+    def test_render_alert_xss_body(self) -> None:
+        """Body parameter must also be escaped to prevent XSS."""
+        alert = SectionRenderer.render_alert("info", "Title", '<img src=x onerror="steal()">')
+        # Raw tag must not appear — html.escape converts < to &lt;
+        assert "<img" not in alert
+        assert "&lt;img" in alert
 
 
 # ===========================================================================
@@ -1499,3 +1506,173 @@ class TestComputedMetricsNewFields:
             assert "timeline" in rec
             assert "title" in rec
             assert "description" in rec
+
+    def test_section_rag_coc_p0_is_red(self) -> None:
+        """CoC section RAG should be red when a P0 CoC finding exists."""
+        merged = {
+            "c": {
+                "customer": "C",
+                "findings": [
+                    _make_finding(
+                        severity="P0",
+                        agent="legal",
+                        category="change_of_control",
+                        title="Change of control terminates",
+                        description="CoC terminates agreement",
+                    ),
+                ],
+                "gaps": [],
+            },
+        }
+        computed = _compute(merged)
+        assert computed.section_rag.get("coc") == "red"
+
+    def test_section_rag_privacy_p0_is_red(self) -> None:
+        """Privacy section RAG should be red when a P0 privacy finding exists."""
+        merged = {
+            "c": {
+                "customer": "C",
+                "findings": [
+                    _make_finding(
+                        severity="P0",
+                        title="Critical GDPR breach",
+                        description="Personal data exposure via GDPR privacy violation",
+                    ),
+                ],
+                "gaps": [],
+            },
+        }
+        computed = _compute(merged)
+        assert computed.section_rag.get("privacy") == "red"
+
+
+# ===========================================================================
+# DiffRenderer tests (Issue #113 G)
+# ===========================================================================
+
+
+class TestDiffRenderer:
+    def test_diff_no_run_dir_returns_empty(self) -> None:
+        from dd_agents.reporting.html_diff import DiffRenderer
+
+        computed = _compute()
+        r = DiffRenderer(computed, _make_merged_data(), run_dir=None)
+        assert r.render() == ""
+
+    def test_diff_no_file_returns_empty(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        from dd_agents.reporting.html_diff import DiffRenderer
+
+        computed = _compute()
+        with tempfile.TemporaryDirectory() as tmp:
+            r = DiffRenderer(computed, _make_merged_data(), run_dir=Path(tmp))
+            assert r.render() == ""
+
+    def test_diff_renders_summary_cards(self) -> None:
+        import json
+        import tempfile
+        from pathlib import Path
+
+        from dd_agents.reporting.html_diff import DiffRenderer
+
+        computed = _compute()
+        with tempfile.TemporaryDirectory() as tmp:
+            report_dir = Path(tmp) / "report"
+            report_dir.mkdir()
+            diff_data = {
+                "summary": {"new": 3, "resolved": 1, "changed_severity": 2},
+                "changes": [
+                    {"change_type": "new", "customer": "A", "finding_summary": "New issue"},
+                    {"change_type": "resolved", "customer": "B", "finding_summary": "Fixed"},
+                    {
+                        "change_type": "changed_severity",
+                        "customer": "C",
+                        "finding_summary": "Escalated",
+                        "prior_severity": "P2",
+                        "current_severity": "P0",
+                    },
+                ],
+            }
+            (report_dir / "report_diff.json").write_text(json.dumps(diff_data))
+            r = DiffRenderer(computed, _make_merged_data(), run_dir=Path(tmp))
+            html_out = r.render()
+            assert "id='sec-diff'" in html_out
+            assert "Run-over-Run Changes" in html_out
+            assert ">3</div>" in html_out  # new count
+            assert ">1</div>" in html_out  # resolved count
+            assert "New Findings" in html_out
+            assert "Resolved" in html_out
+            assert "Severity Changes" in html_out
+
+    def test_diff_escapes_xss(self) -> None:
+        import json
+        import tempfile
+        from pathlib import Path
+
+        from dd_agents.reporting.html_diff import DiffRenderer
+
+        computed = _compute()
+        with tempfile.TemporaryDirectory() as tmp:
+            report_dir = Path(tmp) / "report"
+            report_dir.mkdir()
+            diff_data = {
+                "summary": {"new": 1, "resolved": 0, "changed_severity": 0},
+                "changes": [
+                    {
+                        "change_type": "new",
+                        "customer": "<script>xss</script>",
+                        "finding_summary": "<img onerror=hack>",
+                    },
+                ],
+            }
+            (report_dir / "report_diff.json").write_text(json.dumps(diff_data))
+            r = DiffRenderer(computed, _make_merged_data(), run_dir=Path(tmp))
+            html_out = r.render()
+            # Raw tags must be escaped
+            assert "<script>" not in html_out
+            assert "&lt;script&gt;" in html_out
+            assert "<img" not in html_out
+            assert "&lt;img" in html_out
+
+    def test_diff_corrupt_json_returns_empty(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        from dd_agents.reporting.html_diff import DiffRenderer
+
+        computed = _compute()
+        with tempfile.TemporaryDirectory() as tmp:
+            report_dir = Path(tmp) / "report"
+            report_dir.mkdir()
+            (report_dir / "report_diff.json").write_text("not valid json {{{")
+            r = DiffRenderer(computed, _make_merged_data(), run_dir=Path(tmp))
+            assert r.render() == ""
+
+
+# ===========================================================================
+# Sidebar nav link completeness tests
+# ===========================================================================
+
+
+class TestSidebarNavLinks:
+    def test_sidebar_has_p0_p1_links(self) -> None:
+        nav = render_nav_bar()
+        assert "href='#sec-p0-table'" in nav
+        assert "href='#sec-p1-table'" in nav
+
+    def test_sidebar_has_quality_links(self) -> None:
+        nav = render_nav_bar()
+        assert "href='#sec-quality'" in nav
+        assert "href='#sec-audit-checks'" in nav
+
+    def test_sidebar_has_all_domain_links(self) -> None:
+        nav = render_nav_bar()
+        for domain in ("legal", "finance", "commercial", "producttech"):
+            assert f"href='#sec-domain-{domain}'" in nav
+
+    def test_sidebar_has_recommendations_link(self) -> None:
+        nav = render_nav_bar()
+        assert "href='#sec-recommendations'" in nav
+        assert "href='#sec-methodology'" in nav

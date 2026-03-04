@@ -30,7 +30,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
   - Gap analysis table expanded to 7 columns (added Why Needed, Request to Company, Agent).
   - Terminology: "Customer" replaced with "Entity" in all reporting outputs.
   - `ReportDataComputer` + `ReportComputedData` Pydantic model (55 fields) for single-pass metric computation.
-  - 183 HTML renderer unit tests (up from 129).
+  - 240+ HTML renderer unit tests (up from 129).
 - Pre-merge validation and cross-agent anomaly detection (step 23) — deterministic Python replacing the redundant Reporting Lead agent.
   - File completeness checks (4 agent files per customer).
   - JSON integrity validation (catch corrupt/truncated files before merge).
@@ -54,6 +54,11 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **XSS vulnerability in `render_alert()` body parameter** — body text now HTML-escaped via `html.escape()`, preventing injection through finding descriptions.
+- **Wolf pack P0 sorting** — deal breakers now sorted by severity weight (highest impact first) instead of alphabetical, preventing important findings from being dropped when capped at 15.
+- **Section RAG severity-aware for CoC/Privacy** — CoC and Privacy RAG indicators now check for P0 findings (red) rather than relying solely on count thresholds.
+- **Missing sidebar nav links** — added navigation links for P0/P1 entity tables, Quality Audit, and QA Checks sections.
+- **P0 cap warning** — logs a warning when >15 P0 findings exist and the deal breakers list is truncated.
 - Customer `safe_name` duplication — prompt enforcement + rapidfuzz validation in merge step.
 - Entity cache `save()` missing `run_id` argument (step 34 crash).
 - Extraction pipeline docstrings clarified as search-only purpose.
