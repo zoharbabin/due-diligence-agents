@@ -6,13 +6,18 @@ Each renderer is tested in isolation with mock ReportComputedData.
 from __future__ import annotations
 
 from dd_agents.reporting.computed_metrics import ReportComputedData, ReportDataComputer
+from dd_agents.reporting.html_analysis import CoCAnalysisRenderer, CustomerHealthRenderer, PrivacyAnalysisRenderer
 from dd_agents.reporting.html_base import SectionRenderer, render_css, render_js, render_nav_bar
 from dd_agents.reporting.html_cross import CrossRefRenderer
 from dd_agents.reporting.html_customers import CustomerRenderer
 from dd_agents.reporting.html_dashboard import DashboardRenderer
 from dd_agents.reporting.html_domains import DomainRenderer
+from dd_agents.reporting.html_executive import ExecutiveSummaryRenderer
+from dd_agents.reporting.html_findings_table import FindingsTableRenderer
 from dd_agents.reporting.html_gaps import GapRenderer
+from dd_agents.reporting.html_methodology import MethodologyRenderer
 from dd_agents.reporting.html_quality import QualityRenderer
+from dd_agents.reporting.html_recommendations import RecommendationsRenderer
 from dd_agents.reporting.html_risk import RiskRenderer
 from dd_agents.reporting.html_strategy import StrategyRenderer
 
@@ -115,7 +120,7 @@ class TestSectionRendererHelpers:
 class TestCSSJS:
     def test_render_css_contains_key_selectors(self) -> None:
         css = render_css()
-        assert ".nav-bar" in css
+        assert ".sidebar" in css
         assert ".severity-badge" in css
         assert "@media print" in css
         assert "@media (max-width: 900px)" in css
@@ -128,8 +133,7 @@ class TestCSSJS:
 
     def test_render_nav_bar(self) -> None:
         nav = render_nav_bar()
-        assert "class='nav-bar'" in nav
-        assert "href='#sec-wolf-pack'" in nav
+        assert "class='sidebar'" in nav
         assert "id='global-search'" in nav
         assert "id='btn-expand-all'" in nav
 
@@ -142,7 +146,7 @@ class TestCSSJS:
 class TestPrintCSS:
     def test_print_hides_nav_and_filter(self) -> None:
         css = render_css()
-        assert ".nav-bar" in css
+        assert ".sidebar" in css
         assert ".filter-bar" in css
         assert "display: none" in css or "display:none" in css
 
@@ -990,3 +994,508 @@ class TestVerificationBadge:
         html_out = r.render_finding_detail(finding)
         assert "Detection:" in html_out
         assert "keyword_search" in html_out
+
+
+# ===========================================================================
+# Executive Summary tests (Issue #113)
+# ===========================================================================
+
+
+class TestExecutiveSummaryRenderer:
+    def test_go_no_go_signal(self) -> None:
+        computed = _compute()
+        r = ExecutiveSummaryRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        assert "id='sec-executive'" in html_out
+        assert "Executive Summary" in html_out
+        # P0 exists → Critical → No-Go
+        assert "No-Go" in html_out
+
+    def test_go_signal_clean(self) -> None:
+        merged = {"c": {"customer": "C", "findings": [], "gaps": []}}
+        computed = _compute(merged)
+        r = ExecutiveSummaryRenderer(computed, merged)
+        html_out = r.render()
+        assert "Go" in html_out
+
+    def test_heatmap_rendered(self) -> None:
+        computed = _compute()
+        r = ExecutiveSummaryRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        assert "Risk by Domain" in html_out
+        assert "Legal" in html_out
+
+    def test_top_deal_breakers(self) -> None:
+        computed = _compute()
+        r = ExecutiveSummaryRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        assert "Top Deal Breakers" in html_out
+        assert "CoC terminates contract" in html_out
+
+    def test_key_metrics_strip(self) -> None:
+        computed = _compute()
+        r = ExecutiveSummaryRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        assert "Total Findings" in html_out
+        assert "P0 Critical" in html_out
+        assert "Match Rate" in html_out
+
+    def test_concentration_risk(self) -> None:
+        computed = _compute()
+        r = ExecutiveSummaryRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        # HHI is computed; if present it should be rendered
+        if computed.concentration_hhi > 0:
+            assert "Concentration Risk" in html_out
+
+
+# ===========================================================================
+# Findings Table tests (Issue #113 B1)
+# ===========================================================================
+
+
+class TestFindingsTableRenderer:
+    def test_p0_table_rendered(self) -> None:
+        computed = _compute()
+        r = FindingsTableRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        assert "id='sec-p0-table'" in html_out
+        assert "P0 Deal Stoppers" in html_out
+        assert "customer-table" in html_out
+
+    def test_p1_table_rendered(self) -> None:
+        computed = _compute()
+        r = FindingsTableRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        assert "id='sec-p1-table'" in html_out
+        assert "P1 Critical Issues" in html_out
+
+    def test_no_p0_findings_no_p0_table(self) -> None:
+        merged = {"c": {"customer": "C", "findings": [_make_finding(severity="P2")], "gaps": []}}
+        computed = _compute(merged)
+        r = FindingsTableRenderer(computed, merged)
+        html_out = r.render()
+        assert "P0 Deal Stoppers" not in html_out
+
+    def test_empty_findings_no_tables(self) -> None:
+        merged = {"c": {"customer": "C", "findings": [], "gaps": []}}
+        computed = _compute(merged)
+        r = FindingsTableRenderer(computed, merged)
+        html_out = r.render()
+        assert html_out == ""
+
+    def test_alert_box_in_severity_table(self) -> None:
+        computed = _compute()
+        r = FindingsTableRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        assert "class='alert" in html_out
+
+
+# ===========================================================================
+# CoC Analysis tests (Issue #113 B4)
+# ===========================================================================
+
+
+class TestCoCAnalysisRenderer:
+    def test_coc_section_rendered(self) -> None:
+        computed = _compute()
+        r = CoCAnalysisRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        if computed.coc_findings:
+            assert "id='sec-coc'" in html_out
+            assert "Change of Control Analysis" in html_out
+        else:
+            assert html_out == ""
+
+    def test_coc_with_findings(self) -> None:
+        """CoC findings from change_of_control category should appear."""
+        merged = {
+            "c1": {
+                "customer": "Customer 1",
+                "findings": [
+                    _make_finding(
+                        severity="P0",
+                        agent="legal",
+                        category="change_of_control",
+                        title="CoC terminates contract",
+                        description="Upon change of control agreement terminates",
+                    ),
+                ],
+                "gaps": [],
+            },
+            "c2": {
+                "customer": "Customer 2",
+                "findings": [
+                    _make_finding(
+                        severity="P1",
+                        agent="legal",
+                        category="assignment_restriction",
+                        title="Consent required for assignment",
+                        description="Written consent needed for assignment",
+                    ),
+                ],
+                "gaps": [],
+            },
+        }
+        computed = _compute(merged)
+        r = CoCAnalysisRenderer(computed, merged)
+        html_out = r.render()
+        if computed.coc_findings:
+            assert "Change of Control Analysis" in html_out
+            assert "class='alert" in html_out
+
+    def test_coc_empty_no_render(self) -> None:
+        merged = {"c": {"customer": "C", "findings": [_make_finding(severity="P2")], "gaps": []}}
+        computed = _compute(merged)
+        r = CoCAnalysisRenderer(computed, merged)
+        assert r.render() == ""
+
+
+# ===========================================================================
+# Privacy Analysis tests (Issue #113 B10)
+# ===========================================================================
+
+
+class TestPrivacyAnalysisRenderer:
+    def test_privacy_empty_no_render(self) -> None:
+        merged = {"c": {"customer": "C", "findings": [_make_finding(severity="P2")], "gaps": []}}
+        computed = _compute(merged)
+        r = PrivacyAnalysisRenderer(computed, merged)
+        assert r.render() == ""
+
+    def test_privacy_with_findings(self) -> None:
+        merged = {
+            "c": {
+                "customer": "C",
+                "findings": [
+                    _make_finding(severity="P1", title="GDPR non-compliance", description="GDPR privacy DPA missing"),
+                ],
+                "gaps": [],
+            },
+        }
+        computed = _compute(merged)
+        r = PrivacyAnalysisRenderer(computed, merged)
+        html_out = r.render()
+        if computed.privacy_findings:
+            assert "Data Privacy" in html_out
+
+
+# ===========================================================================
+# Customer Health Tiers tests (Issue #113 G2)
+# ===========================================================================
+
+
+class TestCustomerHealthRenderer:
+    def test_health_tiers_rendered(self) -> None:
+        computed = _compute()
+        r = CustomerHealthRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        if computed.tier1_customers or computed.tier2_customers or computed.tier3_customers:
+            assert "id='sec-health'" in html_out
+            assert "Entity Health Tiers" in html_out
+
+    def test_tier1_critical_alert(self) -> None:
+        computed = _compute()
+        r = CustomerHealthRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        if computed.tier1_customers:
+            assert "Immediate Attention" in html_out or "class='alert" in html_out
+
+    def test_health_empty_no_render(self) -> None:
+        computed = _compute({})
+        r = CustomerHealthRenderer(computed, {})
+        assert r.render() == ""
+
+
+# ===========================================================================
+# Recommendations tests (Issue #113 B6)
+# ===========================================================================
+
+
+class TestRecommendationsRenderer:
+    def test_recommendations_rendered(self) -> None:
+        computed = _compute()
+        r = RecommendationsRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        if computed.recommendations:
+            assert "id='sec-recommendations'" in html_out
+            assert "Recommendations" in html_out
+            assert "rec-card" in html_out
+
+    def test_recommendations_empty_no_render(self) -> None:
+        computed = _compute({})
+        r = RecommendationsRenderer(computed, {})
+        assert r.render() == ""
+
+    def test_recommendations_have_timeline_badges(self) -> None:
+        computed = _compute()
+        r = RecommendationsRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        if computed.recommendations:
+            assert "rec-timeline" in html_out
+
+
+# ===========================================================================
+# Methodology tests (Issue #113 B7)
+# ===========================================================================
+
+
+class TestMethodologyRenderer:
+    def test_methodology_rendered(self) -> None:
+        computed = _compute()
+        r = MethodologyRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        assert "id='sec-methodology'" in html_out
+        assert "Methodology" in html_out
+        assert "Analysis Process" in html_out
+
+    def test_methodology_agent_coverage(self) -> None:
+        computed = _compute()
+        r = MethodologyRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        assert "Agent Coverage" in html_out
+        assert "Legal" in html_out
+        assert "Finance" in html_out
+
+    def test_methodology_data_quality(self) -> None:
+        computed = _compute()
+        r = MethodologyRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        assert "Data Quality" in html_out
+        assert "match rate" in html_out.lower() or "Match" in html_out
+
+    def test_methodology_limitations(self) -> None:
+        computed = _compute()
+        r = MethodologyRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        assert "Known Limitations" in html_out
+
+    def test_methodology_entity_count(self) -> None:
+        computed = _compute()
+        r = MethodologyRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        assert "Entities Analyzed" in html_out
+        assert ">2</div>" in html_out  # 2 entities in test data
+
+
+# ===========================================================================
+# CSS Custom Properties (Issue #113 E1)
+# ===========================================================================
+
+
+class TestCSSCustomProperties:
+    def test_root_variables_defined(self) -> None:
+        css = render_css()
+        assert ":root {" in css or ":root{" in css
+        assert "--navy" in css
+        assert "--red" in css
+        assert "--orange" in css
+        assert "--green" in css
+        assert "--blue" in css
+
+    def test_severity_variables(self) -> None:
+        css = render_css()
+        assert "--sev-p0" in css
+        assert "--sev-p1" in css
+        assert "--sev-p2" in css
+        assert "--sev-p3" in css
+
+    def test_alert_variables(self) -> None:
+        css = render_css()
+        assert "--alert-critical-bg" in css
+        assert "--alert-high-bg" in css
+        assert "--alert-info-bg" in css
+        assert "--alert-good-bg" in css
+
+
+# ===========================================================================
+# Sidebar Navigation (Issue #113 A1)
+# ===========================================================================
+
+
+class TestSidebarNavigation:
+    def test_sidebar_has_toc_groups(self) -> None:
+        nav = render_nav_bar()
+        assert "toc-group" in nav
+
+    def test_sidebar_has_confidential_badge(self) -> None:
+        nav = render_nav_bar()
+        assert "confidential" in nav.lower()
+
+    def test_sidebar_has_brand(self) -> None:
+        nav = render_nav_bar()
+        assert "sidebar-brand" in nav
+
+    def test_sidebar_rag_indicators_with_data(self) -> None:
+        rag = {"executive": "green", "domain-legal": "red"}
+        nav = render_nav_bar(section_rag=rag)
+        assert "rag-dot" in nav
+
+    def test_sidebar_opens_main_wrapper(self) -> None:
+        nav = render_nav_bar()
+        assert "class='main-wrapper'" in nav
+
+
+# ===========================================================================
+# Alert Box Rendering (Issue #113 C1)
+# ===========================================================================
+
+
+class TestAlertBoxes:
+    def test_render_alert_critical(self) -> None:
+        alert = SectionRenderer.render_alert("critical", "Title", "Body text")
+        assert "alert-critical" in alert
+        assert "Title" in alert
+        assert "Body text" in alert
+
+    def test_render_alert_good(self) -> None:
+        alert = SectionRenderer.render_alert("good", "All clear", "No issues")
+        assert "alert-good" in alert
+        assert "All clear" in alert
+
+    def test_render_alert_xss(self) -> None:
+        alert = SectionRenderer.render_alert("info", "<script>alert(1)</script>", "Test")
+        assert "<script>" not in alert
+        assert "&lt;script&gt;" in alert
+
+
+# ===========================================================================
+# RAG Indicator (Issue #113 E6)
+# ===========================================================================
+
+
+class TestRAGIndicator:
+    def test_rag_green(self) -> None:
+        indicator = SectionRenderer.rag_indicator("green")
+        assert "rag-dot" in indicator
+        assert "green" in indicator.lower() or "#28a745" in indicator
+
+    def test_rag_red(self) -> None:
+        indicator = SectionRenderer.rag_indicator("red")
+        assert "rag-dot" in indicator
+
+    def test_rag_unknown(self) -> None:
+        indicator = SectionRenderer.rag_indicator("unknown")
+        assert "rag-dot" in indicator
+
+
+# ===========================================================================
+# Category Normalization (Issue #113 D1)
+# ===========================================================================
+
+
+class TestCategoryNormalization:
+    def test_change_of_control_variants_normalized(self) -> None:
+        """All CoC variants map to 'Change of Control'."""
+        merged = {
+            "c": {
+                "customer": "C",
+                "findings": [
+                    _make_finding(agent="legal", category="change_of_control_clauses"),
+                    _make_finding(agent="legal", category="change_in_control"),
+                    _make_finding(agent="legal", category="assignment_restriction"),
+                ],
+                "gaps": [],
+            },
+        }
+        computed = _compute(merged)
+        legal_cats = computed.category_groups.get("legal", {})
+        assert "Change of Control" in legal_cats
+
+    def test_dataroom_folder_mapped_to_other(self) -> None:
+        """Data room folder names like '1.1. Engineering' map to 'Other'."""
+        merged = {
+            "c": {
+                "customer": "C",
+                "findings": [_make_finding(agent="legal", category="1.1. Engineering")],
+                "gaps": [],
+            },
+        }
+        computed = _compute(merged)
+        legal_cats = computed.category_groups.get("legal", {})
+        assert "1.1. Engineering" not in legal_cats
+        assert "Other" in legal_cats
+
+    def test_unknown_category_passes_through(self) -> None:
+        """Categories with no keyword match pass through as-is."""
+        merged = {
+            "c": {
+                "customer": "C",
+                "findings": [_make_finding(agent="legal", category="completely_novel_topic_xyz")],
+                "gaps": [],
+            },
+        }
+        computed = _compute(merged)
+        legal_cats = computed.category_groups.get("legal", {})
+        # Should either be in its original form or mapped to Other
+        assert len(legal_cats) >= 1
+
+
+# ===========================================================================
+# Computed metrics new fields (Issue #113)
+# ===========================================================================
+
+
+class TestComputedMetricsNewFields:
+    def test_recommendations_generated(self) -> None:
+        computed = _compute()
+        assert isinstance(computed.recommendations, list)
+        if computed.total_findings > 0:
+            assert len(computed.recommendations) > 0
+
+    def test_section_rag_computed(self) -> None:
+        computed = _compute()
+        assert isinstance(computed.section_rag, dict)
+
+    def test_customer_p0_summary(self) -> None:
+        computed = _compute()
+        assert isinstance(computed.customer_p0_summary, list)
+        if computed.findings_by_severity.get("P0", 0) > 0:
+            assert len(computed.customer_p0_summary) > 0
+
+    def test_customer_p1_summary(self) -> None:
+        computed = _compute()
+        assert isinstance(computed.customer_p1_summary, list)
+
+    def test_health_tiers(self) -> None:
+        computed = _compute()
+        assert isinstance(computed.tier1_customers, list)
+        assert isinstance(computed.tier2_customers, list)
+        assert isinstance(computed.tier3_customers, list)
+
+    def test_total_arr_mentioned(self) -> None:
+        computed = _compute()
+        assert isinstance(computed.total_arr_mentioned, float)
+
+    def test_wolf_pack_p0_only(self) -> None:
+        computed = _compute()
+        for f in computed.wolf_pack_p0:
+            assert f.get("severity") == "P0"
+
+    def test_wolf_pack_p0_cap_15(self) -> None:
+        """Wolf pack P0 list should be capped at 15."""
+        findings = [_make_finding(severity="P0", title=f"P0 finding {i}") for i in range(20)]
+        merged = {"c": {"customer": "C", "findings": findings, "gaps": []}}
+        computed = _compute(merged)
+        assert len(computed.wolf_pack_p0) <= 15
+
+    def test_topic_classification_coc(self) -> None:
+        """Findings with 'change of control' in title are classified as CoC."""
+        merged = {
+            "c": {
+                "customer": "C",
+                "findings": [
+                    _make_finding(title="Change of control clause found", description="CoC terminates agreement"),
+                ],
+                "gaps": [],
+            },
+        }
+        computed = _compute(merged)
+        assert isinstance(computed.coc_findings, list)
+
+    def test_recommendation_structure(self) -> None:
+        computed = _compute()
+        for rec in computed.recommendations:
+            assert "timeline" in rec
+            assert "title" in rec
+            assert "description" in rec

@@ -624,15 +624,14 @@ class TestHTMLReportGenerator:
         assert "Strong citations" in content
         assert "88" in content
 
-    def test_sticky_nav_bar(self, tmp_path: Path) -> None:
-        """Navigation bar with section anchors is rendered."""
+    def test_sidebar_navigation(self, tmp_path: Path) -> None:
+        """Sidebar navigation with section anchors is rendered."""
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
         gen.generate({}, out)
 
         content = out.read_text(encoding="utf-8")
-        assert "class='nav-bar'" in content
-        assert "href='#sec-wolf-pack'" in content
+        assert "class='sidebar'" in content
         assert "href='#sec-heatmap'" in content
         assert "href='#sec-gaps'" in content
         assert "href='#sec-customers'" in content

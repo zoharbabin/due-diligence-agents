@@ -9,8 +9,9 @@ Level 0: Deal-Level Decision View (go/no-go signals)
       Level 3: Per-Customer / Per-Entity findings
         Level 4: Individual findings with full citations
 
-Features: wolf-pack deal-breaker alerts, domain heatmap, severity filtering,
-global search, sortable tables, collapsible sections, print mode.
+Features: sidebar navigation with scroll tracking, alert boxes, severity
+filtering, global search, sortable tables, collapsible sections, print mode,
+CSS custom properties, RAG indicators, recommendations engine.
 
 Architecture: Thin orchestrator that delegates to per-section renderers.
 Each renderer inherits SectionRenderer and consumes pre-computed ReportComputedData.
@@ -23,6 +24,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from dd_agents.reporting.computed_metrics import ReportDataComputer
+from dd_agents.reporting.html_analysis import CoCAnalysisRenderer, CustomerHealthRenderer, PrivacyAnalysisRenderer
 from dd_agents.reporting.html_base import render_css, render_js, render_nav_bar
 from dd_agents.reporting.html_cross import CrossRefRenderer
 from dd_agents.reporting.html_customers import CustomerRenderer
@@ -30,8 +32,11 @@ from dd_agents.reporting.html_dashboard import DashboardRenderer
 from dd_agents.reporting.html_diff import DiffRenderer
 from dd_agents.reporting.html_domains import DomainRenderer
 from dd_agents.reporting.html_executive import ExecutiveSummaryRenderer
+from dd_agents.reporting.html_findings_table import FindingsTableRenderer
 from dd_agents.reporting.html_gaps import GapRenderer
+from dd_agents.reporting.html_methodology import MethodologyRenderer
 from dd_agents.reporting.html_quality import QualityRenderer
+from dd_agents.reporting.html_recommendations import RecommendationsRenderer
 from dd_agents.reporting.html_risk import RiskRenderer
 from dd_agents.reporting.html_strategy import StrategyRenderer
 
@@ -118,19 +123,39 @@ class HTMLReportGenerator:
             f"<style>{render_css()}</style>",
             "</head>",
             "<body>",
-            render_nav_bar(),
+            render_nav_bar(section_rag=computed.section_rag),
         ]
 
-        # Section renderers (order matches report layout)
+        # Section renderers (order follows executive decision flow — Issue #113 A2)
         renderers: list[SectionRenderer] = [
+            # 1. Deal header + key metrics
             DashboardRenderer(computed, merged_data, renderer_config),
+            # 2. Executive summary (Go/No-Go, heatmap, top deal breakers)
             ExecutiveSummaryRenderer(computed, merged_data, renderer_config),
+            # 3. P0/P1 customer-level tables
+            FindingsTableRenderer(computed, merged_data, renderer_config),
+            # 4. Domain risk heatmap
             RiskRenderer(computed, merged_data, renderer_config),
+            # 5. Change of Control analysis
+            CoCAnalysisRenderer(computed, merged_data, renderer_config),
+            # 6. Data Privacy analysis
+            PrivacyAnalysisRenderer(computed, merged_data, renderer_config),
+            # 7. Entity health tiers
+            CustomerHealthRenderer(computed, merged_data, renderer_config),
+            # 8. Domain deep-dives (collapsed)
             DomainRenderer(computed, merged_data, renderer_config),
+            # 9. Gap analysis
             GapRenderer(computed, merged_data, renderer_config),
+            # 10. Data reconciliation
             CrossRefRenderer(computed, merged_data, renderer_config),
+            # 11. Governance & quality
             QualityRenderer(computed, merged_data, renderer_config, run_dir=run_dir),
+            # 12. Entity detail (collapsed)
             CustomerRenderer(computed, merged_data, renderer_config),
+            # 13. Recommendations
+            RecommendationsRenderer(computed, merged_data, renderer_config),
+            # 14. Methodology
+            MethodologyRenderer(computed, merged_data, renderer_config),
         ]
 
         # Conditional diff section (only for incremental runs)
@@ -148,6 +173,7 @@ class HTMLReportGenerator:
         parts.extend(
             [
                 "</div>",  # close <div class='content'> opened in render_nav_bar()
+                "</div>",  # close <div class='main-wrapper'> opened in render_nav_bar()
                 f"<script>{render_js()}</script>",
                 "</body>",
                 "</html>",
