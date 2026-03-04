@@ -50,6 +50,7 @@ dd-agents run path/to/deal-config.json
 - Async functions for pipeline steps
 - All JSON schemas validated via Pydantic `model_validate()`
 - `customer_safe_name`: lowercase, strip legal suffixes (Inc/Corp/LLC/Ltd), replace special chars with `_`, collapse underscores. Example: "Smith & Partners, Inc." → `smith_partners`
+- Reporting terminology: internal code uses "customer"; HTML/Excel report outputs use "Entity" for board-facing content
 - Batch naming is 1-based: `batch_1`, `batch_2` (never `batch_0`)
 
 ## Implementation Process
@@ -86,7 +87,8 @@ Update the phase status in IMPLEMENTATION_PLAN.md after completing each phase.
 | `tools/*` | `docs/plan/07-tools-and-hooks.md` |
 | `orchestrator/*` | `docs/plan/05-orchestrator.md` |
 | `agents/*` | `docs/plan/06-agents.md` |
-| `reporting/*` | `docs/plan/10-reporting.md` |
+| `reporting/*` | `docs/plan/10-reporting.md` (Excel + merge) |
+| `reporting/html*.py` | `docs/plan/10-reporting.md` + PR #112 description (HTML renderers) |
 | `validation/*` | `docs/plan/11-qa-validation.md` |
 | `vector_store/*` | `docs/plan/14-vector-store.md` |
 | `search/*` | `docs/plan/22-llm-robustness.md` + `docs/search-guide.md` |

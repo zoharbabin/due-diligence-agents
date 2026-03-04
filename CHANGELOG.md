@@ -8,6 +8,17 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- Board-ready executive HTML report (PR #112) — modular `SectionRenderer` architecture with pre-computed metrics.
+  - `ExecutiveSummaryRenderer` with Go/No-Go signal, risk heatmap, top 5 deal breakers, key metrics strip, concentration risk (HHI).
+  - `DashboardRenderer` with wolf pack dedup: P0-only deal breakers capped at 15, similarity-based grouping via `difflib.SequenceMatcher`.
+  - `DiffRenderer` for run-over-run change tracking (new/resolved/changed-severity findings).
+  - `StrategyRenderer` for optional buyer-context analysis (conditional on `buyer_strategy` config).
+  - Category normalization: longest-match keyword algorithm mapping freeform agent categories to 12 canonical categories per domain.
+  - 3-way cross-reference match status (match/mismatch/unverified) replacing binary Yes/No.
+  - Gap analysis table expanded to 7 columns (added Why Needed, Request to Company, Agent).
+  - Terminology: "Customer" replaced with "Entity" in all reporting outputs.
+  - `ReportDataComputer` + `ReportComputedData` Pydantic model for single-pass metric computation.
+  - Navigation bar with links to all 10 report sections.
 - Pre-merge validation and cross-agent anomaly detection (step 23) — deterministic Python replacing the redundant Reporting Lead agent.
   - File completeness checks (4 agent files per customer).
   - JSON integrity validation (catch corrupt/truncated files before merge).
