@@ -28,7 +28,7 @@ RED_FLAG_CATEGORIES: list[str] = [
     "debt_covenants",
 ]
 
-_CATEGORY_LABELS: dict[str, str] = {
+CATEGORY_LABELS: dict[str, str] = {
     "active_litigation": "Active Litigation",
     "ip_ownership_gaps": "IP Ownership Gaps",
     "undisclosed_contracts": "Undisclosed Material Contracts",
@@ -130,7 +130,7 @@ class RedFlagScannerAgent(BaseAgentRunner):
 
     def get_system_prompt(self) -> str:
         categories_desc = "\n".join(
-            f"- **{_CATEGORY_LABELS.get(cat, cat)}**: Scan for {cat.replace('_', ' ')}" for cat in RED_FLAG_CATEGORIES
+            f"- **{CATEGORY_LABELS.get(cat, cat)}**: Scan for {cat.replace('_', ' ')}" for cat in RED_FLAG_CATEGORIES
         )
         return (
             "You are a Red Flag Scanner for M&A due diligence. Your job is to perform "

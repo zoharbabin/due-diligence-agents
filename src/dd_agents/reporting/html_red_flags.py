@@ -10,7 +10,7 @@ from __future__ import annotations
 import html
 from typing import Any
 
-from dd_agents.agents.red_flag_scanner import _CATEGORY_LABELS
+from dd_agents.agents.red_flag_scanner import CATEGORY_LABELS
 from dd_agents.reporting.html_base import SectionRenderer
 
 _SIGNAL_CONFIG: dict[str, dict[str, str]] = {
@@ -122,7 +122,7 @@ class RedFlagAssessmentRenderer(SectionRenderer):
         source = html.escape(str(flag.get("source_document", "")))
         action = html.escape(str(flag.get("recommended_action", "")))
 
-        cat_label = html.escape(_CATEGORY_LABELS.get(category, category.replace("_", " ").title()))
+        cat_label = html.escape(CATEGORY_LABELS.get(category, category.replace("_", " ").title()))
 
         sev_colors: dict[str, str] = {
             "P0": "#dc3545",
