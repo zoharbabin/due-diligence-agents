@@ -11,6 +11,8 @@ from typing import Any
 
 from dd_agents.reporting.html_base import SectionRenderer
 
+_SEV_RANK: dict[str, int] = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+
 
 class CoCAnalysisRenderer(SectionRenderer):
     """Render the Change of Control analysis section (B4)."""
@@ -95,7 +97,7 @@ class CoCAnalysisRenderer(SectionRenderer):
             max_sev = "P3"
             for f in findings:
                 sev = f.get("severity", "P3")
-                if sev < max_sev:
+                if _SEV_RANK.get(sev, 3) < _SEV_RANK.get(max_sev, 3):
                     max_sev = sev
             primary = html.escape(str(findings[0].get("title", "")))
             subtype = html.escape(self._detect_subtype(findings[0]))
@@ -221,7 +223,7 @@ class PrivacyAnalysisRenderer(SectionRenderer):
 
         for customer_csn, findings in sorted(by_customer.items(), key=lambda x: -len(x[1])):
             display_name = self.data.display_names.get(customer_csn, customer_csn) if self.data else customer_csn
-            max_sev = min((f.get("severity", "P3") for f in findings), default="P3")
+            max_sev = min((f.get("severity", "P3") for f in findings), key=lambda s: _SEV_RANK.get(s, 3), default="P3")
             primary = html.escape(str(findings[0].get("title", "")))
             parts.append(
                 f"<tr><td><strong>{html.escape(display_name)}</strong></td>"

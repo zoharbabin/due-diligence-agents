@@ -824,7 +824,8 @@ def render_nav_bar(section_rag: dict[str, str] | None = None) -> str:
             return ""
         color = RAG_COLORS.get(status, "#6c757d")
         label = status.capitalize()
-        return f"<span class='rag-dot' style='background:{color}' title='{label}' aria-label='Status: {label}'></span>"
+        esc = _html.escape(label, quote=True)
+        return f"<span class='rag-dot' style='background:{color}' title='{esc}' aria-label='Status: {esc}'></span>"
 
     return (
         "<a href='#main-content' class='skip-link'>Skip to main content</a>"

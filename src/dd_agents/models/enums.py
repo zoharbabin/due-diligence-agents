@@ -48,6 +48,7 @@ class GapType(StrEnum):
     MISSING_DATA = "Missing_Data"  # Doc exists but key fields blank/redacted
     AMBIGUOUS_LINK = "Ambiguous_Link"  # Governance unresolvable
     UNREADABLE = "Unreadable"  # OCR and Read both failed
+    NOT_FOUND = "Not_Found"  # Expected document/data not found in data room
     CONTRADICTION = "Contradiction"  # Conflicting terms across docs
     DATA_MISMATCH = "Data_Mismatch"  # Contract terms contradict reference data
 
