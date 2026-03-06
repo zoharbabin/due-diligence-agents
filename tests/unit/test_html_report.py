@@ -304,11 +304,12 @@ class TestHTMLReportGenerator:
         assert "<b>bold</b>" not in content
         assert "<img src=x>" not in content
 
-        # Escaped versions should be present
-        assert "&lt;script&gt;" in content
-        assert "&amp;" in content
-        assert "&lt;b&gt;" in content
-        assert "&quot;" in content
+        # Escaped versions of finding title/description should be present
+        assert "&amp;" in content  # from finding title '& "quotes"'
+        assert "&lt;b&gt;" in content  # from finding title '<b>bold</b>'
+        # Customer name resolved from CSN ("customer_a" → "Customer A") — XSS string
+        # never enters the output, which is stronger than escaping.
+        assert "Customer A" in content
 
     def test_file_output(self, tmp_path: Path) -> None:
         """The generator writes to the specified output path, creating parent dirs."""
@@ -372,7 +373,7 @@ class TestHTMLReportGenerator:
     # -----------------------------------------------------------------------
 
     def test_wolf_pack_rendering(self, tmp_path: Path) -> None:
-        """P0 and P1 findings appear in the wolf-pack section as deal-breaker cards."""
+        """P0 findings appear as wolf-cards; P1 appear in key-risks summary table."""
         merged = _make_merged_data_rich()
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
@@ -384,18 +385,17 @@ class TestHTMLReportGenerator:
         assert "id='sec-wolf-pack'" in content
         assert "Deal Breakers" in content
 
-        # P0 finding present in wolf pack
+        # P0 finding present in wolf pack as wolf-card
         assert "Change of control terminates contract" in content
         assert "wolf-card" in content
 
-        # P1 findings present
+        # P1 findings present in key-risks summary table (not as wolf-cards)
         assert "Revenue recognition mismatch" in content
         assert "IP assignment clause missing" in content
+        assert "key-risks-table" in content
 
-        # P2 and P3 should NOT be in wolf pack cards (they appear elsewhere)
-        # but wolf-card should only wrap P0 and P1
-        # Count wolf-card occurrences: should be 3 (1 P0 + 2 P1)
-        assert content.count("class='wolf-card'") == 3
+        # Wolf-cards are only P0 (P1 moved to summary table)
+        assert content.count("class='wolf-card'") == 1
 
     def test_domain_heatmap_shows_four_domains(self, tmp_path: Path) -> None:
         """The heatmap grid shows all 4 domains (Legal, Finance, Commercial, Product & Tech)."""
@@ -473,9 +473,7 @@ class TestHTMLReportGenerator:
         content = out.read_text(encoding="utf-8")
 
         assert "id='sec-gaps'" in content
-        assert "Gap Analysis" in content
-        # Should show gap count
-        assert "2 gaps" in content
+        assert "Missing or Incomplete Data" in content
 
         # Priority distribution rendered
         assert "By Priority" in content
@@ -502,35 +500,6 @@ class TestHTMLReportGenerator:
 
         # Customer B at 95% (green zone)
         assert "95%" in content
-
-    def test_search_filter_dom_elements(self, tmp_path: Path) -> None:
-        """DOM elements for search, severity filter, agent filter, and expand/collapse buttons exist."""
-        gen = HTMLReportGenerator()
-        out = tmp_path / "report.html"
-        gen.generate({}, out)
-
-        content = out.read_text(encoding="utf-8")
-
-        # Global search
-        assert "id='global-search'" in content
-
-        # Severity filter checkboxes
-        assert "class='sev-filter'" in content
-        assert "value='P0'" in content
-        assert "value='P1'" in content
-        assert "value='P2'" in content
-        assert "value='P3'" in content
-
-        # Agent filter checkboxes
-        assert "class='agent-filter'" in content
-        assert "value='legal'" in content
-        assert "value='finance'" in content
-        assert "value='commercial'" in content
-        assert "value='producttech'" in content
-
-        # Expand/collapse all buttons
-        assert "id='btn-expand-all'" in content
-        assert "id='btn-collapse-all'" in content
 
     def test_backwards_compatibility_old_signature(self, tmp_path: Path) -> None:
         """Calling generate() with only the original params still works (no run_metadata/deal_config)."""
@@ -573,7 +542,7 @@ class TestHTMLReportGenerator:
         # All major sections rendered
         assert "Deal Breakers" in content
         assert "Domain Risk Heatmap" in content
-        assert "Gap Analysis" in content
+        assert "Missing or Incomplete Data" in content
         assert "Governance Resolution" in content
 
         # No quality section body when no metadata (sidebar nav link is always present)
@@ -675,8 +644,8 @@ class TestHTMLReportGenerator:
         content = out.read_text(encoding="utf-8")
         assert "No P0 or P1 findings" in content
 
-    def test_overall_risk_rating_critical(self, tmp_path: Path) -> None:
-        """Overall risk is Critical when P0 findings exist."""
+    def test_overall_risk_rating_high_single_p0(self, tmp_path: Path) -> None:
+        """Single P0 → High risk (softened from Critical, Issue #113)."""
         merged = {
             "c": {
                 "customer": "C",
@@ -689,7 +658,7 @@ class TestHTMLReportGenerator:
         gen.generate(merged, out)
 
         content = out.read_text(encoding="utf-8")
-        assert "Overall Risk: Critical" in content
+        assert "Overall Risk: High" in content
 
     def test_overall_risk_rating_clean(self, tmp_path: Path) -> None:
         """Overall risk is Clean when no findings at all."""

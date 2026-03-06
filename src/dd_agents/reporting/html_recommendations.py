@@ -28,7 +28,7 @@ class RecommendationsRenderer(SectionRenderer):
         ]
 
         # Group by timeline for visual ordering
-        timeline_order = ["Immediate", "Pre-Close", "Post-Close", "Positive"]
+        timeline_order = ["Immediate", "Pre-Close", "Valuation", "Post-Close", "Positive"]
         for timeline in timeline_order:
             group = [r for r in recs if r.get("timeline") == timeline]
             if not group:
@@ -50,6 +50,7 @@ class RecommendationsRenderer(SectionRenderer):
         badge_bg = {
             "Immediate": "#fff5f5",
             "Pre-Close": "#fff8f0",
+            "Valuation": "#f5f3ff",
             "Post-Close": "#e8f4fd",
             "Positive": "#f0fff4",
         }.get(timeline, "#f8f9fa")

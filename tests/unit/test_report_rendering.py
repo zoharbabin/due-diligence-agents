@@ -333,8 +333,8 @@ class TestExecutiveSummary:
         # Executive summary section should exist
         assert "id='sec-executive'" in content or "Executive Summary" in content
 
-        # Should show a risk signal (No-Go for P0)
-        assert "No-Go" in content or "NO-GO" in content or "Proceed with Caution" in content
+        # Single P0 → High → Proceed with Caution (softened thresholds, Issue #113)
+        assert "Proceed with Caution" in content
 
     def test_executive_summary_heatmap(self, tmp_path: Path) -> None:
         """Executive summary renders a domain x severity data visualization."""
@@ -380,20 +380,20 @@ class TestDiffRenderer:
         diff_data = {
             "current_run_id": "run_002",
             "prior_run_id": "run_001",
-            "summary": {"new": 2, "resolved": 1, "changed_severity": 0},
+            "summary": {"new_findings": 2, "resolved_findings": 1, "changed_severity": 0},
             "changes": [
                 {
-                    "change_type": "new",
+                    "change_type": "new_finding",
                     "customer": "Customer A",
                     "finding_summary": "New compliance issue found",
                 },
                 {
-                    "change_type": "new",
+                    "change_type": "new_finding",
                     "customer": "Customer B",
                     "finding_summary": "New IP risk identified",
                 },
                 {
-                    "change_type": "resolved",
+                    "change_type": "resolved_finding",
                     "customer": "Customer A",
                     "finding_summary": "Prior revenue issue resolved",
                 },
@@ -511,9 +511,9 @@ class TestTerminology:
         # Check the nav bar
         assert "href='#sec-customers'" not in content or "Entities" in content
 
-        # Finding card meta should say "Entity:" not "Customer:"
+        # Finding card meta should say "Source:" not "Customer:"
         # Check for the specific meta label
-        assert "Entity:" in content
+        assert "Source:" in content
 
 
 # ===========================================================================
@@ -762,12 +762,26 @@ class TestExecutiveSummaryExtended:
     """Extended tests for all Go/No-Go signal mappings."""
 
     def test_go_no_go_critical(self, tmp_path: Path) -> None:
-        """Critical risk shows No-Go."""
-        merged: dict[str, Any] = {"c": {"customer": "C", "findings": [_make_finding(severity="P0")], "gaps": []}}
+        """Critical risk (3+ P0) shows No-Go."""
+        merged: dict[str, Any] = {
+            "c": {
+                "customer": "C",
+                "findings": [_make_finding(severity="P0", title=f"Issue {i}") for i in range(3)],
+                "gaps": [],
+            },
+        }
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
         gen.generate(merged, out)
         assert "No-Go" in out.read_text(encoding="utf-8")
+
+    def test_go_no_go_single_p0_proceed_with_caution(self, tmp_path: Path) -> None:
+        """Single P0 (softened) shows Proceed with Caution, not No-Go."""
+        merged: dict[str, Any] = {"c": {"customer": "C", "findings": [_make_finding(severity="P0")], "gaps": []}}
+        gen = HTMLReportGenerator()
+        out = tmp_path / "report.html"
+        gen.generate(merged, out)
+        assert "Proceed with Caution" in out.read_text(encoding="utf-8")
 
     def test_go_no_go_high(self, tmp_path: Path) -> None:
         """High risk shows Proceed with Caution."""

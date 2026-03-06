@@ -55,7 +55,8 @@ class CrossRefRenderer(SectionRenderer):
         for csn, data in sorted(self.merged_data.items()):
             if not isinstance(data, dict):
                 continue
-            customer = html.escape(str(data.get("customer", csn)))
+            raw_name = str(data.get("customer", csn))
+            customer = html.escape(self.data.display_names.get(csn, raw_name) if self.data else raw_name)
             xrefs = data.get("cross_references", [])
             if not isinstance(xrefs, list):
                 continue

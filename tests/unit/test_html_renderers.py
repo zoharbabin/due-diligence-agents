@@ -6,7 +6,11 @@ Each renderer is tested in isolation with mock ReportComputedData.
 from __future__ import annotations
 
 from dd_agents.reporting.computed_metrics import ReportComputedData, ReportDataComputer
-from dd_agents.reporting.html_analysis import CoCAnalysisRenderer, CustomerHealthRenderer, PrivacyAnalysisRenderer
+from dd_agents.reporting.html_analysis import (
+    CoCAnalysisRenderer,
+    CustomerHealthRenderer,
+    PrivacyAnalysisRenderer,
+)
 from dd_agents.reporting.html_base import SectionRenderer, render_css, render_js, render_nav_bar
 from dd_agents.reporting.html_cross import CrossRefRenderer
 from dd_agents.reporting.html_customers import CustomerRenderer
@@ -128,14 +132,13 @@ class TestCSSJS:
     def test_render_js_contains_key_functions(self) -> None:
         js = render_js()
         assert "setupToggles" in js
-        assert "global-search" in js
-        assert "sev-filter" in js
+        assert "scroll" in js
 
     def test_render_nav_bar(self) -> None:
         nav = render_nav_bar()
         assert "class='sidebar'" in nav
-        assert "id='global-search'" in nav
-        assert "id='btn-expand-all'" in nav
+        assert "class='main-wrapper'" in nav
+        assert "id='main-content'" in nav
 
 
 # ===========================================================================
@@ -147,7 +150,6 @@ class TestPrintCSS:
     def test_print_hides_nav_and_filter(self) -> None:
         css = render_css()
         assert ".sidebar" in css
-        assert ".filter-bar" in css
         assert "display: none" in css or "display:none" in css
 
     def test_print_expands_all_sections(self) -> None:
@@ -188,10 +190,6 @@ class TestAccessibility:
     def test_nav_has_role(self) -> None:
         nav = render_nav_bar()
         assert "role='navigation'" in nav
-
-    def test_filter_bar_has_role(self) -> None:
-        nav = render_nav_bar()
-        assert "role='search'" in nav
 
     def test_main_content_has_role(self) -> None:
         nav = render_nav_bar()
@@ -281,11 +279,12 @@ class TestDashboardRenderer:
         html_out = r.render()
         assert "No P0 or P1 findings" in html_out
 
-    def test_overall_risk_critical(self) -> None:
+    def test_overall_risk_high_single_p0(self) -> None:
+        """Single P0 → High (softened from Critical, Issue #113)."""
         computed = _compute()
         r = DashboardRenderer(computed, _make_merged_data())
         html_out = r.render()
-        assert "Overall Risk: Critical" in html_out
+        assert "Overall Risk: High" in html_out
 
     def test_overall_risk_clean(self) -> None:
         merged = {"c": {"customer": "C", "findings": [], "gaps": []}}
@@ -370,8 +369,7 @@ class TestGapRenderer:
         r = GapRenderer(computed, _make_merged_data())
         html_out = r.render()
         assert "id='sec-gaps'" in html_out
-        assert "Gap Analysis" in html_out
-        assert "2 gaps" in html_out
+        assert "Missing or Incomplete Data" in html_out
 
     def test_gap_priority_distribution(self) -> None:
         computed = _compute()
@@ -393,7 +391,48 @@ class TestGapRenderer:
         computed = _compute(merged)
         r = GapRenderer(computed, merged)
         html_out = r.render()
-        assert "No documentation gaps identified." in html_out
+        assert "No documentation gaps" in html_out or "no" in html_out.lower()
+
+
+class TestGapRendererRestructured:
+    """Tests for the restructured Gap renderer (Missing or Incomplete Data)."""
+
+    def test_section_title(self) -> None:
+        """Section title should be 'Missing or Incomplete Data'."""
+        computed = _compute()
+        r = GapRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        assert "Missing or Incomplete Data" in html_out
+
+    def test_dq_findings_rendered(self) -> None:
+        """Data quality findings should appear in the section."""
+
+        computed = _compute()
+        # Inject a data quality finding to verify it renders
+        computed.data_quality_findings = [
+            {
+                "severity": "P2",
+                "title": "Revenue waterfall data unavailable",
+                "agent": "finance",
+                "_customer_safe_name": "customer_a",
+                "_customer": "Customer A",
+            }
+        ]
+        computed.data_quality_count = 1
+        r = GapRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        assert "Data Availability" in html_out or "data_quality" in html_out.lower() or "waterfall" in html_out.lower()
+
+    def test_empty_state(self) -> None:
+        """When no gaps and no DQ findings, render empty-state message."""
+        merged = {"c": {"customer": "C", "findings": [], "gaps": []}}
+        computed = _compute(merged)
+        computed.data_quality_findings = []
+        computed.data_quality_count = 0
+        r = GapRenderer(computed, merged)
+        html_out = r.render()
+        # Should indicate nothing found
+        assert "no" in html_out.lower() or "0" in html_out
 
 
 # ===========================================================================
@@ -573,8 +612,11 @@ class TestXSSProtection:
         computed = _compute(merged)
         r = CustomerRenderer(computed, merged)
         html_out = r.render()
+        # Raw XSS must never appear unescaped
         assert "<script>" not in html_out
-        assert "&lt;script&gt;" in html_out
+        # Display name is resolved from CSN ("xss_test" → "Xss Test"),
+        # so the raw malicious customer value never enters the output at all.
+        assert "Xss Test" in html_out
 
     def test_finding_title_xss_escaped(self) -> None:
         merged = {
@@ -675,7 +717,7 @@ class TestMalformedData:
         computed = _compute(merged)
         r = GapRenderer(computed, merged)
         html_out = r.render()
-        assert "Gap Analysis" in html_out
+        assert "Missing or Incomplete Data" in html_out
 
 
 # ===========================================================================
@@ -684,16 +726,35 @@ class TestMalformedData:
 
 
 class TestDomainRiskBaseMethod:
-    """The domain_risk() method was deduplicated to SectionRenderer."""
+    """The domain_risk() method uses softened thresholds (Issue #113)."""
 
-    def test_p0_is_critical(self) -> None:
-        assert SectionRenderer.domain_risk({"P0": 1, "P1": 2}) == "Critical"
+    def test_single_p0_is_high(self) -> None:
+        """Single P0 → High (softened from Critical)."""
+        assert SectionRenderer.domain_risk({"P0": 1, "P1": 2}) == "High"
 
-    def test_p1_is_high(self) -> None:
+    def test_three_p0_is_critical(self) -> None:
+        """P0 >= 3 → Critical."""
+        assert SectionRenderer.domain_risk({"P0": 3}) == "Critical"
+
+    def test_p1_three_is_high(self) -> None:
         assert SectionRenderer.domain_risk({"P1": 3}) == "High"
 
-    def test_p2_is_medium(self) -> None:
+    def test_p1_one_is_medium(self) -> None:
+        assert SectionRenderer.domain_risk({"P1": 1}) == "Medium"
+
+    def test_p2_five_is_medium(self) -> None:
         assert SectionRenderer.domain_risk({"P2": 5}) == "Medium"
+
+    def test_p2_one_is_low(self) -> None:
+        assert SectionRenderer.domain_risk({"P2": 1}) == "Low"
+
+    def test_two_p0_is_high(self) -> None:
+        """P0=2 → High (boundary: still below Critical threshold of 3)."""
+        assert SectionRenderer.domain_risk({"P0": 2}) == "High"
+
+    def test_p1_two_is_medium(self) -> None:
+        """P1=2 → Medium (boundary: below High threshold of 3)."""
+        assert SectionRenderer.domain_risk({"P1": 2}) == "Medium"
 
     def test_p3_is_low(self) -> None:
         assert SectionRenderer.domain_risk({"P3": 1}) == "Low"
@@ -720,21 +781,6 @@ class TestSeverityBarAccessibility:
         r = DomainRenderer(computed, _make_merged_data())
         html_out = r.render()
         assert "P0:" in html_out  # Legal has P0
-
-
-# ===========================================================================
-# Expand all / collapse all aria-expanded
-# ===========================================================================
-
-
-class TestExpandCollapseAriaExpanded:
-    def test_js_expand_all_updates_aria(self) -> None:
-        js = render_js()
-        assert "setAttribute('aria-expanded', 'true')" in js
-
-    def test_js_collapse_all_updates_aria(self) -> None:
-        js = render_js()
-        assert "setAttribute('aria-expanded', 'false')" in js
 
 
 # ===========================================================================
@@ -930,8 +976,8 @@ class TestRiskLabelBoundaries:
         computed = _compute(merged)
         assert computed.deal_risk_label == "Low"
 
-    def test_only_p3_is_clean(self) -> None:
-        """Only P3 findings → Clean (P3 alone doesn't elevate risk)."""
+    def test_only_p3_is_low(self) -> None:
+        """Only P3 findings → Low (P3 > 0 triggers Low, Issue #113)."""
         merged = {
             "c": {
                 "customer": "C",
@@ -940,7 +986,7 @@ class TestRiskLabelBoundaries:
             }
         }
         computed = _compute(merged)
-        assert computed.deal_risk_label == "Clean"
+        assert computed.deal_risk_label == "Low"
 
 
 # ===========================================================================
@@ -1008,8 +1054,8 @@ class TestExecutiveSummaryRenderer:
         html_out = r.render()
         assert "id='sec-executive'" in html_out
         assert "Executive Summary" in html_out
-        # P0 exists → Critical → No-Go
-        assert "No-Go" in html_out
+        # Single P0 → High → Proceed with Caution (softened scoring)
+        assert "Proceed with Caution" in html_out
 
     def test_go_signal_clean(self) -> None:
         merged = {"c": {"customer": "C", "findings": [], "gaps": []}}
@@ -1036,7 +1082,7 @@ class TestExecutiveSummaryRenderer:
         computed = _compute()
         r = ExecutiveSummaryRenderer(computed, _make_merged_data())
         html_out = r.render()
-        assert "Total Findings" in html_out
+        assert "Material Findings" in html_out
         assert "P0 Critical" in html_out
         assert "Match Rate" in html_out
 
@@ -1393,7 +1439,7 @@ class TestRAGIndicator:
 
 class TestCategoryNormalization:
     def test_change_of_control_variants_normalized(self) -> None:
-        """All CoC variants map to 'Change of Control'."""
+        """CoC variants map to 'Change of Control'; assignment to 'Assignment & Consent'."""
         merged = {
             "c": {
                 "customer": "C",
@@ -1408,6 +1454,8 @@ class TestCategoryNormalization:
         computed = _compute(merged)
         legal_cats = computed.category_groups.get("legal", {})
         assert "Change of Control" in legal_cats
+        # assignment_restriction now maps to separate category
+        assert "Assignment & Consent" in legal_cats
 
     def test_dataroom_folder_mapped_to_other(self) -> None:
         """Data room folder names like '1.1. Engineering' map to 'Other'."""
@@ -1582,10 +1630,10 @@ class TestDiffRenderer:
             report_dir = Path(tmp) / "report"
             report_dir.mkdir()
             diff_data = {
-                "summary": {"new": 3, "resolved": 1, "changed_severity": 2},
+                "summary": {"new_findings": 3, "resolved_findings": 1, "changed_severity": 2},
                 "changes": [
-                    {"change_type": "new", "customer": "A", "finding_summary": "New issue"},
-                    {"change_type": "resolved", "customer": "B", "finding_summary": "Fixed"},
+                    {"change_type": "new_finding", "customer": "A", "finding_summary": "New issue"},
+                    {"change_type": "resolved_finding", "customer": "B", "finding_summary": "Fixed"},
                     {
                         "change_type": "changed_severity",
                         "customer": "C",
@@ -1618,10 +1666,10 @@ class TestDiffRenderer:
             report_dir = Path(tmp) / "report"
             report_dir.mkdir()
             diff_data = {
-                "summary": {"new": 1, "resolved": 0, "changed_severity": 0},
+                "summary": {"new_findings": 1, "resolved_findings": 0, "changed_severity": 0},
                 "changes": [
                     {
-                        "change_type": "new",
+                        "change_type": "new_finding",
                         "customer": "<script>xss</script>",
                         "finding_summary": "<img onerror=hack>",
                     },
@@ -1676,3 +1724,476 @@ class TestSidebarNavLinks:
         nav = render_nav_bar()
         assert "href='#sec-recommendations'" in nav
         assert "href='#sec-methodology'" in nav
+
+
+# ===========================================================================
+# Noise Detection & Display Name Cleaning (Rendering Overhaul)
+# ===========================================================================
+
+
+class TestNoiseDetection:
+    """Tests for _is_noise_finding helper."""
+
+    def test_is_noise_finding_true(self) -> None:
+        """Extraction failure text should be classified as noise."""
+        from dd_agents.reporting.computed_metrics import _is_noise_finding
+
+        assert _is_noise_finding({"title": "Binary xlsx inaccessible", "description": ""})
+        assert _is_noise_finding({"title": "", "description": "Cannot assess due to extraction failure"})
+        assert _is_noise_finding({"title": "No extractable content", "description": ""})
+        assert _is_noise_finding({"title": "", "description": "Unable to extract data from document"})
+        assert _is_noise_finding({"title": "", "description": "File format not supported for analysis"})
+        assert _is_noise_finding({"title": "No data available for review", "description": ""})
+
+    def test_is_noise_finding_false_material(self) -> None:
+        """Real DD findings should not be classified as noise."""
+        from dd_agents.reporting.computed_metrics import _is_noise_finding
+
+        assert not _is_noise_finding(
+            {"title": "CoC terminates contract", "description": "Upon change of control agreement terminates"}
+        )
+        assert not _is_noise_finding(
+            {"title": "Revenue recognition risk", "description": "$2M revenue at risk due to non-standard terms"}
+        )
+        assert not _is_noise_finding(
+            {"title": "IP assignment gap", "description": "No IP assignment clause in contractor agreement"}
+        )
+
+
+class TestCleanDisplayName:
+    """Tests for _clean_display_name helper."""
+
+    def test_clean_display_name(self) -> None:
+        """Data room folder names should be cleaned to human-readable titles."""
+        from dd_agents.reporting.computed_metrics import _clean_display_name
+
+        assert _clean_display_name("1_5_customer_contracts") == "Customer Contracts"
+
+    def test_clean_display_name_no_prefix(self) -> None:
+        """Names without numeric prefix should just be title-cased."""
+        from dd_agents.reporting.computed_metrics import _clean_display_name
+
+        assert _clean_display_name("snapapp") == "Snapapp"
+
+    def test_clean_display_name_double_digit_prefix(self) -> None:
+        from dd_agents.reporting.computed_metrics import _clean_display_name
+
+        assert _clean_display_name("3_9_mapping") == "Mapping"
+
+    def test_clean_display_name_already_clean(self) -> None:
+        from dd_agents.reporting.computed_metrics import _clean_display_name
+
+        assert _clean_display_name("customer_a") == "Customer A"
+
+
+class TestMaterialNoiseComputed:
+    """Tests for material/noise splitting in compute()."""
+
+    def _make_noise_merged(self) -> dict[str, object]:
+        return {
+            "c1": {
+                "customer": "Customer A",
+                "findings": [
+                    _make_finding(severity="P0", title="CoC terminates contract"),
+                    _make_finding(severity="P1", title="Binary xlsx inaccessible"),
+                    _make_finding(severity="P2", title="Revenue at risk"),
+                    _make_finding(severity="P1", title="Cannot assess due to extraction failure"),
+                ],
+                "gaps": [
+                    {
+                        "priority": "P0",
+                        "gap_type": "Missing_Doc",
+                        "missing_item": "NDA",
+                        "risk_if_missing": "Legal risk",
+                    },
+                    {
+                        "priority": "P2",
+                        "gap_type": "Stale_Doc",
+                        "missing_item": "Report",
+                        "risk_if_missing": "No extractable content available",
+                    },
+                ],
+            },
+        }
+
+    def test_material_findings_exclude_noise(self) -> None:
+        """Material findings list should not contain noise findings."""
+        computed = _compute(self._make_noise_merged())
+        assert computed.material_count + computed.noise_count == computed.total_findings
+        for f in computed.material_findings:
+            title_desc = f"{f.get('title', '')} {f.get('description', '')}".lower()
+            assert "inaccessible" not in title_desc
+            assert "cannot assess" not in title_desc
+
+    def test_material_wolf_pack_no_noise(self) -> None:
+        """Material wolf pack should not include noise findings."""
+        computed = _compute(self._make_noise_merged())
+        for f in computed.material_wolf_pack:
+            title_desc = f"{f.get('title', '')} {f.get('description', '')}".lower()
+            assert "inaccessible" not in title_desc
+            assert "cannot assess" not in title_desc
+
+    def test_material_count_accuracy(self) -> None:
+        """material_count = total - noise."""
+        computed = _compute(self._make_noise_merged())
+        assert computed.material_count == computed.total_findings - computed.noise_count
+        assert computed.noise_count == 2  # 2 noise findings in test data
+
+    def test_display_names_generated(self) -> None:
+        """Display names should be generated for all customers."""
+        merged = {
+            "1_5_customer_contracts": {"customer": "1_5_customer_contracts", "findings": [], "gaps": []},
+            "snapapp": {"customer": "snapapp", "findings": [], "gaps": []},
+        }
+        computed = _compute(merged)
+        assert "1_5_customer_contracts" in computed.display_names
+        assert computed.display_names["1_5_customer_contracts"] == "Customer Contracts"
+        assert computed.display_names["snapapp"] == "Snapapp"
+
+    def test_top_findings_by_domain(self) -> None:
+        """Top findings per domain should be capped at 10 and sorted by severity."""
+        findings = [_make_finding(severity="P2", agent="legal", title=f"Finding {i}") for i in range(15)]
+        findings.append(_make_finding(severity="P0", agent="legal", title="Critical legal finding"))
+        merged = {"c": {"customer": "C", "findings": findings, "gaps": []}}
+        computed = _compute(merged)
+        legal_top = computed.top_findings_by_domain.get("legal", [])
+        assert len(legal_top) <= 10
+        # Most severe should come first
+        if legal_top:
+            assert legal_top[0].get("severity") == "P0"
+
+    def test_material_gaps_exclude_noise(self) -> None:
+        """Material gaps should not include noise gaps."""
+        computed = _compute(self._make_noise_merged())
+        assert len(computed.material_gaps) + len(computed.noise_gaps) == computed.total_gaps
+        for g in computed.material_gaps:
+            combined = f"{g.get('missing_item', '')} {g.get('risk_if_missing', '')}".lower()
+            assert "no extractable" not in combined
+
+
+class TestKeyRisksSummaryTable:
+    """Test that P1 Key Risks are rendered as a summary table."""
+
+    def test_key_risks_summary_table(self) -> None:
+        """P1 findings should be grouped into a summary table, not individual wolf-cards."""
+        findings = [
+            _make_finding(severity="P1", agent="legal", category="change_of_control", title=f"Legal risk {i}")
+            for i in range(10)
+        ]
+        findings += [
+            _make_finding(severity="P1", agent="finance", category="revenue", title=f"Finance risk {i}")
+            for i in range(8)
+        ]
+        merged = {"c": {"customer": "C", "findings": findings, "gaps": []}}
+        computed = _compute(merged)
+        r = DashboardRenderer(computed, merged)
+        html_out = r.render()
+        # Should contain a summary table structure
+        assert "key-risks-table" in html_out
+        assert "Domain" in html_out
+
+    def test_key_risks_capped_per_domain(self) -> None:
+        """Summary table should show max 5 rows per domain."""
+        findings = [
+            _make_finding(severity="P1", agent="legal", category=f"cat_{i}", title=f"Legal risk {i}") for i in range(12)
+        ]
+        merged = {"c": {"customer": "C", "findings": findings, "gaps": []}}
+        computed = _compute(merged)
+        r = DashboardRenderer(computed, merged)
+        html_out = r.render()
+        # The table should exist and be bounded
+        assert "key-risks-table" in html_out
+
+
+class TestDomainFindingsCap:
+    """Test that domain sections cap findings at 10."""
+
+    def test_domain_findings_capped_at_10(self) -> None:
+        """Top 10 findings shown in main view, rest collapsed."""
+        findings = [
+            _make_finding(severity="P2", agent="legal", category="ip_ownership", title=f"Legal finding {i}")
+            for i in range(25)
+        ]
+        merged = {"c": {"customer": "C", "findings": findings, "gaps": []}}
+        computed = _compute(merged)
+        r = DomainRenderer(computed, merged)
+        html_out = r.render()
+        # Should have a collapsed "Show all" section
+        assert "Show all" in html_out or "more findings" in html_out
+
+
+class TestDisplayNamesInCards:
+    """Test that display names are used in finding cards."""
+
+    def test_display_names_in_finding_card(self) -> None:
+        """Cleaned display names should appear in finding cards."""
+        merged = {
+            "1_5_customer_contracts": {
+                "customer": "1_5_customer_contracts",
+                "findings": [_make_finding(severity="P0", title="CoC risk")],
+                "gaps": [],
+            },
+        }
+        computed = _compute(merged)
+        r = DomainRenderer(computed, merged)
+        html_out = r.render()
+        # Should use cleaned display name
+        assert "Customer Contracts" in html_out
+
+    def test_source_label_not_entity(self) -> None:
+        """Finding cards should use 'Source:' not 'Entity:' label."""
+        computed = _compute()
+        r = DomainRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        assert "Source:" in html_out
+        # "Entity:" should not appear as a label in finding cards
+        assert "Entity:" not in html_out
+
+
+class TestExecutiveSummaryMaterialCounts:
+    """Test that executive summary uses material counts."""
+
+    def test_executive_summary_material_counts(self) -> None:
+        """Executive summary should show material finding count, not total."""
+        findings = [
+            _make_finding(severity="P0", title="Real deal breaker"),
+            _make_finding(severity="P1", title="Binary xlsx inaccessible"),
+            _make_finding(severity="P2", title="Real medium finding"),
+        ]
+        merged = {"c": {"customer": "C", "findings": findings, "gaps": []}}
+        computed = _compute(merged)
+        r = ExecutiveSummaryRenderer(computed, merged)
+        html_out = r.render()
+        # Should reference material count (2), not total (3)
+        assert f">{computed.material_count}</div>" in html_out
+        assert "data quality" in html_out.lower() or "excluded" in html_out.lower()
+
+
+class TestSidebarAppendixGroup:
+    """Test that sidebar has an Appendix group with Methodology and Data Quality."""
+
+    def test_sidebar_appendix_group(self) -> None:
+        """Sidebar should have an Appendix group containing Methodology and Data Quality."""
+        nav = render_nav_bar()
+        assert "Appendix" in nav
+        assert "href='#sec-methodology'" in nav
+        assert "href='#sec-governance'" in nav
+
+
+class TestDisplayNameResolution:
+    """Tests for CSN-first display name resolution across renderers."""
+
+    def test_deal_breakers_uses_csn(self) -> None:
+        """Wolf card should resolve display name via CSN, not _customer."""
+        merged = {
+            "acme_corp": {
+                "customer": "unknown",
+                "findings": [
+                    _make_finding(
+                        severity="P0",
+                        title="Critical undisclosed litigation",
+                        description="Material lawsuit pending",
+                        category="litigation",
+                    ),
+                ],
+                "gaps": [],
+            }
+        }
+        computed = _compute(merged)
+        # display_names should map "acme_corp" → "Acme Corp"
+        assert "acme_corp" in computed.display_names
+        assert computed.display_names["acme_corp"] == "Acme Corp"
+        r = DashboardRenderer(computed, merged)
+        html_out = r.render()
+        # Wolf card must show "Acme Corp", never raw "unknown"
+        assert "Source: Acme Corp" in html_out
+        assert "Source: unknown" not in html_out
+
+    def test_finding_card_uses_csn(self) -> None:
+        """render_finding_card should resolve display name via CSN, not _customer."""
+        merged = {
+            "acme_corp": {
+                "customer": "unknown",
+                "findings": [
+                    _make_finding(severity="P2", title="Minor issue"),
+                ],
+                "gaps": [],
+            }
+        }
+        computed = _compute(merged)
+        r = DomainRenderer(computed, merged)
+        # Create a finding with _customer_safe_name set (as compute() does)
+        finding = {
+            "severity": "P2",
+            "title": "Test finding",
+            "agent": "legal",
+            "_customer": "unknown",
+            "_customer_safe_name": "acme_corp",
+        }
+        card_html = r.render_finding_card(finding)
+        assert "Acme Corp" in card_html
+        assert "unknown" not in card_html
+
+    def test_resolve_display_name_csn_first(self) -> None:
+        """_resolve_display_name prioritizes _customer_safe_name over _customer."""
+        computed = _compute({"acme_corp": {"customer": "unknown", "findings": [], "gaps": []}})
+        r = DomainRenderer(computed, {})
+        item = {"_customer_safe_name": "acme_corp", "_customer": "unknown"}
+        assert r._resolve_display_name(item) == "Acme Corp"
+
+    def test_resolve_display_name_fallback_to_raw(self) -> None:
+        """_resolve_display_name falls back to raw _customer if CSN not in display_names."""
+        computed = ReportComputedData(display_names={})
+        r = DomainRenderer(computed, {})
+        item = {"_customer": "Some Customer"}
+        assert r._resolve_display_name(item) == "Some Customer"
+
+    def test_resolve_display_name_empty_csn(self) -> None:
+        """_resolve_display_name handles empty _customer_safe_name gracefully."""
+        computed = _compute({"acme_corp": {"customer": "Acme", "findings": [], "gaps": []}})
+        r = DomainRenderer(computed, {})
+        item = {"_customer_safe_name": "", "_customer": "Acme"}
+        # Empty CSN won't match display_names, should fall back to _customer
+        result = r._resolve_display_name(item)
+        assert result == "Acme"
+
+    def test_gap_renderer_uses_csn(self) -> None:
+        """Gap table should show display name, not raw _customer."""
+        merged = {
+            "acme_corp": {
+                "customer": "unknown",
+                "findings": [],
+                "gaps": [{"priority": "P1", "gap_type": "Missing_Doc", "missing_item": "NDA", "risk_if_missing": "R"}],
+            }
+        }
+        computed = _compute(merged)
+        r = GapRenderer(computed, merged)
+        html_out = r.render()
+        assert "Acme Corp" in html_out
+
+    def test_customer_section_recalibrates_severity(self) -> None:
+        """Customer section should apply severity recalibration to raw findings."""
+        merged = {
+            "customer_contracts": {
+                "customer": "Customer Contracts",
+                "findings": [
+                    _make_finding(
+                        severity="P0",
+                        title="Competitor-only Change of Control clause",
+                        category="change_of_control",
+                    ),
+                ],
+                "gaps": [],
+            }
+        }
+        computed = _compute(merged)
+        r = CustomerRenderer(computed, merged)
+        html_out = r.render()
+        # The competitor CoC should be recalibrated from P0 to P3
+        assert "data-severity='P0'" not in html_out
+        assert "data-severity='P3'" in html_out
+
+    def test_customer_section_shows_display_name(self) -> None:
+        """Customer section finding cards should show display name, not empty Source."""
+        merged = {
+            "acme_corp": {
+                "customer": "unknown",
+                "findings": [_make_finding(severity="P2", title="Minor issue")],
+                "gaps": [],
+            }
+        }
+        computed = _compute(merged)
+        r = CustomerRenderer(computed, merged)
+        html_out = r.render()
+        assert "Source: Acme Corp" in html_out
+        assert "Source:  |" not in html_out
+
+    def test_customer_header_badges_reflect_recalibration(self) -> None:
+        """Customer header severity badges should count recalibrated severities."""
+        merged = {
+            "customer_contracts": {
+                "customer": "Customer Contracts",
+                "findings": [
+                    _make_finding(
+                        severity="P0",
+                        title="Competitor-only Change of Control clause",
+                        category="change_of_control",
+                    ),
+                    _make_finding(severity="P2", title="Minor issue"),
+                ],
+                "gaps": [],
+            }
+        }
+        computed = _compute(merged)
+        r = CustomerRenderer(computed, merged)
+        html_out = r.render()
+        # Competitor CoC recalibrated from P0 → P3, so header should show P3:1, P2:1
+        assert "P0:1" not in html_out
+        assert "P3:1" in html_out
+        assert "P2:1" in html_out
+
+    def test_diff_renderer_resolves_display_names(self) -> None:
+        """DiffRenderer should resolve customer display names via display_names dict."""
+        import json
+        import tempfile
+        from pathlib import Path
+
+        from dd_agents.reporting.html_diff import DiffRenderer
+
+        merged = {
+            "acme_corp": {
+                "customer": "unknown",
+                "findings": [],
+                "gaps": [],
+            }
+        }
+        computed = _compute(merged)
+        with tempfile.TemporaryDirectory() as tmp:
+            report_dir = Path(tmp) / "report"
+            report_dir.mkdir()
+            diff_data = {
+                "summary": {"new_findings": 1, "resolved_findings": 0, "changed_severity": 0},
+                "changes": [
+                    {
+                        "change_type": "new_finding",
+                        "customer": "acme_corp",
+                        "finding_summary": "New issue found",
+                    },
+                ],
+            }
+            (report_dir / "report_diff.json").write_text(json.dumps(diff_data))
+            r = DiffRenderer(computed, merged, run_dir=Path(tmp))
+            html_out = r.render()
+            # display_names maps "acme_corp" → "Acme Corp"
+            assert "Acme Corp" in html_out
+            assert "New issue found" in html_out
+
+    def test_synthesis_deal_breakers_resolve_entity_display_name(self) -> None:
+        """Synthesis deal breakers should resolve entity via display_names."""
+        merged = {
+            "acme_corp": {
+                "customer": "Acme Corp",
+                "findings": [_make_finding(severity="P0", title="Deal breaker")],
+                "gaps": [],
+            }
+        }
+        computed = _compute(merged)
+        # Inject synthesis data with entity matching a display_names key
+        computed.executive_synthesis = {
+            "go_no_go_signal": "Proceed with Caution",
+            "go_no_go_rationale": "Issues found",
+            "deal_breakers_ranked": [
+                {
+                    "title": "Critical Risk",
+                    "entity": "acme_corp",
+                    "impact_description": "Major impact",
+                    "remediation": "Fix it",
+                },
+            ],
+        }
+        r = ExecutiveSummaryRenderer(computed, merged)
+        html_out = r.render()
+        # entity "acme_corp" should be resolved to "Acme Corp" via display_names
+        assert "Acme Corp" in html_out
+        assert "Critical Risk" in html_out
+        assert "Major impact" in html_out

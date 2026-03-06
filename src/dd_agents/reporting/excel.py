@@ -22,6 +22,7 @@ from dd_agents.models.reporting import (
     SheetDef,
     SummaryFormulaEntry,
 )
+from dd_agents.reporting.computed_metrics import ReportDataComputer
 from dd_agents.utils.constants import SEVERITY_ORDER
 
 if TYPE_CHECKING:
@@ -30,6 +31,32 @@ if TYPE_CHECKING:
     from openpyxl.worksheet.worksheet import Worksheet
 
 logger = logging.getLogger(__name__)
+
+
+def _recalibrate_merged(merged: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Return a shallow copy of merged data with all findings recalibrated.
+
+    Ensures Excel output matches the HTML report's recalibrated severity
+    values.  Findings are shallow-copied; the original dicts are not mutated.
+
+    Handles both plain dicts and Pydantic model instances (e.g.
+    ``MergedCustomerOutput``) by normalizing via ``model_dump()`` first.
+    """
+    out: dict[str, dict[str, Any]] = {}
+    for csn, data in merged.items():
+        # Normalize Pydantic model instances to dicts
+        if hasattr(data, "model_dump"):
+            data = data.model_dump()
+        elif not isinstance(data, dict):
+            out[csn] = data  # type: ignore[assignment]
+            continue
+        raw_findings = data.get("findings", [])
+        recalibrated = [
+            ReportDataComputer._recalibrate_severity(f if isinstance(f, dict) else dict(f)) for f in raw_findings
+        ]
+        out[csn] = {**data, "findings": recalibrated}
+    return out
+
 
 # Overall risk rating priority for sorting
 RISK_RANK: dict[str, int] = {
@@ -47,25 +74,35 @@ def compute_overall_risk(
 ) -> str:
     """Compute overall risk rating for a customer.
 
-    - Critical: any P0 finding OR any P0 gap
-    - High: any P1 finding/gap, no P0s
-    - Medium: any P2 finding/gap, no P0/P1
-    - Low: P3 only
-    - Clean: no findings except domain_reviewed_no_issues, and no gaps
+    Uses softened thresholds (Issue #113):
+    - Critical: P0 count >= 3
+    - High: any P0 (1-2), or P1 count >= 3
+    - Medium: any P1, or P2 count >= 5
+    - Low: P2 or P3 present
+    - Clean: no material findings and no gaps
     """
-    severities = {
-        f.get("severity", f.get("priority", "")) for f in findings if f.get("category") != "domain_reviewed_no_issues"
-    }
-    gap_priorities = {g.get("priority", "") for g in gaps}
-    all_levels = severities | gap_priorities
+    from collections import Counter
 
-    if "P0" in all_levels:
+    sev_counter: Counter[str] = Counter()
+    for f in findings:
+        if f.get("category") != "domain_reviewed_no_issues":
+            sev_counter[f.get("severity", f.get("priority", ""))] += 1
+    for g in gaps:
+        sev_counter[g.get("priority", "")] += 1
+
+    p0 = sev_counter.get("P0", 0)
+    p1 = sev_counter.get("P1", 0)
+    p2 = sev_counter.get("P2", 0)
+
+    if p0 >= 3:
         return "Critical"
-    if "P1" in all_levels:
+    if p0 > 0:
         return "High"
-    if "P2" in all_levels:
+    if p1 >= 3:
+        return "High"
+    if p1 > 0 or p2 >= 5:
         return "Medium"
-    if "P3" in all_levels:
+    if p2 > 0 or sev_counter.get("P3", 0) > 0:
         return "Low"
     return "Clean"
 
@@ -116,6 +153,9 @@ class ExcelReportGenerator:
                 "definitions. Provide a valid report_schema.json with at "
                 "least one sheet."
             )
+
+        # Apply severity recalibration so Excel matches the HTML report.
+        merged_findings = _recalibrate_merged(merged_findings)  # type: ignore[arg-type]
 
         self._wb = Workbook()
         # Remove default sheet
@@ -316,6 +356,8 @@ class ExcelReportGenerator:
 
             sev_counts = {"P0": 0, "P1": 0, "P2": 0, "P3": 0}
             for f in findings:
+                if f.get("category") == "domain_reviewed_no_issues":
+                    continue
                 sev = f.get("severity", "P3")
                 if sev in sev_counts:
                     sev_counts[sev] += 1

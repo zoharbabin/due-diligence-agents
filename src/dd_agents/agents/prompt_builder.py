@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 
 class AgentType(StrEnum):
-    """All agent roles in the pipeline: 4 specialists + judge + optional acquirer intelligence."""
+    """All agent roles in the pipeline: 4 specialists + judge + optional agents."""
 
     LEGAL = "legal"
     FINANCE = "finance"
@@ -30,6 +30,7 @@ class AgentType(StrEnum):
     PRODUCTTECH = "producttech"
     JUDGE = "judge"
     ACQUIRER_INTELLIGENCE = "acquirer_intelligence"
+    EXECUTIVE_SYNTHESIS = "executive_synthesis"
 
 
 # ---------------------------------------------------------------------------
@@ -43,7 +44,18 @@ SPECIALIST_FOCUS: dict[AgentType, str] = {
         "assignment restrictions, and exclusivity clauses. Validate intercompany agreements "
         "cover all signing entities. Gap detection: For each customer, check for missing MSAs, "
         "missing DPAs, missing referenced amendments, missing signature pages. "
-        "Write gap files for EVERY missing document detected."
+        "Write gap files for EVERY missing document detected.\n\n"
+        "SEVERITY CALIBRATION (Legal):\n"
+        "- CoC notification-only = P2 (routine administrative step)\n"
+        "- CoC consent-required affecting >5% revenue = P1\n"
+        "- CoC competitor-only restriction = P3 (buyer rarely competes with customers)\n"
+        "- CoC auto-terminate, no cure, >20% revenue = P0\n"
+        "- CoC termination-right with >=60d cure = P1 (not P0)\n"
+        "- Termination for Convenience (TfC) = P2 (valuation concern, not deal-breaker)\n"
+        "- TfC on >10% revenue, <90d notice = P1\n"
+        "- Termination for Cause (standard, mutual) = P3\n"
+        "- Standard non-compete with reasonable scope = P3\n"
+        "- Missing NDA for active customer = P1; missing NDA for prospect = P3"
     ),
     AgentType.FINANCE: (
         "Cross-reference every customer's contract values against the Revenue Cube and any "
@@ -59,7 +71,30 @@ SPECIALIST_FOCUS: dict[AgentType, str] = {
         "change), show the calculation with exact source values. Do NOT round or approximate "
         "source values — cite the exact numbers from the document. "
         "Gap detection: Check for missing financial verification, missing pricing "
-        "documentation, unexplained revenue variances. Write gap files."
+        "documentation, unexplained revenue variances. Write gap files.\n\n"
+        "SEVERITY CALIBRATION (Finance):\n"
+        "- Intercompany payable/receivable in full acquisitions = P3 (eliminated at closing)\n"
+        "- ARR mismatch 2-5% = P2; ARR mismatch >5% = P1\n"
+        "- One-time fee miscounted as recurring (>$100K) = P1\n"
+        "- Standard discount within guidelines = P3\n"
+        "- Missing financial audit for trailing twelve months = P1\n\n"
+        "REVENUE DECOMPOSITION:\n"
+        "- Break down revenue by product/SKU: subscription, professional services, "
+        "one-time license, usage-based, support/maintenance\n"
+        "- For each stream: recurring vs non-recurring, committed vs uncommitted, "
+        "gross margin profile\n"
+        "- Flag services-heavy streams >10% revenue (lower valuation multiple)\n"
+        "- Identify percentage-of-completion or milestone-based recognition\n\n"
+        "UNIT ECONOMICS:\n"
+        "- Extract/estimate CAC, LTV, payback period where data allows\n"
+        "- Calculate/verify NRR and GRR from cohort data if available\n"
+        "- Flag NRR < 100% (contraction) or GRR < 85% (high churn)\n"
+        "- Identify margin profile by product line from segmented P&L\n\n"
+        "FINANCIAL PROJECTIONS VALIDATION:\n"
+        "- Cross-reference projections vs historical growth rates\n"
+        "- Flag unrealistic assumptions (growth acceleration, margin expansion "
+        "without supporting initiatives)\n"
+        "- Note committed vs pipeline revenue in forward projections"
     ),
     AgentType.COMMERCIAL: (
         "Evaluate renewal mechanics (auto vs manual, notice periods, penalties). Cross-reference "
@@ -71,7 +106,31 @@ SPECIALIST_FOCUS: dict[AgentType, str] = {
         "note the data point and flag it for cross-agent review instead. "
         "Gap detection: Check for "
         "missing SOWs, missing order forms, missing renewal evidence, unsigned documents. "
-        "Write gap files for EVERY missing document detected."
+        "Write gap files for EVERY missing document detected.\n\n"
+        "SEVERITY CALIBRATION (Commercial):\n"
+        "- Standard renewal approaching (<90 days) = P2\n"
+        "- Auto-renew with termination-for-convenience on >10% revenue customer = P1\n"
+        "- Expired contract still in operation = P1\n"
+        "- Standard volume discount = P3\n"
+        "- Customer churn risk with active replacement options = P2\n"
+        "- TfC clause = P2 valuation/revenue quality concern, not a deal-breaker\n"
+        "- TfC on >10% revenue, <90d notice = P1\n\n"
+        "CUSTOMER SEGMENTATION & COHORT:\n"
+        "- Segment by size (enterprise/mid-market/SMB), geography, vertical, vintage\n"
+        "- Identify concentration: top 10% of revenue, single-vertical dependency\n"
+        "- Flag >30% revenue from one vertical or geography\n\n"
+        "PRICING MODEL:\n"
+        "- Identify type: per-user, per-unit/consumption, tiered, flat-rate, hybrid\n"
+        "- Flag pricing risks: consumption = volatile, per-seat = downsizing risk\n"
+        "- Compare effective pricing across cohorts\n\n"
+        "EXPANSION & CONTRACTION:\n"
+        "- Decompose NRR: upsell + cross-sell + price increases - downgrades - churn\n"
+        "- Identify expansion levers: seat adds, module upsell, escalation clauses\n"
+        "- Flag contraction signals: seat reduction, step-down pricing, shortfalls\n\n"
+        "COMPETITIVE POSITIONING:\n"
+        "- Note competitive displacement language in contracts\n"
+        "- Identify exclusivity or preferred vendor status\n"
+        "- Flag benchmarking or MFN clauses"
     ),
     AgentType.PRODUCTTECH: (
         "Validate DPA adequacy and subprocessor lists. Cross-reference security claims against "
@@ -80,7 +139,13 @@ SPECIALIST_FOCUS: dict[AgentType, str] = {
         "not just those with dedicated tech/security documents. For every customer's contracts, "
         "extract technology-related clauses. Gap detection: Check for missing DPAs, missing "
         "security addenda, missing SLA documentation, missing architecture/integration specs. "
-        "Write gap files."
+        "Write gap files.\n\n"
+        "SEVERITY CALIBRATION (ProductTech):\n"
+        "- Missing DPA for EU-resident data processing = P1\n"
+        "- Missing SOC2 report = P2\n"
+        "- Expired security certification (>12 months) = P1\n"
+        "- Minor technical debt in non-critical systems = P3\n"
+        "- Data residency violation for regulated data = P0"
     ),
 }
 
@@ -155,6 +220,110 @@ class PromptBuilder:
 
         return [_CustomerEntry(group="", name=str(s), safe_name=str(s), path=str(s)) for s in customers]
 
+    @staticmethod
+    def _build_severity_rubric(deal_config: DealConfig | dict[str, Any] | None) -> str:
+        """Build a severity calibration rubric section for specialist prompts.
+
+        Provides concrete P0-P3 criteria with examples and anti-examples,
+        deal-type-specific guidance, and common false positive warnings.
+        """
+        deal_type = ""
+        if deal_config:
+            if hasattr(deal_config, "deal") and hasattr(deal_config.deal, "type"):
+                deal_type = str(deal_config.deal.type).lower()
+            elif isinstance(deal_config, dict):
+                deal_obj = deal_config.get("deal", {})
+                if isinstance(deal_obj, dict):
+                    deal_type = str(deal_obj.get("type", "")).lower()
+                elif hasattr(deal_obj, "type"):
+                    deal_type = str(deal_obj.type).lower()
+
+        lines: list[str] = [
+            "## SEVERITY CALIBRATION",
+            "",
+            "Calibrate severity carefully. Quality over quantity — fewer, well-calibrated "
+            "findings are far more valuable than many poorly-calibrated ones.",
+            "",
+            "### P0 — Genuine Deal-Stoppers (max 2-3 per entity)",
+            "Reserved for issues that would cause a reasonable acquirer to walk away or ",
+            "fundamentally renegotiate the deal price.",
+            "Examples: undisclosed fraud, regulatory prohibition, auto-termination of >20% "
+            "revenue on CoC with no cure, material IP ownership dispute.",
+            "Anti-examples: routine CoC notifications, standard consent requirements, approaching "
+            "renewal deadlines, TfC clauses (valuation concern, not deal-stopper), "
+            "competitor-only CoC restrictions (buyer rarely competes with customers).",
+            "",
+            "### P1 — Material Risk Requiring Pre-Close Negotiation",
+            "Issues that require specific deal protection (indemnity, escrow, price adjustment) "
+            "but do not fundamentally threaten the deal.",
+            "Examples: consent-required assignment for >5% revenue customers, ARR mismatch >5%, "
+            "missing DPA for EU data, expired security certifications.",
+            "",
+            "### P2 — Moderate Risk, Post-Close Remediation",
+            "Issues addressable through standard integration workstreams.",
+            "Examples: approaching renewals, minor pricing discrepancies, standard CoC "
+            "notification requirements, missing non-critical documentation.",
+            "",
+            "### P3 — Informational / Low Risk",
+            "Noted for completeness but requiring no specific action.",
+            "Examples: standard contract terms, minor administrative items, routine "
+            "compliance matters with no financial impact.",
+            "",
+        ]
+
+        # Deal-type-specific guidance
+        if deal_type in ("acquisition", "merger", "buyout"):
+            lines.extend(
+                [
+                    "### Deal-Type Context: Full Acquisition",
+                    f"This is a {deal_type}. Key calibration rules:",
+                    "- Intercompany obligations (payables, receivables, guarantees) between "
+                    "target subsidiaries are eliminated at closing — do NOT flag as P0.",
+                    "- Standard change-of-control notification requirements are routine "
+                    "administrative steps — P2 at most, not P0.",
+                    "- Parent-subsidiary agreements are superseded by the acquisition — "
+                    "flag only if they create third-party obligations.",
+                    "",
+                ]
+            )
+        elif deal_type in ("divestiture", "carve-out", "spin-off"):
+            lines.extend(
+                [
+                    "### Deal-Type Context: Divestiture/Carve-Out",
+                    f"This is a {deal_type}. Key calibration rules:",
+                    "- Shared services agreements that need to be replicated are P1 if no transition plan exists.",
+                    "- Intercompany agreements that must survive the separation need "
+                    "careful analysis — flag missing standalone terms as P1.",
+                    "- IP licensing back to parent requires clear scope — ambiguity is P1.",
+                    "",
+                ]
+            )
+        elif deal_type:
+            lines.extend(
+                [
+                    f"### Deal-Type Context: {deal_type.title()}",
+                    "Apply standard severity criteria. Intercompany obligations should "
+                    "be evaluated in context of the specific transaction structure.",
+                    "",
+                ]
+            )
+
+        lines.extend(
+            [
+                "### Common False Positives (do NOT flag as P0)",
+                "- Intercompany payables/receivables in full acquisitions",
+                "- Standard change-of-control notification requirements",
+                "- Approaching renewal deadlines (>30 days out)",
+                "- Routine consent requirements for assignment",
+                "- Standard limitation of liability clauses",
+                "- Missing documents that are not contractually required",
+                "- TfC clauses — flag as P2 valuation concern, never P0",
+                "- Competitor-only CoC restrictions — P3 unless buyer competes with customer",
+            ]
+        )
+
+        return "\n".join(lines)
+
     def build_specialist_prompt(
         self,
         agent_name: str,
@@ -179,6 +348,7 @@ class PromptBuilder:
             state.  Automatically coerced to :class:`DealConfig` if a
             dict is passed.  May be ``None`` for tests.
         """
+        raw_deal_config = deal_config
         deal_config = self._coerce_deal_config(deal_config)
         customers = self._coerce_customers(customers)
         sections: list[str] = []
@@ -202,6 +372,9 @@ class PromptBuilder:
             agent_type = None
         if agent_type and agent_type in SPECIALIST_FOCUS:
             sections.append(f"## YOUR SPECIALIST FOCUS\n\n{SPECIALIST_FOCUS[agent_type]}")
+
+        # 5b. Severity calibration rubric (accepts both DealConfig and raw dict)
+        sections.append(self._build_severity_rubric(deal_config or raw_deal_config))
 
         # 6. Output format requirements
         sections.append(self._build_output_format(agent_name))
@@ -351,6 +524,154 @@ class PromptBuilder:
             '- "risk_alignment": List of {focus_area, finding_count, assessment}\n'
             '- "deal_impact": "low" | "moderate" | "high" | "critical"\n'
             '- "key_concerns": List of key concern strings\n\n'
+            "Output ONLY the JSON object. No explanatory text."
+        )
+
+        return "\n\n---\n\n".join(sections)
+
+    # ------------------------------------------------------------------
+    # Executive Synthesis prompt
+    # ------------------------------------------------------------------
+
+    def build_executive_synthesis_prompt(
+        self,
+        deal_config: dict[str, Any] | None,
+        p0_findings: list[dict[str, Any]],
+        p1_findings: list[dict[str, Any]],
+        findings_summary: dict[str, Any],
+        merged_findings_dir: str | None = None,
+    ) -> str:
+        """Build the Executive Synthesis agent prompt.
+
+        Parameters
+        ----------
+        deal_config:
+            Raw deal configuration dict.
+        p0_findings:
+            All P0 findings (title, description, entity).
+        p1_findings:
+            All P1 findings (title, description, entity).
+        findings_summary:
+            Summary statistics (total, by severity, by domain).
+        merged_findings_dir:
+            Path to merged findings for the agent to read.
+        """
+        sections: list[str] = []
+
+        sections.append(
+            "# EXECUTIVE SYNTHESIS — SENIOR M&A PARTNER REVIEW\n\n"
+            "You are a senior M&A partner conducting a final review of the due diligence "
+            "findings before presenting to the board. Your role is to apply professional "
+            "judgment to re-evaluate the severity of flagged issues and produce a calibrated "
+            "Go/No-Go recommendation.\n\n"
+            f"Run ID: {self.run_id}\n\n"
+            "CRITICAL RULES:\n"
+            "- No-Go requires truly exceptional circumstances: evidence of fraud, regulatory "
+            "prohibition, or irremediable structural issues.\n"
+            "- Most deals are 'Conditional Go' — risks are managed through deal mechanics.\n"
+            "- Intercompany obligations between target subsidiaries are eliminated at closing.\n"
+            "- Standard change-of-control notifications are routine, not deal-breaking.\n\n"
+            "CRITICAL EVALUATION FRAMEWORK FOR CoC/TERMINATION:\n"
+            "- Competitor-only CoC: Assess whether the buyer actually competes with the "
+            "customer. In most deals this is P3.\n"
+            "- Notification-only CoC: Routine administrative step — never above P2.\n"
+            "- Consent-required CoC: Assess cure period and revenue at risk.\n"
+            "- TfC clauses: VALUATION concerns, not deal-blockers. Reclassify any P0/P1 "
+            "TfC findings to P2 unless combined with other risk factors.\n"
+            "- TfCause: Standard protective clause — P3 unless 'cause' is broadly defined.\n"
+            "- Separate consent vs notice vs termination vs auto-termination in analysis."
+        )
+
+        # Deal context
+        if deal_config:
+            ctx_lines = ["## DEAL CONTEXT"]
+            buyer = deal_config.get("buyer", {})
+            target = deal_config.get("target", {})
+            deal = deal_config.get("deal", {})
+            if buyer.get("name"):
+                ctx_lines.append(f"Buyer: {buyer['name']}")
+            if target.get("name"):
+                ctx_lines.append(f"Target: {target['name']}")
+            if deal.get("type"):
+                ctx_lines.append(f"Deal Type: {deal['type']}")
+            if target.get("subsidiaries"):
+                ctx_lines.append(f"Subsidiaries: {', '.join(target['subsidiaries'])}")
+            sections.append("\n".join(ctx_lines))
+
+        # P0 findings
+        p0_lines = [f"## P0 FINDINGS ({len(p0_findings)} total)"]
+        if p0_findings:
+            for i, f in enumerate(p0_findings, 1):
+                title = f.get("title", "Untitled")
+                entity = f.get("entity", f.get("_customer", ""))
+                desc = f.get("description", "")
+                p0_lines.append(f"\n{i}. **{title}**")
+                if entity:
+                    p0_lines.append(f"   Entity: {entity}")
+                if desc:
+                    p0_lines.append(f"   {desc[:300]}")
+        else:
+            p0_lines.append("None.")
+        sections.append("\n".join(p0_lines))
+
+        # P1 findings
+        p1_lines = [f"## P1 FINDINGS ({len(p1_findings)} total)"]
+        if p1_findings:
+            for i, f in enumerate(p1_findings[:20], 1):
+                title = f.get("title", "Untitled")
+                entity = f.get("entity", f.get("_customer", ""))
+                p1_lines.append(f"{i}. {title}" + (f" ({entity})" if entity else ""))
+            if len(p1_findings) > 20:
+                p1_lines.append(f"... and {len(p1_findings) - 20} more P1 findings")
+        else:
+            p1_lines.append("None.")
+        sections.append("\n".join(p1_lines))
+
+        # Summary stats
+        summary_lines = ["## FINDINGS SUMMARY"]
+        if findings_summary:
+            for key, value in sorted(findings_summary.items()):
+                summary_lines.append(f"- {key}: {value}")
+        sections.append("\n".join(summary_lines))
+
+        # Merged findings location
+        if merged_findings_dir:
+            sections.append(
+                f"## MERGED FINDINGS\n\nRead merged findings from: {merged_findings_dir}\n"
+                "Review the full findings files for additional context on P0 and P1 issues."
+            )
+
+        # Output format
+        sections.append(
+            "## OUTPUT FORMAT\n\n"
+            "Return a single JSON object with these fields:\n"
+            "```json\n"
+            "{\n"
+            '  "go_no_go_signal": "Go | Conditional Go | Proceed with Caution | No-Go",\n'
+            '  "go_no_go_rationale": "Board-ready paragraph explaining recommendation",\n'
+            '  "executive_narrative": "2-3 paragraph DD summary for board presentation",\n'
+            '  "risk_score_override": 0-100 or -1 to keep mechanical score,\n'
+            '  "severity_overrides": [\n'
+            "    {\n"
+            '      "finding_title": "...",\n'
+            '      "entity": "...",\n'
+            '      "original_severity": "P0",\n'
+            '      "recommended_severity": "P3",\n'
+            '      "rationale": "..."\n'
+            "    }\n"
+            "  ],\n"
+            '  "deal_breakers_ranked": [\n'
+            "    {\n"
+            '      "rank": 1,\n'
+            '      "title": "...",\n'
+            '      "entity": "...",\n'
+            '      "impact_description": "...",\n'
+            '      "remediation": "..."\n'
+            "    }\n"
+            "  ],\n"
+            '  "key_themes": ["theme1", "theme2"]\n'
+            "}\n"
+            "```\n"
             "Output ONLY the JSON object. No explanatory text."
         )
 
@@ -766,11 +1087,13 @@ class PromptBuilder:
             "5. ALL `exact_quote` values have been verified against the source document.\n"
             "6. Every P0/P1 finding has `exact_quote` in every citation.\n"
             "7. Every P0 finding has been re-read and its severity confirmed.\n"
-            "8. Every customer with zero findings has been re-checked for missed issues.\n"
-            "9. ALL reference files assigned to you have been processed.\n\n"
-            "YOU MAY HAVE MISSED CRITICAL INFORMATION. Go back and re-examine any "
-            "customers where you produced fewer findings than expected relative to "
-            "their file count.\n\n"
+            "8. ALL reference files assigned to you have been processed.\n\n"
+            "### Quality Calibration Check\n\n"
+            "Before finalizing, review your P0 and P1 findings critically:\n"
+            "1. For each P0: Would an experienced M&A partner present this as a genuine deal-stopper?\n"
+            "2. For each P1: Is this truly material? Does it require pre-close negotiation?\n"
+            "3. Zero findings for a clean customer is acceptable. Do NOT manufacture findings.\n"
+            "4. Fewer, well-calibrated findings > many poorly-calibrated ones.\n\n"
             #
             # 8. Citation verification mandate (Issue #93)
             #

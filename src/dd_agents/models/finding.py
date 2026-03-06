@@ -25,9 +25,32 @@ _MATCH_STATUS_ALIASES: dict[str, str] = {
     "confirmed": "match",
     "unable_to_verify": "not_available",
     "partial_match": "mismatch",
+    "consistent": "match",
+    "approximate_match": "match",
+    "reference_only": "not_available",
+    "derived": "match",
+    "informational": "not_available",
+    "explainable_difference": "mismatch",
+    "concern": "mismatch",
+    "gap": "not_available",
+    "unverifiable": "unverified",
 }
 
 _VALID_MATCH_STATUSES: set[str] = {s.value for s in MatchStatus}
+
+_VALID_DETECTION_METHODS: set[str] = {d.value for d in DetectionMethod}
+
+_DETECTION_METHOD_ALIASES: dict[str, str] = {
+    "": "checklist",
+    "keyword_search": "pattern_check",
+    "document_review": "checklist",
+    "questionnaire": "checklist",
+    "manual_review": "checklist",
+    "pattern": "pattern_check",
+    "cross_ref": "cross_reference",
+    "crossref": "cross_reference",
+    "governance": "governance_resolution",
+}
 
 
 def _coerce_severity(v: Any) -> Severity:
@@ -204,6 +227,23 @@ class Gap(BaseModel):
     @classmethod
     def coerce_priority(cls, v: Any) -> Severity:
         return _coerce_severity(v)
+
+    @field_validator("detection_method", mode="before")
+    @classmethod
+    def coerce_detection_method(cls, v: Any) -> str:
+        """Coerce common detection_method variants to canonical values."""
+        if isinstance(v, DetectionMethod):
+            return v.value
+        if not isinstance(v, str):
+            _logger.warning("Non-string detection_method %r coerced to 'checklist'", v)
+            return "checklist"
+        raw: str = v.strip().lower()
+        if raw in _DETECTION_METHOD_ALIASES:
+            return _DETECTION_METHOD_ALIASES[raw]
+        if raw in _VALID_DETECTION_METHODS:
+            return raw
+        _logger.warning("Unknown detection_method %r coerced to 'checklist'", v)
+        return "checklist"
 
     @field_validator("agent", mode="before")
     @classmethod

@@ -24,7 +24,12 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from dd_agents.reporting.computed_metrics import ReportDataComputer
-from dd_agents.reporting.html_analysis import CoCAnalysisRenderer, CustomerHealthRenderer, PrivacyAnalysisRenderer
+from dd_agents.reporting.html_analysis import (
+    CoCAnalysisRenderer,
+    CustomerHealthRenderer,
+    PrivacyAnalysisRenderer,
+    TfCAnalysisRenderer,
+)
 from dd_agents.reporting.html_base import render_css, render_js, render_nav_bar
 from dd_agents.reporting.html_cross import CrossRefRenderer
 from dd_agents.reporting.html_customers import CustomerRenderer
@@ -65,6 +70,7 @@ class HTMLReportGenerator:
         run_metadata: dict[str, Any] | None = None,
         deal_config: dict[str, Any] | None = None,
         acquirer_intelligence: dict[str, Any] | None = None,
+        executive_synthesis: dict[str, Any] | None = None,
         run_dir: Path | None = None,
     ) -> None:
         """Write the HTML report to *output_path*.
@@ -85,6 +91,9 @@ class HTMLReportGenerator:
             Raw deal configuration dict (buyer, target, deal type, etc.).
         acquirer_intelligence:
             Optional output from the AcquirerIntelligenceAgent (Issue #110).
+        executive_synthesis:
+            Optional output from the ExecutiveSynthesisAgent — calibrated
+            Go/No-Go signal, severity overrides, and executive narrative.
         run_dir:
             Pipeline run directory (for loading audit.json, report_diff.json, etc.).
         """
@@ -92,7 +101,7 @@ class HTMLReportGenerator:
 
         # Single-pass metrics computation
         computer = ReportDataComputer()
-        computed = computer.compute(merged_data)
+        computed = computer.compute(merged_data, executive_synthesis=executive_synthesis)
 
         # Inject buyer_strategy from deal_config if present
         if deal_config and isinstance(deal_config, dict):
@@ -126,36 +135,39 @@ class HTMLReportGenerator:
             render_nav_bar(section_rag=computed.section_rag),
         ]
 
-        # Section renderers (order follows executive decision flow — Issue #113 A2)
+        # Section renderers (professional DD report flow — rendering overhaul)
         renderers: list[SectionRenderer] = [
-            # 1. Deal header + key metrics
-            DashboardRenderer(computed, merged_data, renderer_config),
-            # 2. Executive summary (Go/No-Go, heatmap, top deal breakers)
+            # 1. Executive summary (Go/No-Go, risk heatmap, deal breakers, key metrics)
             ExecutiveSummaryRenderer(computed, merged_data, renderer_config),
-            # 3. P0/P1 customer-level tables
+            # 2. Dashboard (deal header + metrics strip — material counts)
+            DashboardRenderer(computed, merged_data, renderer_config),
+            # 3. P0/P1 entity tables
             FindingsTableRenderer(computed, merged_data, renderer_config),
-            # 4. Domain risk heatmap
-            RiskRenderer(computed, merged_data, renderer_config),
-            # 5. Change of Control analysis
+            # 4. Change of Control analysis
             CoCAnalysisRenderer(computed, merged_data, renderer_config),
-            # 6. Data Privacy analysis
+            # 4b. Termination for Convenience — Revenue Quality
+            TfCAnalysisRenderer(computed, merged_data, renderer_config),
+            # 5. Data Privacy analysis
             PrivacyAnalysisRenderer(computed, merged_data, renderer_config),
-            # 7. Entity health tiers
-            CustomerHealthRenderer(computed, merged_data, renderer_config),
-            # 8. Domain deep-dives (collapsed)
+            # 6. Risk Heatmap (domain deep-dive summary)
+            RiskRenderer(computed, merged_data, renderer_config),
+            # 7. Domain sections (Legal, Finance, Commercial, ProductTech) — capped
             DomainRenderer(computed, merged_data, renderer_config),
-            # 9. Gap analysis
-            GapRenderer(computed, merged_data, renderer_config),
-            # 10. Data reconciliation
+            # 8. Cross-Reference Reconciliation
             CrossRefRenderer(computed, merged_data, renderer_config),
-            # 11. Governance & quality
-            QualityRenderer(computed, merged_data, renderer_config, run_dir=run_dir),
-            # 12. Entity detail (collapsed)
-            CustomerRenderer(computed, merged_data, renderer_config),
-            # 13. Recommendations
+            # 9. Entity Health Tiers
+            CustomerHealthRenderer(computed, merged_data, renderer_config),
+            # 10. Recommendations
             RecommendationsRenderer(computed, merged_data, renderer_config),
-            # 14. Methodology
+            # --- Appendix ---
+            # 11. Missing or Incomplete Data (moved from main body to appendix)
+            GapRenderer(computed, merged_data, renderer_config),
+            # 12. Entity Detail (collapsed)
+            CustomerRenderer(computed, merged_data, renderer_config),
+            # 13. Methodology & Limitations (collapsed appendix)
             MethodologyRenderer(computed, merged_data, renderer_config),
+            # 14. Data Quality appendix (collapsed) — governance, QA, noise findings
+            QualityRenderer(computed, merged_data, renderer_config, run_dir=run_dir),
         ]
 
         # Conditional diff section (only for incremental runs)

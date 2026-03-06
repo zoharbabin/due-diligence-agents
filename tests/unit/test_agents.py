@@ -489,7 +489,14 @@ class TestFinanceAgent:
         assert "financial_commitments" in FINANCE_FOCUS_AREAS
         assert "penalties" in FINANCE_FOCUS_AREAS
         assert "insurance" in FINANCE_FOCUS_AREAS
-        assert len(FINANCE_FOCUS_AREAS) == 6
+        assert len(FINANCE_FOCUS_AREAS) == 10
+
+    def test_finance_focus_areas_expanded(self) -> None:
+        """Finance should include 4 new analytical focus areas."""
+        assert "revenue_composition" in FINANCE_FOCUS_AREAS
+        assert "unit_economics" in FINANCE_FOCUS_AREAS
+        assert "financial_projections" in FINANCE_FOCUS_AREAS
+        assert "cost_structure" in FINANCE_FOCUS_AREAS
 
     def test_tools(self, tmp_project: Path, tmp_run_dir: Path, run_id: str) -> None:
         agent = FinanceAgent(tmp_project, tmp_run_dir, run_id)
@@ -521,7 +528,14 @@ class TestCommercialAgent:
         assert "exclusivity" in COMMERCIAL_FOCUS_AREAS
         assert "territory" in COMMERCIAL_FOCUS_AREAS
         assert "customer_satisfaction" in COMMERCIAL_FOCUS_AREAS
-        assert len(COMMERCIAL_FOCUS_AREAS) == 6
+        assert len(COMMERCIAL_FOCUS_AREAS) == 10
+
+    def test_commercial_focus_areas_expanded(self) -> None:
+        """Commercial should include 4 new analytical focus areas."""
+        assert "customer_segmentation" in COMMERCIAL_FOCUS_AREAS
+        assert "pricing_model" in COMMERCIAL_FOCUS_AREAS
+        assert "expansion_contraction" in COMMERCIAL_FOCUS_AREAS
+        assert "competitive_positioning" in COMMERCIAL_FOCUS_AREAS
 
     def test_tools(self, tmp_project: Path, tmp_run_dir: Path, run_id: str) -> None:
         agent = CommercialAgent(tmp_project, tmp_run_dir, run_id)
@@ -1641,7 +1655,9 @@ class TestRobustnessInstructions:
         assert "Completeness Checklist" in text
         assert "ALL customers" in text
         assert "ALL files" in text
-        assert "YOU MAY HAVE MISSED CRITICAL INFORMATION" in text
+        # Replaced completeness bias with quality calibration (Issue #113)
+        assert "Quality Calibration Check" in text
+        assert "genuine deal-stopper" in text
 
     def test_robustness_includes_not_found_protocol(self) -> None:
         text = PromptBuilder.robustness_instructions()

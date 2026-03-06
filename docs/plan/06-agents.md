@@ -21,7 +21,7 @@ All agents are **workers**, not orchestrators. Python controls flow.
 
 ## 2. Agent Registry
 
-Six agents, three categories:
+Eight agents, four categories:
 
 | Agent | Category | Pipeline Step | Runs After | Conditional |
 |-------|----------|--------------|------------|-------------|
@@ -31,6 +31,8 @@ Six agents, three categories:
 | **ProductTech** | Specialist | 16 | Extraction + inventory | No |
 | **Judge** | QA | 19-22 | All 4 specialists | Yes (`judge.enabled`) |
 | **ReportingLead** | Reporting | 23 | Judge (or specialists if Judge disabled) | No |
+| **ExecutiveSynthesis** | Synthesis | 30 | Merged findings | No (always runs) |
+| **AcquirerIntelligence** | Synthesis | 30 | Merged findings | Yes (`buyer_strategy`) |
 
 ---
 
@@ -973,6 +975,10 @@ Files extracting to >120KB text are flagged in the agent prompt. Agents are inst
 LARGE FILES (use Grep, not Read):
   - _dd/forensic-dd/index/text/Master_Agreement_v3.pdf.md (245KB)
 ```
+
+### 12.7 Post-Hoc Severity Recalibration
+
+Despite rubric guidance, LLM agents still over-flag certain clause types (e.g., competitor-only CoC as P0, standard auditor independence as P0). A deterministic recalibration step in `computed_metrics.py` corrects these patterns after merge, before metrics computation and report rendering. Rules are defined in `_RECALIBRATION_RULES`. See `10-reporting.md` §Severity Recalibration for the full rule list and behavior.
 
 ---
 

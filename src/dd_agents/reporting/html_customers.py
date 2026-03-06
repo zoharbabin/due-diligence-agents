@@ -6,6 +6,7 @@ import html
 from collections import defaultdict
 from typing import Any
 
+from dd_agents.reporting.computed_metrics import ReportDataComputer
 from dd_agents.reporting.html_base import (
     DOMAIN_AGENTS,
     DOMAIN_COLORS,
@@ -29,17 +30,26 @@ class CustomerRenderer(SectionRenderer):
         return "\n".join(parts)
 
     def _render_customer_section(self, customer: str, data: Any) -> str:
-        customer_name = data.get("customer", customer) if isinstance(data, dict) else customer
-        findings = data.get("findings", []) if isinstance(data, dict) else []
+        raw_name = data.get("customer", customer) if isinstance(data, dict) else customer
+        customer_name = self.data.display_names.get(customer, raw_name) if self.data else raw_name
+        raw_findings = data.get("findings", []) if isinstance(data, dict) else []
         gaps = data.get("gaps", []) if isinstance(data, dict) else []
         xrefs = data.get("cross_references", []) if isinstance(data, dict) else []
         gov_pct = data.get("governance_resolution_pct") if isinstance(data, dict) else None
 
+        # Enrich findings with CSN keys and apply severity recalibration
+        # (merged_data findings are raw — recalibration is only applied in compute())
+        findings: list[dict[str, Any]] = []
+        for f in raw_findings:
+            if isinstance(f, dict):
+                enriched = ReportDataComputer._recalibrate_severity(f)
+                enriched = {**enriched, "_customer_safe_name": customer, "_customer": raw_name}
+                findings.append(enriched)
+
         finding_count = len(findings)
         sev_summary: dict[str, int] = defaultdict(int)
         for f in findings:
-            if isinstance(f, dict):
-                sev_summary[f.get("severity", "P3")] += 1
+            sev_summary[f.get("severity", "P3")] += 1
         sev_str = " ".join(
             f"<span class='severity-badge' style='background:{SEVERITY_COLORS.get(s, '#ccc')}'>{s}:{c}</span>"
             for s, c in sorted(sev_summary.items())
@@ -97,11 +107,8 @@ class CustomerRenderer(SectionRenderer):
             parts.append("<h3>Findings</h3>")
             by_domain: dict[str, list[dict[str, Any]]] = defaultdict(list)
             for f in findings:
-                if isinstance(f, dict):
-                    domain = self.agent_to_domain(str(f.get("agent", "")))
-                    by_domain[domain].append(f)
-                else:
-                    by_domain["legal"].append({"_raw": f})
+                domain = self.agent_to_domain(str(f.get("agent", "")))
+                by_domain[domain].append(f)
 
             for domain in DOMAIN_AGENTS:
                 domain_f = by_domain.get(domain, [])

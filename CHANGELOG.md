@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.1] - 2026-03-05
+
+### Added
+
+- **Data quality finding separation** — three-way finding classification (material / data-quality / noise). Data quality findings moved to dedicated "Missing or Incomplete Data" appendix section.
+- **Expanded agent analytical depth** — Finance: revenue composition, unit economics, financial projections, cost structure. Commercial: customer segmentation, pricing model, expansion/contraction, competitive positioning.
+- **Executive synthesis agent** (`executive_synthesis.py`) — senior M&A partner review producing calibrated Go/No-Go signal, executive narrative, severity overrides, and ranked deal breakers.
+- **Severity rubric** in specialist prompts — deal-type-aware P0-P3 calibration criteria with common false-positive avoidance.
+- **Softened mechanical risk scoring** — single P0 finding no longer auto-triggers "No-Go"; requires 3+ P0 for "Critical" label.
+- 150 new unit tests (2149 total) covering severity recalibration, executive synthesis, data quality classification, expanded agent focus areas, and canonical category mapping.
+
+### Fixed
+
+- **Deprecated openpyxl `alignment.copy()` call** — replaced with `copy()` from stdlib to eliminate DeprecationWarning in search Excel writer.
+- **Ruff formatting** — 3 files auto-formatted to comply with ruff format rules.
+
+### Changed
+
+- Gap Analysis section renamed to "Missing or Incomplete Data" and moved to appendix zone in report navigation.
+- Wolf pack and category group filtering now excludes data quality findings from main report sections.
+- Documentation updated: README (test counts, agent count), IMPLEMENTATION_PLAN (test totals), CHANGELOG.
+
 ## [0.4.0] - 2026-03-03
 
 ### Added

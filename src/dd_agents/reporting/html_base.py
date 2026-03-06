@@ -72,6 +72,7 @@ RAG_COLORS: dict[str, str] = {
 TIMELINE_COLORS: dict[str, str] = {
     "Immediate": "#dc3545",
     "Pre-Close": "#fd7e14",
+    "Valuation": "#9333ea",
     "Post-Close": "#4a90d9",
     "Positive": "#28a745",
 }
@@ -123,16 +124,38 @@ class SectionRenderer(ABC):
 
     @staticmethod
     def domain_risk(sev: dict[str, int]) -> str:
-        """Compute risk label from severity distribution."""
-        if sev.get("P0", 0) > 0:
+        """Compute risk label from severity distribution.
+
+        Uses softened thresholds (Issue #113): P0 >= 3 → Critical,
+        P0 1-2 → High.  Matches ``ReportDataComputer._compute_risk_label()``.
+        """
+        p0 = sev.get("P0", 0)
+        if p0 >= 3:
             return "Critical"
-        if sev.get("P1", 0) > 0:
+        if p0 > 0:
             return "High"
-        if sev.get("P2", 0) > 0:
+        p1 = sev.get("P1", 0)
+        if p1 >= 3:
+            return "High"
+        if p1 > 0 or sev.get("P2", 0) >= 5:
             return "Medium"
+        if sev.get("P2", 0) > 0:
+            return "Low"
         if sev.get("P3", 0) > 0:
             return "Low"
         return "Clean"
+
+    def _resolve_display_name(self, item: dict[str, Any]) -> str:
+        """Resolve the display name for a finding/gap using CSN-first lookup.
+
+        Looks up ``_customer_safe_name`` first (canonical key in display_names),
+        then falls back to ``_customer``/``customer`` raw value.
+        """
+        csn = str(item.get("_customer_safe_name", ""))
+        raw = str(item.get("_customer", item.get("customer", "")))
+        if self.data:
+            return self.data.display_names.get(csn, self.data.display_names.get(raw, raw))
+        return raw
 
     @staticmethod
     def agent_to_domain(agent: str) -> str:
@@ -183,7 +206,8 @@ class SectionRenderer(ABC):
         severity = str(finding.get("severity", "P3"))
         color = SEVERITY_COLORS.get(severity, "#ccc")
         title = self.escape(str(finding.get("title", "Untitled")))
-        customer = self.escape(str(finding.get("_customer", finding.get("customer", ""))))
+        display_name = self._resolve_display_name(finding)
+        customer = self.escape(display_name)
         agent = self.escape(str(finding.get("agent", "")))
 
         return (
@@ -192,7 +216,7 @@ class SectionRenderer(ABC):
             f"tabindex='0' role='button' aria-expanded='false'>"
             f"<div class='fc-title'>{self.severity_badge(severity)} {title} "
             f"<span class='arrow'>&#9654;</span></div>"
-            f"<div class='fc-meta'>Entity: {customer} | Agent: {agent}</div>"
+            f"<div class='fc-meta'>Source: {customer} | Agent: {agent}</div>"
             f"</div>"
         )
 
@@ -318,10 +342,11 @@ class SectionRenderer(ABC):
 
         by_customer: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for f in findings:
-            by_customer[str(f.get("_customer", "Unknown"))].append(f)
+            by_customer[str(f.get("_customer_safe_name", f.get("_customer", "Unknown")))].append(f)
 
         for cust, cust_findings in sorted(by_customer.items()):
-            parts.append(f"<h3>{self.escape(cust)}</h3>")
+            display = self.data.display_names.get(cust, cust) if self.data else cust
+            parts.append(f"<h3>{self.escape(display)}</h3>")
             for f in cust_findings:
                 parts.append(self.render_finding_card(f))
                 parts.append(self.render_finding_detail(f))
@@ -422,21 +447,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 
 /* Content area (shifted right for sidebar) */
 .main-wrapper { margin-left: var(--sidebar-width); }
-
-/* Filter bar */
-.filter-bar { background: var(--bg-secondary); border-bottom: 1px solid var(--border-light);
-              padding: 10px 24px; display: flex; gap: 16px; align-items: center;
-              flex-wrap: wrap; position: sticky; top: 0; z-index: 999; }
-.filter-bar label { font-size: 0.85em; color: var(--text-secondary); cursor: pointer;
-                    display: flex; align-items: center; gap: 4px; }
-.filter-bar input[type="text"] { padding: 6px 12px; border: 1px solid #ccc; border-radius: 4px;
-                                  font-size: 0.85em; width: 220px; }
-.filter-group { display: flex; gap: 8px; align-items: center; }
-.filter-group-label { font-size: 0.8em; font-weight: 600; color: var(--gray-dark);
-                      text-transform: uppercase; letter-spacing: 0.5px; }
-.btn-sm { padding: 5px 12px; font-size: 0.8em; border: 1px solid #ccc; background: var(--bg-secondary);
-          border-radius: 4px; cursor: pointer; }
-.btn-sm:hover { background: var(--bg-hover); }
 
 /* Content wrapper */
 .content { max-width: 1200px; margin: 0 auto; padding: 24px; }
@@ -650,7 +660,7 @@ table.sortable th::after { content: ' \\2195'; color: #aaa; font-size: 0.8em; }
 /* Print mode (E5) */
 @page { margin: 2cm 1.5cm; }
 @media print {
-    .sidebar, .filter-bar, .skip-link { display: none !important; }
+    .sidebar, .skip-link { display: none !important; }
     .main-wrapper { margin-left: 0 !important; }
     .domain-body, .customer-body, .category-body, .finding-detail { display: block !important; }
     body { background: white; font-size: 11pt; orphans: 3; widows: 3; }
@@ -778,74 +788,6 @@ def render_js() -> str:
         });
     });
 
-    // --- Global search ---
-    var searchInput = document.getElementById('global-search');
-    if (searchInput) {
-        searchInput.addEventListener('input', function() {
-            var query = this.value.toLowerCase().trim();
-            var sel = '.customer-section, .wolf-card, .finding-card, .finding-detail';
-            document.querySelectorAll(sel).forEach(function(el) {
-                if (!query) { el.classList.remove('hidden'); return; }
-                var text = el.textContent.toLowerCase();
-                if (text.indexOf(query) === -1) el.classList.add('hidden');
-                else el.classList.remove('hidden');
-            });
-        });
-    }
-
-    // --- Severity filter ---
-    document.querySelectorAll('.sev-filter').forEach(function(cb) {
-        cb.addEventListener('change', function() {
-            var active = {};
-            document.querySelectorAll('.sev-filter').forEach(function(c) { active[c.value] = c.checked; });
-            document.querySelectorAll('[data-severity]').forEach(function(el) {
-                var sev = el.getAttribute('data-severity');
-                if (active[sev] === false) el.classList.add('hidden');
-                else el.classList.remove('hidden');
-            });
-        });
-    });
-
-    // --- Agent/domain filter ---
-    document.querySelectorAll('.agent-filter').forEach(function(cb) {
-        cb.addEventListener('change', function() {
-            var active = {};
-            document.querySelectorAll('.agent-filter').forEach(function(c) { active[c.value] = c.checked; });
-            document.querySelectorAll('[data-domain]').forEach(function(el) {
-                var dom = el.getAttribute('data-domain');
-                if (active[dom] === false) el.classList.add('hidden');
-                else el.classList.remove('hidden');
-            });
-        });
-    });
-
-    // --- Expand/collapse all ---
-    var expandBtn = document.getElementById('btn-expand-all');
-    var collapseBtn = document.getElementById('btn-collapse-all');
-    var allSel = '.domain-body, .customer-body, .category-body, .finding-detail';
-    if (expandBtn) {
-        expandBtn.addEventListener('click', function() {
-            document.querySelectorAll(allSel).forEach(function(el) {
-                el.classList.add('open');
-            });
-            document.querySelectorAll('.arrow').forEach(function(a) { a.classList.add('open'); });
-            document.querySelectorAll('[aria-expanded]').forEach(function(h) {
-                h.setAttribute('aria-expanded', 'true');
-            });
-        });
-    }
-    if (collapseBtn) {
-        collapseBtn.addEventListener('click', function() {
-            document.querySelectorAll(allSel).forEach(function(el) {
-                el.classList.remove('open');
-            });
-            document.querySelectorAll('.arrow').forEach(function(a) { a.classList.remove('open'); });
-            document.querySelectorAll('[aria-expanded]').forEach(function(h) {
-                h.setAttribute('aria-expanded', 'false');
-            });
-        });
-    }
-
     // --- Sidebar scroll tracking (A1) ---
     var sections = document.querySelectorAll('[id^="sec-"]');
     var sidebarLinks = document.querySelectorAll('.sidebar a[href^="#"]');
@@ -891,71 +833,54 @@ def render_nav_bar(section_rag: dict[str, str] | None = None) -> str:
         "<span>DD Report</span>"
         "<span class='confidential'>Confidential</span>"
         "</div>"
-        # Risk & Analysis
+        # Deal Assessment
         "<div class='toc-group'>"
-        "<div class='toc-group-label'>Risk &amp; Analysis</div>"
+        "<div class='toc-group-label'>Deal Assessment</div>"
         f"<a href='#sec-executive'>{_rag('executive')} Executive Summary</a>"
         f"<a href='#sec-wolf-pack'>{_rag('executive')} Deal Breakers</a>"
         "<a href='#sec-key-risks'>Key Risks</a>"
-        "<a href='#sec-p0-table'>P0 Entities</a>"
-        "<a href='#sec-p1-table'>P1 Entities</a>"
+        "</div>"
+        # Risk Analysis
+        "<div class='toc-group'>"
+        "<div class='toc-group-label'>Risk Analysis</div>"
+        "<a href='#sec-p0-table'>P0 Critical Issues</a>"
+        "<a href='#sec-p1-table'>P1 High Issues</a>"
         f"<a href='#sec-heatmap'>Risk Heatmap</a>"
         "</div>"
-        # Business Analysis
+        # Workstream Detail
         "<div class='toc-group'>"
-        "<div class='toc-group-label'>Business Analysis</div>"
+        "<div class='toc-group-label'>Workstream Detail</div>"
         f"<a href='#sec-coc'>{_rag('coc')} Change of Control</a>"
+        f"<a href='#sec-tfc'>{_rag('tfc')} TfC Revenue</a>"
         f"<a href='#sec-privacy'>{_rag('privacy')} Data Privacy</a>"
-        "<a href='#sec-health'>Entity Health</a>"
-        "</div>"
-        # Domains
-        "<div class='toc-group'>"
-        "<div class='toc-group-label'>Domain Detail</div>"
         f"<a href='#sec-domain-legal'>{_rag('domain-legal')} Legal</a>"
         f"<a href='#sec-domain-finance'>{_rag('domain-finance')} Finance</a>"
         f"<a href='#sec-domain-commercial'>{_rag('domain-commercial')} Commercial</a>"
         f"<a href='#sec-domain-producttech'>{_rag('domain-producttech')} Product&amp;Tech</a>"
         "</div>"
-        # Data Quality
+        # Portfolio
         "<div class='toc-group'>"
-        "<div class='toc-group-label'>Data Quality</div>"
-        f"<a href='#sec-gaps'>{_rag('gaps')} Gap Analysis</a>"
-        f"<a href='#sec-xref'>{_rag('xref')} Reconciliation</a>"
-        f"<a href='#sec-governance'>{_rag('governance')} Governance</a>"
+        "<div class='toc-group-label'>Portfolio</div>"
+        "<a href='#sec-health'>Entity Health</a>"
+        f"<a href='#sec-xref'>{_rag('xref')} Data Reconciliation</a>"
+        "</div>"
+        # Actions
+        "<div class='toc-group'>"
+        "<div class='toc-group-label'>Actions</div>"
+        "<a href='#sec-recommendations'>Recommendations</a>"
+        "</div>"
+        # Appendix (collapsed by default)
+        "<div class='toc-group'>"
+        "<div class='toc-group-label'>Appendix</div>"
+        f"<a href='#sec-gaps'>{_rag('gaps')} Incomplete Data</a>"
+        "<a href='#sec-customers'>Entity Detail</a>"
+        "<a href='#sec-methodology'>Methodology</a>"
+        f"<a href='#sec-governance'>{_rag('governance')} Data Quality</a>"
         "<a href='#sec-quality'>Quality Audit</a>"
         "<a href='#sec-audit-checks'>QA Checks</a>"
-        "<a href='#sec-customers'>Entity Detail</a>"
-        "</div>"
-        # Actions & Appendix
-        "<div class='toc-group'>"
-        "<div class='toc-group-label'>Actions &amp; Appendix</div>"
-        "<a href='#sec-recommendations'>Recommendations</a>"
-        "<a href='#sec-methodology'>Methodology</a>"
         "</div>"
         "</nav>"
         # Main wrapper
         "<div class='main-wrapper'>"
-        "<div class='filter-bar' role='search' aria-label='Filter findings'>"
-        "<input type='text' id='global-search' placeholder='Search all content...' "
-        "aria-label='Search findings'>"
-        "<div class='filter-group'>"
-        "<span class='filter-group-label' id='sev-group-label'>Severity:</span>"
-        "<div role='group' aria-labelledby='sev-group-label'>"
-        "<label><input type='checkbox' class='sev-filter' value='P0' checked> P0</label>"
-        "<label><input type='checkbox' class='sev-filter' value='P1' checked> P1</label>"
-        "<label><input type='checkbox' class='sev-filter' value='P2' checked> P2</label>"
-        "<label><input type='checkbox' class='sev-filter' value='P3' checked> P3</label>"
-        "</div></div>"
-        "<div class='filter-group'>"
-        "<span class='filter-group-label' id='domain-group-label'>Domain:</span>"
-        "<div role='group' aria-labelledby='domain-group-label'>"
-        "<label><input type='checkbox' class='agent-filter' value='legal' checked> Legal</label>"
-        "<label><input type='checkbox' class='agent-filter' value='finance' checked> Finance</label>"
-        "<label><input type='checkbox' class='agent-filter' value='commercial' checked> Commercial</label>"
-        "<label><input type='checkbox' class='agent-filter' value='producttech' checked> Product&amp;Tech</label>"
-        "</div></div>"
-        "<button class='btn-sm' id='btn-expand-all' aria-label='Expand all sections'>Expand All</button>"
-        "<button class='btn-sm' id='btn-collapse-all' aria-label='Collapse all sections'>Collapse All</button>"
-        "</div>"
         "<div class='content' role='main' id='main-content'>"
     )

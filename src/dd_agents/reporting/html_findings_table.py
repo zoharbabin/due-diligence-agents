@@ -104,9 +104,11 @@ class FindingsTableRenderer(SectionRenderer):
     def _render_row(self, row: dict[str, Any], count_key: str) -> str:
         return f"<tr>{self._render_row_cells(row, count_key)}</tr>"
 
-    @staticmethod
-    def _render_row_cells(row: dict[str, Any], count_key: str) -> str:
-        customer = html.escape(str(row.get("customer", "")))
+    def _render_row_cells(self, row: dict[str, Any], count_key: str) -> str:
+        raw_customer = str(row.get("customer", ""))
+        csn = str(row.get("customer_safe_name", raw_customer))
+        display_name = self.data.display_names.get(csn, self.data.display_names.get(raw_customer, raw_customer))
+        customer = html.escape(display_name)
         count = row.get(count_key, 0)
         total = row.get("total_findings", 0)
         issue = html.escape(str(row.get("primary_issue", "")))

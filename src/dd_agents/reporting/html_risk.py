@@ -24,7 +24,7 @@ class RiskRenderer(SectionRenderer):
 
         for domain in DOMAIN_AGENTS:
             sev = self.data.domain_severity.get(domain, {})
-            risk = self.domain_risk(sev)
+            risk = self.data.domain_risk_labels.get(domain, "Clean")
             risk_color = self.risk_color(risk)
             domain_color = DOMAIN_COLORS.get(domain, "#666")
             total = sum(sev.values())

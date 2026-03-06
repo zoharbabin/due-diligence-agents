@@ -94,7 +94,7 @@ class DashboardRenderer(SectionRenderer):
         return "\n".join(parts)
 
     def _render_key_metrics(self) -> str:
-        sc = self.data.findings_by_severity
+        sc = self.data.material_by_severity
         cards: list[str] = []
 
         def _card(value: str | int, label: str, color: str = "#1a1a2e") -> str:
@@ -106,7 +106,7 @@ class DashboardRenderer(SectionRenderer):
             )
 
         cards.append(_card(self.data.total_customers, "Entities"))
-        cards.append(_card(self.data.total_findings, "Findings"))
+        cards.append(_card(self.data.material_count, "Findings"))
         cards.append(_card(self.data.total_gaps, "Gaps"))
         for sev in ("P0", "P1", "P2", "P3"):
             cards.append(_card(sc.get(sev, 0), sev, SEVERITY_COLORS.get(sev, "#ccc")))
@@ -116,12 +116,20 @@ class DashboardRenderer(SectionRenderer):
             avg_gov = self.data.avg_governance_pct
             cards.append(_card(f"{avg_gov:.0f}%", "Avg Governance", "#2d8a4e" if avg_gov >= 90 else "#d97706"))
 
-        return "<div class='metrics-strip'>" + "".join(cards) + "</div>"
+        noise = self.data.noise_count
+        strip = "<div class='metrics-strip'>" + "".join(cards) + "</div>"
+        if noise > 0:
+            strip += (
+                f"<div class='text-small text-muted' style='text-align:right;margin-top:-16px;margin-bottom:16px'>"
+                f"{noise} data quality observations excluded "
+                f"(<a href='#sec-governance' style='color:inherit'>see appendix</a>)</div>"
+            )
+        return strip
 
     def _render_wolf_pack(self) -> str:
-        """Render Deal Breakers: P0 only, with similarity dedup."""
-        p0 = self.data.wolf_pack_p0
-        has_any = bool(p0) or any(f.get("severity") == "P1" for f in self.data.wolf_pack)
+        """Render Deal Breakers: P0 only (material), with similarity dedup."""
+        p0 = self.data.material_wolf_pack_p0
+        has_any = bool(p0) or any(f.get("severity") == "P1" for f in self.data.material_wolf_pack)
 
         parts: list[str] = [
             "<section class='wolf-pack report-section' id='sec-wolf-pack'>",
@@ -141,8 +149,8 @@ class DashboardRenderer(SectionRenderer):
         return "\n".join(parts)
 
     def _render_key_risks(self) -> str:
-        """Render Key Risks: P1 findings grouped by domain in a collapsed accordion."""
-        p1 = [f for f in self.data.wolf_pack if f.get("severity") == "P1"]
+        """Render Key Risks: P1 material findings as a summary table grouped by domain+category."""
+        p1 = [f for f in self.data.material_wolf_pack if f.get("severity") == "P1"]
         if not p1:
             return ""
 
@@ -151,24 +159,61 @@ class DashboardRenderer(SectionRenderer):
             f"<h2>Key Risks ({len(p1)})</h2>",
         ]
 
-        by_domain: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        # Group by domain + category
+        by_domain_cat: dict[str, dict[str, list[dict[str, Any]]]] = defaultdict(lambda: defaultdict(list))
         for f in p1:
             domain = self.agent_to_domain(str(f.get("agent", "")))
-            by_domain[domain].append(f)
+            cat = str(f.get("category", "uncategorized"))
+            by_domain_cat[domain][cat].append(f)
 
-        for domain, domain_findings in sorted(by_domain.items()):
+        # Build summary table
+        parts.append(
+            "<table class='sortable key-risks-table'><thead><tr>"
+            "<th scope='col'>Domain</th><th scope='col'>Category</th>"
+            "<th scope='col'>Count</th><th scope='col'>Top Finding</th>"
+            "<th scope='col'>Severity</th></tr></thead><tbody>"
+        )
+
+        total_rows = 0
+        for domain in sorted(by_domain_cat.keys()):
             display = DOMAIN_DISPLAY.get(domain, domain)
+            cats = by_domain_cat[domain]
+            sorted_cats = sorted(cats.items(), key=lambda x: -len(x[1]))[:5]
+            for cat, cat_findings in sorted_cats:
+                if total_rows >= 20:
+                    break
+                top = cat_findings[0]
+                top_title = html.escape(str(top.get("title", "")))
+                parts.append(
+                    f"<tr><td>{html.escape(display)}</td>"
+                    f"<td>{html.escape(cat)}</td>"
+                    f"<td>{len(cat_findings)}</td>"
+                    f"<td>{top_title}</td>"
+                    f"<td>{self.severity_badge('P1')}</td></tr>"
+                )
+                total_rows += 1
+
+        parts.append("</tbody></table>")
+
+        # Collapsed full detail
+        if len(p1) > total_rows:
             parts.append(
-                f"<div class='domain-section'>"
-                f"<div class='domain-header' tabindex='0' role='button' aria-expanded='false'>"
-                f"<h2>{html.escape(display)} "
-                f"<span class='severity-badge' style='background:#fd7e14;color:#333'>{len(domain_findings)}</span></h2>"
-                f"<span class='arrow'>&#9654;</span></div>"
-                f"<div class='domain-body'>"
+                "<div class='domain-section'>"
+                "<div class='domain-header' tabindex='0' role='button' aria-expanded='false'>"
+                f"<h2>All P1 Findings ({len(p1)})</h2>"
+                "<span class='arrow'>&#9654;</span></div>"
+                "<div class='domain-body'>"
             )
-            groups = _dedup_similar_findings(domain_findings)
-            for primary, similar in groups:
-                parts.append(self._render_wolf_card(primary, len(similar)))
+            by_domain: dict[str, list[dict[str, Any]]] = defaultdict(list)
+            for f in p1:
+                domain = self.agent_to_domain(str(f.get("agent", "")))
+                by_domain[domain].append(f)
+            for domain, domain_findings in sorted(by_domain.items()):
+                display = DOMAIN_DISPLAY.get(domain, domain)
+                parts.append(f"<h3>{html.escape(display)} ({len(domain_findings)})</h3>")
+                groups = _dedup_similar_findings(domain_findings)
+                for primary, similar in groups:
+                    parts.append(self._render_wolf_card(primary, len(similar)))
             parts.append("</div></div>")
 
         parts.append("</section>")
@@ -179,7 +224,8 @@ class DashboardRenderer(SectionRenderer):
         sev = f.get("severity", "P3")
         color = SEVERITY_COLORS.get(sev, "#ccc")
         title = html.escape(str(f.get("title", "Untitled")))
-        customer = html.escape(str(f.get("_customer", "")))
+        display_name = self._resolve_display_name(f)
+        customer = html.escape(display_name)
         agent = html.escape(str(f.get("agent", "")))
         desc = html.escape(str(f.get("description", "")))
 
@@ -202,7 +248,7 @@ class DashboardRenderer(SectionRenderer):
             f"<div class='wolf-card' style='border-left-color:{color}' "
             f"data-severity='{html.escape(sev)}'>"
             f"<div class='wolf-title'>{self.severity_badge(sev)} {title}{similar_badge}</div>"
-            f"<div class='wolf-meta'>Entity: {customer} | Agent: {agent}</div>"
+            f"<div class='wolf-meta'>Source: {customer} | Agent: {agent}</div>"
         ]
         if desc:
             parts.append(f"<div class='text-small mt-8'>{desc}</div>")

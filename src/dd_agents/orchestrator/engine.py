@@ -147,6 +147,32 @@ class PipelineEngine:
             The final pipeline state after all steps complete.
         """
         self._run_options = options or {}
+
+        # Suppress the known anyio/SDK cancel-scope RuntimeError that fires
+        # during event-loop shutdown.  The SDK's ``process_query`` async
+        # generator uses an anyio task group internally.  When Python's
+        # ``shutdown_asyncgens()`` closes a leftover generator, the cleanup
+        # runs in a new asyncio Task — anyio detects the task-context
+        # mismatch and raises RuntimeError("Attempted to exit cancel scope
+        # in a different task").  All pipeline work is already complete at
+        # that point, so the error is purely cosmetic.
+        loop = asyncio.get_running_loop()
+        _original_handler = loop.get_exception_handler()
+
+        def _suppress_sdk_cleanup(
+            _loop: asyncio.AbstractEventLoop,
+            context: dict[str, Any],
+        ) -> None:
+            exc = context.get("exception")
+            if isinstance(exc, RuntimeError) and "cancel scope" in str(exc):
+                return  # Suppress known SDK/anyio cleanup noise
+            if _original_handler is not None:
+                _original_handler(_loop, context)
+            else:
+                _loop.default_exception_handler(context)
+
+        loop.set_exception_handler(_suppress_sdk_cleanup)
+
         if resume_from_step > 0:
             predecessor = resume_from_step - 1
             if predecessor > 0:
@@ -2335,6 +2361,12 @@ class PipelineEngine:
                 except (json.JSONDecodeError, OSError):
                     continue
 
+        # Report diff (for Run_Diff sheet)
+        diff_path = state.run_dir / "report_diff.json"
+        if diff_path.exists():
+            with contextlib.suppress(json.JSONDecodeError, OSError):
+                run_metadata["report_diff"] = json.loads(diff_path.read_text())
+
         # Finding and gap counts from merged data
         total_findings = 0
         total_gaps = 0
@@ -2479,6 +2511,88 @@ class PipelineEngine:
 
         logger.info("Excel report generated: %s", output_path)
 
+        # Executive Synthesis analysis (Issue #113)
+        # Always runs. Non-blocking — failure does not prevent report generation.
+        # Re-evaluates P0/P1 findings with professional M&A judgment.
+        executive_synthesis: dict[str, Any] | None = None
+        try:
+            from dd_agents.agents.executive_synthesis import ExecutiveSynthesisAgent
+
+            es_agent = ExecutiveSynthesisAgent(
+                project_dir=self.project_dir,
+                run_dir=state.run_dir,
+                run_id=state.run_id,
+            )
+            # Collect P0 and P1 findings from merged data.
+            # Apply severity recalibration so the agent sees the same
+            # severity distribution that appears in the final reports.
+            from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+            p0_findings: list[dict[str, Any]] = []
+            p1_findings: list[dict[str, Any]] = []
+            severity_dist: dict[str, int] = {"P0": 0, "P1": 0, "P2": 0, "P3": 0}
+            for csn, cdata in merged_findings.items():
+                if not isinstance(cdata, dict):
+                    continue
+                for finding in cdata.get("findings", []):
+                    if not isinstance(finding, dict):
+                        continue
+                    recal = ReportDataComputer._recalibrate_severity(finding)
+                    sev = recal.get("severity", "")
+                    severity_dist[sev] = severity_dist.get(sev, 0) + 1
+                    if sev == "P0":
+                        p0_findings.append(
+                            {
+                                "title": recal.get("title", ""),
+                                "entity": cdata.get("customer", csn),
+                                "description": recal.get("description", ""),
+                            }
+                        )
+                    elif sev == "P1":
+                        p1_findings.append(
+                            {
+                                "title": recal.get("title", ""),
+                                "entity": cdata.get("customer", csn),
+                                "description": recal.get("description", ""),
+                            }
+                        )
+            logger.info(
+                "Executive synthesis input: %d P0, %d P1 findings across %d entities",
+                len(p0_findings),
+                len(p1_findings),
+                len(merged_findings),
+            )
+
+            deal_config_for_es = state.deal_config if isinstance(state.deal_config, dict) else None
+            es_state: dict[str, Any] = {
+                "deal_config": deal_config_for_es,
+                "p0_findings": p0_findings,
+                "p1_findings": p1_findings,
+                "findings_summary": {
+                    "total_customers": len(merged_findings),
+                    "total_findings": sum(
+                        len(v.get("findings", [])) for v in merged_findings.values() if isinstance(v, dict)
+                    ),
+                    "severity_distribution": severity_dist,
+                },
+                "merged_findings_dir": str(state.run_dir / "findings" / "merged"),
+            }
+            es_result = await es_agent.run(es_state)
+            if es_result.get("status") == "success" and es_result.get("output"):
+                outputs = es_result["output"]
+                if outputs and isinstance(outputs, list) and isinstance(outputs[0], dict):
+                    # Validate through Pydantic so missing fields get safe defaults
+                    from dd_agents.agents.executive_synthesis import ExecutiveSynthesisOutput
+
+                    try:
+                        validated = ExecutiveSynthesisOutput.model_validate(outputs[0])
+                        executive_synthesis = validated.model_dump()
+                    except (ValueError, TypeError):
+                        executive_synthesis = outputs[0]
+                    logger.info("Executive synthesis analysis completed")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Executive synthesis analysis failed (non-blocking): %s", exc)
+
         # Optional: Acquirer Intelligence analysis (Issue #110)
         # Runs only when buyer_strategy is present. Non-blocking — failure
         # does not prevent report generation.
@@ -2526,6 +2640,7 @@ class PipelineEngine:
                 run_metadata=run_metadata,
                 deal_config=state.deal_config,
                 acquirer_intelligence=acquirer_intel,
+                executive_synthesis=executive_synthesis,
             )
             logger.info("HTML report generated: %s", html_path)
         except Exception as exc:  # noqa: BLE001

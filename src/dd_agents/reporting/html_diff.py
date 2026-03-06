@@ -38,8 +38,8 @@ class DiffRenderer(SectionRenderer):
 
         summary = diff.get("summary", {})
         changes = diff.get("changes", [])
-        new_count = summary.get("new", 0)
-        resolved_count = summary.get("resolved", 0)
+        new_count = summary.get("new_findings", 0)
+        resolved_count = summary.get("resolved_findings", 0)
         changed_count = summary.get("changed_severity", 0)
 
         parts: list[str] = [
@@ -60,13 +60,13 @@ class DiffRenderer(SectionRenderer):
         )
 
         # New findings table
-        new_findings = [c for c in changes if c.get("change_type") == "new"]
+        new_findings = [c for c in changes if c.get("change_type") == "new_finding"]
         if new_findings:
             parts.append("<h3>New Findings</h3>")
             parts.append(self._render_change_table(new_findings))
 
         # Resolved findings table
-        resolved = [c for c in changes if c.get("change_type") == "resolved"]
+        resolved = [c for c in changes if c.get("change_type") == "resolved_finding"]
         if resolved:
             parts.append("<h3>Resolved Findings</h3>")
             parts.append(self._render_change_table(resolved))
@@ -100,7 +100,10 @@ class DiffRenderer(SectionRenderer):
             "</tr></thead><tbody>"
         ]
         for c in changes:
-            customer = html.escape(str(c.get("customer", "")))
+            raw_customer = str(c.get("customer", ""))
+            customer = html.escape(
+                self.data.display_names.get(raw_customer, raw_customer) if self.data else raw_customer
+            )
             summary = html.escape(str(c.get("finding_summary", "")))
             parts.append(f"<tr><td>{customer}</td><td>{summary}</td></tr>")
         parts.append("</tbody></table>")
@@ -114,7 +117,10 @@ class DiffRenderer(SectionRenderer):
             "</tr></thead><tbody>"
         ]
         for c in changes:
-            customer = html.escape(str(c.get("customer", "")))
+            raw_customer = str(c.get("customer", ""))
+            customer = html.escape(
+                self.data.display_names.get(raw_customer, raw_customer) if self.data else raw_customer
+            )
             summary = html.escape(str(c.get("finding_summary", "")))
             prior = html.escape(str(c.get("prior_severity", "")))
             current = html.escape(str(c.get("current_severity", "")))

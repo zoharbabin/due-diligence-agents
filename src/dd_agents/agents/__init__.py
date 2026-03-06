@@ -8,6 +8,11 @@ from dd_agents.agents.acquirer_intelligence import (
     AcquirerIntelligenceOutput,
 )
 from dd_agents.agents.base import BaseAgentRunner
+from dd_agents.agents.executive_synthesis import (
+    EXECUTIVE_SYNTHESIS_TOOLS,
+    ExecutiveSynthesisAgent,
+    ExecutiveSynthesisOutput,
+)
 from dd_agents.agents.judge import (
     DEFAULT_SAMPLING_RATES,
     DEFAULT_SCORE_THRESHOLD,
@@ -56,6 +61,10 @@ __all__ = [
     "PRODUCTTECH_FOCUS_AREAS",
     "SPECIALIST_TYPES",
     "SPECIALIST_CLASSES",
+    # Executive Synthesis
+    "ExecutiveSynthesisAgent",
+    "ExecutiveSynthesisOutput",
+    "EXECUTIVE_SYNTHESIS_TOOLS",
     # Judge
     "JudgeAgent",
     "DEFAULT_SAMPLING_RATES",

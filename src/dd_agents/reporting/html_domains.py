@@ -26,10 +26,11 @@ class DomainRenderer(SectionRenderer):
         display = DOMAIN_DISPLAY.get(domain, domain)
         domain_color = DOMAIN_COLORS.get(domain, "#666")
         sev = self.data.domain_severity.get(domain, {})
-        risk = self.domain_risk(sev)
+        risk = self.data.domain_risk_labels.get(domain, "Clean")
         risk_color = self.risk_color(risk)
         total = sum(sev.values())
         categories = self.data.category_groups.get(domain, {})
+        top_findings = self.data.top_findings_by_domain.get(domain, [])
 
         parts: list[str] = [
             f"<section class='report-section' id='sec-domain-{html.escape(domain)}'>",
@@ -46,6 +47,7 @@ class DomainRenderer(SectionRenderer):
         parts.append(self.render_severity_bar(sev))
 
         if categories:
+            # Category summary table
             parts.append(
                 "<table class='sortable'><thead><tr>"
                 "<th scope='col'>Category</th><th scope='col'>Findings</th><th scope='col'>Severity Mix</th>"
@@ -56,18 +58,43 @@ class DomainRenderer(SectionRenderer):
                 customer_counts: dict[str, int] = defaultdict(int)
                 for cf in cat_findings:
                     cat_sev[cf.get("severity", "P3")] += 1
-                    customer_counts[str(cf.get("_customer", ""))] += 1
-                top_customer = max(customer_counts, key=lambda c: customer_counts.get(c, 0)) if customer_counts else ""
+                    customer_counts[str(cf.get("_customer_safe_name", cf.get("_customer", "")))] += 1
+                top_customer_raw = (
+                    max(customer_counts, key=lambda c: customer_counts.get(c, 0)) if customer_counts else ""
+                )
+                top_customer_display = self.data.display_names.get(top_customer_raw, top_customer_raw)
                 sev_mix = ", ".join(f"{k}:{v}" for k, v in sorted(cat_sev.items()) if v > 0)
 
                 parts.append(
                     f"<tr><td>{html.escape(cat)}</td><td>{len(cat_findings)}</td>"
-                    f"<td>{html.escape(sev_mix)}</td><td>{html.escape(top_customer)}</td></tr>"
+                    f"<td>{html.escape(sev_mix)}</td><td>{html.escape(top_customer_display)}</td></tr>"
                 )
             parts.append("</tbody></table>")
 
-            for cat, cat_findings in sorted(categories.items(), key=lambda x: -len(x[1])):
-                parts.append(self.render_category_group(cat, cat_findings))
+            # Count all findings across categories
+            all_domain_findings = [f for cat_f in categories.values() for f in cat_f]
+
+            if len(all_domain_findings) <= 10:
+                # Few findings — render all category groups directly
+                for cat, cat_findings in sorted(categories.items(), key=lambda x: -len(x[1])):
+                    parts.append(self.render_category_group(cat, cat_findings))
+            else:
+                # Top 10 material findings as cards
+                for f in top_findings[:10]:
+                    parts.append(self.render_finding_card(f))
+                    parts.append(self.render_finding_detail(f))
+
+                # Remaining findings in collapsed section
+                parts.append(
+                    "<div class='domain-section'>"
+                    "<div class='domain-header' tabindex='0' role='button' aria-expanded='false'>"
+                    f"<h2>Show all {len(all_domain_findings)} findings</h2>"
+                    "<span class='arrow'>&#9654;</span></div>"
+                    "<div class='domain-body'>"
+                )
+                for cat, cat_findings in sorted(categories.items(), key=lambda x: -len(x[1])):
+                    parts.append(self.render_category_group(cat, cat_findings))
+                parts.append("</div></div>")
         else:
             parts.append("<p class='text-muted'>No findings in this domain.</p>")
 

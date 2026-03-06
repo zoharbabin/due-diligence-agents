@@ -40,6 +40,14 @@ VALID_CATEGORIES: set[str] = {
     "missing_document",
     "data_gap",
     "domain_reviewed_no_issues",
+    "revenue_composition",
+    "unit_economics",
+    "financial_projections",
+    "cost_structure",
+    "customer_segmentation",
+    "pricing_model",
+    "expansion_contraction",
+    "competitive_positioning",
     "Other",
 }
 
