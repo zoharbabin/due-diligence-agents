@@ -657,6 +657,21 @@ table.sortable th::after { content: ' \\2195'; color: #aaa; font-size: 0.8em; }
     .content { padding: 12px; }
 }
 
+/* Waterfall chart (Issue #102) */
+.waterfall { margin: 16px 0; }
+.waterfall-row { display: flex; align-items: center; margin-bottom: 6px; }
+.waterfall-label { width: 220px; flex-shrink: 0; font-size: 0.85em; padding-right: 12px;
+                   text-align: right; }
+.waterfall-bar-container { flex: 1; height: 32px; position: relative;
+                           background: var(--bg-light, #f8f9fa); border-radius: 4px; }
+.waterfall-bar { height: 100%; border-radius: 4px; display: flex; align-items: center;
+                 padding: 0 8px; font-size: 0.8em; color: #fff; white-space: nowrap;
+                 overflow: hidden; position: absolute; top: 0; }
+.waterfall-bar--total { background: var(--navy, #1a365d); }
+.waterfall-bar--risk { background: var(--severity-p1, #d63384); }
+.waterfall-bar--adjusted { background: var(--severity-p3, #198754); }
+.data-note { font-size: 0.8em; color: #6c757d; margin-top: 16px; font-style: italic; }
+
 /* Print mode (E5) */
 @page { margin: 2cm 1.5cm; }
 @media print {
@@ -844,6 +859,7 @@ def render_nav_bar(section_rag: dict[str, str] | None = None) -> str:
         # Risk Analysis
         "<div class='toc-group'>"
         "<div class='toc-group-label'>Risk Analysis</div>"
+        "<a href='#sec-financial'>Financial Impact</a>"
         "<a href='#sec-p0-table'>P0 Critical Issues</a>"
         "<a href='#sec-p1-table'>P1 High Issues</a>"
         f"<a href='#sec-heatmap'>Risk Heatmap</a>"

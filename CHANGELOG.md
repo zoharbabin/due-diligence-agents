@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.0] - 2026-03-06
+
+### Added
+
+- **Revenue-at-Risk & Financial Impact Quantification** (Issue #102) — new report section with:
+  - Per-customer revenue extraction from cross-reference data (ARR, ACV, contract value keywords)
+  - Revenue-at-risk waterfall chart (CoC exposure, TfC exposure, concentration risk, pricing risk)
+  - Customer concentration treemap sized by revenue with risk-level color coding
+  - Financial impact metrics strip (Total ARR, Revenue at Risk, Risk-Adjusted ARR)
+  - Data completeness indicator showing revenue coverage percentage
+  - `FinancialImpactRenderer` with full HTML escaping and print mode support
+- 19 new unit tests (2191 total) covering revenue extraction, waterfall computation, treemap generation, and renderer output
+
 ## [0.4.2] - 2026-03-06
 
 ### Added

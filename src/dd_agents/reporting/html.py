@@ -37,6 +37,7 @@ from dd_agents.reporting.html_dashboard import DashboardRenderer
 from dd_agents.reporting.html_diff import DiffRenderer
 from dd_agents.reporting.html_domains import DomainRenderer
 from dd_agents.reporting.html_executive import ExecutiveSummaryRenderer
+from dd_agents.reporting.html_financial import FinancialImpactRenderer
 from dd_agents.reporting.html_findings_table import FindingsTableRenderer
 from dd_agents.reporting.html_gaps import GapRenderer
 from dd_agents.reporting.html_methodology import MethodologyRenderer
@@ -141,6 +142,8 @@ class HTMLReportGenerator:
             ExecutiveSummaryRenderer(computed, merged_data, renderer_config),
             # 2. Dashboard (deal header + metrics strip — material counts)
             DashboardRenderer(computed, merged_data, renderer_config),
+            # 2b. Financial Impact (revenue-at-risk waterfall, treemap — Issue #102)
+            FinancialImpactRenderer(computed, merged_data, renderer_config),
             # 3. P0/P1 entity tables
             FindingsTableRenderer(computed, merged_data, renderer_config),
             # 4. Change of Control analysis
