@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Python application for forensic M&A due diligence. 5 AI agents (4 specialists + optional Judge) analyze contract data rooms under a 35-step pipeline with 5 blocking gates, producing a 14-sheet Excel report. Python orchestrates; agents are workers.
+Python application for forensic M&A due diligence. 7 AI agents (4 specialists + optional Judge + Executive Synthesis + Red Flag Scanner) analyze contract data rooms under a 35-step pipeline with 5 blocking gates, producing a board-ready HTML report + 14-sheet Excel report. Python orchestrates; agents are workers.
 
 **Package**: `dd_agents` under `src/dd_agents/`
 **SDK**: `claude-agent-sdk` v0.1.39+ (Python 3.12+)

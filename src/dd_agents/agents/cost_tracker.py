@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 # ---------------------------------------------------------------------------
 # Pricing (per 1M tokens, Claude model family, as of 2026-03)
+# Update these when model pricing changes.
 # ---------------------------------------------------------------------------
 
 _MODEL_PRICING: dict[str, dict[str, float]] = {
@@ -118,6 +119,9 @@ class AgentCostEntry(BaseModel):
 class CostTracker:
     """Tracks token usage and costs across a pipeline run.
 
+    Thread-safe: uses a lock to protect ``entries`` since multiple agents
+    may record usage concurrently from different asyncio tasks.
+
     Parameters
     ----------
     budget_limit_usd:
@@ -126,8 +130,11 @@ class CostTracker:
     """
 
     def __init__(self, budget_limit_usd: float | None = None) -> None:
+        import threading
+
         self.budget_limit_usd = budget_limit_usd
         self.entries: list[AgentCostEntry] = []
+        self._lock = threading.Lock()
 
     def record(
         self,
@@ -137,7 +144,7 @@ class CostTracker:
         output_tokens: int,
         model: str,
     ) -> AgentCostEntry:
-        """Record a usage entry and return it."""
+        """Record a usage entry and return it.  Thread-safe."""
         cost = _estimate_cost(model, input_tokens, output_tokens)
         entry = AgentCostEntry(
             agent_name=agent_name,
@@ -147,7 +154,8 @@ class CostTracker:
             model=model,
             cost_usd=cost,
         )
-        self.entries.append(entry)
+        with self._lock:
+            self.entries.append(entry)
         return entry
 
     def total_cost(self) -> float:

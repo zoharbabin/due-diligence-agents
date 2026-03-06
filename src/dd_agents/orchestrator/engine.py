@@ -2773,6 +2773,31 @@ class PipelineEngine:
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Acquirer intelligence analysis failed (non-blocking): %s", exc)
 
+        # Optional: Red Flag quick-scan (Issue #125)
+        # Runs when quick_scan option is set. Non-blocking.
+        red_flag_scan: dict[str, Any] | None = None
+        if self._run_options.get("quick_scan"):
+            try:
+                from dd_agents.agents.red_flag_scanner import RedFlagScannerAgent
+
+                rf_agent = RedFlagScannerAgent(
+                    project_dir=self.project_dir,
+                    run_dir=state.run_dir,
+                    run_id=state.run_id,
+                )
+                rf_state: dict[str, Any] = {
+                    "merged_findings_dir": str(state.run_dir / "findings" / "merged"),
+                    "data_room_dir": str(self.project_dir),
+                }
+                rf_result = await rf_agent.run(rf_state)
+                if rf_result.get("status") == "success" and rf_result.get("output"):
+                    outputs = rf_result["output"]
+                    if outputs and isinstance(outputs, list) and isinstance(outputs[0], dict):
+                        red_flag_scan = outputs[0]
+                        logger.info("Red flag scan completed: signal=%s", red_flag_scan.get("overall_signal"))
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Red flag scan failed (non-blocking): %s", exc)
+
         # Generate interactive HTML report alongside Excel (Issue #9)
         try:
             from dd_agents.reporting.html import HTMLReportGenerator
@@ -2788,6 +2813,8 @@ class PipelineEngine:
                 deal_config=state.deal_config,
                 acquirer_intelligence=acquirer_intel,
                 executive_synthesis=executive_synthesis,
+                red_flag_scan=red_flag_scan,
+                run_dir=state.run_dir,
             )
             logger.info("HTML report generated: %s", html_path)
         except Exception as exc:  # noqa: BLE001

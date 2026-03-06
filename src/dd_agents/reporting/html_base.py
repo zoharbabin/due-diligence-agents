@@ -852,6 +852,7 @@ def render_nav_bar(section_rag: dict[str, str] | None = None) -> str:
         # Deal Assessment
         "<div class='toc-group'>"
         "<div class='toc-group-label'>Deal Assessment</div>"
+        "<a href='#sec-red-flags'>Red Flag Assessment</a>"
         f"<a href='#sec-executive'>{_rag('executive')} Executive Summary</a>"
         f"<a href='#sec-wolf-pack'>{_rag('executive')} Deal Breakers</a>"
         "<a href='#sec-key-risks'>Key Risks</a>"

@@ -105,9 +105,15 @@ class BaseAgentRunner(ABC):
     def get_model_id(self) -> str | None:
         """Return the LLM model identifier for this agent.
 
-        Returns ``None`` so the SDK uses its own configured model.
-        Subclasses may override to force a specific model.
+        Checks ``deal_config.agent_models`` for profile-based or per-agent
+        override model selection (Issue #129).  Returns ``None`` as fallback
+        so the SDK uses its own configured model.
         """
+        if self.deal_config is not None:
+            agent_models = getattr(self.deal_config, "agent_models", None)
+            if agent_models is not None and hasattr(agent_models, "resolve_model"):
+                result: str | None = agent_models.resolve_model(self.get_agent_name())
+                return result
         return None
 
     @abstractmethod

@@ -1725,6 +1725,10 @@ class TestSidebarNavLinks:
         assert "href='#sec-recommendations'" in nav
         assert "href='#sec-methodology'" in nav
 
+    def test_sidebar_has_red_flags_link(self) -> None:
+        nav = render_nav_bar()
+        assert "href='#sec-red-flags'" in nav
+
 
 # ===========================================================================
 # Noise Detection & Display Name Cleaning (Rendering Overhaul)

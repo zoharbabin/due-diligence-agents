@@ -10,6 +10,7 @@ from __future__ import annotations
 import html
 from typing import Any
 
+from dd_agents.agents.red_flag_scanner import _CATEGORY_LABELS
 from dd_agents.reporting.html_base import SectionRenderer
 
 _SIGNAL_CONFIG: dict[str, dict[str, str]] = {
@@ -37,17 +38,6 @@ _CONFIDENCE_COLORS: dict[str, str] = {
     "high": "#198754",
     "medium": "#fd7e14",
     "low": "#6c757d",
-}
-
-_CATEGORY_LABELS: dict[str, str] = {
-    "active_litigation": "Active Litigation",
-    "ip_ownership_gaps": "IP Ownership Gaps",
-    "undisclosed_contracts": "Undisclosed Contracts",
-    "key_person_dependency": "Key-Person Dependency",
-    "financial_restatements": "Financial Restatements",
-    "regulatory_violations": "Regulatory Violations",
-    "customer_concentration": "Customer Concentration",
-    "debt_covenants": "Debt Covenants",
 }
 
 
