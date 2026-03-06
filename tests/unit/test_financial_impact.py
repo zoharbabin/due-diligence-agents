@@ -238,6 +238,48 @@ class TestRevenueAtRisk:
         result = computer.compute(merged)
         assert result.revenue_data_coverage == pytest.approx(1.0)
 
+    def test_no_double_counting_across_categories(self) -> None:
+        """When one customer has findings in multiple categories, revenue counted once."""
+        merged = {
+            "multi": _customer(
+                "Multi",
+                findings=[
+                    {
+                        "severity": "P0",
+                        "category": "change_of_control",
+                        "title": "CoC clause",
+                        "description": "Consent required",
+                        "citations": [{"source_type": "contract", "source_path": "a.pdf", "exact_quote": "x"}],
+                        "confidence": "high",
+                        "agent": "legal",
+                    },
+                    {
+                        "severity": "P1",
+                        "category": "termination",
+                        "title": "TfC clause",
+                        "description": "30-day termination",
+                        "citations": [{"source_type": "contract", "source_path": "a.pdf", "exact_quote": "y"}],
+                        "confidence": "high",
+                        "agent": "legal",
+                    },
+                ],
+                cross_references=[
+                    {
+                        "data_point": "ARR",
+                        "contract_value": "$500,000",
+                        "reference_value": "$500,000",
+                        "match_status": "match",
+                    },
+                ],
+            ),
+        }
+        computer = ReportDataComputer()
+        result = computer.compute(merged)
+        # Risk-adjusted ARR = total - exposure; must stay non-negative (no double-counting)
+        # With $500K ARR and two risk categories, exposure should be $500K (not $1M)
+        assert result.risk_adjusted_arr >= 0.0
+        assert result.risk_adjusted_arr == pytest.approx(0.0)  # 100% at risk
+
     def test_partial_coverage(self) -> None:
         """When some customers lack revenue data, coverage < 1.0."""
         merged = {

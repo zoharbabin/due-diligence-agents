@@ -1226,7 +1226,12 @@ class ReportDataComputer:
 
         # --- Issue #102: Waterfall and treemap ---
         risk_waterfall = self._compute_risk_waterfall(revenue_by_customer, topic_findings)
-        total_risk_exposure = sum(cat.get("amount", 0.0) for cat in risk_waterfall.values())
+        # Total exposure = union of unique customers across ALL categories to avoid
+        # double-counting when one customer has findings in multiple categories.
+        all_at_risk_csns: set[str] = set()
+        for cat_data in risk_waterfall.values():
+            all_at_risk_csns.update(cat_data.get("customers", []))
+        total_risk_exposure = sum(revenue_by_customer.get(csn, 0.0) for csn in all_at_risk_csns)
         risk_adjusted_arr = max(0.0, total_contracted_arr - total_risk_exposure)
         customers_with_revenue = len(revenue_by_customer)
         revenue_data_coverage = customers_with_revenue / len(merged_data) if merged_data else 0.0
