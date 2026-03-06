@@ -43,6 +43,7 @@ from dd_agents.reporting.html_gaps import GapRenderer
 from dd_agents.reporting.html_methodology import MethodologyRenderer
 from dd_agents.reporting.html_quality import QualityRenderer
 from dd_agents.reporting.html_recommendations import RecommendationsRenderer
+from dd_agents.reporting.html_red_flags import RedFlagAssessmentRenderer
 from dd_agents.reporting.html_risk import RiskRenderer
 from dd_agents.reporting.html_strategy import StrategyRenderer
 
@@ -138,6 +139,8 @@ class HTMLReportGenerator:
 
         # Section renderers (professional DD report flow — rendering overhaul)
         renderers: list[SectionRenderer] = [
+            # 0. Red Flag Assessment (quick-scan mode — Issue #125, renders only when data present)
+            RedFlagAssessmentRenderer(computed, merged_data, renderer_config),
             # 1. Executive summary (Go/No-Go, risk heatmap, deal breakers, key metrics)
             ExecutiveSummaryRenderer(computed, merged_data, renderer_config),
             # 2. Dashboard (deal header + metrics strip — material counts)

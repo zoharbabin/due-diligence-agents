@@ -853,6 +853,9 @@ class ReportComputedData(BaseModel):
     material_gaps: list[dict[str, Any]] = Field(default_factory=list)
     noise_gaps: list[dict[str, Any]] = Field(default_factory=list)
 
+    # --- Issue #125: Red Flag Scan (quick-scan mode) ---
+    red_flag_scan: dict[str, Any] | None = None
+
     # --- Issue #102: Revenue-at-Risk & Financial Impact ---
     revenue_by_customer: dict[str, float] = Field(default_factory=dict)
     total_contracted_arr: float = 0.0

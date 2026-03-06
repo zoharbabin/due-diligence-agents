@@ -31,6 +31,7 @@ class AgentType(StrEnum):
     JUDGE = "judge"
     ACQUIRER_INTELLIGENCE = "acquirer_intelligence"
     EXECUTIVE_SYNTHESIS = "executive_synthesis"
+    RED_FLAG_SCANNER = "red_flag_scanner"
 
 
 # ---------------------------------------------------------------------------
