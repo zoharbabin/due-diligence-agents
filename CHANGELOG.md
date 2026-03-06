@@ -14,9 +14,17 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - **`DataRoomAssessor`** module (`assessment.py`) — scans data room for empty files, unsupported formats, deeply nested structures, and generates actionable recommendations.
 - 21 new unit tests (2170 total) covering follow-up prompt generation, deterministic verification, and data room assessment.
 
+### Fixed
+
+- **XSS vulnerability** — HTML-escape RAG status label in sidebar navigation `title` and `aria-label` attributes (`html_base.py`).
+- **Severity comparison bug** — replaced fragile string comparison (`sev < max_sev` and `min()`) with explicit `_SEV_RANK` dict lookup for correct P0>P1>P2>P3 ordering in CoC and Privacy analysis renderers (`html_analysis.py`).
+- **Missing `Not_Found` gap type** — added `NOT_FOUND = "Not_Found"` to `GapType` enum. Agents were instructed to use this value but it was missing, causing validation failures.
+- **Red flag categories** — 6 new categories (`litigation`, `ip_gap`, `financial_restatement`, `key_person_risk`, `debt_covenant`, `customer_concentration`) added to `VALID_CATEGORIES` in finding validation.
+
 ### Changed
 
 - `PromptBuilder.robustness_instructions()` expanded with mandatory 4-step P0/P1 self-verification loop (re-read, quote verify, severity recheck, context check).
+- `PromptBuilder.robustness_instructions()` expanded with Red Flag Priority Detection (8 deal-killer patterns).
 - Pre-merge validation (step 23) now runs critical finding verification after schema validation.
 - Documentation updated: CHANGELOG, IMPLEMENTATION_PLAN test counts.
 
