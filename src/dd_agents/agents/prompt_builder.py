@@ -1095,6 +1095,39 @@ class PromptBuilder:
             "3. Zero findings for a clean customer is acceptable. Do NOT manufacture findings.\n"
             "4. Fewer, well-calibrated findings > many poorly-calibrated ones.\n\n"
             #
+            # 7b. Follow-up verification loop for P0/P1 (Issue #140)
+            # Research: AG-6 finding shows 9.2% accuracy improvement from
+            # mandatory follow-up prompts for high-value provisions.
+            #
+            "### MANDATORY P0/P1 Self-Verification Loop (CRITICAL)\n\n"
+            "After drafting ALL findings for a customer, you MUST perform a "
+            "structured self-verification for EVERY P0 and P1 finding before "
+            "writing the output file. This step is NOT optional.\n\n"
+            "For each P0/P1 finding, execute this 4-step verification:\n\n"
+            "**Step 1 — Re-Read Source**: Go back to the source document cited in "
+            "the finding. Use the Read tool to re-read the specific section. Do NOT "
+            "rely on memory of what the document said.\n\n"
+            "**Step 2 — Quote Verification**: Compare your `exact_quote` against "
+            "the actual text you just re-read. If the quote does not appear verbatim, "
+            "either fix it to match the actual text, or remove the finding entirely.\n\n"
+            "**Step 3 — Severity Recheck**: Ask yourself:\n"
+            "- P0: Is this genuinely a deal-stopper? Could a reasonable buyer walk away "
+            "over this? If not, downgrade to P1.\n"
+            "- P1: Does this require pre-close negotiation or price adjustment? If it's "
+            "merely an observation, downgrade to P2.\n"
+            "- Could there be mitigating factors (carve-outs, amendments, side letters) "
+            "in other documents for this customer? If you haven't checked, search for them.\n\n"
+            "**Step 4 — Context Check**: Re-read the 2 paragraphs before and after your "
+            "cited quote. Check for:\n"
+            "- Exceptions or carve-outs that modify the clause\n"
+            "- Definitions section that changes the meaning of key terms\n"
+            "- Amendment or superseding language\n"
+            "If you find mitigating context, update the finding description and "
+            "severity accordingly.\n\n"
+            "After verification, mark each P0/P1 finding with:\n"
+            '  "verified": true  (if all 4 steps pass)\n'
+            '  "verified": false (if any step fails — also fix or downgrade the finding)\n\n'
+            #
             # 8. Citation verification mandate (Issue #93)
             #
             "### Citation Verification (MANDATORY for P0 and P1)\n\n"
@@ -1120,3 +1153,68 @@ class PromptBuilder:
             "- Note which files you reviewed\n"
             "- Suggest what the missing clause means for the deal"
         )
+
+    # ------------------------------------------------------------------
+    # Follow-up verification prompt (Issue #140, AG-6)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def build_follow_up_prompt(
+        findings: list[dict[str, Any]],
+        customer_name: str,
+        agent_name: str,
+    ) -> str:
+        """Build a follow-up verification prompt for P0/P1 findings.
+
+        Research (AG-6): mandatory follow-up for high-value provisions improves
+        accuracy by 9.2%.  This prompt asks the agent to re-verify each critical
+        finding against the source document.
+
+        Returns an empty string if there are no P0/P1 findings to verify.
+        """
+        critical = [f for f in findings if str(f.get("severity", "")).upper() in ("P0", "P1")]
+        if not critical:
+            return ""
+
+        lines: list[str] = [
+            f"## FOLLOW-UP VERIFICATION — {customer_name} ({agent_name})\n",
+            "You previously analyzed this customer and produced the following "
+            "critical findings. For EACH finding below, you MUST:\n",
+            "1. Re-read the cited source document using the Read tool.",
+            "2. Verify the exact_quote appears verbatim in the document.",
+            "3. Check for mitigating clauses (exceptions, carve-outs, amendments) in the surrounding paragraphs.",
+            "4. Confirm or adjust the severity rating.\n",
+            "Respond with a JSON array. For each finding, return:\n",
+            "```json",
+            "{",
+            '  "original_title": "the finding title",',
+            '  "verified": true | false,',
+            '  "quote_confirmed": true | false,',
+            '  "revised_severity": "P0 | P1 | P2 | P3",',
+            '  "revision_reason": "why severity was kept or changed",',
+            '  "mitigating_factors": "any carve-outs or context found"',
+            "}",
+            "```\n",
+            "### Findings to Verify\n",
+        ]
+
+        for i, f in enumerate(critical, 1):
+            title = f.get("title", "Untitled")
+            severity = f.get("severity", "unknown")
+            desc = f.get("description", "")[:300]
+            citations = f.get("citations", [])
+            source = ""
+            quote = ""
+            if citations and isinstance(citations, list):
+                cit = citations[0] if isinstance(citations[0], dict) else {}
+                source = cit.get("source_path", "unknown")
+                quote = cit.get("exact_quote", "")[:200]
+
+            lines.append(f"**Finding {i}**: [{severity}] {title}")
+            lines.append(f"  Description: {desc}")
+            lines.append(f"  Source: {source}")
+            if quote:
+                lines.append(f'  Quote: "{quote}"')
+            lines.append("")
+
+        return "\n".join(lines)

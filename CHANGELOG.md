@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.2] - 2026-03-06
+
+### Added
+
+- **P0/P1 follow-up verification loop** (Issue #140, AG-6) — mandatory self-verification protocol for all critical findings. Research-proven 9.2% accuracy improvement. Agents must re-read source documents, verify quotes verbatim, check for mitigating clauses, and confirm severity before finalizing P0/P1 findings.
+- **Deterministic finding verification** in pre-merge validation (step 23) — P0 findings without citations automatically downgraded to P1; P0 findings without exact_quote downgraded to P1; P1 findings without citations downgraded to P2. Verified findings marked with `"verified": true`.
+- **Data room health check** (`dd-agents assess`) — new CLI command (Issue #149) for pre-flight data room quality assessment. Reports file type distribution, extraction readiness, customer folder detection, potential issues, and overall completeness score (0-100).
+- **`DataRoomAssessor`** module (`assessment.py`) — scans data room for empty files, unsupported formats, deeply nested structures, and generates actionable recommendations.
+- 21 new unit tests (2170 total) covering follow-up prompt generation, deterministic verification, and data room assessment.
+
+### Changed
+
+- `PromptBuilder.robustness_instructions()` expanded with mandatory 4-step P0/P1 self-verification loop (re-read, quote verify, severity recheck, context check).
+- Pre-merge validation (step 23) now runs critical finding verification after schema validation.
+- Documentation updated: CHANGELOG, IMPLEMENTATION_PLAN test counts.
+
 ## [0.4.1] - 2026-03-05
 
 ### Added
