@@ -21,7 +21,7 @@ All agents are **workers**, not orchestrators. Python controls flow.
 
 ## 2. Agent Registry
 
-Six agents, three categories:
+Eight agents, four categories:
 
 | Agent | Category | Pipeline Step | Runs After | Conditional |
 |-------|----------|--------------|------------|-------------|
@@ -31,6 +31,8 @@ Six agents, three categories:
 | **ProductTech** | Specialist | 16 | Extraction + inventory | No |
 | **Judge** | QA | 19-22 | All 4 specialists | Yes (`judge.enabled`) |
 | **ReportingLead** | Reporting | 23 | Judge (or specialists if Judge disabled) | No |
+| **ExecutiveSynthesis** | Synthesis | 30 | Merged findings | No (always runs) |
+| **AcquirerIntelligence** | Synthesis | 30 | Merged findings | Yes (`buyer_strategy`) |
 
 ---
 
@@ -117,8 +119,8 @@ class BaseAgentRunner:
 | Agent | Specialist Lens | What They Prioritize in Every File |
 |-------|----------------|-----------------------------------|
 | **Legal** | Legal risk and governance | Change of control, assignment, termination, liability caps, indemnification, governing law, IP ownership, non-compete, exclusivity, MFN, entity validation, governance graph construction |
-| **Finance** | Financial risk and reconciliation | Pricing, payment terms, discounts, revenue recognition, ARR/MRR cross-reference, minimum commitments, true-ups, one-time vs recurring fees, financial data mismatches |
-| **Commercial** | Commercial terms and operations | Term/duration, renewal mechanics, SLA commitments, service credits, expansion rights, usage limits, territory restrictions, customer health/churn risk, pricing compliance |
+| **Finance** | Financial risk and reconciliation | Pricing, payment terms, discounts, revenue recognition, ARR/MRR cross-reference, minimum commitments, true-ups, one-time vs recurring fees, financial data mismatches, **revenue composition** (recurring vs services vs one-time by product/SKU), **unit economics** (CAC, LTV, NRR/GRR), **financial projections** validation, **cost structure** (COGS, OpEx, R&D, S&M breakdown) |
+| **Commercial** | Commercial terms and operations | Term/duration, renewal mechanics, SLA commitments, service credits, expansion rights, usage limits, territory restrictions, customer health/churn risk, pricing compliance, **customer segmentation** (cohort, size tier, geography, vertical), **pricing model** (per-user, tiered, consumption, hybrid), **expansion/contraction** (upsell, NRR decomposition), **competitive positioning** (displacement, exclusivity, benchmarking) |
 | **ProductTech** | Technical risk and compliance | Integration requirements, API dependencies, technical SLAs, uptime, security certifications (SOC2/ISO27001), data portability, migration obligations, subprocessor lists, DPA adequacy |
 
 ---
@@ -161,14 +163,23 @@ SPECIALIST_FOCUS = {
         "just those with dedicated financial documents. For customers with only contract files, "
         "extract financial terms from their contracts and cross-reference against reference "
         "file data. Gap detection: Check for missing financial verification, missing pricing "
-        "documentation, unexplained revenue variances. Write gap files."
+        "documentation, unexplained revenue variances. Write gap files.\n\n"
+        "REVENUE DECOMPOSITION: Break down by product/SKU (subscription, professional services, "
+        "one-time license, usage-based, support/maintenance). Flag services >10% revenue.\n"
+        "UNIT ECONOMICS: Extract CAC, LTV, payback, NRR/GRR. Flag NRR<100% or GRR<85%.\n"
+        "FINANCIAL PROJECTIONS: Cross-ref projections vs historical growth. Flag unrealistic assumptions.\n"
+        "COST STRUCTURE: COGS, OpEx, R&D, S&M breakdown and margin profiles."
     ),
     AgentType.COMMERCIAL: (
         "Evaluate renewal mechanics (auto vs manual, notice periods, penalties). Cross-reference "
         "contract terms against Customer Health Scores for churn risk. Compare pricing against "
         "rate cards. Flag SLA commitments and service credit exposure. Gap detection: Check for "
         "missing SOWs, missing order forms, missing renewal evidence, unsigned documents. "
-        "Write gap files for EVERY missing document detected."
+        "Write gap files for EVERY missing document detected.\n\n"
+        "CUSTOMER SEGMENTATION: Segment by size/geography/vertical/vintage. Flag >30% concentration.\n"
+        "PRICING MODEL: Identify type (per-user, consumption, tiered, hybrid). Flag pricing risks.\n"
+        "EXPANSION & CONTRACTION: Decompose NRR, identify expansion levers, flag contraction signals.\n"
+        "COMPETITIVE POSITIONING: Displacement language, exclusivity, benchmarking/MFN clauses."
     ),
     AgentType.PRODUCTTECH: (
         "Validate DPA adequacy and subprocessor lists. Cross-reference security claims against "
@@ -973,6 +984,10 @@ Files extracting to >120KB text are flagged in the agent prompt. Agents are inst
 LARGE FILES (use Grep, not Read):
   - _dd/forensic-dd/index/text/Master_Agreement_v3.pdf.md (245KB)
 ```
+
+### 12.7 Post-Hoc Severity Recalibration
+
+Despite rubric guidance, LLM agents still over-flag certain clause types (e.g., competitor-only CoC as P0, standard auditor independence as P0). A deterministic recalibration step in `computed_metrics.py` corrects these patterns after merge, before metrics computation and report rendering. Rules are defined in `_RECALIBRATION_RULES`. See `10-reporting.md` §Severity Recalibration for the full rule list and behavior.
 
 ---
 

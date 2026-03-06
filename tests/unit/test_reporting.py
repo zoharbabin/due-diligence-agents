@@ -26,7 +26,7 @@ from dd_agents.reporting.contract_dates import (
     ContractDateReconciler,
 )
 from dd_agents.reporting.diff import ReportDiffBuilder
-from dd_agents.reporting.excel import ExcelReportGenerator, compute_overall_risk
+from dd_agents.reporting.excel import ExcelReportGenerator, _recalibrate_merged, compute_overall_risk
 from dd_agents.reporting.merge import FindingMerger
 
 # ---------------------------------------------------------------------------
@@ -1636,29 +1636,261 @@ class TestExcelReportGenerator:
         assert total_findings_val == 2  # 1 from acme + 1 from beta
 
 
+class TestExcelRecalibration:
+    """Verify that Excel report applies severity recalibration (matching HTML)."""
+
+    def test_excel_wolf_pack_excludes_recalibrated_p0(
+        self,
+        tmp_path: Path,
+        report_schema_model: ReportSchema,
+    ) -> None:
+        """Competitor-only CoC finding (P0→P3) should NOT appear in Wolf_Pack sheet."""
+        merged = {
+            "acme": {
+                "customer": "Acme",
+                "findings": [
+                    {
+                        "id": "f1",
+                        "severity": "P0",
+                        "category": "change_of_control",
+                        "title": "Competitor-only Change of Control clause",
+                        "description": "Competitor CoC",
+                        "citations": [
+                            {"source_type": "file", "source_path": "a.pdf", "location": "S1", "exact_quote": "q"}
+                        ],
+                        "confidence": "high",
+                        "agent": "legal",
+                        "analysis_unit": "Acme",
+                    },
+                ],
+                "gaps": [],
+                "cross_references": [],
+                "governance_graph": {"edges": []},
+                "governance_resolved_pct": 0.0,
+            },
+        }
+
+        out_path = tmp_path / "report.xlsx"
+        gen = ExcelReportGenerator()
+        gen.generate(merged, report_schema_model, out_path)
+
+        from openpyxl import load_workbook
+
+        wb = load_workbook(str(out_path))
+        ws = wb["Wolf_Pack"]
+        # Wolf pack is P0+P1 only — after recalibration to P3, no data rows.
+        # max_row may be 2 due to summary TOTAL row, so check actual data.
+        # Row 2 should be either empty or a TOTAL row, not a finding.
+        sev_col = None
+        for c in range(1, ws.max_column + 1):
+            if ws.cell(row=1, column=c).value == "Severity":
+                sev_col = c
+                break
+        if sev_col is not None and ws.max_row >= 2:
+            val = ws.cell(row=2, column=sev_col).value
+            # Should be None (no data), or 0 (COUNTIF result), but NOT "P0"
+            assert val != "P0", f"Found unreclibrated P0 in Wolf_Pack: {val}"
+            assert val != "P3", "Found recalibrated P3 in Wolf_Pack (should not be here)"
+
+    def test_excel_summary_counts_recalibrated_severity(
+        self,
+        tmp_path: Path,
+        report_schema_model: ReportSchema,
+    ) -> None:
+        """Summary sheet P0 count should reflect recalibrated severity."""
+        merged = {
+            "acme": {
+                "customer": "Acme",
+                "findings": [
+                    {
+                        "id": "f1",
+                        "severity": "P0",
+                        "category": "change_of_control",
+                        "title": "Competitor-only Change of Control clause",
+                        "description": "Competitor CoC",
+                        "citations": [
+                            {"source_type": "file", "source_path": "a.pdf", "location": "S1", "exact_quote": "q"}
+                        ],
+                        "confidence": "high",
+                        "agent": "legal",
+                        "analysis_unit": "Acme",
+                    },
+                    {
+                        "id": "f2",
+                        "severity": "P2",
+                        "category": "pricing",
+                        "title": "Minor pricing issue",
+                        "description": "Below market",
+                        "citations": [
+                            {"source_type": "file", "source_path": "b.pdf", "location": "S1", "exact_quote": "q"}
+                        ],
+                        "confidence": "medium",
+                        "agent": "finance",
+                        "analysis_unit": "Acme",
+                    },
+                ],
+                "gaps": [],
+                "cross_references": [],
+                "governance_graph": {"edges": []},
+                "governance_resolved_pct": 0.0,
+                "files_analyzed": 2,
+            },
+        }
+
+        out_path = tmp_path / "report.xlsx"
+        gen = ExcelReportGenerator()
+        gen.generate(merged, report_schema_model, out_path)
+
+        from openpyxl import load_workbook
+
+        wb = load_workbook(str(out_path))
+        ws = wb["Summary"]
+        # Find P0 column
+        p0_col = None
+        for c in range(1, ws.max_column + 1):
+            if ws.cell(row=1, column=c).value == "P0 Count":
+                p0_col = c
+                break
+        assert p0_col is not None, "P0 column not found in Summary"
+        # P0 count should be 0 after recalibration (competitor CoC → P3)
+        p0_val = ws.cell(row=2, column=p0_col).value
+        assert p0_val == 0, f"Expected P0 count = 0 after recalibration, got {p0_val}"
+
+
+# ===========================================================================
+# _recalibrate_merged tests
+# ===========================================================================
+
+
+class TestRecalibrateMerged:
+    """Direct unit tests for _recalibrate_merged()."""
+
+    def test_recalibrates_dict_findings(self) -> None:
+        """Standard dict-based merged data should be recalibrated."""
+        merged: dict[str, dict[str, Any]] = {
+            "acme": {
+                "customer": "Acme",
+                "findings": [
+                    {
+                        "severity": "P0",
+                        "title": "Competitor-only Change of Control clause",
+                        "description": "CoC",
+                        "category": "change_of_control",
+                    },
+                    {
+                        "severity": "P2",
+                        "title": "Minor issue",
+                        "description": "Desc",
+                        "category": "pricing",
+                    },
+                ],
+                "gaps": [],
+            }
+        }
+        result = _recalibrate_merged(merged)
+        findings = result["acme"]["findings"]
+        assert len(findings) == 2
+        # Competitor CoC should be recalibrated P0→P3
+        assert findings[0]["severity"] == "P3"
+        assert findings[0].get("_recalibrated_from") == "P0"
+        # Minor issue should stay P2
+        assert findings[1]["severity"] == "P2"
+        assert "_recalibrated_from" not in findings[1]
+
+    def test_handles_pydantic_model_instances(self) -> None:
+        """MergedCustomerOutput Pydantic objects should be normalized and recalibrated."""
+        from dd_agents.models.finding import MergedCustomerOutput
+
+        mco = MergedCustomerOutput(
+            customer="Acme",
+            customer_safe_name="acme",
+            findings=[],
+            gaps=[],
+        )
+        # model_dump converts to dict; _recalibrate_merged should handle this
+        merged: dict[str, Any] = {"acme": mco}
+        result = _recalibrate_merged(merged)  # type: ignore[arg-type]
+        # Should not raise and should produce a dict
+        assert isinstance(result["acme"], dict)
+        assert result["acme"]["customer"] == "Acme"
+
+    def test_preserves_non_finding_fields(self) -> None:
+        """Non-finding fields like gaps and cross_references should be preserved."""
+        merged: dict[str, dict[str, Any]] = {
+            "acme": {
+                "customer": "Acme",
+                "findings": [{"severity": "P2", "title": "T", "description": "D", "category": "x"}],
+                "gaps": [{"priority": "P1", "gap_type": "Missing_Doc"}],
+                "cross_references": [{"data_point": "ARR"}],
+                "governance_resolved_pct": 85.0,
+            }
+        }
+        result = _recalibrate_merged(merged)
+        assert result["acme"]["gaps"] == [{"priority": "P1", "gap_type": "Missing_Doc"}]
+        assert result["acme"]["cross_references"] == [{"data_point": "ARR"}]
+        assert result["acme"]["governance_resolved_pct"] == 85.0
+
+    def test_does_not_mutate_original(self) -> None:
+        """Original merged dict should not be mutated."""
+        original_finding = {
+            "severity": "P0",
+            "title": "Competitor-only Change of Control clause",
+            "description": "CoC",
+            "category": "change_of_control",
+        }
+        merged: dict[str, dict[str, Any]] = {"acme": {"customer": "Acme", "findings": [original_finding], "gaps": []}}
+        _recalibrate_merged(merged)
+        # Original should still be P0
+        assert original_finding["severity"] == "P0"
+        assert "_recalibrated_from" not in original_finding
+
+    def test_empty_data(self) -> None:
+        """Empty merged data should return empty dict."""
+        result = _recalibrate_merged({})
+        assert result == {}
+
+
 # ===========================================================================
 # compute_overall_risk tests
 # ===========================================================================
 
 
 class TestComputeOverallRisk:
-    """Test the risk rating algorithm."""
+    """Test the risk rating algorithm with softened thresholds (Issue #113)."""
 
-    def test_critical_on_p0_finding(self) -> None:
+    def test_high_on_single_p0_finding(self) -> None:
+        """Single P0 → High (softened from Critical)."""
         findings = [{"severity": "P0", "category": "risk"}]
-        assert compute_overall_risk(findings, []) == "Critical"
-
-    def test_critical_on_p0_gap(self) -> None:
-        findings: list[dict] = []
-        gaps = [{"priority": "P0"}]
-        assert compute_overall_risk(findings, gaps) == "Critical"
-
-    def test_high_on_p1(self) -> None:
-        findings = [{"severity": "P1", "category": "risk"}]
         assert compute_overall_risk(findings, []) == "High"
 
-    def test_medium_on_p2(self) -> None:
+    def test_critical_on_three_p0(self) -> None:
+        """P0 >= 3 → Critical."""
+        findings = [{"severity": "P0", "category": f"risk{i}"} for i in range(3)]
+        assert compute_overall_risk(findings, []) == "Critical"
+
+    def test_high_on_p0_gap(self) -> None:
+        """Single P0 gap → High (softened)."""
+        findings: list[dict[str, str]] = []
+        gaps = [{"priority": "P0"}]
+        assert compute_overall_risk(findings, gaps) == "High"
+
+    def test_medium_on_single_p1(self) -> None:
+        """Single P1 → Medium (not enough for High)."""
+        findings = [{"severity": "P1", "category": "risk"}]
+        assert compute_overall_risk(findings, []) == "Medium"
+
+    def test_high_on_three_p1(self) -> None:
+        """P1 >= 3 → High."""
+        findings = [{"severity": "P1", "category": f"risk{i}"} for i in range(3)]
+        assert compute_overall_risk(findings, []) == "High"
+
+    def test_low_on_single_p2(self) -> None:
         findings = [{"severity": "P2", "category": "risk"}]
+        assert compute_overall_risk(findings, []) == "Low"
+
+    def test_medium_on_five_p2(self) -> None:
+        """P2 >= 5 → Medium."""
+        findings = [{"severity": "P2", "category": f"risk{i}"} for i in range(5)]
         assert compute_overall_risk(findings, []) == "Medium"
 
     def test_low_on_p3_only(self) -> None:

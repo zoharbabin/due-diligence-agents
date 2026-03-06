@@ -39,6 +39,10 @@ FINANCE_FOCUS_AREAS: list[str] = [
     "financial_commitments",
     "penalties",
     "insurance",
+    "revenue_composition",
+    "unit_economics",
+    "financial_projections",
+    "cost_structure",
 ]
 
 COMMERCIAL_FOCUS_AREAS: list[str] = [
@@ -48,6 +52,10 @@ COMMERCIAL_FOCUS_AREAS: list[str] = [
     "exclusivity",
     "territory",
     "customer_satisfaction",
+    "customer_segmentation",
+    "pricing_model",
+    "expansion_contraction",
+    "competitive_positioning",
 ]
 
 PRODUCTTECH_FOCUS_AREAS: list[str] = [
@@ -98,7 +106,9 @@ class LegalAgent(BaseAgentRunner):
             "You are the Legal specialist agent for forensic M&A due diligence. "
             "Focus on governance graphs, change-of-control clauses, assignment "
             "restrictions, termination rights, IP ownership, data privacy, "
-            "indemnification, liability caps, warranties, and dispute resolution."
+            "indemnification, liability caps, warranties, and dispute resolution. "
+            "Calibrate severity carefully: P0 is reserved for genuine deal-stoppers. "
+            "Most findings are P2 or P3. Accuracy over volume."
         )
 
     @staticmethod
@@ -117,6 +127,25 @@ class LegalAgent(BaseAgentRunner):
             "- Sometimes embedded in termination or assignment clauses\n"
             "- May use 'change in management' or 'change in beneficial ownership'\n"
             "IF NOT FOUND: Write a gap with gap_type 'Not_Found'.\n\n"
+            "COC SUBTYPE CLASSIFICATION — classify each CoC clause as one of:\n"
+            "1. **notification-only**: Party must notify counterparty of CoC. "
+            "Routine administrative step, no consent needed.\n"
+            "2. **consent-required**: Assignment or continuation requires prior written "
+            "consent from counterparty. Assess cure period and revenue at risk.\n"
+            "3. **termination-right**: Counterparty gains a right (but not obligation) to "
+            "terminate upon CoC. Assess notice period and cure window.\n"
+            "4. **auto-termination**: Contract automatically terminates upon CoC with "
+            "no cure. Most severe subtype.\n"
+            "5. **competitor-only**: Termination or restriction triggered ONLY if the "
+            "acquirer is a competitor of the counterparty. In most acquisitions, the buyer "
+            "is NOT a competitor to the target's customers. Competitor-only CoC = P3 unless "
+            "deal config shows the buyer operates in the same market as a significant "
+            "customer.\n\n"
+            "For each CoC finding, your description MUST include:\n"
+            "- The CoC subtype (one of the 5 above)\n"
+            "- Which party holds the right (counterparty or mutual)\n"
+            "- Cure period / negotiation window (if any)\n"
+            "- Revenue impact estimate (if determinable)\n\n"
             #
             "### Anti-Assignment (AG F1: 0.88 -- MEDIUM-HIGH difficulty)\n\n"
             "DEFINITION: A clause restricting either party from assigning or "
@@ -128,6 +157,28 @@ class LegalAgent(BaseAgentRunner):
             "- 'This Agreement shall be binding upon successors and permitted assigns'\n"
             "- May have carve-outs for affiliates or corporate reorganizations\n"
             "IF NOT FOUND: Write a gap with gap_type 'Not_Found'.\n\n"
+            #
+            "### Termination Clauses — Subtype Classification\n\n"
+            "Classify each termination clause as one of:\n"
+            "- **TfCause (Termination for Cause)**: Triggered by material breach, "
+            "insolvency, or specific default events. Standard mutual TfCause with "
+            "reasonable cure period = P3. Broad or subjective 'cause' definition = P1.\n"
+            "- **TfC (Termination for Convenience)**: Either party may terminate "
+            "without cause, typically with a notice period. TfC is NOT a deal-breaker — "
+            "it is a valuation/revenue-quality concern. TfC alone = P2. Escalate to P1 "
+            "ONLY if: TfC + >10% revenue + <90 day notice period. NEVER flag TfC as P0.\n"
+            "- **Termination on CoC**: Termination right triggered by change of control. "
+            "Classify under CoC subtypes above, not here.\n"
+            "- **Termination on Insolvency**: Triggered by bankruptcy or insolvency. "
+            "Standard protective clause = P3.\n"
+            "- **Mutual vs Unilateral**: Note whether termination right is mutual or "
+            "held by one party only. Unilateral TfC held by counterparty = higher risk.\n\n"
+            "For each termination finding, extract:\n"
+            "- Termination subtype\n"
+            "- Notice period required\n"
+            "- Early termination fees or refund provisions\n"
+            "- Which party holds the right\n"
+            "- Cure period (for TfCause)\n\n"
             #
             "### Cap on Liability (AG F1: 0.67 -- VERY HIGH difficulty)\n\n"
             "DEFINITION: A contractual clause limiting the maximum aggregate liability "
@@ -180,7 +231,9 @@ class FinanceAgent(BaseAgentRunner):
         return (
             "You are the Finance specialist agent for forensic M&A due diligence. "
             "Focus on payment terms, pricing compliance, revenue recognition, "
-            "financial commitments, penalties, and insurance requirements."
+            "financial commitments, penalties, and insurance requirements. "
+            "Calibrate severity carefully: P0 is reserved for genuine deal-stoppers. "
+            "Most findings are P2 or P3. Accuracy over volume."
         )
 
     @staticmethod
@@ -234,7 +287,9 @@ class CommercialAgent(BaseAgentRunner):
         return (
             "You are the Commercial specialist agent for forensic M&A due diligence. "
             "Focus on SLA compliance, renewal terms, volume commitments, "
-            "exclusivity, territory restrictions, and customer satisfaction."
+            "exclusivity, territory restrictions, and customer satisfaction. "
+            "Calibrate severity carefully: P0 is reserved for genuine deal-stoppers. "
+            "Most findings are P2 or P3. Accuracy over volume."
         )
 
     @staticmethod
@@ -269,7 +324,15 @@ class CommercialAgent(BaseAgentRunner):
             "- Which parties can terminate for convenience\n"
             "- Notice period required\n"
             "- Financial consequences (early termination fees, refunds)\n"
-            "IF NOT FOUND: Write a gap with gap_type 'Not_Found'."
+            "- Whether TfC survives through a change of control\n"
+            "IF NOT FOUND: Write a gap with gap_type 'Not_Found'.\n\n"
+            "CRITICAL TfC VALUATION GUIDANCE:\n"
+            "TfC is NOT a deal-breaker — it is a valuation/revenue quality signal. "
+            "Revenue from TfC contracts is non-committed ('at-risk ARR') with lower "
+            "certainty than locked-in contracts. TfC affects RPO calculations and "
+            "revenue recognition (ASC 606). Report TfC findings as P2 valuation "
+            "concerns. Escalate to P1 ONLY if: TfC + >10% revenue + <90 day notice. "
+            "NEVER flag TfC as P0."
         )
 
     def get_tools(self) -> list[str]:
@@ -290,7 +353,9 @@ class ProductTechAgent(BaseAgentRunner):
         return (
             "You are the ProductTech specialist agent for forensic M&A due diligence. "
             "Focus on product scope, technology stack, integration requirements, "
-            "support obligations, documentation, and training requirements."
+            "support obligations, documentation, and training requirements. "
+            "Calibrate severity carefully: P0 is reserved for genuine deal-stoppers. "
+            "Most findings are P2 or P3. Accuracy over volume."
         )
 
     @staticmethod

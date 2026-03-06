@@ -4,10 +4,79 @@ All notable changes to this project will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.2] - 2026-03-06
+
+### Added
+
+- **P0/P1 follow-up verification loop** (Issue #140, AG-6) — mandatory self-verification protocol for all critical findings. Research-proven 9.2% accuracy improvement. Agents must re-read source documents, verify quotes verbatim, check for mitigating clauses, and confirm severity before finalizing P0/P1 findings.
+- **Deterministic finding verification** in pre-merge validation (step 23) — P0 findings without citations automatically downgraded to P1; P0 findings without exact_quote downgraded to P1; P1 findings without citations downgraded to P2. Verified findings marked with `"verified": true`.
+- **Data room health check** (`dd-agents assess`) — new CLI command (Issue #149) for pre-flight data room quality assessment. Reports file type distribution, extraction readiness, customer folder detection, potential issues, and overall completeness score (0-100).
+- **`DataRoomAssessor`** module (`assessment.py`) — scans data room for empty files, unsupported formats, deeply nested structures, and generates actionable recommendations.
+- 21 new unit tests (2170 total) covering follow-up prompt generation, deterministic verification, and data room assessment.
+
+### Fixed
+
+- **XSS vulnerability** — HTML-escape RAG status label in sidebar navigation `title` and `aria-label` attributes (`html_base.py`).
+- **Severity comparison bug** — replaced fragile string comparison (`sev < max_sev` and `min()`) with explicit `_SEV_RANK` dict lookup for correct P0>P1>P2>P3 ordering in CoC and Privacy analysis renderers (`html_analysis.py`).
+- **Missing `Not_Found` gap type** — added `NOT_FOUND = "Not_Found"` to `GapType` enum. Agents were instructed to use this value but it was missing, causing validation failures.
+- **Red flag categories** — 6 new categories (`litigation`, `ip_gap`, `financial_restatement`, `key_person_risk`, `debt_covenant`, `customer_concentration`) added to `VALID_CATEGORIES` in finding validation.
+
+### Changed
+
+- `PromptBuilder.robustness_instructions()` expanded with mandatory 4-step P0/P1 self-verification loop (re-read, quote verify, severity recheck, context check).
+- `PromptBuilder.robustness_instructions()` expanded with Red Flag Priority Detection (8 deal-killer patterns).
+- Pre-merge validation (step 23) now runs critical finding verification after schema validation.
+- Documentation updated: CHANGELOG, IMPLEMENTATION_PLAN test counts.
+
+## [0.4.1] - 2026-03-05
+
+### Added
+
+- **Data quality finding separation** — three-way finding classification (material / data-quality / noise). Data quality findings moved to dedicated "Missing or Incomplete Data" appendix section.
+- **Expanded agent analytical depth** — Finance: revenue composition, unit economics, financial projections, cost structure. Commercial: customer segmentation, pricing model, expansion/contraction, competitive positioning.
+- **Executive synthesis agent** (`executive_synthesis.py`) — senior M&A partner review producing calibrated Go/No-Go signal, executive narrative, severity overrides, and ranked deal breakers.
+- **Severity rubric** in specialist prompts — deal-type-aware P0-P3 calibration criteria with common false-positive avoidance.
+- **Softened mechanical risk scoring** — single P0 finding no longer auto-triggers "No-Go"; requires 3+ P0 for "Critical" label.
+- 150 new unit tests (2149 total) covering severity recalibration, executive synthesis, data quality classification, expanded agent focus areas, and canonical category mapping.
+
+### Fixed
+
+- **Deprecated openpyxl `alignment.copy()` call** — replaced with `copy()` from stdlib to eliminate DeprecationWarning in search Excel writer.
+- **Ruff formatting** — 3 files auto-formatted to comply with ruff format rules.
+
+### Changed
+
+- Gap Analysis section renamed to "Missing or Incomplete Data" and moved to appendix zone in report navigation.
+- Wolf pack and category group filtering now excludes data quality findings from main report sections.
+- Documentation updated: README (test counts, agent count), IMPLEMENTATION_PLAN (test totals), CHANGELOG.
+
 ## [0.4.0] - 2026-03-03
 
 ### Added
 
+- Board-ready executive HTML report (PR #112, Issue #113) — complete redesign from raw data dump to executive decision briefing.
+  - **Sidebar navigation** with scroll tracking, TOC groups (Risk & Analysis, Business Analysis, Domain Detail, Data Quality, Actions & Appendix), RAG status indicators, and confidential badge. Replaces horizontal nav bar.
+  - **CSS custom properties** — all colors via `:root` variables for consistent theming (20+ severity, domain, alert, and layout variables).
+  - **Executive summary** with Go/No-Go signal, risk heatmap, top 5 deal breakers, key metrics strip, concentration risk (HHI).
+  - **Customer-level P0/P1 tables** (`FindingsTableRenderer`) — entity-level severity tables replacing individual finding cards, with alert boxes and top-10 + collapsed rest pattern.
+  - **Change of Control analysis** (`CoCAnalysisRenderer`) — CoC findings by entity with consent-required counts and severity matrix.
+  - **Data Privacy analysis** (`PrivacyAnalysisRenderer`) — GDPR/CCPA/DPA findings by entity.
+  - **Entity Health Tiers** (`CustomerHealthRenderer`) — Tier 1 (Critical/P0), Tier 2 (High/P1), Tier 3 (Standard) classification.
+  - **Recommendations engine** (`RecommendationsRenderer`) — deterministic generation of 4-7 prioritized action items (Immediate/Pre-Close/Post-Close/Positive) from data patterns.
+  - **Methodology & Limitations** (`MethodologyRenderer`) — process description, agent coverage, data quality metrics, known limitations.
+  - **Alert boxes** — 4 severity levels (critical/high/info/good) for narrative context after major data tables.
+  - **Topic classification** — business-topic bucketing of findings (CoC, IP, termination, privacy, employment, concentration, pricing, tech debt, security).
+  - **Financial extraction** — best-effort regex extraction of dollar amounts from finding text.
+  - **Section RAG indicators** — Red/Amber/Green per-section status visible in sidebar navigation.
+  - `DashboardRenderer` with wolf pack dedup: P0-only deal breakers capped at 15, similarity-based grouping via `difflib.SequenceMatcher`.
+  - `DiffRenderer` for run-over-run change tracking (new/resolved/changed-severity findings).
+  - `StrategyRenderer` for optional buyer-context analysis (conditional on `buyer_strategy` config).
+  - Category normalization: longest-match keyword algorithm mapping freeform agent categories to 12 canonical categories per domain. Expanded keyword lists (8-11 per category). Data-room folder name detection maps folder-style categories to "Other".
+  - 3-way cross-reference match status (match/mismatch/unverified) replacing binary Yes/No.
+  - Gap analysis table expanded to 7 columns (added Why Needed, Request to Company, Agent).
+  - Terminology: "Customer" replaced with "Entity" in all reporting outputs.
+  - `ReportDataComputer` + `ReportComputedData` Pydantic model (55 fields) for single-pass metric computation.
+  - 240+ HTML renderer unit tests (up from 129).
 - Pre-merge validation and cross-agent anomaly detection (step 23) — deterministic Python replacing the redundant Reporting Lead agent.
   - File completeness checks (4 agent files per customer).
   - JSON integrity validation (catch corrupt/truncated files before merge).
@@ -31,6 +100,11 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **XSS vulnerability in `render_alert()` body parameter** — body text now HTML-escaped via `html.escape()`, preventing injection through finding descriptions.
+- **Wolf pack P0 sorting** — deal breakers now sorted by severity weight (highest impact first) instead of alphabetical, preventing important findings from being dropped when capped at 15.
+- **Section RAG severity-aware for CoC/Privacy** — CoC and Privacy RAG indicators now check for P0 findings (red) rather than relying solely on count thresholds.
+- **Missing sidebar nav links** — added navigation links for P0/P1 entity tables, Quality Audit, and QA Checks sections.
+- **P0 cap warning** — logs a warning when >15 P0 findings exist and the deal breakers list is truncated.
 - Customer `safe_name` duplication — prompt enforcement + rapidfuzz validation in merge step.
 - Entity cache `save()` missing `run_id` argument (step 34 crash).
 - Extraction pipeline docstrings clarified as search-only purpose.

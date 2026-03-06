@@ -35,7 +35,7 @@
       "row_rule": "one_row_per_customer",
       "columns": [
         { "name": "Customer", "key": "customer", "type": "string", "width": 30 },
-        { "name": "Overall Risk Rating", "key": "overall_risk_rating", "type": "string", "width": 20, "_algorithm": "Critical if any P0, High if any P1, Medium if any P2, Low if P3 only, Clean if none" },
+        { "name": "Overall Risk Rating", "key": "overall_risk_rating", "type": "string", "width": 20, "_algorithm": "Critical if P0>=3, High if P0 1-2 or P1>=3, Medium if P1 1-2 or P2>=5, Low if P2/P3>0, Clean if none (Issue #113 softened thresholds)" },
         { "name": "P0 Count", "key": "p0_count", "type": "integer", "width": 10 },
         { "name": "P1 Count", "key": "p1_count", "type": "integer", "width": 10 },
         { "name": "P2 Count", "key": "p2_count", "type": "integer", "width": 10 },

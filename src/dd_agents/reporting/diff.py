@@ -65,7 +65,7 @@ class ReportDiffBuilder:
                 ReportDiffChange(
                     change_type="new_customer",
                     customer=c,
-                    details="New customer in current run",
+                    details="New entity in current run",
                 )
             )
         for c in sorted(prior_customers - current_customers):
@@ -73,7 +73,7 @@ class ReportDiffBuilder:
                 ReportDiffChange(
                     change_type="removed_customer",
                     customer=c,
-                    details="Customer removed from current run",
+                    details="Entity removed from current run",
                 )
             )
 

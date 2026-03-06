@@ -8,7 +8,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import (
+    Any,
+    ClassVar,  # noqa: F401, UP035
+)
 
 from dd_agents.orchestrator.steps import PipelineStep
 
@@ -193,6 +196,17 @@ class PipelineState:
             "_customer_entries": customer_entries_ser,
         }
 
+    # Step value migrations: old checkpoint string → current enum value.
+    # Keeps backward compatibility when loading checkpoints from prior versions.
+    _STEP_MIGRATIONS: ClassVar[dict[str, str]] = {
+        "30_generate_excel": "30_generate_reports",
+    }
+
+    @classmethod
+    def _migrate_step_value(cls, value: str) -> str:
+        """Map legacy checkpoint step values to current enum values."""
+        return cls._STEP_MIGRATIONS.get(value, value)
+
     @classmethod
     def from_checkpoint_dict(cls, data: dict[str, Any]) -> PipelineState:
         """Restore a ``PipelineState`` from a checkpoint dictionary."""
@@ -200,7 +214,7 @@ class PipelineState:
         step_results: dict[str, StepResult] = {}
         for key, sr_dict in data.get("step_results", {}).items():
             step_results[key] = StepResult(
-                step=PipelineStep(sr_dict["step"]),
+                step=PipelineStep(cls._migrate_step_value(sr_dict["step"])),
                 status=sr_dict.get("status", "success"),
                 error=sr_dict.get("error"),
                 duration_ms=sr_dict.get("duration_ms", 0),
@@ -223,8 +237,8 @@ class PipelineState:
             total_customers=data.get("total_customers", 0),
             customer_safe_names=data.get("customer_safe_names", []),
             reference_file_count=data.get("reference_file_count", 0),
-            current_step=PipelineStep(data["current_step"]),
-            completed_steps=[PipelineStep(v) for v in data.get("completed_steps", [])],
+            current_step=PipelineStep(cls._migrate_step_value(data["current_step"])),
+            completed_steps=[PipelineStep(cls._migrate_step_value(v)) for v in data.get("completed_steps", [])],
             step_results=step_results,
             errors=data.get("errors", []),
             agent_sessions=data.get("agent_sessions", {}),

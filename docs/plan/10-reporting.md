@@ -192,6 +192,41 @@ class MergeEngine:
 
 ---
 
+## Severity Recalibration (Post-Hoc)
+
+After merge but before metrics computation and report rendering, a deterministic recalibration step runs on every finding. This corrects known false-positive patterns where LLM agents consistently over-flag certain clause types despite rubric guidance.
+
+### Rules
+
+Recalibration rules are defined in `_RECALIBRATION_RULES` (`computed_metrics.py`). Each rule specifies pattern groups (title, text, category) and a maximum severity cap. When a finding matches a rule and its current severity is more severe than the cap, it is downgraded.
+
+| Rule | Max Severity | Trigger | Rationale |
+|------|-------------|---------|-----------|
+| `competitor_only_coc` | P3 | Title contains "competitor" AND category is "change_of_control"/"coc" | Buyer rarely competes with target's customers |
+| `auditor_independence` | P2 | Text contains "auditor independence" or similar | Standard Big Four clause |
+| `transaction_fee` | P1 | Text contains "transaction fee"/"advisory fee" | Known cost, not structural |
+| `tfc_cap` | P2 | Text or category matches TfC patterns | Valuation concern, not deal-blocker |
+| `speculative_language` | P2 | Text contains "may contain"/"must be verified"/etc. | Unconfirmed until verified |
+
+### Behavior
+
+- **Only downgrades** -- a P3 finding matching a P1-cap rule stays P3.
+- **Mildest cap wins** -- when multiple rules match, the highest P-number (least severe) cap is applied.
+- **Audit trail** -- recalibrated findings carry `_recalibrated_from` (original severity) and `_recalibration_reason` fields.
+- **Applied consistently** -- both the HTML report (via `ReportDataComputer.compute()`) and the Excel report (via `_recalibrate_merged()`) apply the same recalibration rules. Validation, merge, and diff modules intentionally use raw severity.
+
+### Risk Score Formula
+
+The deal risk score uses a logarithmic formula that provides diminishing returns for large finding counts:
+
+```
+score = min(round(25*log1p(P0) + 8*log1p(P1) + 3*log1p(P2) + 1*log1p(P3), 1), 100)
+```
+
+This replaced the earlier linear formula which saturated to 100 for any deal with >50 findings.
+
+---
+
 ## Excel Report Structure -- 14 Sheets
 
 The Excel report is defined by `report_schema.json`. The generated `build_report.py` MUST load this schema via `json.load()` and MUST NOT hardcode sheet definitions, column lists, or sort orders.
@@ -229,38 +264,29 @@ Each sheet in `report_schema.json` has an `activation_condition` field. The `bui
 
 ### Overall Risk Rating Algorithm
 
-Used in the Summary sheet `overall_risk_rating` column. The algorithm considers BOTH finding severity AND gap priority:
+Used in the Summary sheet `overall_risk_rating` column and as the deal-level risk label.
+The algorithm uses **count-based softened thresholds** (Issue #113) — a single P0
+finding produces "High", not "Critical", reflecting that isolated P0 findings may be
+contextually mitigated (e.g., intercompany payables eliminated at closing in full
+acquisitions). The same formula is used in `computed_metrics._compute_risk_label()`,
+`html_base.domain_risk()`, and `excel.compute_overall_risk()`.
 
 ```python
-# src/dd_agents/reporting/risk_rating.py
+# src/dd_agents/reporting/excel.py & computed_metrics.py
 
-def compute_overall_risk(
-    findings: list[dict],
-    gaps: list[dict],
-) -> str:
+def compute_overall_risk(findings, gaps) -> str:
     """
-    Rating algorithm (considers findings AND gaps):
-    - Critical: any P0 finding OR any P0 gap
-    - High: any P1 finding or P1 gap, no P0s
-    - Medium: any P2 finding or P2 gap, no P0/P1
-    - Low: P3 only
-    - Clean: no findings except domain_reviewed_no_issues, and no gaps
+    Softened rating algorithm (Issue #113):
+    - Critical: P0 count >= 3
+    - High: P0 count 1-2, or P1 count >= 3
+    - Medium: P1 count 1-2, or P2 count >= 5
+    - Low: P2 or P3 present
+    - Clean: no material findings and no gaps
     """
-    severities = {f["severity"] for f in findings
-                  if f.get("category") != "domain_reviewed_no_issues"}
-    gap_priorities = {g["priority"] for g in gaps}
-    all_levels = severities | gap_priorities
-
-    if "P0" in all_levels:
-        return "Critical"
-    if "P1" in all_levels:
-        return "High"
-    if "P2" in all_levels:
-        return "Medium"
-    if "P3" in all_levels:
-        return "Low"
-    return "Clean"
 ```
+
+When an **Executive Synthesis Agent** has run, its calibrated `go_no_go_signal`
+and `risk_score_override` replace the mechanical computation in the HTML report.
 
 Rationale: gap priorities carry the same materiality signal as finding severities. A P0 gap (e.g., ghost customer with $500K ARR and no contracts) is a deal-stopper just like a P0 finding.
 
@@ -932,6 +958,29 @@ class ReportingPipeline:
 
         return ReportingResult(success=True, report_path=self.excel_path)
 ```
+
+---
+
+## Finding Classification (Three-Way Split)
+
+Before rendering, findings are classified into three categories in `ReportDataComputer.compute()`:
+
+1. **Material findings** — real DD issues rendered in domain sections, wolf pack, and executive summary.
+2. **Data quality findings** — findings about missing/unavailable/unreadable data (e.g., "Billing data unreadable", "FY2026 waterfall unavailable"). Detected by pattern matching on title/description and by category (`missing_document`, `data_gap`, `documentation_gap`). Rendered in the **"Missing or Incomplete Data"** appendix section.
+3. **Noise findings** — extraction/pipeline artifacts (e.g., "File processed successfully"). Rendered in collapsed "Extraction & Quality Issues" sub-section.
+
+Classification functions: `_is_noise_finding()`, `_is_data_quality_finding()` in `computed_metrics.py`.
+
+Data quality findings are **excluded** from:
+- Wolf pack (top deal breakers)
+- Category group domain sections
+- Material severity counts
+- Executive summary risk signal
+
+The "Missing or Incomplete Data" section (rendered by `GapRenderer` in `html_gaps.py`) contains three collapsible sub-sections:
+1. **Data Availability Limitations** — data quality findings as severity-badged cards
+2. **Documentation Gaps** — material gaps in sortable table with priority/type breakdown
+3. **Extraction & Quality Issues** — noise findings and gaps, collapsed by default
 
 ---
 

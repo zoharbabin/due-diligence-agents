@@ -743,6 +743,99 @@ def search(
 
 
 # ---------------------------------------------------------------------------
+# assess command (Issue #149 — Data Room Health Check)
+# ---------------------------------------------------------------------------
+
+
+@main.command()
+@click.argument(
+    "data_room",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    default=False,
+    help="Enable verbose logging output.",
+)
+def assess(data_room: Path, verbose: bool) -> None:
+    """Assess data room quality and completeness before running the pipeline.
+
+    Scans the data room folder and produces a health report covering:
+    file type distribution, extraction readiness, potential issues,
+    and an overall completeness score.
+
+    \b
+    Example:
+        dd-agents assess ./data_room
+    """
+    if verbose:
+        logging.basicConfig(level=logging.WARNING, format="%(name)s: %(message)s")
+        logging.getLogger("dd_agents").setLevel(logging.DEBUG)
+
+    from dd_agents.assessment import DataRoomAssessor
+
+    console.print("\n[bold]dd-agents assess[/bold] -- Data Room Health Check\n")
+
+    assessor = DataRoomAssessor(data_room.resolve())
+    report = assessor.assess()
+
+    # Display results
+    _print_assessment_report(report)
+
+
+def _print_assessment_report(report: dict[str, Any]) -> None:
+    """Print the data room assessment as a rich panel."""
+    score = report.get("overall_score", 0)
+    score_color = "green" if score >= 80 else "yellow" if score >= 50 else "red"
+
+    # Summary
+    console.print(
+        Panel(
+            f"[bold {score_color}]Overall Score: {score}/100[/bold {score_color}]\n"
+            f"Total files: {report.get('total_files', 0)}\n"
+            f"Supported files: {report.get('supported_files', 0)}\n"
+            f"Unsupported files: {report.get('unsupported_files', 0)}\n"
+            f"Estimated customers: {report.get('estimated_customers', 0)}",
+            title="Data Room Assessment",
+            border_style=score_color,
+        )
+    )
+
+    # File type distribution
+    file_types = report.get("file_types", {})
+    if file_types:
+        table = Table(title="File Type Distribution", show_header=True)
+        table.add_column("Extension", style="bold")
+        table.add_column("Count", justify="right")
+        table.add_column("Status")
+        for ext, info in sorted(file_types.items(), key=lambda x: x[1]["count"], reverse=True):
+            status = "[green]Supported[/green]" if info.get("supported") else "[red]Unsupported[/red]"
+            table.add_row(ext, str(info["count"]), status)
+        console.print(table)
+
+    # Issues
+    issues = report.get("issues", [])
+    if issues:
+        console.print()
+        for issue in issues:
+            severity = issue.get("severity", "info")
+            color = {"critical": "red", "warning": "yellow", "info": "cyan"}.get(severity, "white")
+            console.print(f"  [{color}]{severity.upper()}[/{color}]: {issue['message']}")
+
+    # Recommendations
+    recs = report.get("recommendations", [])
+    if recs:
+        console.print()
+        console.print("[bold]Recommendations:[/bold]")
+        for rec in recs:
+            console.print(f"  - {rec}")
+
+    console.print()
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 

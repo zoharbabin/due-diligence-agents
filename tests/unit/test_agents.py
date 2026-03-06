@@ -14,6 +14,9 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 from dd_agents.agents.base import BaseAgentRunner
 from dd_agents.agents.judge import (
     DEFAULT_MAX_ITERATION_ROUNDS,
@@ -43,9 +46,6 @@ from dd_agents.agents.specialists import (
 )
 from dd_agents.models.audit import AgentScoreDimensions, QualityScores
 from dd_agents.models.inventory import CustomerEntry, ReferenceFile
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -489,7 +489,14 @@ class TestFinanceAgent:
         assert "financial_commitments" in FINANCE_FOCUS_AREAS
         assert "penalties" in FINANCE_FOCUS_AREAS
         assert "insurance" in FINANCE_FOCUS_AREAS
-        assert len(FINANCE_FOCUS_AREAS) == 6
+        assert len(FINANCE_FOCUS_AREAS) == 10
+
+    def test_finance_focus_areas_expanded(self) -> None:
+        """Finance should include 4 new analytical focus areas."""
+        assert "revenue_composition" in FINANCE_FOCUS_AREAS
+        assert "unit_economics" in FINANCE_FOCUS_AREAS
+        assert "financial_projections" in FINANCE_FOCUS_AREAS
+        assert "cost_structure" in FINANCE_FOCUS_AREAS
 
     def test_tools(self, tmp_project: Path, tmp_run_dir: Path, run_id: str) -> None:
         agent = FinanceAgent(tmp_project, tmp_run_dir, run_id)
@@ -521,7 +528,14 @@ class TestCommercialAgent:
         assert "exclusivity" in COMMERCIAL_FOCUS_AREAS
         assert "territory" in COMMERCIAL_FOCUS_AREAS
         assert "customer_satisfaction" in COMMERCIAL_FOCUS_AREAS
-        assert len(COMMERCIAL_FOCUS_AREAS) == 6
+        assert len(COMMERCIAL_FOCUS_AREAS) == 10
+
+    def test_commercial_focus_areas_expanded(self) -> None:
+        """Commercial should include 4 new analytical focus areas."""
+        assert "customer_segmentation" in COMMERCIAL_FOCUS_AREAS
+        assert "pricing_model" in COMMERCIAL_FOCUS_AREAS
+        assert "expansion_contraction" in COMMERCIAL_FOCUS_AREAS
+        assert "competitive_positioning" in COMMERCIAL_FOCUS_AREAS
 
     def test_tools(self, tmp_project: Path, tmp_run_dir: Path, run_id: str) -> None:
         agent = CommercialAgent(tmp_project, tmp_run_dir, run_id)
@@ -1641,7 +1655,9 @@ class TestRobustnessInstructions:
         assert "Completeness Checklist" in text
         assert "ALL customers" in text
         assert "ALL files" in text
-        assert "YOU MAY HAVE MISSED CRITICAL INFORMATION" in text
+        # Replaced completeness bias with quality calibration (Issue #113)
+        assert "Quality Calibration Check" in text
+        assert "genuine deal-stopper" in text
 
     def test_robustness_includes_not_found_protocol(self) -> None:
         text = PromptBuilder.robustness_instructions()
@@ -1669,6 +1685,24 @@ class TestRobustnessInstructions:
         prompt = builder.build_judge_prompt()
         # Judge has its own protocol; robustness instructions are specialist-specific.
         assert "ROBUSTNESS INSTRUCTIONS" not in prompt
+
+    def test_robustness_includes_follow_up_verification(self) -> None:
+        """Robustness instructions include the P0/P1 self-verification loop (Issue #140)."""
+        text = PromptBuilder.robustness_instructions()
+        assert "Self-Verification Loop" in text
+        assert "Re-Read Source" in text
+        assert "Quote Verification" in text
+        assert "Severity Recheck" in text
+        assert "Context Check" in text
+
+    def test_robustness_includes_red_flag_detection(self) -> None:
+        """Robustness instructions include red flag priority detection (Issue #125)."""
+        text = PromptBuilder.robustness_instructions()
+        assert "Red Flag Priority Detection" in text
+        assert "Active litigation" in text
+        assert "IP ownership gaps" in text
+        assert "Customer concentration" in text
+        assert "Financial restatements" in text
 
 
 class TestDomainRobustness:
@@ -2080,3 +2114,150 @@ class TestSystemPromptConstraints:
         opts = captured_options[0]
         # disallowed_tools was removed because it doesn't work
         assert "disallowed_tools" not in opts.kwargs  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# Follow-up verification prompt (Issue #140)
+# ---------------------------------------------------------------------------
+
+
+class TestFollowUpPrompt:
+    """Tests for PromptBuilder.build_follow_up_prompt (Issue #140, AG-6)."""
+
+    def test_empty_when_no_critical_findings(self) -> None:
+        """No follow-up prompt generated when no P0/P1 findings."""
+        findings = [
+            {"severity": "P2", "title": "Minor issue"},
+            {"severity": "P3", "title": "Low issue"},
+        ]
+        result = PromptBuilder.build_follow_up_prompt(findings, "acme", "legal")
+        assert result == ""
+
+    def test_generated_for_p0(self) -> None:
+        """Follow-up prompt generated when P0 findings present."""
+        findings = [
+            {
+                "severity": "P0",
+                "title": "CoC auto-termination",
+                "description": "Contract auto-terminates on change of control",
+                "citations": [{"source_path": "docs/msa.pdf", "exact_quote": "auto-terminates upon CoC"}],
+            },
+        ]
+        result = PromptBuilder.build_follow_up_prompt(findings, "acme", "legal")
+        assert "FOLLOW-UP VERIFICATION" in result
+        assert "acme" in result
+        assert "CoC auto-termination" in result
+        assert "docs/msa.pdf" in result
+
+    def test_generated_for_p1(self) -> None:
+        """Follow-up prompt generated when P1 findings present."""
+        findings = [
+            {
+                "severity": "P1",
+                "title": "Missing DPA",
+                "description": "No data processing agreement found",
+                "citations": [{"source_path": "docs/contract.pdf", "exact_quote": ""}],
+            },
+        ]
+        result = PromptBuilder.build_follow_up_prompt(findings, "beta", "producttech")
+        assert "FOLLOW-UP VERIFICATION" in result
+        assert "Missing DPA" in result
+
+    def test_excludes_p2_p3(self) -> None:
+        """P2 and P3 findings are not included in follow-up prompt."""
+        findings = [
+            {"severity": "P0", "title": "Critical issue", "description": "X", "citations": []},
+            {"severity": "P2", "title": "Minor issue", "description": "Y", "citations": []},
+            {"severity": "P3", "title": "Low issue", "description": "Z", "citations": []},
+        ]
+        result = PromptBuilder.build_follow_up_prompt(findings, "gamma", "finance")
+        assert "Critical issue" in result
+        assert "Minor issue" not in result
+        assert "Low issue" not in result
+
+    def test_missing_citations_handled(self) -> None:
+        """Findings without citations don't crash prompt generation."""
+        findings = [
+            {"severity": "P0", "title": "No citations", "description": "Something bad"},
+        ]
+        result = PromptBuilder.build_follow_up_prompt(findings, "delta", "legal")
+        assert "No citations" in result
+
+
+# ---------------------------------------------------------------------------
+# Deterministic finding verification (Issue #140)
+# ---------------------------------------------------------------------------
+
+
+class TestDeterministicVerification:
+    """Tests for PipelineEngine._deterministic_finding_verification."""
+
+    def test_p0_without_citations_downgraded(self, tmp_path: Path) -> None:
+        """P0 finding with no citations is downgraded to P1."""
+        from dd_agents.orchestrator.engine import PipelineEngine
+
+        findings = [{"severity": "P0", "title": "Bad thing", "citations": []}]
+        adjusted = PipelineEngine._deterministic_finding_verification(findings, tmp_path, "legal", "acme")
+        assert adjusted == 1
+        assert findings[0]["severity"] == "P1"
+        assert "verification_note" in findings[0]
+
+    def test_p1_without_citations_downgraded(self, tmp_path: Path) -> None:
+        """P1 finding with no citations is downgraded to P2."""
+        from dd_agents.orchestrator.engine import PipelineEngine
+
+        findings = [{"severity": "P1", "title": "Bad thing", "citations": []}]
+        adjusted = PipelineEngine._deterministic_finding_verification(findings, tmp_path, "legal", "acme")
+        assert adjusted == 1
+        assert findings[0]["severity"] == "P2"
+
+    def test_p0_without_quote_downgraded(self, tmp_path: Path) -> None:
+        """P0 finding with citation but no exact_quote is downgraded to P1."""
+        from dd_agents.orchestrator.engine import PipelineEngine
+
+        findings = [
+            {
+                "severity": "P0",
+                "title": "Unquoted finding",
+                "citations": [{"source_path": "docs/msa.pdf", "exact_quote": ""}],
+            },
+        ]
+        adjusted = PipelineEngine._deterministic_finding_verification(findings, tmp_path, "legal", "acme")
+        assert adjusted == 1
+        assert findings[0]["severity"] == "P1"
+
+    def test_valid_p0_marked_verified(self, tmp_path: Path) -> None:
+        """P0 finding with proper citation is marked as verified."""
+        from dd_agents.orchestrator.engine import PipelineEngine
+
+        findings = [
+            {
+                "severity": "P0",
+                "title": "Genuine deal-stopper",
+                "citations": [
+                    {
+                        "source_path": "docs/msa.pdf",
+                        "exact_quote": "This agreement shall automatically terminate",
+                    }
+                ],
+            },
+        ]
+        adjusted = PipelineEngine._deterministic_finding_verification(findings, tmp_path, "legal", "acme")
+        assert adjusted == 0
+        assert findings[0]["verified"] is True
+        assert findings[0]["severity"] == "P0"
+
+    def test_no_adjustment_for_valid_findings(self, tmp_path: Path) -> None:
+        """Well-formed findings pass verification without adjustment."""
+        from dd_agents.orchestrator.engine import PipelineEngine
+
+        findings = [
+            {
+                "severity": "P1",
+                "title": "Consent required",
+                "citations": [{"source_path": "docs/msa.pdf", "exact_quote": "prior written consent"}],
+            },
+        ]
+        adjusted = PipelineEngine._deterministic_finding_verification(findings, tmp_path, "legal", "acme")
+        assert adjusted == 0
+        assert findings[0]["verified"] is True

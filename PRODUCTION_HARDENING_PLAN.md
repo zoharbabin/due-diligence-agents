@@ -7,7 +7,7 @@
 **Epic**: [#32](https://github.com/zoharbabin/due-diligence-agents/issues/32)
 **Baseline**: 1635 unit tests passing, mypy strict clean, ruff clean (v0.3.1)
 
-> **Status (v0.4.0, 2026-03-03)**: ALL ISSUES RESOLVED. All P0/P1/P2/P3/P4 issues across 40+ tracked issues complete. Production hardening (#68-#80), post-production fixes (#81-#86), feature issues (#49, #65, #51, #11, #9, #6, #3, #2, #7), 100% coverage roadmap (#87-#94, #95), runaway agent defense (#96), and Reporting Lead replacement (#97) all implemented. 1710 unit tests, 17 integration, mypy strict, ruff clean. Pipeline production-tested on PathFactory Confirmatory DD: 72 customers, 768 findings, 23/23 DoD checks passed.
+> **Status (v0.4.1, 2026-03-05)**: ALL ISSUES RESOLVED. All P0/P1/P2/P3/P4 issues across 40+ tracked issues complete. Production hardening (#68-#80), post-production fixes (#81-#86), feature issues (#49, #65, #51, #11, #9, #6, #3, #2, #7), 100% coverage roadmap (#87-#94, #95), runaway agent defense (#96), Reporting Lead replacement (#97), board-ready report redesign (#113), severity calibration (#114), and data quality separation all implemented. 2149 unit tests, 17 integration, mypy strict, ruff clean. Pipeline production-tested: 73 merged customers, 498 findings, audit PASSED.
 
 ---
 
