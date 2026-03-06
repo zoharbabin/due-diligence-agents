@@ -224,11 +224,9 @@ class SearchExcelWriter:
                         ws.cell(row=row_idx, column=8, value=cit.section_ref).font = _BODY_FONT
                         quote_cell = ws.cell(row=row_idx, column=9, value=cit.exact_quote)
                         quote_cell.font = _BODY_FONT
-                        from copy import copy
+                        from openpyxl.styles import Alignment
 
-                        aligned = copy(quote_cell.alignment)
-                        aligned.wrapText = True
-                        quote_cell.alignment = aligned
+                        quote_cell.alignment = Alignment(wrapText=True)
                         # Citation verification columns (Issue #5).
                         self._write_verification_cells(ws, row_idx, cit)
                         row_idx += 1
