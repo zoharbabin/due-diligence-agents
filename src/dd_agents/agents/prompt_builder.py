@@ -1151,7 +1151,31 @@ class PromptBuilder:
             "- Write a gap with gap_type: 'Not_Found'\n"
             "- Explain what you searched for and where you looked\n"
             "- Note which files you reviewed\n"
-            "- Suggest what the missing clause means for the deal"
+            "- Suggest what the missing clause means for the deal\n\n"
+            #
+            # 10. Red flag early detection (Issue #125)
+            #
+            "### Red Flag Priority Detection\n\n"
+            "Prioritize scanning for these deal-killer patterns FIRST before "
+            "detailed clause-by-clause analysis. If you find any of these, "
+            "classify as P0 immediately and write the finding BEFORE continuing:\n\n"
+            "1. **Active litigation** — lawsuits, regulatory actions, consent orders, "
+            "pending enforcement. Look in legal summaries and board minutes.\n"
+            "2. **IP ownership gaps** — work product not assigned to company, "
+            "open-source license contamination (GPL in proprietary code), "
+            "third-party IP claims.\n"
+            "3. **Undisclosed material contracts** — documents referenced but "
+            "not present in the data room. Flag as gap AND finding.\n"
+            "4. **Customer concentration** — single customer >40% of revenue, "
+            "or top 3 customers >70% of revenue.\n"
+            "5. **Financial restatements** — corrections to prior financials, "
+            "audit qualifications, going concern opinions.\n"
+            "6. **Regulatory violations** — active or pending enforcement, "
+            "consent decrees, material compliance failures.\n"
+            "7. **Key-person risk** — single individual controls critical "
+            "relationships, IP, or operations with no succession plan.\n"
+            "8. **Debt covenant violations** — breach or near-breach of "
+            "financial covenants in credit agreements."
         )
 
     # ------------------------------------------------------------------

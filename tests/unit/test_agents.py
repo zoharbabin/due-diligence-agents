@@ -1686,6 +1686,24 @@ class TestRobustnessInstructions:
         # Judge has its own protocol; robustness instructions are specialist-specific.
         assert "ROBUSTNESS INSTRUCTIONS" not in prompt
 
+    def test_robustness_includes_follow_up_verification(self) -> None:
+        """Robustness instructions include the P0/P1 self-verification loop (Issue #140)."""
+        text = PromptBuilder.robustness_instructions()
+        assert "Self-Verification Loop" in text
+        assert "Re-Read Source" in text
+        assert "Quote Verification" in text
+        assert "Severity Recheck" in text
+        assert "Context Check" in text
+
+    def test_robustness_includes_red_flag_detection(self) -> None:
+        """Robustness instructions include red flag priority detection (Issue #125)."""
+        text = PromptBuilder.robustness_instructions()
+        assert "Red Flag Priority Detection" in text
+        assert "Active litigation" in text
+        assert "IP ownership gaps" in text
+        assert "Customer concentration" in text
+        assert "Financial restatements" in text
+
 
 class TestDomainRobustness:
     """Tests for domain-specific robustness instructions per specialist."""

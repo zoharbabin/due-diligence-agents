@@ -48,6 +48,13 @@ VALID_CATEGORIES: set[str] = {
     "pricing_model",
     "expansion_contraction",
     "competitive_positioning",
+    # Red flag categories (Issue #125)
+    "litigation",
+    "ip_gap",
+    "financial_restatement",
+    "key_person_risk",
+    "debt_covenant",
+    "customer_concentration",
     "Other",
 }
 
