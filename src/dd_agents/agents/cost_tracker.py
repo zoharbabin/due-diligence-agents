@@ -99,12 +99,12 @@ def get_model_profiles() -> dict[str, ModelProfile]:
 class AgentCostEntry(BaseModel):
     """Single usage record for an agent invocation."""
 
-    agent_name: str
-    step: str
-    input_tokens: int = 0
-    output_tokens: int = 0
-    model: str = ""
-    cost_usd: float = 0.0
+    agent_name: str = Field(description="Name of the agent that produced this cost entry")
+    step: str = Field(description="Pipeline step during which the agent ran")
+    input_tokens: int = Field(default=0, description="Number of input tokens consumed")
+    output_tokens: int = Field(default=0, description="Number of output tokens produced")
+    model: str = Field(default="", description="Model ID used for this invocation")
+    cost_usd: float = Field(default=0.0, description="Estimated cost in USD")
 
     @property
     def total_tokens(self) -> int:

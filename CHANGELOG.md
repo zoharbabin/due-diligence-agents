@@ -27,12 +27,14 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
   - `CostTracker` — per-agent, per-step token/cost tracking with hard budget limits
   - `ModelProfile` — preset configurations with `get_model_for_agent()` lookup
   - Pricing table for Claude model family (Opus 4.6, Sonnet 4.6, Haiku 4.5)
+  - Note: modules delivered and tested; full engine-level integration (automatic token recording, budget enforcement) deferred to Phase 3 pending SDK token-reporting support
 - **Parallel Agent Execution Optimization** (Issue #148) — smart batch scheduling:
   - `CustomerComplexity` scoring: file count + document size → simple/medium/complex tiers
   - `BatchScheduler` — priority queue scheduling (simple customers first for fast wins)
   - Token-aware batch splitting with configurable size and token limits
   - Per-step timing already tracked in `StepResult.duration_ms`
-- 66 new unit tests (2257 total) covering red flag scanner, cost tracking, model profiles, batch scheduling, and signal classification
+  - Note: modules delivered and tested; engine step 16 integration deferred to Phase 3 (current `AgentTeam.spawn_specialists()` batching is functional)
+- 68 new unit tests (2259 total) covering red flag scanner, cost tracking, model profiles, batch scheduling, signal classification, and double-counting prevention
 
 ## [0.4.2] - 2026-03-06
 

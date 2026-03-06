@@ -32,9 +32,9 @@ _SIZE_UNIT: float = 100_000.0  # 100KB
 class CustomerComplexity(BaseModel):
     """Complexity assessment for a single customer."""
 
-    customer_safe_name: str
-    file_count: int = 0
-    total_bytes: int = 0
+    customer_safe_name: str = Field(description="Normalized customer identifier")
+    file_count: int = Field(default=0, description="Number of files in customer data room folder")
+    total_bytes: int = Field(default=0, description="Total byte size of all customer documents")
     score: float = Field(default=0.0, description="Composite complexity score")
     tier: str = Field(default="simple", description="Tier: simple, medium, complex")
     estimated_tokens: int = Field(default=0, description="Estimated token count for this customer's documents")
