@@ -1,6 +1,6 @@
 # Due Diligence Agent SDK
 
-> **Status**: Production-tested. Full 35-step pipeline, contract search, auto-config, and data room assessment commands operational with 2,170+ passing unit tests, mypy strict clean, ruff clean.
+> **Status**: Production-tested. Full 35-step pipeline, contract search, auto-config, and data room assessment commands operational with 2,172+ passing unit tests, mypy strict clean, ruff clean.
 
 Standalone Python application for forensic M&A due diligence. Six agents (4 specialists + optional Judge + Executive Synthesis) analyze contract data rooms, extract clauses, build governance graphs, detect gaps, and produce a board-ready HTML report + 14-sheet Excel report — all under deterministic Python orchestration with hook-enforced quality gates. Powered by `claude-agent-sdk` v0.1.39+ (Claude API or AWS Bedrock).
 

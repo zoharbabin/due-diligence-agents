@@ -257,7 +257,7 @@ pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/ && ruff
 
 The project is complete when ALL of the following are true:
 - [x] All 6 phases have status "Complete"
-- [x] `pytest tests/ -x` passes — 2170 unit tests, 17 integration, 9 E2E (3 skipped without API key)
+- [x] `pytest tests/ -x` passes — 2172 unit tests, 17 integration, 9 E2E (3 skipped without API key)
 - [x] `mypy src/ --strict` passes — 0 errors across 117 source files
 - [x] `ruff check src/ tests/` is clean
 - [x] `ruff format --check src/ tests/` is clean
@@ -272,7 +272,7 @@ The project is complete when ALL of the following are true:
 | Integration tests (pipeline steps 1-11) | 17 |
 | E2E tests (pre-agent: config, tiers, discovery, registry, run manager, cache) | 6 |
 | E2E tests (API-dependent: dry run, full pipeline, incremental — skipped without key) | 3 |
-| **Total** | **2170 passed, 3 skipped** |
+| **Total** | **2172 passed, 3 skipped** |
 
 ## Git History
 

@@ -192,6 +192,15 @@ class AgentFinding(BaseModel):
     description: str
     citations: list[Citation] = Field(min_length=1)
     confidence: Confidence
+    verified: bool | None = Field(
+        default=None,
+        description="Set by P0/P1 self-verification loop (Issue #140). "
+        "True if finding passed all 4 verification steps.",
+    )
+    verification_note: str | None = Field(
+        default=None,
+        description="Explanation of verification outcome or severity adjustment.",
+    )
 
     @field_validator("severity", mode="before")
     @classmethod
