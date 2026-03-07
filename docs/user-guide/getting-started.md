@@ -25,12 +25,13 @@ Install extras for additional capabilities:
 pip install -e ".[vector]"     # ChromaDB for semantic cross-document search
 pip install -e ".[ocr]"        # pytesseract + Pillow for OCR fallback on scanned PDFs
 pip install -e ".[glm-ocr]"    # GLM-OCR vision-language model (Apple Silicon)
+pip install -e ".[api]"        # FastAPI + uvicorn for REST API server
 ```
 
 To install everything:
 
 ```bash
-pip install -e ".[dev,vector,ocr,glm-ocr]"
+pip install -e ".[dev,vector,ocr,glm-ocr,api]"
 ```
 
 ### System Dependencies (optional)
@@ -125,6 +126,49 @@ docker run -e ANTHROPIC_API_KEY="sk-ant-..." \
   -v ./data_room:/workspace/data_room \
   dd-agents run deal-config.json
 ```
+
+## Post-Run Workflows
+
+After the pipeline completes, several additional tools are available:
+
+### Portfolio Management
+
+Track multiple DD projects and compare risk profiles across deals:
+
+```bash
+dd-agents portfolio add "Alpha Acquisition" --data-room ./alpha_data_room
+dd-agents portfolio list
+dd-agents portfolio compare
+```
+
+### Collaborative Review
+
+Annotate findings, assign reviewers, and track sign-off progress:
+
+```bash
+dd-agents review annotate FINDING_ID --reviewer alice --status reviewed
+dd-agents review assign alice --section legal
+dd-agents review progress --run-dir _dd/forensic-dd/runs/latest --total 200
+```
+
+### Report Templates
+
+Apply pre-built templates for different audiences (Board Summary, Legal Deep Dive, etc.):
+
+```bash
+dd-agents templates list
+dd-agents templates show board_summary
+```
+
+### REST API (Optional)
+
+Start a REST API server for programmatic access (requires `pip install -e ".[api]"`):
+
+```bash
+DD_API_KEY="your-secret-key" uvicorn dd_agents.api.server:app --port 8000
+```
+
+See the [CLI Reference](cli-reference.md) for full documentation of all commands.
 
 ## Next Steps
 
