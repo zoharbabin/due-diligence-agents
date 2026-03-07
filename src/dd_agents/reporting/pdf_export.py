@@ -20,14 +20,14 @@ PLAYWRIGHT_AVAILABLE = False
 WEASYPRINT_AVAILABLE = False
 
 try:
-    from playwright.async_api import async_playwright as _async_pw  # noqa: F401
+    from playwright.async_api import async_playwright as _async_pw  # type: ignore[import-not-found]  # noqa: F401
 
     PLAYWRIGHT_AVAILABLE = True
 except ImportError:
     pass
 
 try:
-    from weasyprint import HTML as _WeasyHTML  # noqa: F401, N811
+    from weasyprint import HTML as _WeasyHTML  # type: ignore[import-not-found]  # noqa: F401, N811
 
     WEASYPRINT_AVAILABLE = True
 except ImportError:
@@ -40,7 +40,7 @@ class PDFExportError(Exception):
 
 async def _export_with_playwright(html_path: Path, output_path: Path) -> Path:
     """Export using headless Chromium via Playwright."""
-    from playwright.async_api import async_playwright
+    from playwright.async_api import async_playwright  # type: ignore[import-not-found]
 
     async with async_playwright() as pw:
         browser = await pw.chromium.launch()
@@ -59,7 +59,7 @@ async def _export_with_playwright(html_path: Path, output_path: Path) -> Path:
 
 async def _export_with_weasyprint(html_path: Path, output_path: Path) -> Path:
     """Export using WeasyPrint (CSS Paged Media)."""
-    from weasyprint import HTML
+    from weasyprint import HTML  # type: ignore[import-not-found]
 
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, lambda: HTML(filename=str(html_path)).write_pdf(str(output_path)))
