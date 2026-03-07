@@ -1371,9 +1371,9 @@ class ReportDataComputer:
             findings_by_category={k: v for k, v in findings_by_category.items()},
             category_groups={
                 d: {
-                    cat: [f for f in findings if not _is_data_quality_finding(f)]
+                    cat: [f for f in findings if not _is_noise_finding(f) and not _is_data_quality_finding(f)]
                     for cat, findings in cats.items()
-                    if any(not _is_data_quality_finding(f) for f in findings)
+                    if any(not _is_noise_finding(f) and not _is_data_quality_finding(f) for f in findings)
                 }
                 for d, cats in category_groups.items()
             },
