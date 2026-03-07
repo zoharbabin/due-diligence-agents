@@ -192,13 +192,13 @@ class HTMLReportGenerator:
             # 15. Recommendations
             RecommendationsRenderer(computed, merged_data, renderer_config),
             # --- Appendix ---
-            # 11. Missing or Incomplete Data (moved from main body to appendix)
+            # 16. Missing or Incomplete Data (moved from main body to appendix)
             GapRenderer(computed, merged_data, renderer_config),
-            # 12. Entity Detail (collapsed)
+            # 17. Entity Detail (collapsed)
             CustomerRenderer(computed, merged_data, renderer_config),
-            # 13. Methodology & Limitations (collapsed appendix)
+            # 18. Methodology & Limitations (collapsed appendix)
             MethodologyRenderer(computed, merged_data, renderer_config),
-            # 14. Data Quality appendix (collapsed) — governance, QA, noise findings
+            # 19. Data Quality appendix (collapsed) — governance, QA, noise findings
             QualityRenderer(computed, merged_data, renderer_config, run_dir=run_dir),
         ]
 

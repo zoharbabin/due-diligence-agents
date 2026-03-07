@@ -1,17 +1,14 @@
 """Renewal & Contract Expiry Analysis renderer (Issue #136).
 
 Renders renewal type distribution, price escalation caps, and
-contract expiry timeline with pre-close alert boxes.
+contract expiry findings with alert boxes.
 """
 
 from __future__ import annotations
 
-import html
 from typing import Any
 
 from dd_agents.reporting.html_base import SectionRenderer
-
-_SEV_CLASS: dict[str, str] = {"P0": "sev-p0", "P1": "sev-p1", "P2": "sev-p2", "P3": "sev-p3"}
 
 
 class RenewalAnalysisRenderer(SectionRenderer):
@@ -42,17 +39,20 @@ class RenewalAnalysisRenderer(SectionRenderer):
         ]:
             parts.append(
                 f"<div class='metric-card'>"
-                f"<div class='metric-value'>{html.escape(value)}</div>"
-                f"<div class='metric-label'>{html.escape(label)}</div>"
+                f"<div class='value'>{self.escape(value)}</div>"
+                f"<div class='label'>{self.escape(label)}</div>"
                 f"</div>"
             )
         parts.append("</div>")
 
         if manual > 0:
             parts.append(
-                f"<div class='alert-box alert-amber'>"
-                f"<strong>{manual}</strong> contracts require manual renewal — "
-                f"proactive outreach needed to prevent lapses.</div>"
+                self.render_alert(
+                    "high",
+                    f"{manual} contracts require manual renewal",
+                    f"Proactive outreach needed to prevent lapses. "
+                    f"{auto} contracts auto-renew; {manual} require manual action.",
+                )
             )
 
         # Findings table
@@ -60,18 +60,17 @@ class RenewalAnalysisRenderer(SectionRenderer):
         if findings:
             parts.append("<h3>Renewal Findings</h3>")
             parts.append(
-                "<table class='findings-table'><thead><tr>"
-                "<th>Severity</th><th>Entity</th><th>Finding</th>"
+                "<table class='customer-table sortable'><thead><tr>"
+                "<th scope='col'>Severity</th>"
+                "<th scope='col'>Entity</th>"
+                "<th scope='col'>Finding</th>"
                 "</tr></thead><tbody>"
             )
             for f in findings[:15]:
                 sev = str(f.get("severity", "P3"))
-                cls = _SEV_CLASS.get(sev, "sev-p3")
-                title = html.escape(str(f.get("title", "")))
-                customer = html.escape(str(f.get("_customer", f.get("_customer_safe_name", ""))))
-                parts.append(
-                    f"<tr><td><span class='sev-badge {cls}'>{sev}</span></td><td>{customer}</td><td>{title}</td></tr>"
-                )
+                title = self.escape(str(f.get("title", "")))
+                customer = self.escape(str(f.get("_customer", f.get("_customer_safe_name", ""))))
+                parts.append(f"<tr><td>{self.severity_badge(sev)}</td><td>{customer}</td><td>{title}</td></tr>")
             parts.append("</tbody></table>")
 
         parts.append("</section>")

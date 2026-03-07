@@ -1345,6 +1345,18 @@ class ReportDataComputer:
         entity_distribution = self._compute_entity_distribution(all_findings)
         contract_timeline = self._compute_contract_timeline(all_findings)
 
+        # RAG indicators for new analysis sections
+        _discount_count = discount_analysis.get("total_pricing_findings", 0)
+        section_rag["discount"] = "red" if _discount_count > 10 else ("amber" if _discount_count > 0 else "green")
+        _renewal_count = renewal_analysis.get("total_renewal_findings", 0)
+        section_rag["renewal"] = "red" if _renewal_count > 10 else ("amber" if _renewal_count > 0 else "green")
+        _compliance_count = compliance_analysis.get("total_compliance_findings", 0)
+        section_rag["compliance"] = "red" if _compliance_count > 5 else ("amber" if _compliance_count > 0 else "green")
+        _entity_count = entity_distribution.get("total_entities_mentioned", 0)
+        section_rag["entity"] = "red" if _entity_count > 5 else ("amber" if _entity_count > 0 else "green")
+        _timeline_count = contract_timeline.get("expiry_findings_count", 0)
+        section_rag["timeline"] = "red" if _timeline_count > 10 else ("amber" if _timeline_count > 0 else "green")
+
         return ReportComputedData(
             total_findings=total_findings,
             total_gaps=total_gaps,
@@ -2110,6 +2122,7 @@ class ReportDataComputer:
             "renew",
             "auto-renew",
             "auto_renew",
+            "evergreen",
             "expir",
             "term end",
             "contract end",
@@ -2201,17 +2214,17 @@ class ReportDataComputer:
         """Analyze legal entity distribution from findings."""
         entity_keywords = [
             "legal entity",
-            "entity",
-            "corp",
-            "llc",
-            "ltd",
-            "inc",
+            "signing entity",
+            "contracting entity",
             "subsidiary",
             "affiliate",
             "parent company",
-            "holding",
+            "holding company",
             "legacy entity",
-            "migration",
+            "entity migration",
+            "entity consolidation",
+            "corporate structure",
+            "legal name",
         ]
         entity_findings: list[dict[str, Any]] = []
         entities_mentioned: set[str] = set()

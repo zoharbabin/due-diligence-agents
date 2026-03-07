@@ -6,7 +6,6 @@ top customer concentration, and tier distribution.
 
 from __future__ import annotations
 
-import html
 from typing import Any
 
 from dd_agents.reporting.html_base import SectionRenderer
@@ -53,35 +52,36 @@ class SaaSMetricsRenderer(SectionRenderer):
         for label, value in kpis:
             parts.append(
                 f"<div class='metric-card'>"
-                f"<div class='metric-value'>{html.escape(value)}</div>"
-                f"<div class='metric-label'>{html.escape(label)}</div>"
+                f"<div class='value'>{self.escape(value)}</div>"
+                f"<div class='label'>{self.escape(label)}</div>"
                 f"</div>"
             )
         parts.append("</div>")
 
-        # Tier distribution
+        # Tier distribution as a table (uses existing CSS)
         if tiers:
             parts.append("<h3>Customer Tier Distribution</h3>")
-            parts.append("<div class='tier-distribution'>")
+            parts.append(
+                "<table class='customer-table sortable'><thead><tr>"
+                "<th scope='col'>Tier</th>"
+                "<th scope='col'>Customers</th>"
+                "<th scope='col'>%</th>"
+                "</tr></thead><tbody>"
+            )
             for tier_name, count in tiers.items():
                 pct = (count / total_customers * 100) if total_customers > 0 else 0
-                parts.append(
-                    f"<div class='tier-bar'>"
-                    f"<span class='tier-label'>{html.escape(str(tier_name))}</span>"
-                    f"<div class='bar-bg'><div class='bar-fill' style='width:{max(pct, 2):.0f}%'></div></div>"
-                    f"<span class='tier-count'>{count} ({pct:.0f}%)</span>"
-                    f"</div>"
-                )
-            parts.append("</div>")
+                parts.append(f"<tr><td>{self.escape(str(tier_name))}</td><td>{count}</td><td>{pct:.0f}%</td></tr>")
+            parts.append("</tbody></table>")
 
         # Concentration alert
         if top_pct >= 30:
-            level = "critical" if top_pct >= 50 else "warning"
             parts.append(
-                f"<div class='alert-box {level}'>"
-                f"Top customer represents {top_pct:.0f}% of total ARR — "
-                f"{'severe' if top_pct >= 50 else 'moderate'} concentration risk."
-                f"</div>"
+                self.render_alert(
+                    "critical" if top_pct >= 50 else "high",
+                    f"Top customer represents {top_pct:.0f}% of total ARR",
+                    f"{'Severe' if top_pct >= 50 else 'Moderate'} concentration risk. "
+                    f"Consider earn-out or escrow protections.",
+                )
             )
 
         parts.append("</section>")

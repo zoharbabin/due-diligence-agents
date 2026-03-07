@@ -81,7 +81,7 @@ class TestFindingProvenance:
         result = computer.compute(merged)
         stats = result.provenance_stats
         assert stats["total_findings"] == 2
-        assert stats["high_confidence_pct"] >= 0
+        assert stats["high_confidence_pct"] == 50.0
 
     def test_provenance_agents_tracked(self) -> None:
         """Provenance should track which agents contributed findings."""
@@ -118,7 +118,7 @@ class TestFindingProvenance:
         }
         computer = ReportDataComputer()
         result = computer.compute(merged)
-        assert result.provenance_stats["recalibrated_count"] >= 0
+        assert isinstance(result.provenance_stats["recalibrated_count"], int)
 
 
 # ===========================================================================
@@ -151,7 +151,7 @@ class TestDiscountAnalysis:
         computer = ReportDataComputer()
         result = computer.compute(merged)
         analysis = result.discount_analysis
-        assert analysis["customers_with_discounts"] >= 0
+        assert analysis["total_pricing_findings"] >= 1
 
     def test_discount_empty_when_no_pricing(self) -> None:
         """Empty discount analysis when no pricing findings."""
@@ -197,7 +197,27 @@ class TestRenewalAnalysis:
         computer = ReportDataComputer()
         result = computer.compute(merged)
         analysis = result.renewal_analysis
-        assert analysis["auto_renew_count"] >= 0 or analysis["total_renewal_findings"] >= 1
+        assert analysis["total_renewal_findings"] >= 1
+        assert analysis["auto_renew_count"] >= 1
+
+    def test_evergreen_clause_detected(self) -> None:
+        """Evergreen contract clauses should be detected as renewals."""
+        merged = {
+            "a": _customer(
+                "A",
+                findings=[
+                    _finding(
+                        "Evergreen clause with no termination date",
+                        category="renewal",
+                        agent="commercial",
+                        description="Contract is evergreen with perpetual auto-renewal",
+                    ),
+                ],
+            ),
+        }
+        computer = ReportDataComputer()
+        result = computer.compute(merged)
+        assert result.renewal_analysis["total_renewal_findings"] >= 1
 
     def test_renewal_empty_state(self) -> None:
         merged = {"a": _customer("A")}
@@ -212,17 +232,17 @@ class TestRenewalAnalysis:
                 "A",
                 findings=[
                     _finding(
-                        "Price escalation capped at 3% annually",
+                        "Renewal price escalation capped at 3% annually",
                         category="renewal",
                         agent="commercial",
-                        description="Annual price increase limited to 3% per contract terms",
+                        description="Annual renewal price increase limited to 3% per contract terms",
                     ),
                 ],
             ),
         }
         computer = ReportDataComputer()
         result = computer.compute(merged)
-        assert result.renewal_analysis["escalation_cap_count"] >= 0
+        assert result.renewal_analysis["escalation_cap_count"] >= 1
 
 
 # ===========================================================================
@@ -498,6 +518,95 @@ class TestNewRenderers:
         result = renderer.render()
         assert "<script>" not in result
         assert "&lt;script&gt;" in result
+
+    def test_compliance_renderer_escapes_html(self) -> None:
+        """Compliance renderer should HTML-escape user-controlled strings."""
+        from dd_agents.reporting.html_compliance import ComplianceRenderer
+
+        computed = ReportComputedData(
+            compliance_analysis={
+                "total_compliance_findings": 1,
+                "dpa_findings_count": 0,
+                "jurisdiction_findings_count": 0,
+                "regulatory_findings_count": 0,
+                "findings": [
+                    {
+                        "title": "<img onerror=alert(1)>",
+                        "severity": "P1",
+                        "_customer": "Evil<Corp",
+                    },
+                ],
+            },
+        )
+        renderer = ComplianceRenderer(computed, {}, {})
+        result = renderer.render()
+        assert "<img onerror" not in result
+
+    def test_renewal_renderer_escapes_html(self) -> None:
+        """Renewal renderer should HTML-escape user-controlled strings."""
+        from dd_agents.reporting.html_renewal import RenewalAnalysisRenderer
+
+        computed = ReportComputedData(
+            renewal_analysis={
+                "total_renewal_findings": 1,
+                "auto_renew_count": 0,
+                "manual_renew_count": 0,
+                "escalation_cap_count": 0,
+                "findings": [
+                    {
+                        "title": "<script>xss</script>",
+                        "severity": "P2",
+                        "_customer": "Test&Co",
+                        "agent": "commercial",
+                    },
+                ],
+            },
+        )
+        renderer = RenewalAnalysisRenderer(computed, {}, {})
+        result = renderer.render()
+        assert "<script>" not in result
+
+    def test_entity_renderer_escapes_html(self) -> None:
+        """Entity renderer should HTML-escape user-controlled strings."""
+        from dd_agents.reporting.html_entity import EntityDistributionRenderer
+
+        computed = ReportComputedData(
+            entity_distribution={
+                "entity_findings_count": 1,
+                "total_entities_mentioned": 1,
+                "findings": [
+                    {
+                        "title": "<b onmouseover=alert(1)>",
+                        "severity": "P2",
+                        "_customer": "A",
+                    },
+                ],
+            },
+        )
+        renderer = EntityDistributionRenderer(computed, {}, {})
+        result = renderer.render()
+        assert "<b onmouseover" not in result
+
+    def test_timeline_renderer_escapes_html(self) -> None:
+        """Timeline renderer should HTML-escape user-controlled strings."""
+        from dd_agents.reporting.html_timeline import TimelineRenderer
+
+        computed = ReportComputedData(
+            contract_timeline={
+                "expiry_findings_count": 1,
+                "date_mentions_count": 1,
+                "findings": [
+                    {
+                        "title": "<script>alert('xss')</script>",
+                        "severity": "P2",
+                        "_customer": "X",
+                    },
+                ],
+            },
+        )
+        renderer = TimelineRenderer(computed, {}, {})
+        result = renderer.render()
+        assert "<script>" not in result
 
 
 # ===========================================================================
