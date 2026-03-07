@@ -1053,6 +1053,256 @@ def _print_query_result(question: str, result: Any) -> None:
 
 
 # ---------------------------------------------------------------------------
+# portfolio command group (Issue #118)
+# ---------------------------------------------------------------------------
+
+
+@main.group()
+def portfolio() -> None:
+    """Manage multiple deal projects and cross-deal analytics."""
+
+
+@portfolio.command("add")
+@click.argument("name")
+@click.option("--data-room", "data_room", type=click.Path(exists=True, file_okay=False, path_type=Path), required=True)
+@click.option("--deal-type", "deal_type", default="")
+@click.option("--buyer", default="")
+@click.option("--target", default="")
+def portfolio_add(name: str, data_room: Path, deal_type: str, buyer: str, target: str) -> None:
+    """Register a new deal project in the portfolio."""
+    from dd_agents.persistence.project_registry import ProjectRegistryManager
+
+    mgr = ProjectRegistryManager()
+    try:
+        entry = mgr.add_project(name, data_room, deal_type=deal_type, buyer=buyer, target=target)
+        console.print(f"[green]Added project:[/green] {entry.name} ({entry.slug})")
+        console.print(f"  Path: {entry.path}")
+    except ValueError as exc:
+        _print_error("Portfolio Error", str(exc))
+        raise SystemExit(1) from exc
+
+
+@portfolio.command("list")
+def portfolio_list() -> None:
+    """List all registered deal projects."""
+    from dd_agents.persistence.project_registry import ProjectRegistryManager
+
+    mgr = ProjectRegistryManager()
+    projects = mgr.list_projects()
+    if not projects:
+        console.print("[dim]No projects registered. Use 'dd-agents portfolio add' to register one.[/dim]")
+        return
+
+    table = Table(title="Deal Portfolio", show_header=True)
+    table.add_column("Name", style="bold")
+    table.add_column("Status", width=12)
+    table.add_column("Type", width=14)
+    table.add_column("Customers", justify="right")
+    table.add_column("Findings", justify="right")
+    table.add_column("Risk", justify="right")
+    table.add_column("Last Run")
+
+    for p in projects:
+        status_color = {"completed": "green", "running": "cyan", "failed": "red", "archived": "dim"}.get(
+            p.status, "white"
+        )
+        table.add_row(
+            p.name,
+            f"[{status_color}]{p.status}[/{status_color}]",
+            p.deal_type or "-",
+            str(p.total_customers) if p.total_customers else "-",
+            str(p.total_findings) if p.total_findings else "-",
+            f"{p.risk_score:.0f}" if p.risk_score else "-",
+            p.last_run_at or "-",
+        )
+    console.print(table)
+
+
+@portfolio.command("compare")
+@click.argument("slugs", nargs=-1)
+def portfolio_compare(slugs: tuple[str, ...]) -> None:
+    """Compare risk profiles across deals."""
+    from dd_agents.persistence.project_registry import ProjectRegistryManager
+
+    mgr = ProjectRegistryManager()
+    comp = mgr.compare_projects(slugs=list(slugs) if slugs else None)
+
+    if not comp.projects:
+        console.print("[dim]No projects to compare.[/dim]")
+        return
+
+    console.print(
+        Panel(
+            f"[bold]Portfolio Overview[/bold]\n"
+            f"Projects: {len(comp.projects)}\n"
+            f"Total findings: {comp.total_findings}\n"
+            f"Avg risk score: {comp.avg_risk_score:.1f}\n"
+            f"Severity: {', '.join(f'{k}: {v}' for k, v in sorted(comp.severity_distribution.items()))}",
+            border_style="blue",
+        )
+    )
+
+    if comp.risk_benchmarks:
+        console.print(
+            f"[dim]Risk benchmarks: min={comp.risk_benchmarks.get('min', 0):.0f} "
+            f"median={comp.risk_benchmarks.get('median', 0):.0f} "
+            f"max={comp.risk_benchmarks.get('max', 0):.0f}[/dim]"
+        )
+
+
+@portfolio.command("remove")
+@click.argument("slug")
+def portfolio_remove(slug: str) -> None:
+    """Remove a project from the portfolio (does not delete deal data)."""
+    from dd_agents.persistence.project_registry import ProjectRegistryManager
+
+    mgr = ProjectRegistryManager()
+    if mgr.remove_project(slug):
+        console.print(f"[green]Removed project: {slug}[/green]")
+    else:
+        _print_error("Not Found", f"No project with slug '{slug}'")
+        raise SystemExit(1)
+
+
+# ---------------------------------------------------------------------------
+# review command group (Issue #122)
+# ---------------------------------------------------------------------------
+
+
+@main.group()
+def review() -> None:
+    """Manage finding annotations and review workflow."""
+
+
+@review.command("annotate")
+@click.option("--run-dir", type=click.Path(exists=True, file_okay=False, path_type=Path), required=True)
+@click.option("--finding", required=True, help="Finding title (partial match)")
+@click.option("--reviewer", required=True)
+@click.option("--status", type=click.Choice(["reviewed", "disputed", "accepted", "rejected"]), default="reviewed")
+@click.option("--comment", default="")
+@click.option("--severity", default=None, help="Override severity (P0-P4)")
+def review_annotate(
+    run_dir: Path, finding: str, reviewer: str, status: str, comment: str, severity: str | None
+) -> None:
+    """Add an annotation to a finding."""
+    from dd_agents.review.manager import ReviewManager
+
+    mgr = ReviewManager(run_dir)
+    finding_dict = {"title": finding, "_customer": "", "agent": ""}
+    ann = mgr.add_annotation(
+        finding_dict, reviewer=reviewer, comment=comment, status=status, severity_override=severity
+    )
+    console.print(f"[green]Annotation added:[/green] {ann.id}")
+
+
+@review.command("assign")
+@click.option("--run-dir", type=click.Path(exists=True, file_okay=False, path_type=Path), required=True)
+@click.option("--reviewer", required=True)
+@click.option("--section", default="")
+@click.option("--customer", default="")
+def review_assign(run_dir: Path, reviewer: str, section: str, customer: str) -> None:
+    """Assign a reviewer to a section or customer."""
+    from dd_agents.review.manager import ReviewManager
+
+    mgr = ReviewManager(run_dir)
+    asgn = mgr.assign_reviewer(reviewer, section=section, customer_safe_name=customer)
+    console.print(f"[green]Assigned:[/green] {reviewer} -> {section or customer or 'all'} ({asgn.id})")
+
+
+@review.command("progress")
+@click.option("--run-dir", type=click.Path(exists=True, file_okay=False, path_type=Path), required=True)
+def review_progress(run_dir: Path) -> None:
+    """Show review progress for a pipeline run."""
+    from dd_agents.review.manager import ReviewManager
+
+    mgr = ReviewManager(run_dir)
+    # Count findings from merged dir
+    merged_dir = run_dir / "findings" / "merged"
+    total = 0
+    if merged_dir.is_dir():
+        for f in merged_dir.glob("*.json"):
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+                total += len(data.get("findings", []))
+            except Exception:
+                pass
+
+    progress = mgr.compute_progress(total)
+    console.print(
+        Panel(
+            f"[bold]Review Progress[/bold]\n"
+            f"Total findings: {progress.total_findings}\n"
+            f"Reviewed: {progress.reviewed} ({progress.pct_complete:.0f}%)\n"
+            f"Disputed: {progress.disputed}\n"
+            f"Accepted: {progress.accepted}\n"
+            f"Pending: {progress.pending}",
+            border_style="blue",
+        )
+    )
+
+
+@review.command("export")
+@click.option("--run-dir", type=click.Path(exists=True, file_okay=False, path_type=Path), required=True)
+@click.option("--format", "fmt", type=click.Choice(["json", "csv"]), default="json")
+@click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+def review_export(run_dir: Path, fmt: str, output_path: Path | None) -> None:
+    """Export review annotations as structured data."""
+    from dd_agents.review.manager import ReviewManager
+
+    mgr = ReviewManager(run_dir)
+    data = mgr.export_annotations(format=fmt)
+    if output_path:
+        output_path.write_text(data, encoding="utf-8")
+        console.print(f"[green]Exported to: {output_path}[/green]")
+    else:
+        console.print(data)
+
+
+# ---------------------------------------------------------------------------
+# templates command group (Issue #123)
+# ---------------------------------------------------------------------------
+
+
+@main.group()
+def templates() -> None:
+    """Manage report templates and branding."""
+
+
+@templates.command("list")
+def templates_list() -> None:
+    """List available report templates."""
+    from dd_agents.reporting.templates import TemplateLibrary
+
+    library = TemplateLibrary()
+    for tpl in library.list_templates():
+        console.print(f"[bold]{tpl.id}[/bold]: {tpl.name}")
+        if tpl.description:
+            console.print(f"  [dim]{tpl.description}[/dim]")
+
+
+@templates.command("show")
+@click.argument("template_id")
+def templates_show(template_id: str) -> None:
+    """Show details of a specific template."""
+    from dd_agents.reporting.templates import TemplateLibrary
+
+    library = TemplateLibrary()
+    tpl = library.get_template(template_id)
+    if not tpl:
+        _print_error("Not Found", f"Template '{template_id}' not found")
+        raise SystemExit(1)
+
+    console.print(f"[bold]{tpl.name}[/bold] ({tpl.id})")
+    if tpl.description:
+        console.print(f"[dim]{tpl.description}[/dim]")
+    console.print(f"Detail level: {tpl.sections.detail_level}")
+    if tpl.sections.include:
+        console.print(f"Sections: {', '.join(tpl.sections.include)}")
+    if tpl.branding.firm_name:
+        console.print(f"Firm: {tpl.branding.firm_name}")
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
