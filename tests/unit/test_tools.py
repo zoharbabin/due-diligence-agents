@@ -548,6 +548,7 @@ class TestCreateToolDefinitions:
             "verify_citation",
             "get_customer_files",
             "resolve_entity",
+            "search_similar",
             "report_progress",
         }
         assert names == expected

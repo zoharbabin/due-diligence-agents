@@ -877,6 +877,182 @@ def _print_assessment_report(report: dict[str, Any]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# export-pdf command (Issue #151)
+# ---------------------------------------------------------------------------
+
+
+@main.command("export-pdf")
+@click.argument(
+    "html_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+)
+@click.option(
+    "--output",
+    "output_path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Output PDF path (default: same name with .pdf extension).",
+)
+@click.option(
+    "--engine",
+    type=click.Choice(["auto", "playwright", "weasyprint"]),
+    default="auto",
+    show_default=True,
+    help="PDF rendering engine to use.",
+)
+def export_pdf(html_path: Path, output_path: Path | None, engine: str) -> None:
+    """Export an HTML DD report to PDF.
+
+    Converts the self-contained HTML report to a print-optimized PDF
+    using Playwright (preferred) or WeasyPrint (fallback).
+
+    \b
+    Example:
+        dd-agents export-pdf report.html
+        dd-agents export-pdf report.html --output board-package.pdf
+        dd-agents export-pdf report.html --engine weasyprint
+    """
+    from dd_agents.reporting.pdf_export import PDFExportError
+    from dd_agents.reporting.pdf_export import export_pdf as do_export
+
+    console.print("\n[bold]dd-agents export-pdf[/bold]\n")
+
+    with console.status("[bold cyan]Generating PDF...[/bold cyan]"):
+        try:
+            result = asyncio.run(do_export(html_path, output_path, engine=engine))
+        except PDFExportError as exc:
+            _print_error("PDF Export Failed", str(exc))
+            raise SystemExit(1) from exc
+        except FileNotFoundError as exc:
+            _print_error("File Not Found", str(exc))
+            raise SystemExit(1) from exc
+
+    size_kb = result.stat().st_size / 1024
+    console.print(
+        Panel(
+            f"[bold green]PDF exported successfully[/bold green]\n\nOutput: {result}\nSize: {size_kb:.1f} KB",
+            title="Export Complete",
+            border_style="green",
+        )
+    )
+
+
+# ---------------------------------------------------------------------------
+# query command (Issue #124)
+# ---------------------------------------------------------------------------
+
+
+@main.command()
+@click.option(
+    "--report",
+    "report_dir",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    required=True,
+    help="Path to the pipeline run directory (contains findings/merged/).",
+)
+@click.option(
+    "--question",
+    "-q",
+    default=None,
+    help="Single question to ask. Omit for interactive mode.",
+)
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    default=False,
+    help="Enable verbose logging output.",
+)
+def query(report_dir: Path, question: str | None, verbose: bool) -> None:
+    """Ask natural-language questions about the DD report.
+
+    Index the merged findings from a pipeline run and answer
+    questions interactively or via the --question flag.
+
+    \b
+    Example:
+        dd-agents query --report _dd/forensic-dd/runs/latest --question "How many P0 findings?"
+        dd-agents query --report _dd/forensic-dd/runs/latest  # interactive mode
+    """
+    if verbose:
+        logging.basicConfig(level=logging.WARNING, format="%(name)s: %(message)s")
+        logging.getLogger("dd_agents").setLevel(logging.DEBUG)
+
+    from dd_agents.query.engine import QueryEngine
+    from dd_agents.query.indexer import FindingIndexer
+
+    console.print("\n[bold]dd-agents query[/bold]\n")
+
+    indexer = FindingIndexer()
+    with console.status("[bold cyan]Indexing findings...[/bold cyan]"):
+        index = indexer.index_report(report_dir)
+
+    console.print(f"[dim]{index.summary}[/dim]\n")
+
+    if index.total_findings == 0:
+        console.print("[yellow]No findings found. Check the --report path.[/yellow]")
+        raise SystemExit(1)
+
+    engine = QueryEngine(index, verbose=verbose)
+
+    if question:
+        # Single-question mode
+        result = asyncio.run(engine.query(question))
+        _print_query_result(question, result)
+    else:
+        # Interactive mode
+        console.print("[dim]Type your question (or 'quit' to exit):[/dim]\n")
+        while True:
+            try:
+                user_input = console.input("[bold cyan]> [/bold cyan]")
+            except (EOFError, KeyboardInterrupt):
+                console.print("\n[dim]Goodbye.[/dim]")
+                break
+
+            user_input = user_input.strip()
+            if not user_input:
+                continue
+            if user_input.lower() in ("quit", "exit", "q"):
+                console.print("[dim]Goodbye.[/dim]")
+                break
+
+            result = asyncio.run(engine.query(user_input))
+            _print_query_result(user_input, result)
+            console.print()
+
+
+def _print_query_result(question: str, result: Any) -> None:
+    """Print a query result as a rich panel."""
+    conf_color = {"high": "green", "medium": "yellow", "low": "red"}.get(result.confidence, "white")
+
+    console.print(
+        Panel(
+            result.answer,
+            title=f"Q: {question}",
+            subtitle=f"[{conf_color}]confidence: {result.confidence}[/{conf_color}] | type: {result.query_type}",
+            border_style="blue",
+        )
+    )
+
+    if result.sources:
+        table = Table(show_header=True, title="Supporting Findings")
+        table.add_column("Severity", width=8)
+        table.add_column("Entity")
+        table.add_column("Title")
+        table.add_column("Category")
+        for src in result.sources[:5]:
+            sev = src.get("severity", "")
+            sev_color = {"P0": "red", "P1": "bright_red", "P2": "yellow"}.get(sev, "white")
+            table.add_row(
+                f"[{sev_color}]{sev}[/{sev_color}]",
+                src.get("customer", ""),
+                src.get("title", ""),
+                src.get("category", ""),
+            )
+        console.print(table)
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
