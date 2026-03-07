@@ -36,7 +36,8 @@ _DATAROOM_FOLDER_RE = re.compile(r"^\d+[\._]\d*[\._]?\s*")
 # ---------------------------------------------------------------------------
 
 _NOISE_PATTERNS: list[str] = [
-    "cannot assess",
+    "cannot assess: extraction",
+    "cannot assess file",
     "file not available",
     "content not available",
     "document not available",
@@ -2067,7 +2068,7 @@ class ReportDataComputer:
 
     # --- Issue #135: Discount & Pricing Analysis ---
 
-    _DISCOUNT_RE = re.compile(r"(\d{1,3})(?:\.\d+)?%\s*(?:discount|off|reduction|below)", re.IGNORECASE)
+    _DISCOUNT_RE = re.compile(r"(\d{1,3}(?:\.\d+)?)%\s*(?:discount|off|reduction|below)", re.IGNORECASE)
 
     @staticmethod
     def _compute_discount_analysis(
@@ -2151,7 +2152,7 @@ class ReportDataComputer:
                     auto_count += 1
                 elif "manual" in combined and "renew" in combined:
                     manual_count += 1
-                if "escalat" in combined or "price increase" in combined or "cap" in combined:
+                if "escalat" in combined or "price increase" in combined or " cap " in combined or "capped" in combined:
                     escalation_count += 1
 
         return {
