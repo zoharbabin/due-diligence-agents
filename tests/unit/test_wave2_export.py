@@ -145,3 +145,39 @@ class TestFindingProvenanceModel:
         )
         assert p.extraction_confidence == 0.95
         assert len(p.contributing_agents) == 2
+
+    def test_provenance_stamped_during_merge(self) -> None:
+        """Merge pipeline should stamp provenance on each finding's metadata."""
+        from dd_agents.reporting.merge import FindingMerger
+
+        merger = FindingMerger(run_id="test-run", timestamp="2026-01-01T00:00:00Z")
+        agent_outputs = {
+            "legal": {
+                "customer": "Test Corp",
+                "findings": [
+                    {
+                        "severity": "P1",
+                        "title": "CoC clause",
+                        "description": "Change of control detected",
+                        "category": "coc",
+                        "citations": [
+                            {
+                                "source_path": "contract.pdf",
+                                "source_type": "file",
+                                "exact_quote": "Upon change of control...",
+                                "location": "Section 5",
+                            }
+                        ],
+                    },
+                ],
+            },
+        }
+        result = merger.merge_customer(agent_outputs, "Test Corp", "test_corp")
+        assert len(result.findings) == 1
+        meta = result.findings[0].metadata
+        assert "provenance" in meta
+        prov = meta["provenance"]
+        assert prov["agent_name"] == "legal"
+        assert prov["merge_action"] == "kept"
+        assert prov["citation_verified"] is True
+        assert "legal" in prov["contributing_agents"]

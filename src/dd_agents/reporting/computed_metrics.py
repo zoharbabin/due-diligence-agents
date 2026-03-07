@@ -1819,6 +1819,23 @@ class ReportDataComputer:
         grr_raw = 100.0 - contraction_count / total_customers * 20.0 if total_customers > 0 else 100.0
         grr_estimate = max(50.0, min(100.0, grr_raw))
 
+        # --- Issue #115: Logo retention (heuristic) ---
+        # Estimate from churn signals: each churn signal represents ~1 lost logo
+        churn_rate = contraction_count / total_customers if total_customers > 0 else 0.0
+        logo_retention_pct = max(50.0, min(100.0, round((1.0 - churn_rate) * 100, 1)))
+
+        # --- Issue #115: CLV estimate ---
+        # CLV = ACV / (1 - GRR/100), capped to avoid infinity when GRR~100
+        annual_churn_rate = 1.0 - grr_estimate / 100.0
+        clv_estimate = round(avg_cv / max(annual_churn_rate, 0.05), 0) if avg_cv > 0 else 0.0
+
+        # --- Issue #115: Rule of 40 ---
+        # Rule of 40 = Revenue Growth % + EBITDA Margin %
+        # Heuristic: growth = NRR - 100 (expansion-driven), margin unknown → assume 0
+        # This gives a conservative lower-bound score
+        implied_growth_pct = nrr_estimate - 100.0
+        rule_of_40_score = round(implied_growth_pct, 1)  # margin assumed 0 (unknown)
+
         benchmarks: dict[str, dict[str, float]] = {
             "top_quartile": {"nrr": 130.0, "grr": 95.0},
             "median": {"nrr": 110.0, "grr": 85.0},
@@ -1835,6 +1852,9 @@ class ReportDataComputer:
             "grr_estimate": round(grr_estimate, 1),
             "expansion_signals": expansion_count,
             "contraction_signals": contraction_count,
+            "logo_retention_pct": logo_retention_pct,
+            "clv_estimate": clv_estimate,
+            "rule_of_40_score": rule_of_40_score,
             "benchmarks": benchmarks,
         }
 
@@ -2493,6 +2513,40 @@ class ReportDataComputer:
         _jur_list.sort(key=lambda x: jurisdiction_counts.get(str(x["jurisdiction"]), 0), reverse=True)
         top_jurisdictions: list[dict[str, Any]] = _jur_list[:5]
 
+        # --- Compliance risk score (0-100, severity-weighted) ---
+        score_weights = {"P0": 25, "P1": 15, "P2": 8, "P3": 3}
+        raw_score = sum(score_weights.get(str(f.get("severity", "P3")), 3) for f in all_compliance)
+        compliance_risk_score = min(100, raw_score)
+        if compliance_risk_score >= 60:
+            compliance_risk_label = "critical"
+        elif compliance_risk_score >= 30:
+            compliance_risk_label = "high"
+        elif compliance_risk_score >= 10:
+            compliance_risk_label = "medium"
+        else:
+            compliance_risk_label = "low"
+
+        # --- Filing checklist (based on detected regulatory frameworks) ---
+        _framework_map: dict[str, str] = {
+            "gdpr": "GDPR: Data Protection Impact Assessment (DPIA)",
+            "ccpa": "CCPA: Consumer privacy notice & opt-out mechanisms",
+            "hipaa": "HIPAA: Business Associate Agreement (BAA) audit",
+            "sox": "SOX: Internal controls over financial reporting",
+            "pci": "PCI-DSS: Cardholder data environment scope review",
+            "fedramp": "FedRAMP: Authorization package & continuous monitoring",
+            "fcpa": "FCPA: Anti-bribery compliance program review",
+            "ofac": "OFAC: Sanctions screening for all counterparties",
+            "itar": "ITAR: Export control classification & license review",
+            "aml": "AML/KYC: Customer due diligence procedures",
+        }
+        detected_frameworks: set[str] = set()
+        for f in all_compliance:
+            combined_check = f"{f.get('title', '')} {f.get('description', '')}".lower()
+            for fw_key in _framework_map:
+                if fw_key in combined_check:
+                    detected_frameworks.add(fw_key)
+        filing_checklist: list[str] = [_framework_map[fw] for fw in sorted(detected_frameworks) if fw in _framework_map]
+
         return {
             "dpa_findings_count": len(dpa_findings),
             "jurisdiction_findings_count": len(jurisdiction_findings),
@@ -2501,6 +2555,9 @@ class ReportDataComputer:
             "findings": all_compliance[:20],
             "dpa_coverage_pct": round(dpa_coverage_pct, 1),
             "top_jurisdictions": top_jurisdictions,
+            "compliance_risk_score": compliance_risk_score,
+            "compliance_risk_label": compliance_risk_label,
+            "filing_checklist": filing_checklist,
         }
 
     # --- Issue #137: Legal Entity Distribution ---

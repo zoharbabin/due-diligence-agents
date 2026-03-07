@@ -111,6 +111,30 @@ class TestSaaSMetricsRenderer:
         html = r.render()
         assert "var(--red)" in html
 
+    def test_rule_of_40_and_clv_rendered(self) -> None:
+        data = _make_data(
+            total_contracted_arr=1_000_000.0,
+            saas_metrics={
+                "total_customers": 10,
+                "customers_with_revenue": 8,
+                "avg_contract_value": 125_000.0,
+                "top_customer_pct": 15.0,
+                "tier_distribution": {},
+                "nrr_estimate": 110.0,
+                "grr_estimate": 90.0,
+                "logo_retention_pct": 95.0,
+                "clv_estimate": 1_250_000.0,
+                "rule_of_40_score": 10.0,
+            },
+        )
+        r = SaaSMetricsRenderer(data, {})
+        html = r.render()
+        assert "Unit Economics" in html
+        assert "Logo Retention" in html
+        assert "CLV Estimate" in html
+        assert "Rule of 40" in html
+        assert "95%" in html
+
     def test_no_nrr_section_when_none(self) -> None:
         data = _make_data(
             total_contracted_arr=500_000.0,
@@ -295,6 +319,32 @@ class TestComplianceRenderer:
         assert "75%" in html
         assert "Top Jurisdictions" in html
         assert "GDPR (EU)" in html
+
+    def test_risk_score_and_filing_checklist(self) -> None:
+        data = _make_data(
+            compliance_analysis={
+                "total_compliance_findings": 2,
+                "dpa_findings_count": 1,
+                "jurisdiction_findings_count": 0,
+                "regulatory_findings_count": 1,
+                "dpa_coverage_pct": 50.0,
+                "top_jurisdictions": [],
+                "compliance_risk_score": 33,
+                "compliance_risk_label": "high",
+                "filing_checklist": [
+                    "GDPR: Data Protection Impact Assessment (DPIA)",
+                    "HIPAA: Business Associate Agreement (BAA) audit",
+                ],
+                "findings": [_make_finding()],
+            }
+        )
+        r = ComplianceRenderer(data, {})
+        html = r.render()
+        assert "Risk Score" in html
+        assert "33" in html
+        assert "Regulatory Filing Checklist" in html
+        assert "GDPR" in html
+        assert "HIPAA" in html
 
 
 # ---------------------------------------------------------------------------

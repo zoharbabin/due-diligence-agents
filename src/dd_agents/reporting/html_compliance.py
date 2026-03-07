@@ -48,6 +48,25 @@ class ComplianceRenderer(SectionRenderer):
             )
         parts.append("</div>")
 
+        # Compliance risk score
+        risk_score = analysis.get("compliance_risk_score", 0)
+        risk_label = str(analysis.get("compliance_risk_label", "low"))
+        if risk_score > 0:
+            _risk_colors: dict[str, str] = {
+                "critical": "var(--red)",
+                "high": "var(--red)",
+                "medium": "var(--amber)",
+                "low": "var(--green)",
+            }
+            risk_color = _risk_colors.get(risk_label, "var(--green)")
+            parts.append(
+                f"<div class='metric-card'>"
+                f"<div class='value' style='color:{risk_color}'>"
+                f"{risk_score}</div>"
+                f"<div class='label'>Risk Score ({self.escape(risk_label.title())})</div>"
+                f"</div>"
+            )
+
         if dpa > 0:
             parts.append(
                 self.render_alert(
@@ -73,6 +92,15 @@ class ComplianceRenderer(SectionRenderer):
                 count = entry.get("count", 0)
                 parts.append(f"<tr><td>{name}</td><td>{count}</td></tr>")
             parts.append("</tbody></table>")
+
+        # Filing checklist
+        checklist: list[str] = analysis.get("filing_checklist", [])
+        if checklist:
+            parts.append("<h3>Regulatory Filing Checklist</h3>")
+            parts.append("<ul>")
+            for item in checklist:
+                parts.append(f"<li>{self.escape(item)}</li>")
+            parts.append("</ul>")
 
         # Findings table
         findings = analysis.get("findings", [])

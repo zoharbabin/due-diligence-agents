@@ -125,6 +125,46 @@ class SaaSMetricsRenderer(SectionRenderer):
                 )
             )
 
+        # Logo Retention, CLV, Rule of 40
+        logo_ret = metrics.get("logo_retention_pct")
+        clv = metrics.get("clv_estimate")
+        rule40 = metrics.get("rule_of_40_score")
+        if logo_ret is not None or clv is not None or rule40 is not None:
+            parts.append("<h3>Unit Economics &amp; Growth</h3>")
+            parts.append("<div class='metrics-strip'>")
+            if logo_ret is not None:
+                parts.append(
+                    f"<div class='metric-card'>"
+                    f"<div class='value'>{logo_ret:.0f}%</div>"
+                    f"<div class='label'>Logo Retention (Est.)</div>"
+                    f"</div>"
+                )
+            if clv is not None and clv > 0:
+                parts.append(
+                    f"<div class='metric-card'>"
+                    f"<div class='value'>{_fmt_currency(clv)}</div>"
+                    f"<div class='label'>CLV Estimate</div>"
+                    f"</div>"
+                )
+            if rule40 is not None:
+                r40_color = "var(--green)" if rule40 >= 40 else ("var(--amber)" if rule40 >= 20 else "var(--red)")
+                parts.append(
+                    f"<div class='metric-card'>"
+                    f"<div class='value' style='color:{r40_color}'>{rule40:.0f}</div>"
+                    f"<div class='label'>Rule of 40 (Est.)</div>"
+                    f"</div>"
+                )
+            parts.append("</div>")
+            if rule40 is not None and rule40 < 20:
+                parts.append(
+                    self.render_alert(
+                        "high",
+                        f"Rule of 40 score is {rule40:.0f} (below threshold)",
+                        "Rule of 40 = Revenue Growth % + EBITDA Margin %. Score below 20 signals "
+                        "concern. Note: margin data unavailable, score reflects growth only.",
+                    )
+                )
+
         # Concentration alert
         if top_pct >= 30:
             parts.append(

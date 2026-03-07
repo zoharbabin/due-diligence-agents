@@ -137,6 +137,39 @@ class TestSaaSMetricsEnhanced:
         assert "median" in benchmarks
         assert "concerning" in benchmarks
 
+    def test_rule_of_40_present(self) -> None:
+        """Rule of 40 score should be computed from NRR."""
+        merged = {"a": {"customer": "A", "findings": [], "gaps": []}}
+        result = ReportDataComputer().compute(merged)
+        # NRR=100 → growth=0 → Rule of 40 = 0
+        assert result.saas_metrics["rule_of_40_score"] == 0.0
+
+    def test_logo_retention_defaults_100(self) -> None:
+        """With no churn signals, logo retention should be 100%."""
+        merged = {"a": {"customer": "A", "findings": [], "gaps": []}}
+        result = ReportDataComputer().compute(merged)
+        assert result.saas_metrics["logo_retention_pct"] == 100.0
+
+    def test_clv_estimate_present(self) -> None:
+        """CLV estimate should be computed when revenue data exists."""
+        merged = {"a": {"customer": "A", "findings": [], "gaps": []}}
+        result = ReportDataComputer().compute(merged)
+        assert "clv_estimate" in result.saas_metrics
+
+    def test_logo_retention_decreases_with_churn(self) -> None:
+        """Churn signals should decrease logo retention below 100%."""
+        merged = {
+            "a": {
+                "customer": "A",
+                "findings": [
+                    _make_finding(title=f"Churn risk {i}", description="cancellation likely") for i in range(5)
+                ],
+                "gaps": [],
+            }
+        }
+        result = ReportDataComputer().compute(merged)
+        assert result.saas_metrics["logo_retention_pct"] < 100.0
+
 
 class TestDiscountEnhanced:
     """Issue #135: avg_discount, max_discount, top_discounted, float parsing."""
@@ -265,6 +298,33 @@ class TestComplianceEnhanced:
         """With no entities, DPA coverage should be 0."""
         result = ReportDataComputer._compute_compliance_analysis([])
         assert result["dpa_coverage_pct"] == 0.0
+
+    def test_compliance_risk_score_computed(self) -> None:
+        """Compliance risk score should be severity-weighted."""
+        findings = [
+            _make_finding(title="GDPR violation", severity="P0"),
+            _make_finding(title="CCPA compliance gap", severity="P2"),
+        ]
+        result = ReportDataComputer._compute_compliance_analysis(findings)
+        assert result["compliance_risk_score"] > 0
+        assert result["compliance_risk_label"] in ("critical", "high", "medium", "low")
+
+    def test_filing_checklist_from_detected_frameworks(self) -> None:
+        """Filing checklist should include items for detected regulatory frameworks."""
+        findings = [
+            _make_finding(title="GDPR compliance review needed"),
+            _make_finding(title="HIPAA BAA missing"),
+        ]
+        result = ReportDataComputer._compute_compliance_analysis(findings)
+        checklist = result["filing_checklist"]
+        assert any("GDPR" in item for item in checklist)
+        assert any("HIPAA" in item for item in checklist)
+
+    def test_filing_checklist_empty_when_no_frameworks(self) -> None:
+        """Filing checklist should be empty with generic findings."""
+        findings = [_make_finding(title="General compliance concern")]
+        result = ReportDataComputer._compute_compliance_analysis(findings)
+        assert result["filing_checklist"] == []
 
 
 class TestEntityEnhanced:
