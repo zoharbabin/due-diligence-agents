@@ -137,6 +137,13 @@ def _resolve_entity_definition() -> dict[str, Any]:
     }
 
 
+def _search_similar_definition() -> dict[str, Any]:
+    """Tool definition for search_similar (Issue #127)."""
+    from dd_agents.tools.search_similar import search_similar_tool_schema
+
+    return search_similar_tool_schema()
+
+
 def _report_progress_definition() -> dict[str, Any]:
     """Tool definition for report_progress."""
     return {
@@ -202,6 +209,7 @@ def create_tool_definitions() -> list[dict[str, Any]]:
             _verify_citation_definition(),
             _get_customer_files_definition(),
             _resolve_entity_definition(),
+            _search_similar_definition(),
             _report_progress_definition(),
         ]
 
@@ -225,6 +233,7 @@ SPECIALIST_CUSTOM_TOOLS: list[str] = [
     "verify_citation",
     "get_customer_files",
     "resolve_entity",
+    "search_similar",
     "report_progress",
 ]
 
