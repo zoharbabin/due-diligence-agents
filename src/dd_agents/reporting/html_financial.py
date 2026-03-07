@@ -69,14 +69,14 @@ class FinancialImpactRenderer(SectionRenderer):
 
         return (
             "<div class='metrics-strip'>"
-            f"<div class='metric'><span class='metric-value'>{_fmt_currency(total)}</span>"
-            "<span class='metric-label'>Total Contracted ARR</span></div>"
-            f"<div class='metric'><span class='metric-value' style='color: var(--severity-p1, #d63384)'>"
-            f"{_fmt_currency(exposure)}</span>"
-            f"<span class='metric-label'>Revenue at Risk ({_fmt_pct(exposure_pct)})</span></div>"
-            f"<div class='metric'><span class='metric-value' style='color: var(--severity-p3, #198754)'>"
-            f"{_fmt_currency(adjusted)}</span>"
-            "<span class='metric-label'>Risk-Adjusted ARR</span></div>"
+            f"<div class='metric-card'><div class='value'>{_fmt_currency(total)}</div>"
+            "<div class='label'>Total Contracted ARR</div></div>"
+            f"<div class='metric-card'><div class='value' style='color: var(--severity-p1, #d63384)'>"
+            f"{_fmt_currency(exposure)}</div>"
+            f"<div class='label'>Revenue at Risk ({_fmt_pct(exposure_pct)})</div></div>"
+            f"<div class='metric-card'><div class='value' style='color: var(--severity-p3, #198754)'>"
+            f"{_fmt_currency(adjusted)}</div>"
+            "<div class='label'>Risk-Adjusted ARR</div></div>"
             "</div>"
         )
 
@@ -161,7 +161,7 @@ class FinancialImpactRenderer(SectionRenderer):
 
         parts: list[str] = [
             "<h3>Customer Revenue Concentration</h3>",
-            "<div class='treemap' style='display:flex;flex-wrap:wrap;gap:2px;min-height:120px'>",
+            "<div style='display:flex;flex-wrap:wrap;gap:2px;min-height:120px'>",
         ]
 
         for item in items[:20]:  # Cap at 20 for readability
@@ -173,7 +173,7 @@ class FinancialImpactRenderer(SectionRenderer):
             min_width = max(pct, 5)  # Minimum 5% width for visibility
 
             parts.append(
-                f"<div class='treemap-cell' style='flex-basis:{min_width}%;background:{color};"
+                f"<div style='flex-basis:{min_width}%;background:{color};"
                 f"padding:8px;color:#fff;border-radius:4px;min-width:60px' "
                 f"title='{name}: {revenue} ({_fmt_pct(pct)})'>"
                 f"<strong>{name}</strong><br>{revenue} ({_fmt_pct(pct)})"

@@ -189,8 +189,12 @@ class FindingMerger:
                         finding["citations"] = cit
                 all_findings.append(finding)
 
-        # Step 3 -- Deduplicate
+        # Step 3 -- Deduplicate (citation-based key matching)
         deduped = self._deduplicate(all_findings)
+
+        # Step 3b -- Semantic dedup (Issue #150): catch near-duplicates
+        # that differ in citation location but describe the same issue.
+        deduped = self._semantic_dedup(deduped)
 
         # Step 4 -- Cross-validate severity disagreements (already handled
         # inside _pick_winner, but record metadata)
@@ -474,6 +478,17 @@ class FindingMerger:
         return result
 
     @staticmethod
+    def _first_source_path(f: dict[str, Any]) -> str:
+        """Extract first citation source_path from a finding dict."""
+        cits = f.get("citations")
+        if not isinstance(cits, list) or not cits:
+            return ""
+        first = cits[0]
+        if isinstance(first, dict):
+            return first.get("source_path") or ""
+        return ""
+
+    @staticmethod
     def _first_quote(f: dict[str, Any]) -> str:
         """Extract first exact_quote from a finding dict, tolerating bad shapes."""
         cits = f.get("citations")
@@ -498,6 +513,70 @@ class FindingMerger:
         winner.setdefault("metadata", {})
         winner["metadata"]["contributing_agents"] = [a for a in {f.get("agent", "") for f in group} if a]
         return winner
+
+    # ------------------------------------------------------------------
+    # Semantic dedup (Issue #150)
+    # ------------------------------------------------------------------
+
+    _SEMANTIC_THRESHOLD: int = 80  # rapidfuzz token_sort_ratio threshold
+
+    def _semantic_dedup(self, findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Merge semantically similar findings using fuzzy title matching.
+
+        Uses rapidfuzz token_sort_ratio on titles to catch near-duplicates
+        from *different agents* that describe the same issue with different
+        wording. Same-agent findings are never merged (they may describe
+        distinct issues in different documents).
+        """
+        if len(findings) <= 1:
+            return findings
+
+        from rapidfuzz import fuzz
+
+        merged_indices: set[int] = set()
+        result: list[dict[str, Any]] = []
+
+        for i, fi in enumerate(findings):
+            if i in merged_indices:
+                continue
+            group = [fi]
+            ti = str(fi.get("title", ""))
+            ai = fi.get("agent", "")
+            for j in range(i + 1, len(findings)):
+                if j in merged_indices:
+                    continue
+                fj = findings[j]
+                aj = fj.get("agent", "")
+                # Only merge across different agents (including both-empty)
+                if ai == aj:
+                    continue
+                # Only merge if referencing the same document (require both paths known)
+                si = self._first_source_path(fi)
+                sj = self._first_source_path(fj)
+                if not si or not sj or si != sj:
+                    continue
+                tj = str(fj.get("title", ""))
+                score = fuzz.token_sort_ratio(ti, tj)
+                if score >= self._SEMANTIC_THRESHOLD:
+                    group.append(fj)
+                    merged_indices.add(j)
+            if len(group) == 1:
+                result.append(group[0])
+            else:
+                winner = self._pick_winner(group)
+                winner.setdefault("metadata", {})["semantic_dedup"] = True
+                # Aggregate agents from both agent field AND prior dedup contributing_agents
+                all_agents: set[str] = set()
+                for f in group:
+                    if f.get("agent"):
+                        all_agents.add(f["agent"])
+                    for ca in f.get("metadata", {}).get("contributing_agents", []):
+                        if ca:
+                            all_agents.add(ca)
+                winner["metadata"]["contributing_agents"] = sorted(all_agents)
+                winner["metadata"]["corroborated_by"] = len(all_agents)
+                result.append(winner)
+        return result
 
     # ------------------------------------------------------------------
     # Cross-validation

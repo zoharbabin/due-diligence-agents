@@ -209,12 +209,18 @@ class SectionRenderer(ABC):
         display_name = self._resolve_display_name(finding)
         customer = self.escape(display_name)
         agent = self.escape(str(finding.get("agent", "")))
+        confidence = str(finding.get("confidence", "")).lower()
+
+        # Confidence indicator dot (Issue #143)
+        conf_html = ""
+        if confidence in ("high", "medium", "low"):
+            conf_html = f" <span class='conf-dot conf-{confidence}' title='Confidence: {confidence}'></span>"
 
         return (
             f"<div class='finding-card' style='border-left-color:{color}' "
             f"data-severity='{self.escape(severity)}' data-domain='{self.escape(self.agent_to_domain(agent))}' "
             f"tabindex='0' role='button' aria-expanded='false'>"
-            f"<div class='fc-title'>{self.severity_badge(severity)} {title} "
+            f"<div class='fc-title'>{self.severity_badge(severity)} {title}{conf_html} "
             f"<span class='arrow'>&#9654;</span></div>"
             f"<div class='fc-meta'>Source: {customer} | Agent: {agent}</div>"
             f"</div>"
@@ -566,6 +572,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .finding-card:hover { background: #f0f0f0; }
 .finding-card .fc-title { font-weight: 600; }
 .finding-card .fc-meta { color: var(--text-secondary); font-size: 0.85em; margin-top: 2px; }
+.conf-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-left: 4px;
+  vertical-align: middle; }
+.conf-high { background: #198754; }
+.conf-medium { background: #fd7e14; }
+.conf-low { background: #dc3545; }
 .finding-detail { display: none; padding: 12px 14px; background: var(--bg-hover);
                   border-left: 4px solid #ccc; margin: 0 0 8px; border-radius: 0 0 6px 0; }
 .finding-detail.open { display: block; }
@@ -861,6 +872,7 @@ def render_nav_bar(section_rag: dict[str, str] | None = None) -> str:
         "<div class='toc-group'>"
         "<div class='toc-group-label'>Risk Analysis</div>"
         "<a href='#sec-financial'>Financial Impact</a>"
+        "<a href='#sec-saas'>SaaS Health Metrics</a>"
         "<a href='#sec-p0-table'>P0 Critical Issues</a>"
         "<a href='#sec-p1-table'>P1 High Issues</a>"
         f"<a href='#sec-heatmap'>Risk Heatmap</a>"
@@ -875,6 +887,11 @@ def render_nav_bar(section_rag: dict[str, str] | None = None) -> str:
         f"<a href='#sec-domain-finance'>{_rag('domain-finance')} Finance</a>"
         f"<a href='#sec-domain-commercial'>{_rag('domain-commercial')} Commercial</a>"
         f"<a href='#sec-domain-producttech'>{_rag('domain-producttech')} Product&amp;Tech</a>"
+        f"<a href='#sec-discount'>{_rag('discount')} Discount &amp; Pricing</a>"
+        f"<a href='#sec-renewal'>{_rag('renewal')} Renewal Analysis</a>"
+        f"<a href='#sec-compliance'>{_rag('compliance')} Compliance Risk</a>"
+        f"<a href='#sec-entity'>{_rag('entity')} Entity Distribution</a>"
+        f"<a href='#sec-timeline'>{_rag('timeline')} Contract Timeline</a>"
         "</div>"
         # Portfolio
         "<div class='toc-group'>"

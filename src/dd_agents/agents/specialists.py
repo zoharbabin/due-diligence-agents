@@ -30,6 +30,9 @@ LEGAL_FOCUS_AREAS: list[str] = [
     "liability_caps",
     "warranty",
     "dispute_resolution",
+    "regulatory_compliance",
+    "legal_entity",
+    "contract_timeline",
 ]
 
 FINANCE_FOCUS_AREAS: list[str] = [

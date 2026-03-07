@@ -124,26 +124,17 @@ class RedFlagAssessmentRenderer(SectionRenderer):
 
         cat_label = html.escape(CATEGORY_LABELS.get(category, category.replace("_", " ").title()))
 
-        sev_colors: dict[str, str] = {
-            "P0": "#dc3545",
-            "P1": "#fd7e14",
-            "P2": "#ffc107",
-            "P3": "#6c757d",
-        }
-        sev_color = sev_colors.get(severity, "#6c757d")
         conf_color = _CONFIDENCE_COLORS.get(confidence, "#6c757d")
 
         return (
-            f"<div style='border:1px solid #dee2e6;border-left:4px solid {sev_color};"
-            f"border-radius:4px;padding:12px 16px;margin-bottom:12px'>"
+            f"<div class='finding-card'>"
             f"<div style='display:flex;justify-content:space-between;align-items:center;"
             f"margin-bottom:8px'>"
             f"<strong style='font-size:1.05em'>{title}</strong>"
             f"<div>"
-            f"<span style='background:{sev_color};color:#fff;padding:2px 8px;"
-            f"border-radius:3px;font-size:0.8em;margin-right:4px'>{html.escape(severity)}</span>"
-            f"<span style='background:{conf_color};color:#fff;padding:2px 8px;"
-            f"border-radius:3px;font-size:0.8em'>{html.escape(confidence)}</span>"
+            f"{self.severity_badge(severity)} "
+            f"<span class='conf-dot' style='background:{conf_color}'></span>"
+            f"<span style='font-size:0.8em'>{html.escape(confidence)}</span>"
             f"</div></div>"
             f"<div style='color:#6c757d;font-size:0.85em;margin-bottom:6px'>{cat_label}</div>"
             f"<p style='margin:6px 0'>{description}</p>"

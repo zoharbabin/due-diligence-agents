@@ -696,6 +696,35 @@ class TestDataQualityClassification:
         assert "Revenue mismatch 8%" in titles_in_groups
         assert "Records unavailable for Q3" not in titles_in_groups
 
+    def test_noise_excluded_from_category_groups(self) -> None:
+        """Noise findings should not appear in domain category_groups."""
+        merged: dict[str, object] = {
+            "customer_a": {
+                "customer": "Customer A",
+                "findings": [
+                    _make_finding(
+                        severity="P3",
+                        agent="finance",
+                        title="File not available for extraction",
+                        category="revenue_recognition",
+                    ),
+                    _make_finding(
+                        severity="P2",
+                        agent="finance",
+                        title="Revenue mismatch 8%",
+                        category="revenue_recognition",
+                    ),
+                ],
+                "gaps": [],
+            }
+        }
+        computed = ReportDataComputer().compute(merged)
+        finance_cats = computed.category_groups.get("finance", {})
+        all_findings_in_groups = [f for findings in finance_cats.values() for f in findings]
+        titles_in_groups = [f.get("title") for f in all_findings_in_groups]
+        assert "Revenue mismatch 8%" in titles_in_groups
+        assert "File not available for extraction" not in titles_in_groups
+
 
 class TestNewCanonicalCategories:
     """Tests for new canonical category mappings added in this change."""

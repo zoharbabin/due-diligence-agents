@@ -1743,7 +1743,7 @@ class TestNoiseDetection:
         from dd_agents.reporting.computed_metrics import _is_noise_finding
 
         assert _is_noise_finding({"title": "Binary xlsx inaccessible", "description": ""})
-        assert _is_noise_finding({"title": "", "description": "Cannot assess due to extraction failure"})
+        assert _is_noise_finding({"title": "", "description": "Cannot assess file due to extraction failure"})
         assert _is_noise_finding({"title": "No extractable content", "description": ""})
         assert _is_noise_finding({"title": "", "description": "Unable to extract data from document"})
         assert _is_noise_finding({"title": "", "description": "File format not supported for analysis"})
@@ -1761,6 +1761,10 @@ class TestNoiseDetection:
         )
         assert not _is_noise_finding(
             {"title": "IP assignment gap", "description": "No IP assignment clause in contractor agreement"}
+        )
+        # "Cannot assess" without file/extraction context is a real DD observation
+        assert not _is_noise_finding(
+            {"title": "Cannot assess IP ownership", "description": "Patent registry search required"}
         )
 
 
@@ -1801,7 +1805,7 @@ class TestMaterialNoiseComputed:
                     _make_finding(severity="P0", title="CoC terminates contract"),
                     _make_finding(severity="P1", title="Binary xlsx inaccessible"),
                     _make_finding(severity="P2", title="Revenue at risk"),
-                    _make_finding(severity="P1", title="Cannot assess due to extraction failure"),
+                    _make_finding(severity="P1", title="Cannot assess file due to extraction failure"),
                 ],
                 "gaps": [
                     {
@@ -1827,7 +1831,7 @@ class TestMaterialNoiseComputed:
         for f in computed.material_findings:
             title_desc = f"{f.get('title', '')} {f.get('description', '')}".lower()
             assert "inaccessible" not in title_desc
-            assert "cannot assess" not in title_desc
+            assert "cannot assess file" not in title_desc
 
     def test_material_wolf_pack_no_noise(self) -> None:
         """Material wolf pack should not include noise findings."""
@@ -1835,7 +1839,7 @@ class TestMaterialNoiseComputed:
         for f in computed.material_wolf_pack:
             title_desc = f"{f.get('title', '')} {f.get('description', '')}".lower()
             assert "inaccessible" not in title_desc
-            assert "cannot assess" not in title_desc
+            assert "cannot assess file" not in title_desc
 
     def test_material_count_accuracy(self) -> None:
         """material_count = total - noise."""
