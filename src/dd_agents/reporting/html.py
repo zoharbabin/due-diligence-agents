@@ -31,11 +31,14 @@ from dd_agents.reporting.html_analysis import (
     TfCAnalysisRenderer,
 )
 from dd_agents.reporting.html_base import render_css, render_js, render_nav_bar
+from dd_agents.reporting.html_compliance import ComplianceRenderer
 from dd_agents.reporting.html_cross import CrossRefRenderer
 from dd_agents.reporting.html_customers import CustomerRenderer
 from dd_agents.reporting.html_dashboard import DashboardRenderer
 from dd_agents.reporting.html_diff import DiffRenderer
+from dd_agents.reporting.html_discount import DiscountAnalysisRenderer
 from dd_agents.reporting.html_domains import DomainRenderer
+from dd_agents.reporting.html_entity import EntityDistributionRenderer
 from dd_agents.reporting.html_executive import ExecutiveSummaryRenderer
 from dd_agents.reporting.html_financial import FinancialImpactRenderer
 from dd_agents.reporting.html_findings_table import FindingsTableRenderer
@@ -44,9 +47,11 @@ from dd_agents.reporting.html_methodology import MethodologyRenderer
 from dd_agents.reporting.html_quality import QualityRenderer
 from dd_agents.reporting.html_recommendations import RecommendationsRenderer
 from dd_agents.reporting.html_red_flags import RedFlagAssessmentRenderer
+from dd_agents.reporting.html_renewal import RenewalAnalysisRenderer
 from dd_agents.reporting.html_risk import RiskRenderer
 from dd_agents.reporting.html_saas_metrics import SaaSMetricsRenderer
 from dd_agents.reporting.html_strategy import StrategyRenderer
+from dd_agents.reporting.html_timeline import TimelineRenderer
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -170,11 +175,21 @@ class HTMLReportGenerator:
             RiskRenderer(computed, merged_data, renderer_config),
             # 7. Domain sections (Legal, Finance, Commercial, ProductTech) — capped
             DomainRenderer(computed, merged_data, renderer_config),
-            # 8. Cross-Reference Reconciliation
+            # 8. Discount & Pricing Analysis (Issue #135)
+            DiscountAnalysisRenderer(computed, merged_data, renderer_config),
+            # 9. Renewal & Contract Expiry (Issue #136)
+            RenewalAnalysisRenderer(computed, merged_data, renderer_config),
+            # 10. Regulatory & Compliance (Issue #121)
+            ComplianceRenderer(computed, merged_data, renderer_config),
+            # 11. Legal Entity Distribution (Issue #137)
+            EntityDistributionRenderer(computed, merged_data, renderer_config),
+            # 12. Contract Date Timeline (Issue #147)
+            TimelineRenderer(computed, merged_data, renderer_config),
+            # 13. Cross-Reference Reconciliation
             CrossRefRenderer(computed, merged_data, renderer_config),
-            # 9. Entity Health Tiers
+            # 14. Entity Health Tiers
             CustomerHealthRenderer(computed, merged_data, renderer_config),
-            # 10. Recommendations
+            # 15. Recommendations
             RecommendationsRenderer(computed, merged_data, renderer_config),
             # --- Appendix ---
             # 11. Missing or Incomplete Data (moved from main body to appendix)

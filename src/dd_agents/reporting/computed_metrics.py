@@ -877,6 +877,73 @@ class ReportComputedData(BaseModel):
     risk_waterfall: dict[str, dict[str, Any]] = Field(default_factory=dict)
     concentration_treemap: list[dict[str, Any]] = Field(default_factory=list)
 
+    # --- Issue #145: Audit Trail & Finding Provenance ---
+    provenance_stats: dict[str, Any] = Field(
+        default_factory=lambda: {
+            "total_findings": 0,
+            "high_confidence_pct": 0.0,
+            "agent_contribution": {},
+            "recalibrated_count": 0,
+            "domains_covered": [],
+        },
+        description="Provenance statistics: agent contribution, confidence, recalibration audit trail",
+    )
+
+    # --- Issue #135: Discount & Pricing Analysis ---
+    discount_analysis: dict[str, Any] = Field(
+        default_factory=lambda: {
+            "customers_with_discounts": 0,
+            "total_pricing_findings": 0,
+            "distribution": {},
+            "findings": [],
+        },
+        description="Discount and pricing analysis: distribution, top discounted customers",
+    )
+
+    # --- Issue #136: Renewal & Contract Expiry Analysis ---
+    renewal_analysis: dict[str, Any] = Field(
+        default_factory=lambda: {
+            "total_renewal_findings": 0,
+            "auto_renew_count": 0,
+            "manual_renew_count": 0,
+            "escalation_cap_count": 0,
+            "findings": [],
+        },
+        description="Renewal analysis: type distribution, escalation caps, expiry timeline",
+    )
+
+    # --- Issue #121: Regulatory & Compliance Risk ---
+    compliance_analysis: dict[str, Any] = Field(
+        default_factory=lambda: {
+            "dpa_findings_count": 0,
+            "jurisdiction_findings_count": 0,
+            "regulatory_findings_count": 0,
+            "total_compliance_findings": 0,
+            "findings": [],
+        },
+        description="Compliance analysis: DPA coverage, jurisdiction distribution, regulatory risk",
+    )
+
+    # --- Issue #137: Legal Entity Distribution ---
+    entity_distribution: dict[str, Any] = Field(
+        default_factory=lambda: {
+            "total_entities_mentioned": 0,
+            "entity_findings_count": 0,
+            "findings": [],
+        },
+        description="Legal entity distribution and migration risk analysis",
+    )
+
+    # --- Issue #147: Contract Date Timeline ---
+    contract_timeline: dict[str, Any] = Field(
+        default_factory=lambda: {
+            "date_mentions_count": 0,
+            "expiry_findings_count": 0,
+            "findings": [],
+        },
+        description="Contract date timeline: expiry calendar, renewal waterfall",
+    )
+
 
 class ReportDataComputer:
     """Single-pass computation of all report metrics.
@@ -1268,6 +1335,16 @@ class ReportDataComputer:
         # --- Issue #115: SaaS health metrics ---
         saas_metrics = self._compute_saas_metrics(revenue_by_customer, merged_data)
 
+        # --- Wave 1 analyses ---
+        # Count recalibrated findings for provenance audit trail
+        recalibrated_count = sum(1 for f in all_findings if f.get("_recalibrated_from"))
+        provenance_stats = self._compute_provenance_stats(all_findings, recalibrated_count)
+        discount_analysis = self._compute_discount_analysis(all_findings)
+        renewal_analysis = self._compute_renewal_analysis(all_findings)
+        compliance_analysis = self._compute_compliance_analysis(all_findings)
+        entity_distribution = self._compute_entity_distribution(all_findings)
+        contract_timeline = self._compute_contract_timeline(all_findings)
+
         return ReportComputedData(
             total_findings=total_findings,
             total_gaps=total_gaps,
@@ -1363,6 +1440,13 @@ class ReportDataComputer:
             low_confidence_count=low_conf_count,
             # Issue #115: SaaS Health Metrics
             saas_metrics=saas_metrics,
+            # Wave 1 analyses
+            provenance_stats=provenance_stats,
+            discount_analysis=discount_analysis,
+            renewal_analysis=renewal_analysis,
+            compliance_analysis=compliance_analysis,
+            entity_distribution=entity_distribution,
+            contract_timeline=contract_timeline,
         )
 
     # --- Issue #113: Helper methods for business-oriented analysis ---
@@ -1929,3 +2013,270 @@ class ReportDataComputer:
         rag["tfc"] = "amber" if tfc else "green"
 
         return rag
+
+    # --- Issue #145: Provenance statistics ---
+
+    @staticmethod
+    def _compute_provenance_stats(
+        all_findings: list[dict[str, Any]],
+        recalibrated_count: int,
+    ) -> dict[str, Any]:
+        """Compute finding provenance statistics for audit trail."""
+        total = len(all_findings)
+        if total == 0:
+            return {
+                "total_findings": 0,
+                "high_confidence_pct": 0.0,
+                "agent_contribution": {},
+                "recalibrated_count": 0,
+                "domains_covered": [],
+            }
+        agent_counts: dict[str, int] = defaultdict(int)
+        high_conf = 0
+        domains: set[str] = set()
+        for f in all_findings:
+            agent = str(f.get("agent", "unknown")).lower()
+            agent_counts[agent] += 1
+            domain = ReportDataComputer._agent_to_domain(agent)
+            domains.add(domain)
+            if str(f.get("confidence", "medium")).lower() == "high":
+                high_conf += 1
+        return {
+            "total_findings": total,
+            "high_confidence_pct": round(high_conf / total * 100, 1) if total else 0.0,
+            "agent_contribution": dict(agent_counts),
+            "recalibrated_count": recalibrated_count,
+            "domains_covered": sorted(domains),
+        }
+
+    # --- Issue #135: Discount & Pricing Analysis ---
+
+    _DISCOUNT_RE = re.compile(r"(\d{1,3})(?:\.\d+)?%\s*(?:discount|off|reduction|below)", re.IGNORECASE)
+
+    @staticmethod
+    def _compute_discount_analysis(
+        all_findings: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Extract discount and pricing analysis from findings."""
+        pricing_findings: list[dict[str, Any]] = []
+        customers_with_discounts: set[str] = set()
+        distribution: dict[str, int] = {"0-10%": 0, "10-25%": 0, "25-50%": 0, ">50%": 0}
+
+        pricing_keywords = ["discount", "pricing", "rate card", "price", "below market", "list price"]
+        for f in all_findings:
+            combined = f"{f.get('title', '')} {f.get('description', '')}".lower()
+            if any(kw in combined for kw in pricing_keywords):
+                pricing_findings.append(f)
+                # Try to extract discount percentage
+                matches = ReportDataComputer._DISCOUNT_RE.findall(combined)
+                for m in matches:
+                    try:
+                        pct = int(m)
+                    except (ValueError, TypeError):
+                        continue
+                    csn = f.get("_customer_safe_name", "")
+                    if csn:
+                        customers_with_discounts.add(csn)
+                    if pct <= 10:
+                        distribution["0-10%"] += 1
+                    elif pct <= 25:
+                        distribution["10-25%"] += 1
+                    elif pct <= 50:
+                        distribution["25-50%"] += 1
+                    else:
+                        distribution[">50%"] += 1
+
+        return {
+            "customers_with_discounts": len(customers_with_discounts),
+            "total_pricing_findings": len(pricing_findings),
+            "distribution": distribution,
+            "findings": pricing_findings[:20],
+        }
+
+    # --- Issue #136: Renewal & Contract Expiry Analysis ---
+
+    @staticmethod
+    def _compute_renewal_analysis(
+        all_findings: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Analyze renewal patterns and contract expiry timing."""
+        renewal_findings: list[dict[str, Any]] = []
+        auto_count = 0
+        manual_count = 0
+        escalation_count = 0
+
+        renewal_keywords = [
+            "renewal",
+            "renew",
+            "auto-renew",
+            "auto_renew",
+            "expir",
+            "term end",
+            "contract end",
+            "notice period",
+        ]
+        for f in all_findings:
+            combined = f"{f.get('title', '')} {f.get('description', '')}".lower()
+            if any(kw in combined for kw in renewal_keywords):
+                renewal_findings.append(f)
+                if "auto" in combined and "renew" in combined:
+                    auto_count += 1
+                elif "manual" in combined and "renew" in combined:
+                    manual_count += 1
+                if "escalat" in combined or "price increase" in combined or "cap" in combined:
+                    escalation_count += 1
+
+        return {
+            "total_renewal_findings": len(renewal_findings),
+            "auto_renew_count": auto_count,
+            "manual_renew_count": manual_count,
+            "escalation_cap_count": escalation_count,
+            "findings": renewal_findings[:20],
+        }
+
+    # --- Issue #121: Regulatory & Compliance Risk Assessment ---
+
+    @staticmethod
+    def _compute_compliance_analysis(
+        all_findings: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Compute regulatory and compliance risk metrics."""
+        dpa_keywords = ["dpa", "data processing", "data protection agreement"]
+        jurisdiction_keywords = [
+            "governing law",
+            "jurisdiction",
+            "governed by",
+            "choice of law",
+            "applicable law",
+        ]
+        regulatory_keywords = [
+            "regulatory",
+            "compliance",
+            "gdpr",
+            "ccpa",
+            "hipaa",
+            "sox",
+            "pci",
+            "fedramp",
+            "sanctions",
+            "export control",
+            "antitrust",
+        ]
+
+        dpa_findings: list[dict[str, Any]] = []
+        jurisdiction_findings: list[dict[str, Any]] = []
+        regulatory_findings: list[dict[str, Any]] = []
+        all_compliance: list[dict[str, Any]] = []
+
+        for f in all_findings:
+            combined = f"{f.get('title', '')} {f.get('description', '')}".lower()
+            cat = str(f.get("category", "")).lower()
+            matched = False
+            if any(kw in combined for kw in dpa_keywords) or cat in ("dpa",):
+                dpa_findings.append(f)
+                matched = True
+            if any(kw in combined for kw in jurisdiction_keywords) or cat in ("governing_law",):
+                jurisdiction_findings.append(f)
+                matched = True
+            if any(kw in combined for kw in regulatory_keywords) or cat in ("regulatory",):
+                regulatory_findings.append(f)
+                matched = True
+            if matched:
+                all_compliance.append(f)
+
+        return {
+            "dpa_findings_count": len(dpa_findings),
+            "jurisdiction_findings_count": len(jurisdiction_findings),
+            "regulatory_findings_count": len(regulatory_findings),
+            "total_compliance_findings": len(all_compliance),
+            "findings": all_compliance[:20],
+        }
+
+    # --- Issue #137: Legal Entity Distribution ---
+
+    @staticmethod
+    def _compute_entity_distribution(
+        all_findings: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Analyze legal entity distribution from findings."""
+        entity_keywords = [
+            "legal entity",
+            "entity",
+            "corp",
+            "llc",
+            "ltd",
+            "inc",
+            "subsidiary",
+            "affiliate",
+            "parent company",
+            "holding",
+            "legacy entity",
+            "migration",
+        ]
+        entity_findings: list[dict[str, Any]] = []
+        entities_mentioned: set[str] = set()
+
+        for f in all_findings:
+            combined = f"{f.get('title', '')} {f.get('description', '')}".lower()
+            cat = str(f.get("category", "")).lower()
+            if (
+                any(kw in combined for kw in entity_keywords)
+                or "governance" in cat
+                or "entity" in cat
+                or "corporate_struct" in cat
+            ):
+                entity_findings.append(f)
+                csn = f.get("_customer_safe_name", "")
+                if csn:
+                    entities_mentioned.add(csn)
+
+        return {
+            "total_entities_mentioned": len(entities_mentioned),
+            "entity_findings_count": len(entity_findings),
+            "findings": entity_findings[:20],
+        }
+
+    # --- Issue #147: Contract Date Timeline ---
+
+    _DATE_RE = re.compile(
+        r"\b(\d{4}[-/]\d{1,2}[-/]\d{1,2})\b"
+        r"|\b(\d{1,2}[-/]\d{1,2}[-/]\d{4})\b"
+        r"|\b(?:january|february|march|april|may|june|july|august|september|"
+        r"october|november|december)\s+\d{4}\b",
+        re.IGNORECASE,
+    )
+
+    @staticmethod
+    def _compute_contract_timeline(
+        all_findings: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Extract contract date mentions for timeline visualization."""
+        timeline_keywords = [
+            "expir",
+            "expire",
+            "renewal",
+            "term end",
+            "contract end",
+            "effective date",
+            "start date",
+            "end date",
+            "notice period",
+            "termination date",
+        ]
+        timeline_findings: list[dict[str, Any]] = []
+        date_count = 0
+
+        for f in all_findings:
+            combined = f"{f.get('title', '')} {f.get('description', '')}".lower()
+            if any(kw in combined for kw in timeline_keywords):
+                timeline_findings.append(f)
+                # Count date mentions
+                full_text = f"{f.get('title', '')} {f.get('description', '')}"
+                matches = ReportDataComputer._DATE_RE.findall(full_text)
+                date_count += len(matches)
+
+        return {
+            "date_mentions_count": date_count,
+            "expiry_findings_count": len(timeline_findings),
+            "findings": timeline_findings[:20],
+        }

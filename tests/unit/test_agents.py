@@ -445,7 +445,10 @@ class TestLegalAgent:
         assert "liability_caps" in LEGAL_FOCUS_AREAS
         assert "warranty" in LEGAL_FOCUS_AREAS
         assert "dispute_resolution" in LEGAL_FOCUS_AREAS
-        assert len(LEGAL_FOCUS_AREAS) == 10
+        assert "regulatory_compliance" in LEGAL_FOCUS_AREAS
+        assert "legal_entity" in LEGAL_FOCUS_AREAS
+        assert "contract_timeline" in LEGAL_FOCUS_AREAS
+        assert len(LEGAL_FOCUS_AREAS) == 13
 
     def test_tools_include_specialist_tools(self, tmp_project: Path, tmp_run_dir: Path, run_id: str) -> None:
         agent = LegalAgent(tmp_project, tmp_run_dir, run_id)

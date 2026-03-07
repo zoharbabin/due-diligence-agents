@@ -56,7 +56,17 @@ SPECIALIST_FOCUS: dict[AgentType, str] = {
         "- TfC on >10% revenue, <90d notice = P1\n"
         "- Termination for Cause (standard, mutual) = P3\n"
         "- Standard non-compete with reasonable scope = P3\n"
-        "- Missing NDA for active customer = P1; missing NDA for prospect = P3"
+        "- Missing NDA for active customer = P1; missing NDA for prospect = P3\n\n"
+        "REGULATORY & COMPLIANCE:\n"
+        "- Assess DPA coverage: identify customers with and without DPAs\n"
+        "- Map governing law/jurisdiction for each contract\n"
+        "- Identify industry-regulated customers (financial, healthcare, government)\n"
+        "- Flag cross-border data transfer issues (Schrems II, data residency)\n"
+        "- Note antitrust/competition filing requirements if applicable\n\n"
+        "LEGAL ENTITY DISTRIBUTION:\n"
+        "- Identify all legal entities referenced in contracts\n"
+        "- Flag contracts on legacy/acquired entities needing re-execution\n"
+        "- Note entity-specific assignment or consent restrictions"
     ),
     AgentType.FINANCE: (
         "Cross-reference every customer's contract values against the Revenue Cube and any "

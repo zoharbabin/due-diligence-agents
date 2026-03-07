@@ -48,6 +48,9 @@ VALID_CATEGORIES: set[str] = {
     "pricing_model",
     "expansion_contraction",
     "competitive_positioning",
+    # Wave 1 categories
+    "legal_entity",
+    "contract_timeline",
     # Red flag categories (Issue #125)
     "litigation",
     "ip_gap",
