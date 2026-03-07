@@ -51,7 +51,8 @@ class FinancialImpactRenderer(SectionRenderer):
     def _render_metrics_strip(self) -> str:
         """Render key financial metrics strip."""
         d = self.data
-        assert d is not None
+        if d is None:
+            return ""
         total = d.total_contracted_arr
         adjusted = d.risk_adjusted_arr
         exposure = total - adjusted
@@ -73,7 +74,8 @@ class FinancialImpactRenderer(SectionRenderer):
     def _render_waterfall(self) -> str:
         """Render revenue-at-risk waterfall chart."""
         d = self.data
-        assert d is not None
+        if d is None:
+            return ""
         total = d.total_contracted_arr
         if total <= 0:
             return ""
@@ -137,7 +139,8 @@ class FinancialImpactRenderer(SectionRenderer):
     def _render_treemap(self) -> str:
         """Render customer concentration treemap using CSS grid."""
         d = self.data
-        assert d is not None
+        if d is None:
+            return ""
         items = d.concentration_treemap
         if not items:
             return ""

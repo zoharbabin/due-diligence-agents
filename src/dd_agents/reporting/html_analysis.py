@@ -56,7 +56,7 @@ class CoCAnalysisRenderer(SectionRenderer):
 
         # Summary alert with subtype breakdown
         subtype_summary = ", ".join(f"{v} {k}" for k, v in sorted(subtype_counts.items()))
-        dominant = max(subtype_counts, key=subtype_counts.get) if subtype_counts else ""  # type: ignore[arg-type]
+        dominant = max(subtype_counts, key=lambda k: subtype_counts.get(k, 0)) if subtype_counts else ""
         if dominant in ("Consent-Required", "Auto-Termination"):
             guidance = "Initiate customer outreach for consent-dependent contracts."
         elif dominant == "Notification":

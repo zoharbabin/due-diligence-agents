@@ -9,7 +9,7 @@
 
 ## What We Are Building
 
-A Python application that performs forensic M&A due diligence on contract data rooms. It spawns 6 AI agents (Legal, Finance, Commercial, ProductTech, optional Judge, Reporting Lead), enforces a 35-step pipeline with 5 blocking gates (step 1 config validation is a precondition, not counted as a gate), validates outputs against Pydantic schemas, and produces a 14-sheet Excel report. The orchestrator is Python code. Agents are workers, not decision-makers.
+A Python application that performs forensic M&A due diligence on contract data rooms. It spawns 7 AI agents (Legal, Finance, Commercial, ProductTech, optional Judge, Executive Synthesis, Red Flag Scanner), enforces a 35-step pipeline with 5 blocking gates (step 1 config validation is a precondition, not counted as a gate), validates outputs against Pydantic schemas, and produces a board-ready HTML report + 14-sheet Excel report. The orchestrator is Python code. Agents are workers, not decision-makers.
 
 ## Core Principles
 
@@ -70,13 +70,14 @@ All 3,102 lines of domain knowledge -- extraction rules, severity taxonomy (P0-P
           +-----+------+                             |
                 |                                    |
           +-----v-----------+                        |
-          | Reporting Lead  |                        |
+          | Exec Synthesis  |                        |
+          | + Red Flag Scan |                        |
           | (merge, QA,     |                        |
-          |  Excel report)  |                        |
+          |  HTML + Excel)  |                        |
           +-----+-----------+                        |
                 |                                    |
                 v                                    |
-  Due_Diligence_Report_{run_id}.xlsx                 |
+  dd_report.html + dd_report.xlsx                    |
                                                      |
           +-----------------------------------------+
           |  Three-Tier Filesystem

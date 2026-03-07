@@ -933,7 +933,7 @@ class TestBaseAgentRunnerRun:
         # SDK unavailable -- agent produces empty output → error.
         assert result["status"] == "error"
         assert result["error"] is not None
-        assert result["elapsed_seconds"] >= 0
+        assert result["elapsed_seconds"] > 0
 
     @pytest.mark.asyncio
     async def test_run_handles_exception(self, tmp_project: Path, tmp_run_dir: Path, run_id: str) -> None:

@@ -93,7 +93,8 @@ class IncrementalClassifier:
 
             else:
                 # Both exist -- compare checksums
-                assert current is not None and prior is not None
+                if current is None or prior is None:  # pragma: no cover
+                    continue
                 current_cksum = _joined_checksum(current)
                 prior_cksum = _joined_checksum(prior)
 

@@ -272,8 +272,8 @@ class TestPass3FuzzyMatch:
         pp = preprocess_name("Something Totally Different Corp")
         match, score = _pass_3_fuzzy_match(pp, target_names, [])
         assert match is None
-        # Score should be >0 because there is *some* overlap
-        assert score >= 0
+        # Score should be >0 because there is *some* overlap, but below threshold
+        assert 0 < score < 80
 
 
 # =====================================================================

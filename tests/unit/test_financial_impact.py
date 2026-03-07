@@ -228,8 +228,7 @@ class TestRevenueAtRisk:
         merged = self._merged_with_revenue_and_findings()
         computer = ReportDataComputer()
         result = computer.compute(merged)
-        assert result.risk_adjusted_arr <= result.total_contracted_arr
-        assert result.risk_adjusted_arr >= 0.0
+        assert 0.0 < result.risk_adjusted_arr <= result.total_contracted_arr
 
     def test_revenue_data_coverage(self) -> None:
         """Coverage = customers with revenue / total customers."""
@@ -275,9 +274,8 @@ class TestRevenueAtRisk:
         }
         computer = ReportDataComputer()
         result = computer.compute(merged)
-        # Risk-adjusted ARR = total - exposure; must stay non-negative (no double-counting)
-        # With $500K ARR and two risk categories, exposure should be $500K (not $1M)
-        assert result.risk_adjusted_arr >= 0.0
+        # Risk-adjusted ARR = total - exposure; with $500K ARR and two risk categories,
+        # exposure should be $500K (not $1M due to double-counting prevention)
         assert result.risk_adjusted_arr == pytest.approx(0.0)  # 100% at risk
 
     def test_partial_coverage(self) -> None:

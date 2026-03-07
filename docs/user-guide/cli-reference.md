@@ -242,7 +242,7 @@ extraction readiness, issues, and recommendations.
 
 ---
 
-## `dd-agents export-pdf`
+## export-pdf
 
 Export an HTML DD report to a print-optimized PDF.
 
@@ -266,14 +266,14 @@ pip install weasyprint
 **Examples:**
 
 ```bash
-dd-agents export-pdf _dd/forensic-dd/runs/latest/report/dd-report.html
+dd-agents export-pdf _dd/forensic-dd/runs/latest/report/dd_report.html
 dd-agents export-pdf report.html --output board-package.pdf
 dd-agents export-pdf report.html --engine weasyprint
 ```
 
 ---
 
-## `dd-agents query`
+## query
 
 Ask natural-language questions about the DD report findings.
 

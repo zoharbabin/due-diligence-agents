@@ -1,6 +1,6 @@
 # Due Diligence Agent SDK
 
-> **Status**: Production-tested. Full 35-step pipeline, contract search, auto-config, and data room assessment commands operational with 2,257+ passing unit tests, mypy strict clean, ruff clean.
+> **Status**: Production-tested. Full 35-step pipeline, contract search, auto-config, data room assessment, NL query, and PDF export commands operational with 2,663 passing unit tests, mypy strict clean (152 source files), ruff clean.
 
 Standalone Python application for forensic M&A due diligence. Seven agents (4 specialists + optional Judge + Executive Synthesis + Red Flag Scanner) analyze contract data rooms, extract clauses, build governance graphs, detect gaps, and produce a board-ready HTML report + 14-sheet Excel report — all under deterministic Python orchestration with hook-enforced quality gates. Powered by `claude-agent-sdk` v0.1.39+ (Claude API or AWS Bedrock).
 
@@ -24,7 +24,9 @@ due-diligence-agents/
 │       ├── persistence/         # Three-tier storage, run management, incremental
 │       ├── hooks/               # SDK hooks (PreToolUse, PostToolUse, Stop)
 │       ├── search/              # Contract search: analyzer, Excel writer, runner
+│       ├── query/               # Natural language query engine (NL Q&A over findings)
 │       ├── tools/               # Custom MCP tools (validate_finding, etc.)
+│       ├── testing/             # Synthetic data room generator for E2E tests
 │       ├── utils/               # Naming conventions, constants, shared utilities
 │       └── vector_store/        # Optional ChromaDB integration
 ├── examples/
@@ -38,6 +40,7 @@ due-diligence-agents/
 ├── config/                      # Deal config templates, JSON schemas
 └── docs/
     ├── search-guide.md          # Search command guide for legal teams
+    ├── user-guide/              # User documentation (getting started, CLI reference, etc.)
     └── plan/                    # Implementation plan (24 spec files)
 ```
 
@@ -144,13 +147,27 @@ _dd/forensic-dd/
 │       │   ├── finance/
 │       │   └── merged/             # Deduplicated merged findings
 │       ├── report/
-│       │   └── dd_report.xlsx      # 14-sheet Excel report (main deliverable)
+│       │   ├── dd_report.html      # Board-ready interactive HTML report
+│       │   └── dd_report.xlsx      # 14-sheet Excel companion report
 │       ├── audit.json              # QA validation results
 │       └── metadata.json           # Run metadata
 └── entity_resolution_cache.json    # Entity matching cache (reused across runs)
 ```
 
-**Key files**: `dd_report.xlsx` is the main deliverable (14 sheets covering legal risks, commercial data, financials, governance graph, gaps). `audit.json` shows whether all validation gates passed.
+**Key files**: `dd_report.html` is the board-ready HTML report (executive summary, interactive dashboards, domain analysis, entity detail, methodology). `dd_report.xlsx` is the 14-sheet Excel companion. `audit.json` shows whether all validation gates passed.
+
+### Post-Run Commands
+
+```bash
+# Export HTML report to PDF
+dd-agents export-pdf _dd/forensic-dd/runs/latest/report/dd_report.html
+
+# Ask questions about findings
+dd-agents query --report _dd/forensic-dd/runs/latest -q "How many P0 findings?"
+
+# Interactive Q&A mode
+dd-agents query --report _dd/forensic-dd/runs/latest
+```
 
 ## Implementation Plan
 

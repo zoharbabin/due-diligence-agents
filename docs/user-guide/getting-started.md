@@ -30,7 +30,7 @@ pip install -e ".[glm-ocr]"    # GLM-OCR vision-language model (Apple Silicon)
 To install everything:
 
 ```bash
-pip install -e ".[dev,vector,ocr]"
+pip install -e ".[dev,vector,ocr,glm-ocr]"
 ```
 
 ### System Dependencies (optional)

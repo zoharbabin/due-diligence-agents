@@ -814,7 +814,7 @@ class TestQAAuditor:
         report = auditor.run_full_audit()
 
         assert report.summary.total_customers == len(CUSTOMERS)
-        assert report.summary.total_findings >= 0
+        assert report.summary.total_findings == len(CUSTOMERS)
 
 
 class TestQAAuditorDeferredChecks:

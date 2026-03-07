@@ -34,7 +34,7 @@ class TestSaaSMetricsComputation:
         merged = {"a": _customer("A")}
         computer = ReportDataComputer()
         result = computer.compute(merged)
-        assert result.saas_metrics.get("total_customers", 0) >= 0
+        assert result.saas_metrics.get("total_customers", 0) == 1
 
     def test_customer_count(self) -> None:
         merged = {
