@@ -8,8 +8,6 @@ Renders:
 
 from __future__ import annotations
 
-import html
-
 from dd_agents.reporting.html_base import SectionRenderer
 from dd_agents.reporting.html_base import fmt_currency as _fmt_currency
 
@@ -114,7 +112,7 @@ class FinancialImpactRenderer(SectionRenderer):
 
             parts.append(
                 "<div class='waterfall-row'>"
-                f"<span class='waterfall-label'>{html.escape(label)}</span>"
+                f"<span class='waterfall-label'>{self.escape(label)}</span>"
                 "<div class='waterfall-bar-container'>"
                 f"<div class='waterfall-bar waterfall-bar--risk' "
                 f"style='width:{pct:.1f}%;margin-left:{offset_pct:.1f}%'>"
@@ -158,7 +156,7 @@ class FinancialImpactRenderer(SectionRenderer):
 
         for item in items[:20]:  # Cap at 20 for readability
             pct = item.get("pct", 0)
-            name = html.escape(str(item.get("display_name", "")))
+            name = self.escape(str(item.get("display_name", "")))
             revenue = _fmt_currency(item.get("revenue", 0))
             risk = item.get("risk_level", "low")
             color = risk_colors.get(risk, risk_colors["low"])

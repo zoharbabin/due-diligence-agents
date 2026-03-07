@@ -97,6 +97,14 @@ class TestFindingsCsvExport:
         assert row["entity"].startswith("\t@")
         assert row["description"].startswith("\t-")
 
+    def test_csv_injection_pipe_and_percent(self) -> None:
+        from dd_agents.reporting.export import _sanitize_csv_field
+
+        assert _sanitize_csv_field("|pipe command") == "\t|pipe command"
+        assert _sanitize_csv_field("%macro") == "\t%macro"
+        assert _sanitize_csv_field("safe text") == "safe text"
+        assert _sanitize_csv_field("") == ""
+
 
 class TestRiskSummaryExport:
     def test_risk_summary_structure(self) -> None:

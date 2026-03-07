@@ -126,7 +126,7 @@ class TestSaaSMetricsEnhanced:
             }
         }
         result = ReportDataComputer().compute(merged)
-        assert result.saas_metrics["nrr_estimate"] >= 70.0
+        assert result.saas_metrics["nrr_estimate"] == 70.0
 
     def test_benchmarks_present(self) -> None:
         """Benchmarks dict should contain top_quartile, median, concerning."""
@@ -450,7 +450,7 @@ class TestCrossDomainRisks:
         assert len(result.cross_domain_risks) == 1
         risk = result.cross_domain_risks[0]
         assert risk["entity"] == "multi_risk"
-        assert risk["domain_count"] >= 3
+        assert risk["domain_count"] == 3
 
     def test_no_cross_domain_for_single_domain(self) -> None:
         """Entity with findings in only 1 domain should not appear."""
@@ -711,3 +711,42 @@ class TestRendererKeyAlignment:
         if cats:
             assert "category" in cats[0]
             assert "exposure" in cats[0]
+
+
+class TestFmtCurrency:
+    """Verify fmt_currency handles all edge cases."""
+
+    def test_millions(self) -> None:
+        from dd_agents.reporting.html_base import fmt_currency
+
+        assert fmt_currency(5_000_000.0) == "$5.0M"
+
+    def test_thousands(self) -> None:
+        from dd_agents.reporting.html_base import fmt_currency
+
+        assert fmt_currency(50_000.0) == "$50K"
+
+    def test_small(self) -> None:
+        from dd_agents.reporting.html_base import fmt_currency
+
+        assert fmt_currency(500.0) == "$500"
+
+    def test_zero(self) -> None:
+        from dd_agents.reporting.html_base import fmt_currency
+
+        assert fmt_currency(0.0) == "$0"
+
+    def test_negative_millions(self) -> None:
+        from dd_agents.reporting.html_base import fmt_currency
+
+        assert fmt_currency(-2_000_000.0) == "-$2.0M"
+
+    def test_negative_thousands(self) -> None:
+        from dd_agents.reporting.html_base import fmt_currency
+
+        assert fmt_currency(-5_000.0) == "-$5K"
+
+    def test_negative_small(self) -> None:
+        from dd_agents.reporting.html_base import fmt_currency
+
+        assert fmt_currency(-99.0) == "-$99"

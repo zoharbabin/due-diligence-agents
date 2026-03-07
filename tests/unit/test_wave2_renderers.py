@@ -208,6 +208,24 @@ class TestRenewalRenderer:
         r = RenewalAnalysisRenderer(data, {})
         assert r.render() == ""
 
+    def test_xss_escaping_findings(self) -> None:
+        data = _make_data(
+            renewal_analysis={
+                "total_renewal_findings": 1,
+                "auto_renew_count": 0,
+                "manual_renew_count": 0,
+                "escalation_cap_count": 0,
+                "evergreen_count": 0,
+                "expiry_distribution": {"<img src=x>": 1},
+                "findings": [_make_finding(title="<script>alert(1)</script>")],
+            }
+        )
+        r = RenewalAnalysisRenderer(data, {})
+        html = r.render()
+        assert "<script>" not in html
+        assert "&lt;script&gt;" in html
+        assert "<img src=x>" not in html
+
     def test_evergreen_and_expiry_distribution(self) -> None:
         data = _make_data(
             renewal_analysis={
@@ -238,6 +256,23 @@ class TestComplianceRenderer:
         data = _make_data()
         r = ComplianceRenderer(data, {})
         assert r.render() == ""
+
+    def test_xss_escaping_jurisdiction(self) -> None:
+        data = _make_data(
+            compliance_analysis={
+                "total_compliance_findings": 1,
+                "dpa_findings_count": 0,
+                "jurisdiction_findings_count": 1,
+                "regulatory_findings_count": 0,
+                "dpa_coverage_pct": 0.0,
+                "top_jurisdictions": [{"jurisdiction": "<script>xss</script>", "count": 1}],
+                "findings": [_make_finding(title="<img onerror=alert(1)>")],
+            }
+        )
+        r = ComplianceRenderer(data, {})
+        html = r.render()
+        assert "<script>" not in html
+        assert "&lt;script&gt;" in html
 
     def test_dpa_coverage_and_jurisdictions(self) -> None:
         data = _make_data(
@@ -272,6 +307,21 @@ class TestEntityRenderer:
         data = _make_data()
         r = EntityDistributionRenderer(data, {})
         assert r.render() == ""
+
+    def test_xss_escaping_entity_names(self) -> None:
+        data = _make_data(
+            entity_distribution={
+                "entity_findings_count": 1,
+                "total_entities_mentioned": 1,
+                "migration_risk_score": "low",
+                "entity_names": ["<script>alert(1)</script>"],
+                "findings": [_make_finding(title="<img onerror=x>")],
+            }
+        )
+        r = EntityDistributionRenderer(data, {})
+        html = r.render()
+        assert "<script>" not in html
+        assert "&lt;script&gt;" in html
 
     def test_migration_risk_and_names(self) -> None:
         data = _make_data(
@@ -315,6 +365,21 @@ class TestTimelineRenderer:
         data = _make_data()
         r = TimelineRenderer(data, {})
         assert r.render() == ""
+
+    def test_xss_escaping_dates(self) -> None:
+        data = _make_data(
+            contract_timeline={
+                "expiry_findings_count": 1,
+                "date_mentions_count": 1,
+                "earliest_expiry": "<script>alert(1)</script>",
+                "latest_expiry": "safe",
+                "cliff_risk": False,
+                "findings": [_make_finding(title="<img onerror=x>")],
+            }
+        )
+        r = TimelineRenderer(data, {})
+        html = r.render()
+        assert "<script>" not in html
 
     def test_cliff_risk_and_dates(self) -> None:
         data = _make_data(
@@ -429,6 +494,24 @@ class TestIPRiskRenderer:
         data = _make_data()
         r = IPRiskRenderer(data, {})
         assert r.render() == ""
+
+    def test_xss_escaping_findings(self) -> None:
+        data = _make_data()
+        object.__setattr__(
+            data,
+            "ip_risk_analysis",
+            {
+                "total_ip_findings": 1,
+                "ip_ownership_gaps": 0,
+                "open_source_count": 0,
+                "license_risk_count": 0,
+                "findings": [_make_finding(title="<script>alert(1)</script>")],
+            },
+        )
+        r = IPRiskRenderer(data, {})
+        html = r.render()
+        assert "<script>" not in html
+        assert "&lt;script&gt;" in html
 
     def test_non_empty_renders_section(self) -> None:
         data = _make_data()

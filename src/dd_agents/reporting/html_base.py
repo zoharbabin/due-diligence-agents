@@ -80,11 +80,13 @@ TIMELINE_COLORS: dict[str, str] = {
 
 def fmt_currency(amount: float) -> str:
     """Format a dollar amount for display (shared across renderers)."""
-    if amount >= 1_000_000:
-        return f"${amount / 1_000_000:.1f}M"
-    if amount >= 1_000:
-        return f"${amount / 1_000:.0f}K"
-    return f"${amount:,.0f}"
+    sign = "-" if amount < 0 else ""
+    abs_amt = abs(amount)
+    if abs_amt >= 1_000_000:
+        return f"{sign}${abs_amt / 1_000_000:.1f}M"
+    if abs_amt >= 1_000:
+        return f"{sign}${abs_amt / 1_000:.0f}K"
+    return f"{sign}${abs_amt:,.0f}"
 
 
 # ---------------------------------------------------------------------------
