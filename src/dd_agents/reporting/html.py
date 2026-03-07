@@ -44,6 +44,8 @@ from dd_agents.reporting.html_executive import ExecutiveSummaryRenderer
 from dd_agents.reporting.html_financial import FinancialImpactRenderer
 from dd_agents.reporting.html_findings_table import FindingsTableRenderer
 from dd_agents.reporting.html_gaps import GapRenderer
+from dd_agents.reporting.html_governance import GovernanceGraphRenderer
+from dd_agents.reporting.html_integration_playbook import IntegrationPlaybookRenderer
 from dd_agents.reporting.html_ip_risk import IPRiskRenderer
 from dd_agents.reporting.html_liability import LiabilityRenderer
 from dd_agents.reporting.html_methodology import MethodologyRenderer
@@ -203,6 +205,10 @@ class HTMLReportGenerator:
             CustomerHealthRenderer(computed, merged_data, renderer_config),
             # 15. Recommendations
             RecommendationsRenderer(computed, merged_data, renderer_config),
+            # 15b. Post-Close Integration Playbook (Issue #117)
+            IntegrationPlaybookRenderer(computed, merged_data, renderer_config),
+            # 15c. Governance Graph Visualization (Issue #142)
+            GovernanceGraphRenderer(computed, merged_data, renderer_config),
             # --- Appendix ---
             # 16. Missing or Incomplete Data (moved from main body to appendix)
             GapRenderer(computed, merged_data, renderer_config),

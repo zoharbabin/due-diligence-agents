@@ -918,6 +918,8 @@ def render_nav_bar(section_rag: dict[str, str] | None = None) -> str:
         "<div class='toc-group'>"
         "<div class='toc-group-label'>Actions</div>"
         "<a href='#sec-recommendations'>Recommendations</a>"
+        "<a href='#sec-integration'>Integration Playbook</a>"
+        "<a href='#sec-gov-graph'>Governance Graph</a>"
         "</div>"
         # Appendix (collapsed by default)
         "<div class='toc-group'>"

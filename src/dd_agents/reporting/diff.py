@@ -273,3 +273,69 @@ class ReportDiffBuilder:
                 except Exception:  # noqa: BLE001
                     logger.warning("Failed to load gaps from %s", fp)
         return result
+
+
+# ---------------------------------------------------------------------------
+# Issue #126 enhancement: Multi-run trend tracking
+# ---------------------------------------------------------------------------
+
+
+class ReportTrendTracker:
+    """Track risk trajectory across multiple pipeline runs.
+
+    Computes whether the deal risk posture is improving, stable, or worsening
+    based on weighted severity counts across snapshots.
+    """
+
+    def __init__(self) -> None:
+        self.snapshots: list[dict[str, Any]] = []
+
+    def add_snapshot(
+        self,
+        run_id: str,
+        severity_counts: dict[str, int],
+        total_entities: int = 0,
+    ) -> None:
+        """Record a severity snapshot from a pipeline run."""
+        self.snapshots.append(
+            {
+                "run_id": run_id,
+                "severity_counts": dict(severity_counts),
+                "total_entities": total_entities,
+            }
+        )
+
+    def compute_trajectory(self) -> str:
+        """Compute risk trajectory: 'improving', 'stable', or 'worsening'.
+
+        Uses weighted severity scores (P0=10, P1=5, P2=2, P3=1).
+        Compares first vs last snapshot.
+        """
+        if len(self.snapshots) < 2:
+            return "stable"
+
+        weights = {"P0": 10, "P1": 5, "P2": 2, "P3": 1}
+
+        def _weighted(counts: dict[str, int]) -> float:
+            return sum(counts.get(k, 0) * v for k, v in weights.items())
+
+        first_score = _weighted(self.snapshots[0]["severity_counts"])
+        last_score = _weighted(self.snapshots[-1]["severity_counts"])
+
+        # 10% threshold for change detection
+        if first_score == 0:
+            return "worsening" if last_score > 0 else "stable"
+
+        change_pct = (last_score - first_score) / first_score * 100
+        if change_pct <= -10:
+            return "improving"
+        if change_pct >= 10:
+            return "worsening"
+        return "stable"
+
+    def to_summary(self) -> dict[str, Any]:
+        """Export trend data as a dict for JSON serialization."""
+        return {
+            "trajectory": self.compute_trajectory(),
+            "snapshots": self.snapshots,
+        }
