@@ -1439,7 +1439,6 @@ class ReportDataComputer:
             topic_findings,
             total_contracted_arr,
             risk_waterfall,
-            len(merged_data),
         )
 
         # --- Issue #116: Valuation bridge ---
@@ -2872,7 +2871,6 @@ class ReportDataComputer:
         topic_findings: dict[str, list[dict[str, Any]]],
         total_arr: float,
         risk_waterfall: dict[str, dict[str, Any]],
-        total_entities: int,
     ) -> dict[str, Any]:
         """Compute post-close integration playbook with churn risk model."""
         if total_arr <= 0 and not material_findings:

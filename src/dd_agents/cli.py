@@ -140,12 +140,16 @@ def run(
         deal_config.agent_models.profile = model_profile
     if model_overrides:
         for override in model_overrides:
-            if "=" in override:
-                agent_name, model_id = override.split("=", 1)
-                deal_config.agent_models.overrides[agent_name.strip()] = model_id.strip()
-            else:
+            if "=" not in override:
                 _print_error("Invalid Option", f"--model-override must be agent=model format, got: {override}")
                 raise SystemExit(1)
+            agent_name, model_id = override.split("=", 1)
+            agent_name = agent_name.strip()
+            model_id = model_id.strip()
+            if not agent_name or not model_id:
+                _print_error("Invalid Option", f"--model-override requires non-empty agent and model, got: {override}")
+                raise SystemExit(1)
+            deal_config.agent_models.overrides[agent_name] = model_id
 
     _print_config_summary(deal_config)
 

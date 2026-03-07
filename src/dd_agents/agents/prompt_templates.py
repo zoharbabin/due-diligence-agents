@@ -21,41 +21,89 @@ PROMPT_TEMPLATES: dict[str, dict[str, Any]] = {
     "change_of_control": {
         "name": "Change of Control Analysis",
         "description": (
-            "Analyze contracts for consent and notice requirements triggered "
-            "by a change of control or ownership of the service provider."
+            "Analyze customer contracts for consent and notice requirements triggered specifically "
+            "by a change of control or ownership of the service provider. These prompts are designed "
+            "to exclude assignment/transfer-only provisions that would not be triggered under a share "
+            "acquisition."
         ),
         "columns": [
             {
-                "name": "Consent Required (CoC)",
+                "name": "Consent Required (Change of Control)",
                 "prompt": (
                     "Does this agreement require consent, approval, or waiver from the customer "
                     "specifically upon a change of control or change in ownership of the service "
-                    "provider (sale of shares, merger, amalgamation, or acquisition)? "
-                    "Do NOT include consent requirements triggered only by assignment or transfer. "
-                    'If consent is required, state "Yes". If not, state "No". '
-                    "Provide the section reference and page number."
+                    "provider (such as a sale of shares, merger, amalgamation, or acquisition)? "
+                    "Do NOT include consent requirements that are triggered only by assignment or "
+                    "transfer of the agreement itself. Focus exclusively on provisions that are "
+                    "triggered by a change in who owns or controls the contracting party, not by "
+                    "transfer of contractual rights or obligations. "
+                    'If consent is required, state "Yes". If consent is not required, state "No". '
+                    "Pin point the section reference (if available) and page number in the agreement "
+                    "in your response."
                 ),
             },
             {
                 "name": "Consent Clause Summary",
                 "prompt": (
-                    "If this agreement requires consent upon a change of control, summarize the "
-                    "relevant clause and provide the section reference and page number."
+                    "If this agreement requires consent upon a change of control or change in "
+                    "ownership of the service provider (such as a sale of shares, merger, "
+                    "amalgamation, or acquisition), summarize the relevant clause that creates "
+                    "this requirement and provide the section reference and page number where it "
+                    "appears. Do not include clauses that only require consent for assignment or "
+                    "transfer of the agreement itself."
                 ),
             },
             {
-                "name": "Notice Required (CoC)",
+                "name": "Notice Required (Change of Control)",
                 "prompt": (
-                    "Does this agreement require notice to the customer upon a change of control? "
-                    'State "Yes" or "No" with section reference and page number.'
+                    "Does this agreement require notice to the customer specifically upon a change "
+                    "of control or change in ownership of the service provider (such as a sale of "
+                    "shares, merger, amalgamation, or acquisition)? Do NOT include notice requirements "
+                    "that are triggered only by assignment or transfer of the agreement itself. "
+                    'If notice is required, state "Yes". If notice is not required, state "No". '
+                    "Pin point the section reference (if available) and page number in the agreement "
+                    "in your response."
                 ),
             },
             {
-                "name": "Termination Right on CoC",
+                "name": "Notice Clause Summary",
                 "prompt": (
-                    "Does the customer have a right to terminate the agreement specifically upon "
-                    "a change of control event? If yes, describe the termination right, any cure "
-                    "period, and consequences. Provide section reference and page number."
+                    "If this agreement requires notice upon a change of control or change in "
+                    "ownership of the service provider (such as a sale of shares, merger, "
+                    "amalgamation, or acquisition), summarize the relevant clause that creates "
+                    "this requirement and provide the section reference and page number where it "
+                    "appears. Do not include clauses that only require notice for assignment or "
+                    "transfer of the agreement itself."
+                ),
+            },
+            {
+                "name": "Termination for Convenience",
+                "prompt": (
+                    "Does this agreement grant the customer a right to terminate without cause "
+                    "(termination for convenience, termination at will, or termination in the "
+                    "customer's sole/absolute discretion) with or without a notice period? This is "
+                    "critical for M&A due diligence because a termination-for-convenience right "
+                    "allows the customer to exit the contract at any time regardless of whether a "
+                    "change of control occurs, creating significant revenue risk for an acquirer. "
+                    'If such a right exists, state "Yes" and specify: (1) who holds the right '
+                    "(customer only, or mutual), (2) the required notice period (if any), "
+                    "(3) whether any termination fee, penalty, or wind-down payment applies, and "
+                    "(4) the section reference and page number. If no termination-for-convenience "
+                    'right exists, state "No".'
+                ),
+            },
+            {
+                "name": "Termination for Convenience Summary",
+                "prompt": (
+                    "If this agreement grants the customer a right to terminate without cause "
+                    "(termination for convenience, termination at will, or termination in the "
+                    "customer's sole/absolute discretion), summarize the relevant clause including: "
+                    "who holds the right, the notice period required, any termination fees or "
+                    "penalties, and any wind-down or transition obligations. Provide the section "
+                    "reference and page number where the clause appears. Also note if the termination "
+                    "right is asymmetric (customer-only vs. mutual) and whether it could be exercised "
+                    "in response to a change of control even though it is not explicitly triggered "
+                    "by one."
                 ),
             },
         ],
@@ -72,22 +120,22 @@ PROMPT_TEMPLATES: dict[str, dict[str, Any]] = {
                 "prompt": (
                     "Does this agreement grant the customer a right to terminate without cause "
                     "(termination for convenience, at will, or in sole discretion)? "
-                    'State "Yes" or "No". Provide section reference and page number.'
+                    'State "Yes" or "No". Provide the section reference and page number.'
                 ),
             },
             {
                 "name": "TfC Details",
                 "prompt": (
                     "If a termination-for-convenience right exists, specify: (1) who holds the right, "
-                    "(2) notice period required, (3) any termination fee or penalty, "
-                    "(4) wind-down obligations. Provide section reference."
+                    "(2) the notice period required, (3) any termination fee or penalty, "
+                    "(4) wind-down obligations. Provide the section reference and page number."
                 ),
             },
             {
                 "name": "Mutual or One-Sided",
                 "prompt": (
                     "Is the termination-for-convenience right mutual (both parties) or one-sided "
-                    "(customer only)? Provide the section reference."
+                    "(customer only)? Provide the section reference and page number."
                 ),
             },
         ],
@@ -103,28 +151,31 @@ PROMPT_TEMPLATES: dict[str, dict[str, Any]] = {
                 "prompt": (
                     "Does this agreement include a Data Processing Agreement (DPA) or data "
                     "processing addendum? State 'Yes' or 'No'. If yes, identify the document "
-                    "or section reference."
+                    "or section reference and page number."
                 ),
             },
             {
                 "name": "Regulatory Framework",
                 "prompt": (
-                    "Which data protection regulations are referenced (GDPR, CCPA, HIPAA, etc.)? "
-                    "List all mentioned frameworks with section references."
+                    "Does this agreement reference any data protection regulations (GDPR, CCPA, "
+                    "HIPAA, etc.)? List all mentioned frameworks with section references and "
+                    "page numbers."
                 ),
             },
             {
                 "name": "Data Transfer Mechanisms",
                 "prompt": (
-                    "Are there cross-border data transfer provisions (SCCs, BCRs, adequacy decisions)? "
-                    "Summarize the mechanism and provide section reference."
+                    "Does this agreement include cross-border data transfer provisions (SCCs, BCRs, "
+                    "adequacy decisions)? If yes, summarize the mechanism and provide the section "
+                    "reference and page number."
                 ),
             },
             {
                 "name": "Breach Notification",
                 "prompt": (
-                    "What are the data breach notification obligations? Specify the notification "
-                    "timeline, who must be notified, and section reference."
+                    "Does this agreement specify data breach notification obligations? If yes, "
+                    "state the notification timeline, who must be notified, and provide the "
+                    "section reference and page number."
                 ),
             },
         ],
@@ -139,22 +190,23 @@ PROMPT_TEMPLATES: dict[str, dict[str, Any]] = {
                 "name": "Contract Term",
                 "prompt": (
                     "What is the initial contract term (start date, end date, duration)? "
-                    "Provide section reference and page number."
+                    "Provide the section reference and page number."
                 ),
             },
             {
                 "name": "Auto-Renewal",
                 "prompt": (
-                    "Does the contract auto-renew? If yes, what is the renewal period "
-                    "and the notice period required to prevent renewal? "
-                    "Provide section reference."
+                    "Does the contract auto-renew? If yes, state the renewal period "
+                    "and the notice period required to prevent renewal. "
+                    "Provide the section reference and page number."
                 ),
             },
             {
                 "name": "Early Termination",
                 "prompt": (
                     "Are there early termination provisions beyond termination for cause? "
-                    "Describe any penalties or wind-down obligations. Provide section reference."
+                    "If yes, describe any penalties or wind-down obligations. "
+                    "Provide the section reference and page number."
                 ),
             },
         ],
@@ -166,30 +218,34 @@ PROMPT_TEMPLATES: dict[str, dict[str, Any]] = {
             {
                 "name": "IP Ownership",
                 "prompt": (
-                    "Who owns intellectual property created during the engagement? "
-                    "Describe the IP ownership allocation (customer owns, vendor owns, joint). "
-                    "Provide section reference."
+                    "Does this agreement address intellectual property ownership for work "
+                    "created during the engagement? If yes, describe the IP ownership allocation "
+                    "(customer owns, vendor owns, joint). Provide the section reference and "
+                    "page number."
                 ),
             },
             {
                 "name": "License Scope",
                 "prompt": (
-                    "What license rights are granted? Describe scope (exclusive/non-exclusive, "
-                    "territory, field of use, sublicensing rights). Provide section reference."
+                    "Does this agreement grant license rights? If yes, describe scope "
+                    "(exclusive/non-exclusive, territory, field of use, sublicensing rights). "
+                    "Provide the section reference and page number."
                 ),
             },
             {
                 "name": "Source Code Access",
                 "prompt": (
-                    "Are there source code escrow or access provisions? If yes, describe "
-                    "the trigger conditions and section reference."
+                    "Does this agreement include source code escrow or access provisions? "
+                    "If yes, describe the trigger conditions. Provide the section reference "
+                    "and page number."
                 ),
             },
             {
                 "name": "Assignment of IP",
                 "prompt": (
-                    "Can IP rights be assigned or transferred? Are there restrictions "
-                    "on assignment upon change of control? Provide section reference."
+                    "Can IP rights be assigned or transferred under this agreement? Are there "
+                    "restrictions on assignment upon change of control? Provide the section "
+                    "reference and page number."
                 ),
             },
         ],
@@ -205,7 +261,7 @@ PROMPT_TEMPLATES: dict[str, dict[str, Any]] = {
                 "prompt": (
                     "Is there a cap on liability? If yes, state the cap amount or formula "
                     "(e.g., 12 months of fees), and whether it applies to all claims or "
-                    "excludes certain categories. Provide section reference."
+                    "excludes certain categories. Provide the section reference and page number."
                 ),
             },
             {
@@ -213,14 +269,15 @@ PROMPT_TEMPLATES: dict[str, dict[str, Any]] = {
                 "prompt": (
                     "Are any liabilities excluded from the cap (e.g., IP infringement, "
                     "data breach, confidentiality breach)? List all uncapped categories "
-                    "with section references."
+                    "with section references and page numbers."
                 ),
             },
             {
                 "name": "Indemnification Obligations",
                 "prompt": (
-                    "What are the indemnification obligations? Summarize who indemnifies whom, "
-                    "for what claims, and any procedural requirements. Provide section reference."
+                    "Does this agreement include indemnification obligations? If yes, summarize "
+                    "who indemnifies whom, for what claims, and any procedural requirements. "
+                    "Provide the section reference and page number."
                 ),
             },
         ],
@@ -232,24 +289,25 @@ PROMPT_TEMPLATES: dict[str, dict[str, Any]] = {
             {
                 "name": "SLA Commitments",
                 "prompt": (
-                    "What service level commitments exist (uptime %, response time, "
-                    "resolution time)? List all SLA metrics with target values "
-                    "and section references."
+                    "Does this agreement include service level commitments (uptime %, response time, "
+                    "resolution time)? If yes, list all SLA metrics with target values. "
+                    "Provide section references and page numbers."
                 ),
             },
             {
                 "name": "SLA Remedies",
                 "prompt": (
-                    "What remedies apply for SLA failures (service credits, termination right, "
-                    "fee reduction)? Describe the remedy structure and section reference."
+                    "Does this agreement specify remedies for SLA failures (service credits, "
+                    "termination right, fee reduction)? If yes, describe the remedy structure. "
+                    "Provide the section reference and page number."
                 ),
             },
             {
                 "name": "Performance Benchmarks",
                 "prompt": (
-                    "Are there performance benchmarking or MFN (most favored nation) clauses? "
-                    "Describe any right to benchmark pricing or service against competitors. "
-                    "Provide section reference."
+                    "Does this agreement include performance benchmarking or MFN (most favored "
+                    "nation) clauses? If yes, describe the right to benchmark pricing or service "
+                    "against competitors. Provide the section reference and page number."
                 ),
             },
         ],
@@ -262,21 +320,106 @@ PROMPT_TEMPLATES: dict[str, dict[str, Any]] = {
                 "name": "Exclusivity Provision",
                 "prompt": (
                     "Does this agreement grant exclusivity to either party? If yes, describe "
-                    "the scope (territory, field, duration) and section reference."
+                    "the scope (territory, field, duration). Provide the section reference "
+                    "and page number."
                 ),
             },
             {
                 "name": "Non-Compete Clause",
                 "prompt": (
-                    "Are there non-compete or non-solicitation restrictions? Describe the scope, "
-                    "duration, and geographic limitations. Provide section reference."
+                    "Does this agreement include non-compete or non-solicitation restrictions? "
+                    "If yes, describe the scope, duration, and geographic limitations. "
+                    "Provide the section reference and page number."
                 ),
             },
             {
                 "name": "Preferred Vendor Status",
                 "prompt": (
                     "Does the customer designate the vendor as a preferred or exclusive supplier? "
-                    "Describe the arrangement and section reference."
+                    "If yes, describe the arrangement. Provide the section reference and page number."
+                ),
+            },
+        ],
+    },
+    "pricing": {
+        "name": "Pricing & Fee Structure Analysis",
+        "description": (
+            "Analyze pricing models, fee structures, discount provisions, and "
+            "MFN clauses across the contract portfolio."
+        ),
+        "columns": [
+            {
+                "name": "Pricing Model",
+                "prompt": (
+                    "Does this agreement specify a pricing model? If yes, identify the type "
+                    "(per-user, per-unit, tiered, flat-rate, consumption-based, hybrid). "
+                    "State the pricing amounts or rates. Provide the section reference and "
+                    "page number."
+                ),
+            },
+            {
+                "name": "Discount or Concession",
+                "prompt": (
+                    "Does this agreement include any discounts, concessions, or preferential "
+                    "pricing? If yes, state the discount percentage or amount and any conditions "
+                    "for the discount. Provide the section reference and page number."
+                ),
+            },
+            {
+                "name": "Price Escalation",
+                "prompt": (
+                    "Does this agreement include price escalation or annual increase provisions? "
+                    "If yes, state the escalation mechanism (CPI, fixed %, cap). "
+                    "Provide the section reference and page number."
+                ),
+            },
+            {
+                "name": "MFN Clause",
+                "prompt": (
+                    "Does this agreement include a Most Favored Nation (MFN) or best-price "
+                    "guarantee clause? If yes, describe the scope and benchmarking mechanism. "
+                    "Provide the section reference and page number."
+                ),
+            },
+        ],
+    },
+    "confidentiality": {
+        "name": "Confidentiality & NDA Analysis",
+        "description": (
+            "Assess confidentiality obligations, NDA coverage, and information "
+            "handling restrictions across customer contracts."
+        ),
+        "columns": [
+            {
+                "name": "Confidentiality Provision",
+                "prompt": (
+                    "Does this agreement include confidentiality or non-disclosure obligations? "
+                    'State "Yes" or "No". If yes, identify whether it is mutual or one-sided. '
+                    "Provide the section reference and page number."
+                ),
+            },
+            {
+                "name": "Confidentiality Term",
+                "prompt": (
+                    "Does this agreement specify a duration for confidentiality obligations? "
+                    "If yes, state the term (e.g., 2 years after termination, perpetual). "
+                    "Provide the section reference and page number."
+                ),
+            },
+            {
+                "name": "Exceptions",
+                "prompt": (
+                    "Does this agreement list exceptions to confidentiality (e.g., publicly "
+                    "available information, independently developed, required by law)? "
+                    "If yes, list all exceptions. Provide the section reference and page number."
+                ),
+            },
+            {
+                "name": "Surviving Obligations",
+                "prompt": (
+                    "Do confidentiality obligations survive termination or expiration of the "
+                    'agreement? State "Yes" or "No". If yes, state the survival period. '
+                    "Provide the section reference and page number."
                 ),
             },
         ],

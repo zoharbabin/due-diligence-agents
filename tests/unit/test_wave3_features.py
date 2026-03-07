@@ -16,7 +16,7 @@ class TestSearchPromptTemplates:
     def test_template_registry_has_entries(self) -> None:
         from dd_agents.agents.prompt_templates import PROMPT_TEMPLATES
 
-        assert len(PROMPT_TEMPLATES) == 8
+        assert len(PROMPT_TEMPLATES) == 10
 
     def test_template_structure(self) -> None:
         from dd_agents.agents.prompt_templates import PROMPT_TEMPLATES
@@ -47,6 +47,8 @@ class TestSearchPromptTemplates:
         names = list_templates()
         assert "change_of_control" in names
         assert "termination_for_convenience" in names
+        assert "pricing" in names
+        assert "confidentiality" in names
 
     def test_export_template_to_json(self) -> None:
         from dd_agents.agents.prompt_templates import export_template
@@ -64,6 +66,39 @@ class TestSearchPromptTemplates:
             result = export_template(name)
             parsed = json.loads(result)
             assert isinstance(parsed["columns"], list)
+
+    def test_export_template_raises_for_unknown(self) -> None:
+        import pytest
+
+        from dd_agents.agents.prompt_templates import export_template
+
+        with pytest.raises(KeyError):
+            export_template("nonexistent")
+
+    def test_all_templates_have_description(self) -> None:
+        from dd_agents.agents.prompt_templates import PROMPT_TEMPLATES
+
+        for name, tpl in PROMPT_TEMPLATES.items():
+            assert "description" in tpl, f"Template {name} missing 'description'"
+            assert len(tpl["description"]) > 10, f"Template {name} has short description"
+
+    def test_no_duplicate_column_names(self) -> None:
+        from dd_agents.agents.prompt_templates import PROMPT_TEMPLATES
+
+        for name, tpl in PROMPT_TEMPLATES.items():
+            col_names = [c["name"] for c in tpl["columns"]]
+            assert len(col_names) == len(set(col_names)), f"Template {name} has duplicate column names"
+
+    def test_coc_template_matches_example_format(self) -> None:
+        """CoC template should have 6 columns matching examples/search/change_of_control.json."""
+        from dd_agents.agents.prompt_templates import get_template
+
+        tpl = get_template("change_of_control")
+        assert tpl is not None
+        assert len(tpl["columns"]) == 6
+        col_names = [c["name"] for c in tpl["columns"]]
+        assert "Consent Required (Change of Control)" in col_names
+        assert "Termination for Convenience" in col_names
 
 
 # =====================================================================
@@ -146,6 +181,47 @@ class TestGovernanceGraphRenderer:
         # The user-provided filename should be escaped; mermaid script tag is legitimate
         assert "<script>alert(1)</script>" not in html
         assert "&lt;script&gt;" in html or "alert_1_" in html
+
+    def test_empty_edges_list_returns_empty(self) -> None:
+        from dd_agents.reporting.html_governance import GovernanceGraphRenderer
+
+        merged = {
+            "acme": {
+                "customer": "Acme",
+                "governance_graph": {"edges": []},
+            }
+        }
+        computed = self._make_computed(total_customers=1)
+        renderer = GovernanceGraphRenderer(computed, merged)
+        assert renderer.render() == ""
+
+    def test_non_dict_merged_value_ignored(self) -> None:
+        from dd_agents.reporting.html_governance import GovernanceGraphRenderer
+
+        merged = {
+            "acme": "not a dict",
+            "beta": {
+                "customer": "Beta",
+                "governance_graph": {
+                    "edges": [
+                        {"from_file": "a.pdf", "to_file": "b.pdf", "relationship": "governs"},
+                    ]
+                },
+            },
+        }
+        computed = self._make_computed(total_customers=2)
+        renderer = GovernanceGraphRenderer(computed, merged)
+        html = renderer.render()
+        assert "Beta" in html
+        assert "sec-gov-graph" in html
+
+    def test_missing_governance_graph_key_ignored(self) -> None:
+        from dd_agents.reporting.html_governance import GovernanceGraphRenderer
+
+        merged = {"acme": {"customer": "Acme"}}
+        computed = self._make_computed(total_customers=1)
+        renderer = GovernanceGraphRenderer(computed, merged)
+        assert renderer.render() == ""
 
     def test_relationship_type_legend(self) -> None:
         from dd_agents.reporting.html_governance import GovernanceGraphRenderer
@@ -329,6 +405,54 @@ class TestIntegrationPlaybookComputation:
             }
         )
         assert computed.integration_playbook["churn_risk_score"] == 45
+
+    def test_compute_empty_data_returns_empty(self) -> None:
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+        result = ReportDataComputer._compute_integration_playbook([], {}, 0.0, {})
+        assert result == {}
+
+    def test_compute_with_findings_no_arr(self) -> None:
+        """Should produce playbook when there are findings even with 0 ARR."""
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+        findings = [{"severity": "P1", "title": "CoC risk", "agent": "legal"}]
+        topic = {"coc": [{"severity": "P1"}]}
+        result = ReportDataComputer._compute_integration_playbook(findings, topic, 0.0, {})
+        assert result != {}
+        assert result["churn_risk_score"] == 15
+        assert result["churn_risk_label"] == "Low"
+
+    def test_compute_churn_score_critical(self) -> None:
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+        topic = {"coc": [{"severity": "P0"}, {"severity": "P0"}, {"severity": "P0"}]}
+        result = ReportDataComputer._compute_integration_playbook(
+            [{"severity": "P0", "agent": "legal"}] * 3, topic, 1_000_000.0, {}
+        )
+        assert result["churn_risk_score"] == 75
+        assert result["churn_risk_label"] == "Critical"
+
+    def test_compute_milestones_with_coc(self) -> None:
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+        topic = {"coc": [{"severity": "P1"}]}
+        result = ReportDataComputer._compute_integration_playbook(
+            [{"severity": "P1", "agent": "legal"}], topic, 500_000.0, {}
+        )
+        phases = [m["phase"] for m in result["milestones"]]
+        assert "Pre-Close" in phases
+        assert "Day 1" in phases
+
+    def test_compute_risk_factors_from_waterfall(self) -> None:
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+        waterfall = {"change_of_control": {"amount": 200_000.0, "contracts": 3}}
+        result = ReportDataComputer._compute_integration_playbook(
+            [{"severity": "P1", "agent": "legal"}], {"coc": [{"severity": "P1"}]}, 1_000_000.0, waterfall
+        )
+        assert len(result["risk_factors"]) == 1
+        assert result["risk_factors"][0]["arr_at_risk"] == 200_000.0
 
 
 class TestIntegrationPlaybookRenderer:
