@@ -28,6 +28,7 @@ class RenewalAnalysisRenderer(SectionRenderer):
         auto = analysis.get("auto_renew_count", 0)
         manual = analysis.get("manual_renew_count", 0)
         escalation = analysis.get("escalation_cap_count", 0)
+        evergreen = analysis.get("evergreen_count", 0)
 
         # Summary metrics
         parts.append("<div class='metrics-strip'>")
@@ -36,6 +37,7 @@ class RenewalAnalysisRenderer(SectionRenderer):
             ("Auto-Renew", str(auto)),
             ("Manual Renew", str(manual)),
             ("Escalation Caps", str(escalation)),
+            ("Evergreen", str(evergreen)),
         ]:
             parts.append(
                 f"<div class='metric-card'>"
@@ -54,6 +56,20 @@ class RenewalAnalysisRenderer(SectionRenderer):
                     f"{auto} contracts auto-renew; {manual} require manual action.",
                 )
             )
+
+        # Expiry distribution table
+        expiry_dist: dict[str, int] = analysis.get("expiry_distribution", {})
+        if expiry_dist:
+            parts.append("<h3>Expiry Distribution</h3>")
+            parts.append(
+                "<table class='customer-table sortable'><thead><tr>"
+                "<th scope='col'>Period</th>"
+                "<th scope='col'>Count</th>"
+                "</tr></thead><tbody>"
+            )
+            for period, count in expiry_dist.items():
+                parts.append(f"<tr><td>{self.escape(str(period))}</td><td>{count}</td></tr>")
+            parts.append("</tbody></table>")
 
         # Findings table
         findings = analysis.get("findings", [])

@@ -33,6 +33,7 @@ from dd_agents.reporting.html_analysis import (
 from dd_agents.reporting.html_base import render_css, render_js, render_nav_bar
 from dd_agents.reporting.html_compliance import ComplianceRenderer
 from dd_agents.reporting.html_cross import CrossRefRenderer
+from dd_agents.reporting.html_cross_domain import CrossDomainRenderer
 from dd_agents.reporting.html_customers import CustomerRenderer
 from dd_agents.reporting.html_dashboard import DashboardRenderer
 from dd_agents.reporting.html_diff import DiffRenderer
@@ -43,6 +44,8 @@ from dd_agents.reporting.html_executive import ExecutiveSummaryRenderer
 from dd_agents.reporting.html_financial import FinancialImpactRenderer
 from dd_agents.reporting.html_findings_table import FindingsTableRenderer
 from dd_agents.reporting.html_gaps import GapRenderer
+from dd_agents.reporting.html_ip_risk import IPRiskRenderer
+from dd_agents.reporting.html_liability import LiabilityRenderer
 from dd_agents.reporting.html_methodology import MethodologyRenderer
 from dd_agents.reporting.html_quality import QualityRenderer
 from dd_agents.reporting.html_recommendations import RecommendationsRenderer
@@ -52,6 +55,7 @@ from dd_agents.reporting.html_risk import RiskRenderer
 from dd_agents.reporting.html_saas_metrics import SaaSMetricsRenderer
 from dd_agents.reporting.html_strategy import StrategyRenderer
 from dd_agents.reporting.html_timeline import TimelineRenderer
+from dd_agents.reporting.html_valuation import ValuationBridgeRenderer
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -163,6 +167,8 @@ class HTMLReportGenerator:
             FinancialImpactRenderer(computed, merged_data, renderer_config),
             # 2c. SaaS Health Metrics (KPI cards, tier distribution — Issue #115)
             SaaSMetricsRenderer(computed, merged_data, renderer_config),
+            # 2d. Valuation Impact Bridge (Issue #116)
+            ValuationBridgeRenderer(computed, merged_data, renderer_config),
             # 3. P0/P1 entity tables
             FindingsTableRenderer(computed, merged_data, renderer_config),
             # 4. Change of Control analysis
@@ -185,6 +191,12 @@ class HTMLReportGenerator:
             EntityDistributionRenderer(computed, merged_data, renderer_config),
             # 12. Contract Date Timeline (Issue #147)
             TimelineRenderer(computed, merged_data, renderer_config),
+            # 12a. Insurance & Liability Analysis (Issue #156)
+            LiabilityRenderer(computed, merged_data, renderer_config),
+            # 12b. IP & Technology License Risk (Issue #158)
+            IPRiskRenderer(computed, merged_data, renderer_config),
+            # 12c. Cross-Domain Risk Correlation (Issue #103)
+            CrossDomainRenderer(computed, merged_data, renderer_config),
             # 13. Cross-Reference Reconciliation
             CrossRefRenderer(computed, merged_data, renderer_config),
             # 14. Entity Health Tiers

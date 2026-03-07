@@ -29,11 +29,14 @@ class ComplianceRenderer(SectionRenderer):
         jurisdiction = analysis.get("jurisdiction_findings_count", 0)
         regulatory = analysis.get("regulatory_findings_count", 0)
 
+        dpa_coverage_pct = analysis.get("dpa_coverage_pct", 0.0)
+
         # Metrics strip
         parts.append("<div class='metrics-strip'>")
         for label, value in [
             ("Compliance Findings", str(total)),
             ("DPA Issues", str(dpa)),
+            ("DPA Coverage", f"{dpa_coverage_pct:.0f}%"),
             ("Jurisdiction", str(jurisdiction)),
             ("Regulatory", str(regulatory)),
         ]:
@@ -54,6 +57,22 @@ class ComplianceRenderer(SectionRenderer):
                     "Typical DPA remediation: $50K-$500K depending on scope.",
                 )
             )
+
+        # Top jurisdictions table
+        top_jurisdictions: list[dict[str, Any]] = analysis.get("top_jurisdictions", [])
+        if top_jurisdictions:
+            parts.append("<h3>Top Jurisdictions</h3>")
+            parts.append(
+                "<table class='customer-table sortable'><thead><tr>"
+                "<th scope='col'>Jurisdiction</th>"
+                "<th scope='col'>Count</th>"
+                "</tr></thead><tbody>"
+            )
+            for entry in top_jurisdictions[:15]:
+                name = self.escape(str(entry.get("jurisdiction", "")))
+                count = entry.get("count", 0)
+                parts.append(f"<tr><td>{name}</td><td>{count}</td></tr>")
+            parts.append("</tbody></table>")
 
         # Findings table
         findings = analysis.get("findings", [])

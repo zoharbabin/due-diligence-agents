@@ -873,6 +873,7 @@ def render_nav_bar(section_rag: dict[str, str] | None = None) -> str:
         "<div class='toc-group-label'>Risk Analysis</div>"
         "<a href='#sec-financial'>Financial Impact</a>"
         "<a href='#sec-saas'>SaaS Health Metrics</a>"
+        f"<a href='#sec-valuation'>{_rag('valuation')} Valuation Bridge</a>"
         "<a href='#sec-p0-table'>P0 Critical Issues</a>"
         "<a href='#sec-p1-table'>P1 High Issues</a>"
         f"<a href='#sec-heatmap'>Risk Heatmap</a>"
@@ -897,6 +898,9 @@ def render_nav_bar(section_rag: dict[str, str] | None = None) -> str:
         "<div class='toc-group'>"
         "<div class='toc-group-label'>Portfolio</div>"
         "<a href='#sec-health'>Entity Health</a>"
+        f"<a href='#sec-liability'>{_rag('liability')} Liability</a>"
+        f"<a href='#sec-ip-risk'>{_rag('ip_risk')} IP Risk</a>"
+        f"<a href='#sec-cross-domain'>{_rag('cross_domain')} Cross-Domain</a>"
         f"<a href='#sec-xref'>{_rag('xref')} Data Reconciliation</a>"
         "</div>"
         # Actions

@@ -37,6 +37,25 @@ class DiscountAnalysisRenderer(SectionRenderer):
                 )
             )
 
+        # Average and max discount metrics
+        avg_discount = analysis.get("avg_discount", 0.0)
+        max_discount = analysis.get("max_discount", 0.0)
+        if avg_discount > 0 or max_discount > 0:
+            parts.append("<div class='metrics-strip'>")
+            parts.append(
+                f"<div class='metric-card'>"
+                f"<div class='value'>{avg_discount:.1f}%</div>"
+                f"<div class='label'>Avg Discount</div>"
+                f"</div>"
+            )
+            parts.append(
+                f"<div class='metric-card'>"
+                f"<div class='value'>{max_discount:.1f}%</div>"
+                f"<div class='label'>Max Discount</div>"
+                f"</div>"
+            )
+            parts.append("</div>")
+
         # Distribution summary
         dist = analysis.get("distribution", {})
         if any(v > 0 for v in dist.values()):
@@ -49,6 +68,22 @@ class DiscountAnalysisRenderer(SectionRenderer):
             )
             for bucket, count in dist.items():
                 parts.append(f"<tr><td>{self.escape(str(bucket))}</td><td>{count}</td></tr>")
+            parts.append("</tbody></table>")
+
+        # Top discounted entities table
+        top_discounted: list[dict[str, Any]] = analysis.get("top_discounted", [])
+        if top_discounted:
+            parts.append("<h3>Top Discounted Entities</h3>")
+            parts.append(
+                "<table class='customer-table sortable'><thead><tr>"
+                "<th scope='col'>Entity</th>"
+                "<th scope='col'>Discount %</th>"
+                "</tr></thead><tbody>"
+            )
+            for entry in top_discounted[:15]:
+                name = self.escape(str(entry.get("entity", "")))
+                pct = entry.get("discount_pct", 0.0)
+                parts.append(f"<tr><td>{name}</td><td>{pct:.1f}%</td></tr>")
             parts.append("</tbody></table>")
 
         # Findings table

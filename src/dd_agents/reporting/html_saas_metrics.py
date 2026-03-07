@@ -73,6 +73,66 @@ class SaaSMetricsRenderer(SectionRenderer):
                 parts.append(f"<tr><td>{self.escape(str(tier_name))}</td><td>{count}</td><td>{pct:.0f}%</td></tr>")
             parts.append("</tbody></table>")
 
+        # NRR/GRR section (only if nrr_estimate is present)
+        nrr = metrics.get("nrr_estimate")
+        if nrr is not None:
+            grr = metrics.get("grr_estimate", 0.0)
+            expansion = metrics.get("expansion_signals", 0)
+            contraction = metrics.get("contraction_signals", 0)
+
+            # Color coding for NRR: green >=115, amber >=100, red <100
+            if nrr >= 115:
+                nrr_color = "var(--green)"
+            elif nrr >= 100:
+                nrr_color = "var(--amber)"
+            else:
+                nrr_color = "var(--red)"
+
+            # Color coding for GRR: green >=90, amber >=80, red <80
+            if grr >= 90:
+                grr_color = "var(--green)"
+            elif grr >= 80:
+                grr_color = "var(--amber)"
+            else:
+                grr_color = "var(--red)"
+
+            parts.append("<h3>Net &amp; Gross Revenue Retention</h3>")
+            parts.append("<div class='metrics-strip'>")
+            parts.append(
+                f"<div class='metric-card'>"
+                f"<div class='value' style='color:{nrr_color}'>{nrr:.0f}%</div>"
+                f"<div class='label'>NRR Estimate</div>"
+                f"</div>"
+            )
+            parts.append(
+                f"<div class='metric-card'>"
+                f"<div class='value' style='color:{grr_color}'>{grr:.0f}%</div>"
+                f"<div class='label'>GRR Estimate</div>"
+                f"</div>"
+            )
+            parts.append(
+                f"<div class='metric-card'>"
+                f"<div class='value'>{expansion}</div>"
+                f"<div class='label'>Expansion Signals</div>"
+                f"</div>"
+            )
+            parts.append(
+                f"<div class='metric-card'>"
+                f"<div class='value'>{contraction}</div>"
+                f"<div class='label'>Contraction Signals</div>"
+                f"</div>"
+            )
+            parts.append("</div>")
+
+            parts.append(
+                self.render_alert(
+                    "info",
+                    "Benchmark Comparison",
+                    f"NRR {nrr:.0f}% vs. best-in-class SaaS benchmark of 120%+. "
+                    f"GRR {grr:.0f}% vs. median SaaS benchmark of 90%.",
+                )
+            )
+
         # Concentration alert
         if top_pct >= 30:
             parts.append(
