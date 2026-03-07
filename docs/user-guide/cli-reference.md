@@ -242,6 +242,68 @@ extraction readiness, issues, and recommendations.
 
 ---
 
+## `dd-agents export-pdf`
+
+Export an HTML DD report to a print-optimized PDF.
+
+```bash
+dd-agents export-pdf <html_path> [OPTIONS]
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--output` | Path | Same name with `.pdf` | Output PDF file path |
+| `--engine` | Choice | `auto` | PDF engine: `auto`, `playwright`, `weasyprint` |
+
+**Engine detection**: Prefers Playwright (highest fidelity), falls back to WeasyPrint. Install one:
+
+```bash
+pip install playwright && playwright install chromium
+# OR
+pip install weasyprint
+```
+
+**Examples:**
+
+```bash
+dd-agents export-pdf _dd/forensic-dd/runs/latest/report/dd-report.html
+dd-agents export-pdf report.html --output board-package.pdf
+dd-agents export-pdf report.html --engine weasyprint
+```
+
+---
+
+## `dd-agents query`
+
+Ask natural-language questions about the DD report findings.
+
+```bash
+dd-agents query --report <run_dir> [OPTIONS]
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--report` | Path | (required) | Path to the pipeline run directory |
+| `--question`, `-q` | String | None | Single question (omit for interactive mode) |
+| `--verbose`, `-v` | Flag | Off | Enable verbose logging |
+
+Indexes merged findings from the run directory and answers questions using keyword matching (fast path for counts and filters) or Claude (for complex analysis questions).
+
+**Examples:**
+
+```bash
+# Single question
+dd-agents query --report _dd/forensic-dd/runs/latest -q "How many P0 findings?"
+
+# Interactive REPL mode
+dd-agents query --report _dd/forensic-dd/runs/latest
+> How many customers have CoC risk?
+> What are the top liability concerns?
+> quit
+```
+
+---
+
 ## Global Options
 
 The `--version` flag is available on the top-level group:
