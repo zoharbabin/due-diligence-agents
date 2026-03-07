@@ -143,6 +143,9 @@ def run(
             if "=" in override:
                 agent_name, model_id = override.split("=", 1)
                 deal_config.agent_models.overrides[agent_name.strip()] = model_id.strip()
+            else:
+                _print_error("Invalid Option", f"--model-override must be agent=model format, got: {override}")
+                raise SystemExit(1)
 
     _print_config_summary(deal_config)
 

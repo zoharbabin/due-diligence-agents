@@ -16,7 +16,7 @@ class TestSearchPromptTemplates:
     def test_template_registry_has_entries(self) -> None:
         from dd_agents.agents.prompt_templates import PROMPT_TEMPLATES
 
-        assert len(PROMPT_TEMPLATES) >= 5
+        assert len(PROMPT_TEMPLATES) == 8
 
     def test_template_structure(self) -> None:
         from dd_agents.agents.prompt_templates import PROMPT_TEMPLATES
@@ -248,6 +248,22 @@ class TestDiffTrendAnalysis:
         tracker = ReportTrendTracker()
         tracker.add_snapshot("run-1", {"P0": 1, "P1": 1, "P2": 1, "P3": 1}, total_entities=10)
         assert tracker.compute_trajectory() == "stable"
+
+    def test_zero_first_score_stable(self) -> None:
+        from dd_agents.reporting.diff import ReportTrendTracker
+
+        tracker = ReportTrendTracker()
+        tracker.add_snapshot("run-1", {"P0": 0, "P1": 0, "P2": 0, "P3": 0}, total_entities=10)
+        tracker.add_snapshot("run-2", {"P0": 0, "P1": 0, "P2": 0, "P3": 0}, total_entities=10)
+        assert tracker.compute_trajectory() == "stable"
+
+    def test_zero_first_score_worsening(self) -> None:
+        from dd_agents.reporting.diff import ReportTrendTracker
+
+        tracker = ReportTrendTracker()
+        tracker.add_snapshot("run-1", {"P0": 0, "P1": 0, "P2": 0, "P3": 0}, total_entities=10)
+        tracker.add_snapshot("run-2", {"P0": 5, "P1": 10, "P2": 5, "P3": 5}, total_entities=10)
+        assert tracker.compute_trajectory() == "worsening"
 
     def test_trend_summary_dict(self) -> None:
         from dd_agents.reporting.diff import ReportTrendTracker
