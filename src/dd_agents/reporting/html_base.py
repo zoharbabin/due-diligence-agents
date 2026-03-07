@@ -742,6 +742,38 @@ table.sortable th::after { content: ' \\2195'; color: #aaa; font-size: 0.8em; }
 .mb-8 { margin-bottom: 8px; }
 .mb-16 { margin-bottom: 16px; }
 .flex-between { display: flex; justify-content: space-between; align-items: center; }
+
+/* --- Issue #108: Presentation Mode --- */
+.presentation-btn {
+    display: block; margin: 8px auto; padding: 4px 12px;
+    background: var(--blue); color: #fff; border: none; border-radius: 4px;
+    cursor: pointer; font-size: 0.75em; }
+.presentation-btn:hover { background: #357abd; }
+
+.presentation-mode .sidebar { display: none; }
+.presentation-mode .main-wrapper { margin-left: 0; }
+.presentation-mode .content { max-width: 100%; padding: 40px 60px; font-size: 18px; }
+.presentation-mode .report-section { page-break-before: always; }
+.presentation-mode .category-body,
+.presentation-mode .domain-body,
+.presentation-mode .customer-body { display: block !important; max-height: none !important; }
+.presentation-mode .arrow { display: none; }
+.presentation-mode h2 { font-size: 2em; }
+.presentation-mode .metric-card .value { font-size: 2.5em; }
+
+/* --- Issue #108: Print Styles --- */
+@media print {
+    .sidebar, .skip-link, .presentation-btn, #btn-presentation { display: none !important; }
+    .main-wrapper { margin-left: 0 !important; }
+    .content { max-width: 100% !important; padding: 20px !important; }
+    .report-section { page-break-before: always; page-break-inside: avoid; }
+    .category-body, .domain-body, .customer-body { display: block !important; max-height: none !important; }
+    .finding-detail { display: block !important; }
+    table { page-break-inside: avoid; }
+    @page { margin: 2cm; size: A4; }
+    @page :first { margin-top: 4cm; }
+    a[href]::after { content: none !important; }
+}
 """
 
 
@@ -842,6 +874,17 @@ def render_js() -> str:
             });
         });
     }
+
+    // --- Issue #108: Presentation mode toggle ---
+    var presBtn = document.getElementById('btn-presentation');
+    if (presBtn) {
+        presBtn.addEventListener('click', function() {
+            document.body.classList.toggle('presentation-mode');
+            var active = document.body.classList.contains('presentation-mode');
+            this.textContent = active ? '\\u25C0 Exit' : '\\u25B6 Present';
+            this.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+    }
 })();
 """
 
@@ -870,6 +913,9 @@ def render_nav_bar(section_rag: dict[str, str] | None = None) -> str:
         "<div class='sidebar-brand'>"
         "<span>DD Report</span>"
         "<span class='confidential'>Confidential</span>"
+        "<button id='btn-presentation' class='presentation-btn' "
+        "title='Toggle Presentation Mode' aria-label='Toggle Presentation Mode'>"
+        "&#9654; Present</button>"
         "</div>"
         # Deal Assessment
         "<div class='toc-group'>"
@@ -904,6 +950,10 @@ def render_nav_bar(section_rag: dict[str, str] | None = None) -> str:
         f"<a href='#sec-compliance'>{_rag('compliance')} Compliance Risk</a>"
         f"<a href='#sec-entity'>{_rag('entity')} Entity Distribution</a>"
         f"<a href='#sec-timeline'>{_rag('timeline')} Contract Timeline</a>"
+        "<a href='#sec-clause-library'>Clause Analysis</a>"
+        "<a href='#sec-key-employee'>Key Employee Risk</a>"
+        "<a href='#sec-tech-stack'>Tech Stack</a>"
+        "<a href='#sec-product-adoption'>Product Adoption</a>"
         "</div>"
         # Portfolio
         "<div class='toc-group'>"

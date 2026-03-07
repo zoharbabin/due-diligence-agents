@@ -66,7 +66,14 @@ SPECIALIST_FOCUS: dict[AgentType, str] = {
         "LEGAL ENTITY DISTRIBUTION:\n"
         "- Identify all legal entities referenced in contracts\n"
         "- Flag contracts on legacy/acquired entities needing re-execution\n"
-        "- Note entity-specific assignment or consent restrictions"
+        "- Note entity-specific assignment or consent restrictions\n\n"
+        "KEY EMPLOYEE & ORGANIZATIONAL RISK:\n"
+        "- Identify key person dependencies from employment and consulting agreements\n"
+        "- Flag missing or weak non-compete/non-solicit clauses for key executives\n"
+        "- Assess retention risk: vesting cliffs, change-of-control acceleration provisions\n"
+        "- Identify single-point-of-failure roles (sole architect, key customer relationships)\n"
+        "- Review employment terms for CoC-triggered provisions (acceleration, severance)\n"
+        "- Map employment agreements against key_executives from deal config if available"
     ),
     AgentType.FINANCE: (
         "Cross-reference every customer's contract values against the Revenue Cube and any "
@@ -156,7 +163,16 @@ SPECIALIST_FOCUS: dict[AgentType, str] = {
         "- Missing SOC2 report = P2\n"
         "- Expired security certification (>12 months) = P1\n"
         "- Minor technical debt in non-critical systems = P3\n"
-        "- Data residency violation for regulated data = P0"
+        "- Data residency violation for regulated data = P0\n\n"
+        "TECHNOLOGY STACK & TECHNICAL DEBT ASSESSMENT:\n"
+        "- Identify technology stack components from contracts, SOWs, and technical documents\n"
+        "- Flag deprecated technologies, end-of-life platforms, or unsupported versions\n"
+        "- Assess migration complexity: proprietary APIs, vendor lock-in, custom integrations\n"
+        "- Evaluate security posture: SOC2 gaps, penetration test recency, encryption standards\n"
+        "- Assess scalability constraints: architecture limitations, SLA vs capacity\n"
+        "- Quantify technical debt remediation cost where evidence supports estimation\n"
+        "- For each finding, classify sub-category: technical_debt, security_posture, "
+        "scalability, migration_complexity, or architecture_risk"
     ),
 }
 

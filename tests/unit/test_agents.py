@@ -448,7 +448,7 @@ class TestLegalAgent:
         assert "regulatory_compliance" in LEGAL_FOCUS_AREAS
         assert "legal_entity" in LEGAL_FOCUS_AREAS
         assert "contract_timeline" in LEGAL_FOCUS_AREAS
-        assert len(LEGAL_FOCUS_AREAS) == 13
+        assert len(LEGAL_FOCUS_AREAS) == 17
 
     def test_tools_include_specialist_tools(self, tmp_project: Path, tmp_run_dir: Path, run_id: str) -> None:
         agent = LegalAgent(tmp_project, tmp_run_dir, run_id)
@@ -571,7 +571,7 @@ class TestProductTechAgent:
         assert "support_obligations" in PRODUCTTECH_FOCUS_AREAS
         assert "documentation" in PRODUCTTECH_FOCUS_AREAS
         assert "training" in PRODUCTTECH_FOCUS_AREAS
-        assert len(PRODUCTTECH_FOCUS_AREAS) == 6
+        assert len(PRODUCTTECH_FOCUS_AREAS) == 11
 
     def test_tools(self, tmp_project: Path, tmp_run_dir: Path, run_id: str) -> None:
         agent = ProductTechAgent(tmp_project, tmp_run_dir, run_id)

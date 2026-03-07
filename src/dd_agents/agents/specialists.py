@@ -33,6 +33,11 @@ LEGAL_FOCUS_AREAS: list[str] = [
     "regulatory_compliance",
     "legal_entity",
     "contract_timeline",
+    # Issue #131: Key Employee & Organizational Risk
+    "key_person_dependency",
+    "employment_agreements",
+    "retention_risk",
+    "non_compete_enforcement",
 ]
 
 FINANCE_FOCUS_AREAS: list[str] = [
@@ -68,6 +73,12 @@ PRODUCTTECH_FOCUS_AREAS: list[str] = [
     "support_obligations",
     "documentation",
     "training",
+    # Issue #132: Technology Stack Assessment & Technical Debt
+    "technical_debt",
+    "security_posture",
+    "scalability",
+    "migration_complexity",
+    "architecture_risk",
 ]
 
 # ---------------------------------------------------------------------------
