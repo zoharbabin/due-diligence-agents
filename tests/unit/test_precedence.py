@@ -754,3 +754,87 @@ class TestPrecedenceAwareMerge:
 
         winner = merger._pick_winner(group)
         assert winner["severity"] == "P1"  # Higher severity wins
+
+
+# ===================================================================
+# Phase 8: Orchestrator integration
+# ===================================================================
+
+
+class TestPrecedenceOrchestratorIntegration:
+    """Tests that the orchestrator wires precedence into the pipeline."""
+
+    def test_compute_precedence_index(self) -> None:
+        """compute_precedence_index enriches files and returns path→score dict."""
+        from dd_agents.orchestrator.precedence import compute_precedence_index
+
+        files = [
+            _fe("Customer/Executed/MSA_signed.pdf", mtime=1700000000.0),
+            _fe("Customer/Drafts/MSA_draft.pdf", mtime=1600000000.0),
+            _fe("Customer/NDA.pdf", mtime=1650000000.0),
+        ]
+
+        index = compute_precedence_index(files)
+
+        # Returns a dict mapping path → precedence_score
+        assert isinstance(index, dict)
+        assert len(index) == 3
+        # All scores in range
+        for path, score in index.items():
+            assert isinstance(path, str)
+            assert 0.0 <= score <= 1.0
+
+        # Signed/executed file should score highest
+        assert index["Customer/Executed/MSA_signed.pdf"] > index["Customer/Drafts/MSA_draft.pdf"]
+
+    def test_compute_precedence_index_with_config_overrides(self) -> None:
+        """Folder priority overrides from deal-config are respected."""
+        from dd_agents.orchestrator.precedence import compute_precedence_index
+
+        files = [
+            _fe("Customer/Board Materials/MSA.pdf", mtime=1700000000.0),
+            _fe("Customer/Team Notes/MSA.pdf", mtime=1700000000.0),
+        ]
+
+        index = compute_precedence_index(
+            files,
+            folder_overrides={"Board Materials": 1, "Team Notes": 3},
+        )
+
+        assert index["Customer/Board Materials/MSA.pdf"] > index["Customer/Team Notes/MSA.pdf"]
+
+    def test_compute_precedence_index_empty_list(self) -> None:
+        """Empty file list returns empty dict."""
+        from dd_agents.orchestrator.precedence import compute_precedence_index
+
+        index = compute_precedence_index([])
+        assert index == {}
+
+    def test_compute_precedence_index_enriches_file_entries(self) -> None:
+        """File entries are mutated in-place with version/folder/score data."""
+        from dd_agents.orchestrator.precedence import compute_precedence_index
+
+        files = [
+            _fe("Customer/MSA_signed.pdf", mtime=1700000000.0),
+        ]
+
+        compute_precedence_index(files)
+
+        # File entry should be enriched
+        assert files[0].version_indicator == "signed"
+        assert files[0].version_rank == 10
+        assert files[0].precedence_score > 0.0
+
+    def test_compute_precedence_index_sets_folder_tier(self) -> None:
+        """Files in authoritative folders get tier 1."""
+        from dd_agents.orchestrator.precedence import compute_precedence_index
+
+        files = [
+            _fe("Customer/Executed/MSA.pdf", mtime=1700000000.0),
+            _fe("Customer/Drafts/MSA.pdf", mtime=1700000000.0),
+        ]
+
+        compute_precedence_index(files)
+
+        assert files[0].folder_tier == 1  # Executed → AUTHORITATIVE
+        assert files[1].folder_tier == 3  # Drafts → SUPPLEMENTARY

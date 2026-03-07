@@ -715,6 +715,26 @@ class PipelineEngine:
         # Store customer entries for later steps
         state._customer_entries = customers  # type: ignore[attr-defined]
 
+        # --- Document precedence (Issue #163) ---
+        # Enrich discovered files with folder tier, version chains, and
+        # composite precedence scores.  The resulting index is passed to
+        # prompt building (step 14) and merge (step 24).
+        files = getattr(state, "_discovered_files", [])
+        if files:
+            from dd_agents.orchestrator.precedence import compute_precedence_index
+
+            folder_overrides: dict[str, int] | None = None
+            if state.deal_config and isinstance(state.deal_config, dict):
+                prec_cfg = state.deal_config.get("precedence", {})
+                if isinstance(prec_cfg, dict):
+                    folder_overrides = prec_cfg.get("folder_priority") or None
+
+            state.file_precedence = compute_precedence_index(
+                files,
+                folder_overrides=folder_overrides,
+            )
+            logger.info("Precedence: indexed %d files", len(state.file_precedence))
+
         logger.info(
             "Inventory: %d customers, %d reference files",
             state.total_customers,
@@ -994,6 +1014,13 @@ class PipelineEngine:
         from dd_agents.agents.prompt_builder import AgentType
         from dd_agents.agents.specialists import SPECIALIST_CLASSES
 
+        # Build file_precedence FileEntry index for prompt annotations (Issue #163)
+        file_prec_entries: dict[str, Any] | None = None
+        if state.file_precedence:
+            discovered = getattr(state, "_discovered_files", [])
+            if discovered:
+                file_prec_entries = {f.path: f for f in discovered}
+
         for agent_name in ALL_SPECIALIST_AGENTS:
             agent_cls = SPECIALIST_CLASSES.get(AgentType(agent_name))
             max_per_batch = getattr(agent_cls, "max_customers_per_batch", 20) if agent_cls else 20
@@ -1010,6 +1037,7 @@ class PipelineEngine:
                     customers=batch,
                     reference_files=reference_files or None,
                     deal_config=deal_config_obj,
+                    file_precedence=file_prec_entries,
                 )
                 prompts.append(prompt)
 
@@ -1460,6 +1488,13 @@ class PipelineEngine:
             len(batches),
         )
 
+        # Build file_precedence FileEntry index for prompt annotations (Issue #163)
+        file_prec_entries: dict[str, Any] | None = None
+        if state.file_precedence:
+            discovered = getattr(state, "_discovered_files", [])
+            if discovered:
+                file_prec_entries = {f.path: f for f in discovered}
+
         # Build a prompt per batch and pass as a list so _run_specialist
         # iterates over them as sequential SDK sessions.
         batch_prompts: list[str] = []
@@ -1467,6 +1502,7 @@ class PipelineEngine:
             prompt = builder.build_specialist_prompt(
                 agent_name=agent_name,
                 customers=batch,
+                file_precedence=file_prec_entries,
             )
             batch_prompts.append(prompt)
 
@@ -2116,7 +2152,11 @@ class PipelineEngine:
         if files_txt.exists():
             file_inventory = [line.strip() for line in files_txt.read_text().strip().splitlines() if line.strip()]
 
-        merger = FindingMerger(run_id=state.run_id, file_inventory=file_inventory)
+        merger = FindingMerger(
+            run_id=state.run_id,
+            file_inventory=file_inventory,
+            file_precedence=state.file_precedence or None,
+        )
         findings_dir = state.run_dir / "findings"
         merged = merger.merge_all(
             findings_dir,

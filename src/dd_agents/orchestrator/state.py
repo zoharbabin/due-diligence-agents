@@ -100,6 +100,9 @@ class PipelineState:
     customer_safe_names: list[str] = field(default_factory=list)
     reference_file_count: int = 0
 
+    # --- Document precedence (Issue #163) ---------------------------------
+    file_precedence: dict[str, float] = field(default_factory=dict)
+
     # --- Pipeline progress --------------------------------------------------
     current_step: PipelineStep = PipelineStep.VALIDATE_CONFIG
     completed_steps: list[PipelineStep] = field(default_factory=list)
@@ -193,6 +196,7 @@ class PipelineState:
             "cross_skill_run_ids": self.cross_skill_run_ids,
             "judge_scores": self.judge_scores,
             "exit_code": self.exit_code,
+            "file_precedence": self.file_precedence,
             "_customer_entries": customer_entries_ser,
         }
 
@@ -253,6 +257,7 @@ class PipelineState:
             cross_skill_run_ids=data.get("cross_skill_run_ids", {}),
             judge_scores=data.get("judge_scores", {}),
             exit_code=data.get("exit_code", 0),
+            file_precedence=data.get("file_precedence", {}),
         )
 
         # Restore dynamic attribute ``_customer_entries`` so that respawn

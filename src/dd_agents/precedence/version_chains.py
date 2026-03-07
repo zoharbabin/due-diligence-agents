@@ -101,6 +101,12 @@ def _base_name(path: str) -> str:
     # Normalize: lowercase, collapse underscores/spaces/hyphens
     cleaned = re.sub(r"[_\-\s]+", "_", cleaned.lower()).strip("_")
 
+    # Fallback: if stripping removed everything, use the original filename
+    if not cleaned:
+        raw = path.rsplit("/", 1)[-1] if "/" in path else path
+        dot = raw.rfind(".")
+        cleaned = re.sub(r"[_\-\s]+", "_", (raw[:dot] if dot > 0 else raw).lower()).strip("_")
+
     return cleaned
 
 
