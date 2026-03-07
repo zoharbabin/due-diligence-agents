@@ -54,7 +54,7 @@ if HAS_FASTAPI:
             raise HTTPException(status_code=500, detail="DD_API_KEY not configured")
         if not secrets.compare_digest(credentials.credentials, expected):
             raise HTTPException(status_code=401, detail="Invalid API key")
-        return credentials.credentials
+        return str(credentials.credentials)
 
     # ---------------------------------------------------------------------------
     # Request/Response Models
@@ -127,12 +127,12 @@ if HAS_FASTAPI:
     # Endpoints
     # ---------------------------------------------------------------------------
 
-    @app.get("/health")
+    @app.get("/health")  # type: ignore[misc]
     def health_check() -> dict[str, str]:
         """Health check endpoint."""
         return {"status": "ok", "service": "dd-agents-api"}
 
-    @app.post("/api/v1/runs", response_model=PipelineRunResponse)
+    @app.post("/api/v1/runs", response_model=PipelineRunResponse)  # type: ignore[misc]
     def trigger_run(
         request: PipelineRunRequest,
         _api_key: str = Depends(verify_api_key),
@@ -156,7 +156,7 @@ if HAS_FASTAPI:
             message=f"Pipeline run queued. Mode: {request.mode}",
         )
 
-    @app.get("/api/v1/runs/{run_id}/status", response_model=RunStatusResponse)
+    @app.get("/api/v1/runs/{run_id}/status", response_model=RunStatusResponse)  # type: ignore[misc]
     def get_run_status(
         run_id: str,
         _api_key: str = Depends(verify_api_key),
@@ -166,7 +166,7 @@ if HAS_FASTAPI:
             raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
         return _run_status[run_id]
 
-    @app.get("/api/v1/runs/{run_id}/findings", response_model=FindingsResponse)
+    @app.get("/api/v1/runs/{run_id}/findings", response_model=FindingsResponse)  # type: ignore[misc]
     def get_findings(
         run_id: str,
         run_dir: str = "",
@@ -203,7 +203,7 @@ if HAS_FASTAPI:
             findings=findings[:500],  # Cap response size
         )
 
-    @app.post("/api/v1/query", response_model=QueryResponse)
+    @app.post("/api/v1/query", response_model=QueryResponse)  # type: ignore[misc]
     async def query_findings(
         request: QueryRequest,
         _api_key: str = Depends(verify_api_key),
@@ -229,7 +229,7 @@ if HAS_FASTAPI:
 
     # --- Webhook endpoints ---
 
-    @app.post("/api/v1/webhooks", response_model=WebhookConfig)
+    @app.post("/api/v1/webhooks", response_model=WebhookConfig)  # type: ignore[misc]
     def register_webhook(
         config: WebhookConfig,
         _api_key: str = Depends(verify_api_key),
@@ -240,14 +240,14 @@ if HAS_FASTAPI:
         _webhooks[config.id] = config
         return config
 
-    @app.get("/api/v1/webhooks", response_model=list[WebhookConfig])
+    @app.get("/api/v1/webhooks", response_model=list[WebhookConfig])  # type: ignore[misc]
     def list_webhooks(
         _api_key: str = Depends(verify_api_key),
     ) -> list[WebhookConfig]:
         """List registered webhooks."""
         return list(_webhooks.values())
 
-    @app.delete("/api/v1/webhooks/{webhook_id}")
+    @app.delete("/api/v1/webhooks/{webhook_id}")  # type: ignore[misc]
     def delete_webhook(
         webhook_id: str,
         _api_key: str = Depends(verify_api_key),

@@ -32,7 +32,7 @@ class ContractKnowledgeGraph:
     """NetworkX-based contract knowledge graph."""
 
     def __init__(self) -> None:
-        self.graph = nx.DiGraph()
+        self.graph: nx.DiGraph[str] = nx.DiGraph()
         self._clauses: dict[str, ClauseNode] = {}
         self._obligations: dict[str, Obligation] = {}
 
