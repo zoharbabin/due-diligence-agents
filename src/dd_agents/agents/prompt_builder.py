@@ -169,6 +169,9 @@ SPECIALIST_FOCUS: dict[AgentType, str] = {
 class PromptBuilder:
     """Assembles self-contained agent prompts from templates and runtime data."""
 
+    # Prompt version tracking (Issue #146) — bump on prompt changes
+    PROMPT_VERSION: str = "2.0.0"
+
     def __init__(
         self,
         project_dir: Path,
@@ -178,6 +181,7 @@ class PromptBuilder:
         self.project_dir = project_dir
         self.run_dir = run_dir
         self.run_id = run_id
+        self.prompt_version = self.PROMPT_VERSION
 
     # ------------------------------------------------------------------
     # Specialist prompt

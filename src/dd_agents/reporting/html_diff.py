@@ -76,6 +76,24 @@ class DiffRenderer(SectionRenderer):
             parts.append("<h3>Severity Changes</h3>")
             parts.append(self._render_severity_change_table(severity_changes))
 
+        # Trend analysis (Issue #126 enhancement)
+        trend = diff.get("trend")
+        if trend and isinstance(trend, dict):
+            trajectory = str(trend.get("trajectory", "stable"))
+            snapshots = trend.get("snapshots", [])
+            if snapshots:
+                traj_color = {"improving": "#28a745", "worsening": "#dc3545"}.get(trajectory, "#6c757d")
+                parts.append("<h3>Risk Trajectory</h3>")
+                parts.append(
+                    "<div class='metrics-strip'>"
+                    f"<div class='metric-card'><div class='value' style='color:{traj_color}'>"
+                    f"{self.escape(trajectory.capitalize())}</div>"
+                    "<div class='label'>Trajectory</div></div>"
+                    f"<div class='metric-card'><div class='value'>{len(snapshots)}</div>"
+                    "<div class='label'>Runs Compared</div></div>"
+                    "</div>"
+                )
+
         parts.append("</section>")
         return "\n".join(parts)
 

@@ -84,6 +84,19 @@ def main() -> None:
     default=False,
     help="Run a quick Red Flag scan only (steps 1-13 + Red Flag Scanner agent).",
 )
+@click.option(
+    "--model-profile",
+    "model_profile",
+    type=click.Choice(["economy", "standard", "premium"], case_sensitive=False),
+    default=None,
+    help="Override model profile: economy (Haiku), standard (Sonnet), premium (Opus).",
+)
+@click.option(
+    "--model-override",
+    "model_overrides",
+    multiple=True,
+    help="Per-agent model override in agent=model format (e.g. --model-override legal=claude-opus-4-6).",
+)
 def run(
     config_path: Path,
     mode: str | None,
@@ -91,6 +104,8 @@ def run(
     resume_from: int,
     dry_run: bool,
     quick_scan: bool,
+    model_profile: str | None,
+    model_overrides: tuple[str, ...],
 ) -> None:
     """Run the due diligence pipeline with a deal-config.json file."""
     if verbose:
@@ -119,6 +134,15 @@ def run(
         from dd_agents.models.enums import ExecutionMode
 
         deal_config.execution.execution_mode = ExecutionMode(mode)
+
+    # Apply model profile/override if provided (Issue #146)
+    if model_profile is not None:
+        deal_config.agent_models.profile = model_profile
+    if model_overrides:
+        for override in model_overrides:
+            if "=" in override:
+                agent_name, model_id = override.split("=", 1)
+                deal_config.agent_models.overrides[agent_name.strip()] = model_id.strip()
 
     _print_config_summary(deal_config)
 

@@ -980,6 +980,12 @@ class ReportComputedData(BaseModel):
         description="Compound risk cards for entities with findings across 3+ domains",
     )
 
+    # --- Issue #117: Post-Close Integration Playbook ---
+    integration_playbook: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Post-close integration playbook: churn risk score, risk factors, milestones",
+    )
+
     # --- Issue #116: Valuation Impact Bridge ---
     valuation_bridge: dict[str, Any] = Field(default_factory=dict)
 
@@ -1427,6 +1433,15 @@ class ReportDataComputer:
                 )
         cross_domain_risks.sort(key=lambda x: x["risk_score"], reverse=True)
 
+        # --- Issue #117: Post-Close Integration Playbook ---
+        integration_playbook = self._compute_integration_playbook(
+            material_findings,
+            topic_findings,
+            total_contracted_arr,
+            risk_waterfall,
+            len(merged_data),
+        )
+
         # --- Issue #116: Valuation bridge ---
         valuation_bridge = self._compute_valuation_bridge(
             total_contracted_arr,
@@ -1559,6 +1574,8 @@ class ReportDataComputer:
             ip_risk_analysis=ip_risk_analysis,
             cross_domain_risks=cross_domain_risks,
             valuation_bridge=valuation_bridge,
+            # Issue #117: Integration Playbook
+            integration_playbook=integration_playbook,
         )
 
     # --- Issue #113: Helper methods for business-oriented analysis ---
@@ -2845,4 +2862,104 @@ class ReportDataComputer:
             "exposure_pct": round(exposure_pct, 1),
             "valuation_impact": impact,
             "risk_categories": risk_categories,
+        }
+
+    # --- Issue #117: Post-Close Integration Playbook ---
+
+    @staticmethod
+    def _compute_integration_playbook(
+        material_findings: list[dict[str, Any]],
+        topic_findings: dict[str, list[dict[str, Any]]],
+        total_arr: float,
+        risk_waterfall: dict[str, dict[str, Any]],
+        total_entities: int,
+    ) -> dict[str, Any]:
+        """Compute post-close integration playbook with churn risk model."""
+        if total_arr <= 0 and not material_findings:
+            return {}
+
+        # Churn risk scoring: weighted severity + contract risk factors
+        score_weights = {"P0": 25, "P1": 15, "P2": 8, "P3": 3}
+        coc_findings = topic_findings.get("coc", [])
+        tfc_findings = topic_findings.get("tfc", [])
+        concentration = topic_findings.get("concentration", [])
+
+        # Base score from high-impact findings
+        coc_score = sum(score_weights.get(str(f.get("severity", "P3")), 3) for f in coc_findings)
+        tfc_score = sum(score_weights.get(str(f.get("severity", "P3")), 3) for f in tfc_findings)
+        concentration_score = sum(score_weights.get(str(f.get("severity", "P3")), 3) for f in concentration)
+
+        raw_score = coc_score + tfc_score + concentration_score
+        churn_risk_score = min(100, raw_score)
+
+        if churn_risk_score >= 75:
+            churn_risk_label = "Critical"
+        elif churn_risk_score >= 50:
+            churn_risk_label = "High"
+        elif churn_risk_score >= 25:
+            churn_risk_label = "Medium"
+        else:
+            churn_risk_label = "Low"
+
+        # Integration complexity
+        domain_count = len({str(f.get("agent", "")).lower() for f in material_findings if f.get("agent")})
+        if domain_count >= 4 and churn_risk_score >= 50:
+            complexity = "High"
+        elif domain_count >= 3 or churn_risk_score >= 25:
+            complexity = "Medium"
+        else:
+            complexity = "Low"
+
+        # Risk factors
+        risk_factors: list[dict[str, Any]] = []
+        coc_amount = risk_waterfall.get("change_of_control", {}).get("amount", 0.0)
+        if coc_amount > 0:
+            risk_factors.append({"factor": "Change of Control exposure", "impact": "high", "arr_at_risk": coc_amount})
+        tfc_amount = risk_waterfall.get("termination_for_convenience", {}).get("amount", 0.0)
+        if tfc_amount > 0:
+            risk_factors.append(
+                {"factor": "Termination for Convenience clauses", "impact": "high", "arr_at_risk": tfc_amount}
+            )
+        conc_amount = risk_waterfall.get("customer_concentration", {}).get("amount", 0.0)
+        if conc_amount > 0:
+            risk_factors.append(
+                {"factor": "Customer concentration risk", "impact": "medium", "arr_at_risk": conc_amount}
+            )
+
+        # Milestones (standard integration timeline)
+        milestones: list[dict[str, Any]] = []
+        pre_close_items: list[str] = []
+        if coc_findings:
+            pre_close_items.append(f"Identify {len(coc_findings)} contracts requiring consent/notice for CoC")
+        if tfc_findings:
+            pre_close_items.append(f"Assess {len(tfc_findings)} contracts with TfC risk for retention strategy")
+        if pre_close_items:
+            milestones.append({"phase": "Pre-Close", "items": pre_close_items})
+
+        day1_items: list[str] = ["Communicate acquisition to key accounts"]
+        if coc_findings:
+            day1_items.append("Send consent/notice letters for CoC-triggered contracts")
+        milestones.append({"phase": "Day 1", "items": day1_items})
+
+        day30_items = ["Complete customer outreach for top revenue accounts"]
+        if risk_factors:
+            day30_items.append("Implement retention plans for at-risk contracts")
+        milestones.append({"phase": "Day 30-90", "items": day30_items})
+
+        milestones.append(
+            {
+                "phase": "Day 90-180",
+                "items": [
+                    "Monitor churn signals and contract renewals",
+                    "Execute pricing/contract harmonization where needed",
+                ],
+            }
+        )
+
+        return {
+            "churn_risk_score": churn_risk_score,
+            "churn_risk_label": churn_risk_label,
+            "integration_complexity": complexity,
+            "risk_factors": risk_factors,
+            "milestones": milestones,
         }
