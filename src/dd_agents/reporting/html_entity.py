@@ -26,6 +26,16 @@ class EntityDistributionRenderer(SectionRenderer):
         ]
 
         entities = analysis.get("total_entities_mentioned", 0)
+        migration_risk = str(analysis.get("migration_risk_score", "low"))
+
+        # Migration risk badge color
+        _risk_colors: dict[str, str] = {
+            "critical": "var(--red)",
+            "high": "var(--red)",
+            "medium": "var(--amber)",
+            "low": "var(--green)",
+        }
+        risk_color = _risk_colors.get(migration_risk, "var(--green)")
 
         parts.append("<div class='metrics-strip'>")
         for label, value in [
@@ -38,7 +48,25 @@ class EntityDistributionRenderer(SectionRenderer):
                 f"<div class='label'>{self.escape(label)}</div>"
                 f"</div>"
             )
+        if migration_risk != "low":
+            parts.append(
+                f"<div class='metric-card'>"
+                f"<div class='value' style='color:{risk_color}'>{self.escape(migration_risk.title())}</div>"
+                f"<div class='label'>Migration Risk</div>"
+                f"</div>"
+            )
         parts.append("</div>")
+
+        # Entity names list
+        entity_names: list[str] = analysis.get("entity_names", [])
+        if entity_names:
+            parts.append("<h3>Referenced Entities</h3>")
+            parts.append(
+                "<table class='customer-table sortable'><thead><tr><th scope='col'>Entity Name</th></tr></thead><tbody>"
+            )
+            for name in entity_names[:15]:
+                parts.append(f"<tr><td>{self.escape(str(name))}</td></tr>")
+            parts.append("</tbody></table>")
 
         if entities > 3:
             parts.append(

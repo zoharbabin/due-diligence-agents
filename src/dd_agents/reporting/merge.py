@@ -1132,6 +1132,26 @@ class FindingMerger:
             # dropping the finding or failing the format audit.
             description = f.get("description") or title
 
+            # --- Issue #145: Stamp per-finding provenance ---
+            meta = dict(f.get("metadata", {}))
+            contributing = meta.get("contributing_agents", [agent])
+            was_deduped = meta.get("semantic_dedup", False)
+            merge_action = (
+                "semantic_deduped"
+                if was_deduped
+                else ("severity_escalated" if meta.get("severity_disagreement") else "kept")
+            )
+            meta["provenance"] = {
+                "agent_name": agent,
+                "contributing_agents": contributing if isinstance(contributing, list) else [agent],
+                "merge_action": merge_action,
+                "citation_verified": not has_synthetic,
+                "recalibrated": severity != self._normalize_severity(str(raw_severity)),
+                "recalibration_reason": (
+                    "citation_downgrade" if severity != self._normalize_severity(str(raw_severity)) else ""
+                ),
+            }
+
             try:
                 finding = Finding(
                     id=finding_id,
@@ -1146,7 +1166,7 @@ class FindingMerger:
                     run_id=self.run_id,
                     timestamp=self.timestamp,
                     analysis_unit=customer_name,
-                    metadata=f.get("metadata", {}),
+                    metadata=meta,
                 )
                 results.append(finding)
             except Exception as exc:  # noqa: BLE001

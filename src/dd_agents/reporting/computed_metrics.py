@@ -949,6 +949,40 @@ class ReportComputedData(BaseModel):
         description="Contract date timeline: expiry calendar, renewal waterfall",
     )
 
+    # --- Issue #156: Insurance & Liability ---
+    liability_analysis: dict[str, Any] = Field(
+        default_factory=lambda: {
+            "total_liability_findings": 0,
+            "insurance_count": 0,
+            "liability_cap_count": 0,
+            "uncapped_count": 0,
+            "indemnification_count": 0,
+            "findings": [],
+        },
+        description="Insurance, liability cap, and indemnification analysis",
+    )
+
+    # --- Issue #158: IP & License Risk ---
+    ip_risk_analysis: dict[str, Any] = Field(
+        default_factory=lambda: {
+            "total_ip_findings": 0,
+            "ip_ownership_gaps": 0,
+            "open_source_count": 0,
+            "license_risk_count": 0,
+            "findings": [],
+        },
+        description="IP ownership, open source, and license risk analysis",
+    )
+
+    # --- Issue #103: Cross-Domain Risk Correlation ---
+    cross_domain_risks: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Compound risk cards for entities with findings across 3+ domains",
+    )
+
+    # --- Issue #116: Valuation Impact Bridge ---
+    valuation_bridge: dict[str, Any] = Field(default_factory=dict)
+
 
 class ReportDataComputer:
     """Single-pass computation of all report metrics.
@@ -1362,6 +1396,62 @@ class ReportDataComputer:
         _timeline_count = contract_timeline.get("expiry_findings_count", 0)
         section_rag["timeline"] = "red" if _timeline_count > 10 else ("amber" if _timeline_count > 0 else "green")
 
+        # --- Issue #156: Liability analysis ---
+        liability_analysis = self._compute_liability_analysis(material_findings)
+        # --- Issue #158: IP risk analysis ---
+        ip_risk_analysis = self._compute_ip_risk_analysis(material_findings)
+
+        # --- Issue #103: Cross-domain risk correlation ---
+        entity_domains: dict[str, set[str]] = defaultdict(set)
+        entity_sevs: dict[str, list[str]] = defaultdict(list)
+        for f in material_findings:
+            csn = f.get("_customer_safe_name", "")
+            dom = self._agent_to_domain(f.get("agent", ""))
+            if csn and dom:
+                entity_domains[csn].add(dom)
+                entity_sevs[csn].append(f.get("severity", "P3"))
+        cross_domain_risks: list[dict[str, Any]] = []
+        for csn, domains in entity_domains.items():
+            if len(domains) >= 3:
+                sevs = entity_sevs[csn]
+                score = sum(_SEVERITY_WEIGHTS.get(s, 1.0) for s in sevs)
+                cross_domain_risks.append(
+                    {
+                        "entity": csn,
+                        "domains": sorted(domains),
+                        "domain_count": len(domains),
+                        "finding_count": len(sevs),
+                        "risk_score": round(score, 1),
+                        "has_p0": "P0" in sevs,
+                    }
+                )
+        cross_domain_risks.sort(key=lambda x: x["risk_score"], reverse=True)
+
+        # --- Issue #116: Valuation bridge ---
+        valuation_bridge = self._compute_valuation_bridge(
+            total_contracted_arr,
+            risk_adjusted_arr,
+            risk_waterfall,
+        )
+
+        # RAG indicators for new sections
+        _liability_count = liability_analysis.get("total_liability_findings", 0)
+        _uncapped = liability_analysis.get("uncapped_count", 0)
+        section_rag["liability"] = "red" if _uncapped > 0 else ("amber" if _liability_count > 0 else "green")
+
+        _ip_count = ip_risk_analysis.get("total_ip_findings", 0)
+        _ip_gaps = ip_risk_analysis.get("ip_ownership_gaps", 0)
+        section_rag["ip_risk"] = "red" if _ip_gaps > 3 else ("amber" if _ip_count > 0 else "green")
+
+        section_rag["cross_domain"] = (
+            "red" if any(r.get("has_p0") for r in cross_domain_risks) else ("amber" if cross_domain_risks else "green")
+        )
+        section_rag["valuation"] = (
+            "red"
+            if valuation_bridge.get("exposure_pct", 0) > 20
+            else ("amber" if valuation_bridge.get("exposure_pct", 0) > 5 else "green")
+        )
+
         return ReportComputedData(
             total_findings=total_findings,
             total_gaps=total_gaps,
@@ -1464,6 +1554,11 @@ class ReportDataComputer:
             compliance_analysis=compliance_analysis,
             entity_distribution=entity_distribution,
             contract_timeline=contract_timeline,
+            # Wave 2 analyses
+            liability_analysis=liability_analysis,
+            ip_risk_analysis=ip_risk_analysis,
+            cross_domain_risks=cross_domain_risks,
+            valuation_bridge=valuation_bridge,
         )
 
     # --- Issue #113: Helper methods for business-oriented analysis ---
@@ -1670,7 +1765,8 @@ class ReportDataComputer:
         """Compute SaaS health metrics from revenue and customer data.
 
         Returns a dict with: total_customers, customers_with_revenue,
-        avg_contract_value, top_customer_pct, tier_distribution.
+        avg_contract_value, top_customer_pct, tier_distribution,
+        nrr_estimate, grr_estimate, expansion_signals, contraction_signals, benchmarks.
         """
         total_customers = len(merged_data)
         customers_with_revenue = len(revenue_by_customer)
@@ -1692,12 +1788,74 @@ class ReportDataComputer:
             else:
                 tiers["SMB"] += 1
 
+        # --- Issue #115: NRR/GRR estimation from expansion/contraction signals ---
+        expansion_keywords = ["upsell", "expansion", "cross-sell", "upgrade"]
+        contraction_keywords = [
+            "downsell",
+            "downgrade",
+            "contraction",
+            "churn",
+            "cancellation",
+        ]
+        expansion_count = 0
+        contraction_count = 0
+        for _csn, data in merged_data.items():
+            if not isinstance(data, dict):
+                continue
+            for f in data.get("findings", []):
+                if not isinstance(f, dict):
+                    continue
+                combined = f"{f.get('title', '')} {f.get('description', '')}".lower()
+                if any(kw in combined for kw in expansion_keywords):
+                    expansion_count += 1
+                if any(kw in combined for kw in contraction_keywords):
+                    contraction_count += 1
+
+        # Heuristic NRR: 100 + (expansion - contraction) * 5, capped 70-150
+        nrr_raw = 100.0 + (expansion_count - contraction_count) * 5.0
+        nrr_estimate = max(70.0, min(150.0, nrr_raw))
+
+        # Heuristic GRR: 100 - contraction_count/total_customers * 20, capped 50-100
+        grr_raw = 100.0 - contraction_count / total_customers * 20.0 if total_customers > 0 else 100.0
+        grr_estimate = max(50.0, min(100.0, grr_raw))
+
+        # --- Issue #115: Logo retention (heuristic) ---
+        # Estimate from churn signals: each churn signal represents ~1 lost logo
+        churn_rate = contraction_count / total_customers if total_customers > 0 else 0.0
+        logo_retention_pct = max(50.0, min(100.0, round((1.0 - churn_rate) * 100, 1)))
+
+        # --- Issue #115: CLV estimate ---
+        # CLV = ACV / (1 - GRR/100), capped to avoid infinity when GRR~100
+        annual_churn_rate = 1.0 - grr_estimate / 100.0
+        clv_estimate = round(avg_cv / max(annual_churn_rate, 0.05), 0) if avg_cv > 0 else 0.0
+
+        # --- Issue #115: Rule of 40 ---
+        # Rule of 40 = Revenue Growth % + EBITDA Margin %
+        # Heuristic: growth = NRR - 100 (expansion-driven), margin unknown → assume 0
+        # This gives a conservative lower-bound score
+        implied_growth_pct = nrr_estimate - 100.0
+        rule_of_40_score = round(implied_growth_pct, 1)  # margin assumed 0 (unknown)
+
+        benchmarks: dict[str, dict[str, float]] = {
+            "top_quartile": {"nrr": 130.0, "grr": 95.0},
+            "median": {"nrr": 110.0, "grr": 85.0},
+            "concerning": {"nrr": 90.0, "grr": 70.0},
+        }
+
         return {
             "total_customers": total_customers,
             "customers_with_revenue": customers_with_revenue,
             "avg_contract_value": avg_cv,
             "top_customer_pct": round(top_pct, 1),
             "tier_distribution": tiers,
+            "nrr_estimate": round(nrr_estimate, 1),
+            "grr_estimate": round(grr_estimate, 1),
+            "expansion_signals": expansion_count,
+            "contraction_signals": contraction_count,
+            "logo_retention_pct": logo_retention_pct,
+            "clv_estimate": clv_estimate,
+            "rule_of_40_score": rule_of_40_score,
+            "benchmarks": benchmarks,
         }
 
     @staticmethod
@@ -2078,6 +2236,8 @@ class ReportDataComputer:
         pricing_findings: list[dict[str, Any]] = []
         customers_with_discounts: set[str] = set()
         distribution: dict[str, int] = {"0-10%": 0, "10-25%": 0, "25-50%": 0, ">50%": 0}
+        all_discount_pcts: list[float] = []
+        entity_discounts: dict[str, float] = {}  # csn -> max discount pct
 
         pricing_keywords = [
             "discount",
@@ -2099,12 +2259,15 @@ class ReportDataComputer:
                 matches = ReportDataComputer._DISCOUNT_RE.findall(combined)
                 for m in matches:
                     try:
-                        pct = int(m)
+                        pct = float(m)
                     except (ValueError, TypeError):
                         continue
+                    all_discount_pcts.append(pct)
                     csn = f.get("_customer_safe_name", "")
                     if csn:
                         customers_with_discounts.add(csn)
+                        if pct > entity_discounts.get(csn, 0.0):
+                            entity_discounts[csn] = pct
                     if pct <= 10:
                         distribution["0-10%"] += 1
                     elif pct <= 25:
@@ -2114,11 +2277,24 @@ class ReportDataComputer:
                     else:
                         distribution[">50%"] += 1
 
+        avg_discount = sum(all_discount_pcts) / len(all_discount_pcts) if all_discount_pcts else 0.0
+        max_discount = max(all_discount_pcts) if all_discount_pcts else 0.0
+
+        # Top 5 entities by discount %
+        _disc_list: list[dict[str, Any]] = [
+            {"entity": csn, "discount_pct": pct} for csn, pct in entity_discounts.items()
+        ]
+        _disc_list.sort(key=lambda x: entity_discounts.get(str(x.get("entity", "")), 0.0), reverse=True)
+        top_discounted: list[dict[str, Any]] = _disc_list[:5]
+
         return {
             "customers_with_discounts": len(customers_with_discounts),
             "total_pricing_findings": len(pricing_findings),
             "distribution": distribution,
             "findings": pricing_findings[:20],
+            "avg_discount_pct": round(avg_discount, 1),
+            "max_discount_pct": round(max_discount, 1),
+            "top_discounted": top_discounted,
         }
 
     # --- Issue #136: Renewal & Contract Expiry Analysis ---
@@ -2132,6 +2308,8 @@ class ReportDataComputer:
         auto_count = 0
         manual_count = 0
         escalation_count = 0
+        evergreen_count = 0
+        expiry_distribution: dict[str, int] = {"0-6mo": 0, "6-12mo": 0, "12-24mo": 0, ">24mo": 0}
 
         renewal_keywords = [
             "renewal",
@@ -2154,12 +2332,28 @@ class ReportDataComputer:
                     manual_count += 1
                 if "escalat" in combined or "price increase" in combined or " cap " in combined or "capped" in combined:
                     escalation_count += 1
+                if "evergreen" in combined:
+                    evergreen_count += 1
+                # Parse months-to-expiry from finding text
+                month_match = re.search(r"(\d+)\s*months?", combined)
+                if month_match:
+                    months = int(month_match.group(1))
+                    if months <= 6:
+                        expiry_distribution["0-6mo"] += 1
+                    elif months <= 12:
+                        expiry_distribution["6-12mo"] += 1
+                    elif months <= 24:
+                        expiry_distribution["12-24mo"] += 1
+                    else:
+                        expiry_distribution[">24mo"] += 1
 
         return {
             "total_renewal_findings": len(renewal_findings),
             "auto_renew_count": auto_count,
             "manual_renew_count": manual_count,
             "escalation_cap_count": escalation_count,
+            "evergreen_count": evergreen_count,
+            "expiry_distribution": expiry_distribution,
             "findings": renewal_findings[:20],
         }
 
@@ -2218,12 +2412,152 @@ class ReportDataComputer:
             if matched:
                 all_compliance.append(f)
 
+        # DPA coverage: unique entities with DPA findings vs total entities in findings
+        dpa_entities: set[str] = set()
+        total_entities: set[str] = set()
+        for f in dpa_findings:
+            csn = f.get("_customer_safe_name", "")
+            if csn:
+                dpa_entities.add(csn)
+        for f in all_findings:
+            csn = f.get("_customer_safe_name", "")
+            if csn:
+                total_entities.add(csn)
+        dpa_coverage_pct = len(dpa_entities) / len(total_entities) * 100.0 if total_entities else 0.0
+
+        # Extract jurisdiction names from jurisdiction findings
+        _us_states = [
+            "alabama",
+            "alaska",
+            "arizona",
+            "arkansas",
+            "california",
+            "colorado",
+            "connecticut",
+            "delaware",
+            "florida",
+            "georgia",
+            "hawaii",
+            "idaho",
+            "illinois",
+            "indiana",
+            "iowa",
+            "kansas",
+            "kentucky",
+            "louisiana",
+            "maine",
+            "maryland",
+            "massachusetts",
+            "michigan",
+            "minnesota",
+            "mississippi",
+            "missouri",
+            "montana",
+            "nebraska",
+            "nevada",
+            "new hampshire",
+            "new jersey",
+            "new mexico",
+            "new york",
+            "north carolina",
+            "north dakota",
+            "ohio",
+            "oklahoma",
+            "oregon",
+            "pennsylvania",
+            "rhode island",
+            "south carolina",
+            "south dakota",
+            "tennessee",
+            "texas",
+            "utah",
+            "vermont",
+            "virginia",
+            "washington",
+            "west virginia",
+            "wisconsin",
+            "wyoming",
+        ]
+        _countries = [
+            "united states",
+            "united kingdom",
+            "canada",
+            "australia",
+            "germany",
+            "france",
+            "japan",
+            "singapore",
+            "ireland",
+            "netherlands",
+            "switzerland",
+            "sweden",
+            "india",
+            "brazil",
+            "china",
+            "israel",
+            "south korea",
+            "spain",
+            "italy",
+            "mexico",
+        ]
+        jurisdiction_re = re.compile(
+            r"\b(" + "|".join(re.escape(j) for j in _us_states + _countries) + r")\b",
+            re.IGNORECASE,
+        )
+        jurisdiction_counts: dict[str, int] = defaultdict(int)
+        for f in jurisdiction_findings:
+            combined_text = f"{f.get('title', '')} {f.get('description', '')}"
+            for jm in jurisdiction_re.finditer(combined_text):
+                jurisdiction_counts[jm.group(0).title()] += 1
+        _jur_list: list[dict[str, Any]] = [{"jurisdiction": j, "count": c} for j, c in jurisdiction_counts.items()]
+        _jur_list.sort(key=lambda x: jurisdiction_counts.get(str(x["jurisdiction"]), 0), reverse=True)
+        top_jurisdictions: list[dict[str, Any]] = _jur_list[:5]
+
+        # --- Compliance risk score (0-100, severity-weighted) ---
+        score_weights = {"P0": 25, "P1": 15, "P2": 8, "P3": 3}
+        raw_score = sum(score_weights.get(str(f.get("severity", "P3")), 3) for f in all_compliance)
+        compliance_risk_score = min(100, raw_score)
+        if compliance_risk_score >= 60:
+            compliance_risk_label = "critical"
+        elif compliance_risk_score >= 30:
+            compliance_risk_label = "high"
+        elif compliance_risk_score >= 10:
+            compliance_risk_label = "medium"
+        else:
+            compliance_risk_label = "low"
+
+        # --- Filing checklist (based on detected regulatory frameworks) ---
+        _framework_map: dict[str, str] = {
+            "gdpr": "GDPR: Data Protection Impact Assessment (DPIA)",
+            "ccpa": "CCPA: Consumer privacy notice & opt-out mechanisms",
+            "hipaa": "HIPAA: Business Associate Agreement (BAA) audit",
+            "sox": "SOX: Internal controls over financial reporting",
+            "pci": "PCI-DSS: Cardholder data environment scope review",
+            "fedramp": "FedRAMP: Authorization package & continuous monitoring",
+            "fcpa": "FCPA: Anti-bribery compliance program review",
+            "ofac": "OFAC: Sanctions screening for all counterparties",
+            "itar": "ITAR: Export control classification & license review",
+            "aml": "AML/KYC: Customer due diligence procedures",
+        }
+        detected_frameworks: set[str] = set()
+        for f in all_compliance:
+            combined_check = f"{f.get('title', '')} {f.get('description', '')}".lower()
+            for fw_key in _framework_map:
+                if fw_key in combined_check:
+                    detected_frameworks.add(fw_key)
+        filing_checklist: list[str] = [_framework_map[fw] for fw in sorted(detected_frameworks) if fw in _framework_map]
+
         return {
             "dpa_findings_count": len(dpa_findings),
             "jurisdiction_findings_count": len(jurisdiction_findings),
             "regulatory_findings_count": len(regulatory_findings),
             "total_compliance_findings": len(all_compliance),
             "findings": all_compliance[:20],
+            "dpa_coverage_pct": round(dpa_coverage_pct, 1),
+            "top_jurisdictions": top_jurisdictions,
+            "compliance_risk_score": compliance_risk_score,
+            "compliance_risk_label": compliance_risk_label,
+            "filing_checklist": filing_checklist,
         }
 
     # --- Issue #137: Legal Entity Distribution ---
@@ -2264,10 +2598,26 @@ class ReportDataComputer:
                 if csn:
                     entities_mentioned.add(csn)
 
+        # Extract entity names from finding customer names
+        entity_names: list[str] = sorted(entities_mentioned)
+
+        # Migration risk scoring
+        entity_count = len(entities_mentioned)
+        if entity_count >= 6:
+            migration_risk_score = "critical"
+        elif entity_count >= 4:
+            migration_risk_score = "high"
+        elif entity_count >= 2:
+            migration_risk_score = "medium"
+        else:
+            migration_risk_score = "low"
+
         return {
             "total_entities_mentioned": len(entities_mentioned),
             "entity_findings_count": len(entity_findings),
             "findings": entity_findings[:20],
+            "entity_names": entity_names,
+            "migration_risk_score": migration_risk_score,
         }
 
     # --- Issue #147: Contract Date Timeline ---
@@ -2304,6 +2654,11 @@ class ReportDataComputer:
         timeline_findings: list[dict[str, Any]] = []
         date_count = 0
 
+        # For cliff risk: track quarter strings per finding
+        quarter_counts: dict[str, int] = defaultdict(int)
+        all_dates: list[str] = []
+        _iso_date_re = re.compile(r"\b(\d{4})[-/](\d{1,2})[-/](\d{1,2})\b")
+
         for f in all_findings:
             combined = f"{f.get('title', '')} {f.get('description', '')}".lower()
             if any(kw in combined for kw in timeline_keywords):
@@ -2312,9 +2667,182 @@ class ReportDataComputer:
                 full_text = f"{f.get('title', '')} {f.get('description', '')}"
                 matches = ReportDataComputer._DATE_RE.findall(full_text)
                 date_count += len(matches)
+                # Extract ISO dates for cliff risk and earliest/latest
+                for dm in _iso_date_re.finditer(full_text):
+                    year_str, month_str = dm.group(1), dm.group(2)
+                    day_str = dm.group(3)
+                    date_str = f"{year_str}-{month_str.zfill(2)}-{day_str.zfill(2)}"
+                    all_dates.append(date_str)
+                    with contextlib.suppress(ValueError):
+                        month_val = int(month_str)
+                        q = (month_val - 1) // 3 + 1
+                        quarter_key = f"{year_str}-Q{q}"
+                        quarter_counts[quarter_key] += 1
+
+        # Cliff risk: >3 expiry findings in same quarter
+        cliff_risk = any(c > 3 for c in quarter_counts.values())
+
+        # Earliest and latest dates
+        sorted_dates = sorted(all_dates) if all_dates else []
+        earliest_expiry = sorted_dates[0] if sorted_dates else ""
+        latest_expiry = sorted_dates[-1] if sorted_dates else ""
 
         return {
             "date_mentions_count": date_count,
             "expiry_findings_count": len(timeline_findings),
             "findings": timeline_findings[:20],
+            "cliff_risk": cliff_risk,
+            "earliest_expiry": earliest_expiry,
+            "latest_expiry": latest_expiry,
+        }
+
+    # --- Issue #156: Insurance & Liability Analysis ---
+
+    _LIABILITY_CAP_RE = re.compile(r"\$[\d,.]+\s*(?:million|M|thousand|K)?", re.IGNORECASE)
+
+    @staticmethod
+    def _compute_liability_analysis(
+        all_findings: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Analyze insurance, liability caps, and indemnification provisions."""
+        liability_keywords = [
+            "insurance",
+            "liability",
+            "indemnif",
+            "indemnity",
+            "warranty",
+            "limitation of liability",
+            "cap on liability",
+            "uncapped",
+            "unlimited liability",
+        ]
+        insurance_findings: list[dict[str, Any]] = []
+        liability_findings: list[dict[str, Any]] = []
+        indemnification_findings: list[dict[str, Any]] = []
+        all_liability: list[dict[str, Any]] = []
+        liability_cap_count = 0
+        uncapped_count = 0
+
+        for f in all_findings:
+            combined = f"{f.get('title', '')} {f.get('description', '')}".lower()
+            if not any(kw in combined for kw in liability_keywords):
+                continue
+            all_liability.append(f)
+            if "insurance" in combined:
+                insurance_findings.append(f)
+            if "liability" in combined or "limitation of liability" in combined or "cap on liability" in combined:
+                liability_findings.append(f)
+                # Check for liability caps
+                full_text = f"{f.get('title', '')} {f.get('description', '')}"
+                if ReportDataComputer._LIABILITY_CAP_RE.search(full_text):
+                    liability_cap_count += 1
+            if "indemnif" in combined or "indemnity" in combined:
+                indemnification_findings.append(f)
+            if "uncapped" in combined or "unlimited" in combined:
+                uncapped_count += 1
+
+        return {
+            "total_liability_findings": len(all_liability),
+            "insurance_count": len(insurance_findings),
+            "liability_cap_count": liability_cap_count,
+            "uncapped_count": uncapped_count,
+            "indemnification_count": len(indemnification_findings),
+            "findings": all_liability[:20],
+        }
+
+    # --- Issue #158: IP & License Risk Analysis ---
+
+    @staticmethod
+    def _compute_ip_risk_analysis(
+        all_findings: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Analyze IP ownership, open source, and license risks."""
+        ip_keywords = [
+            "intellectual property",
+            " ip ",
+            "patent",
+            "copyright",
+            "trademark",
+            "trade secret",
+            "open source",
+            "gpl",
+            "mit license",
+            "apache license",
+            "bsd license",
+            "lgpl",
+            "agpl",
+            "source code",
+            "license",
+            "proprietary",
+        ]
+        ip_findings: list[dict[str, Any]] = []
+        open_source_findings: list[dict[str, Any]] = []
+        license_findings: list[dict[str, Any]] = []
+        ip_ownership_gaps = 0
+
+        for f in all_findings:
+            combined = f"{f.get('title', '')} {f.get('description', '')}".lower()
+            if not any(kw in combined for kw in ip_keywords):
+                continue
+            ip_findings.append(f)
+            if any(
+                kw in combined
+                for kw in ["open source", "gpl", "lgpl", "agpl", "mit license", "apache license", "bsd license"]
+            ):
+                open_source_findings.append(f)
+            if "license" in combined:
+                license_findings.append(f)
+            if ("gap" in combined or "missing" in combined) and any(
+                kw in combined
+                for kw in [
+                    "intellectual property",
+                    " ip ",
+                    "patent",
+                    "copyright",
+                    "trademark",
+                    "trade secret",
+                    "proprietary",
+                ]
+            ):
+                ip_ownership_gaps += 1
+
+        return {
+            "total_ip_findings": len(ip_findings),
+            "ip_ownership_gaps": ip_ownership_gaps,
+            "open_source_count": len(open_source_findings),
+            "license_risk_count": len(license_findings),
+            "findings": ip_findings[:20],
+        }
+
+    # --- Issue #116: Valuation Impact Bridge ---
+
+    @staticmethod
+    def _compute_valuation_bridge(
+        total_arr: float,
+        risk_adjusted_arr: float,
+        risk_waterfall: dict[str, dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Compute valuation impact bridge from ARR and risk exposure."""
+        if total_arr <= 0:
+            return {}
+        exposure = total_arr - risk_adjusted_arr
+        exposure_pct = exposure / total_arr * 100
+        # Estimated valuation impact at typical SaaS multiples
+        multiples = {"conservative": 5.0, "base": 8.0, "premium": 12.0}
+        impact = {k: round(exposure * v, 0) for k, v in multiples.items()}
+        # Build risk_categories as a list of dicts for renderer iteration
+        risk_categories: list[dict[str, Any]] = [
+            {"category": k.replace("_", " ").title(), "exposure": v.get("amount", 0.0)}
+            for k, v in risk_waterfall.items()
+            if v.get("amount", 0) > 0
+        ]
+        risk_categories.sort(key=lambda x: x.get("exposure", 0.0), reverse=True)
+
+        return {
+            "total_arr": total_arr,
+            "risk_adjusted_arr": risk_adjusted_arr,
+            "total_exposure": exposure,
+            "exposure_pct": round(exposure_pct, 1),
+            "valuation_impact": impact,
+            "risk_categories": risk_categories,
         }

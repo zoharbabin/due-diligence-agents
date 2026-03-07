@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import html
 import json
 import logging
 from typing import TYPE_CHECKING, Any
@@ -101,10 +100,10 @@ class DiffRenderer(SectionRenderer):
         ]
         for c in changes:
             raw_customer = str(c.get("customer", ""))
-            customer = html.escape(
+            customer = self.escape(
                 self.data.display_names.get(raw_customer, raw_customer) if self.data else raw_customer
             )
-            summary = html.escape(str(c.get("finding_summary", "")))
+            summary = self.escape(str(c.get("finding_summary", "")))
             parts.append(f"<tr><td>{customer}</td><td>{summary}</td></tr>")
         parts.append("</tbody></table>")
         return "\n".join(parts)
@@ -118,12 +117,12 @@ class DiffRenderer(SectionRenderer):
         ]
         for c in changes:
             raw_customer = str(c.get("customer", ""))
-            customer = html.escape(
+            customer = self.escape(
                 self.data.display_names.get(raw_customer, raw_customer) if self.data else raw_customer
             )
-            summary = html.escape(str(c.get("finding_summary", "")))
-            prior = html.escape(str(c.get("prior_severity", "")))
-            current = html.escape(str(c.get("current_severity", "")))
+            summary = self.escape(str(c.get("finding_summary", "")))
+            prior = self.escape(str(c.get("prior_severity", "")))
+            current = self.escape(str(c.get("current_severity", "")))
             parts.append(f"<tr><td>{customer}</td><td>{summary}</td><td>{prior}</td><td>{current}</td></tr>")
         parts.append("</tbody></table>")
         return "\n".join(parts)

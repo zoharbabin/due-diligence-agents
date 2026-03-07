@@ -9,15 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from dd_agents.reporting.html_base import SectionRenderer
-
-
-def _fmt_currency(amount: float) -> str:
-    """Format a dollar amount for display."""
-    if amount >= 1_000_000:
-        return f"${amount / 1_000_000:.1f}M"
-    if amount >= 1_000:
-        return f"${amount / 1_000:.0f}K"
-    return f"${amount:,.0f}"
+from dd_agents.reporting.html_base import fmt_currency as _fmt_currency
 
 
 class SaaSMetricsRenderer(SectionRenderer):
@@ -72,6 +64,106 @@ class SaaSMetricsRenderer(SectionRenderer):
                 pct = (count / total_customers * 100) if total_customers > 0 else 0
                 parts.append(f"<tr><td>{self.escape(str(tier_name))}</td><td>{count}</td><td>{pct:.0f}%</td></tr>")
             parts.append("</tbody></table>")
+
+        # NRR/GRR section (only if nrr_estimate is present)
+        nrr = metrics.get("nrr_estimate")
+        if nrr is not None:
+            grr = metrics.get("grr_estimate", 0.0)
+            expansion = metrics.get("expansion_signals", 0)
+            contraction = metrics.get("contraction_signals", 0)
+
+            # Color coding for NRR: green >=115, amber >=100, red <100
+            if nrr >= 115:
+                nrr_color = "var(--green)"
+            elif nrr >= 100:
+                nrr_color = "var(--amber)"
+            else:
+                nrr_color = "var(--red)"
+
+            # Color coding for GRR: green >=90, amber >=80, red <80
+            if grr >= 90:
+                grr_color = "var(--green)"
+            elif grr >= 80:
+                grr_color = "var(--amber)"
+            else:
+                grr_color = "var(--red)"
+
+            parts.append("<h3>Net &amp; Gross Revenue Retention</h3>")
+            parts.append("<div class='metrics-strip'>")
+            parts.append(
+                f"<div class='metric-card'>"
+                f"<div class='value' style='color:{nrr_color}'>{nrr:.0f}%</div>"
+                f"<div class='label'>NRR Estimate</div>"
+                f"</div>"
+            )
+            parts.append(
+                f"<div class='metric-card'>"
+                f"<div class='value' style='color:{grr_color}'>{grr:.0f}%</div>"
+                f"<div class='label'>GRR Estimate</div>"
+                f"</div>"
+            )
+            parts.append(
+                f"<div class='metric-card'>"
+                f"<div class='value'>{expansion}</div>"
+                f"<div class='label'>Expansion Signals</div>"
+                f"</div>"
+            )
+            parts.append(
+                f"<div class='metric-card'>"
+                f"<div class='value'>{contraction}</div>"
+                f"<div class='label'>Contraction Signals</div>"
+                f"</div>"
+            )
+            parts.append("</div>")
+
+            parts.append(
+                self.render_alert(
+                    "info",
+                    "Benchmark Comparison",
+                    f"NRR {nrr:.0f}% vs. best-in-class SaaS benchmark of 120%+. "
+                    f"GRR {grr:.0f}% vs. median SaaS benchmark of 90%.",
+                )
+            )
+
+        # Logo Retention, CLV, Rule of 40
+        logo_ret = metrics.get("logo_retention_pct")
+        clv = metrics.get("clv_estimate")
+        rule40 = metrics.get("rule_of_40_score")
+        if logo_ret is not None or clv is not None or rule40 is not None:
+            parts.append("<h3>Unit Economics &amp; Growth</h3>")
+            parts.append("<div class='metrics-strip'>")
+            if logo_ret is not None:
+                parts.append(
+                    f"<div class='metric-card'>"
+                    f"<div class='value'>{logo_ret:.0f}%</div>"
+                    f"<div class='label'>Logo Retention (Est.)</div>"
+                    f"</div>"
+                )
+            if clv is not None and clv > 0:
+                parts.append(
+                    f"<div class='metric-card'>"
+                    f"<div class='value'>{_fmt_currency(clv)}</div>"
+                    f"<div class='label'>CLV Estimate</div>"
+                    f"</div>"
+                )
+            if rule40 is not None:
+                r40_color = "var(--green)" if rule40 >= 40 else ("var(--amber)" if rule40 >= 20 else "var(--red)")
+                parts.append(
+                    f"<div class='metric-card'>"
+                    f"<div class='value' style='color:{r40_color}'>{rule40:.0f}</div>"
+                    f"<div class='label'>Rule of 40 (Est.)</div>"
+                    f"</div>"
+                )
+            parts.append("</div>")
+            if rule40 is not None and rule40 < 20:
+                parts.append(
+                    self.render_alert(
+                        "high",
+                        f"Rule of 40 score is {rule40:.0f} (below threshold)",
+                        "Rule of 40 = Revenue Growth % + EBITDA Margin %. Score below 20 signals "
+                        "concern. Note: margin data unavailable, score reflects growth only.",
+                    )
+                )
 
         # Concentration alert
         if top_pct >= 30:
