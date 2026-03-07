@@ -853,6 +853,19 @@ class ReportComputedData(BaseModel):
     material_gaps: list[dict[str, Any]] = Field(default_factory=list)
     noise_gaps: list[dict[str, Any]] = Field(default_factory=list)
 
+    # --- Issue #143: Confidence Calibration ---
+    confidence_distribution: dict[str, int] = Field(
+        default_factory=lambda: {"high": 0, "medium": 0, "low": 0},
+        description="Count of findings by confidence level",
+    )
+    low_confidence_count: int = Field(default=0, description="Number of low-confidence findings requiring review")
+
+    # --- Issue #115: SaaS Health Metrics ---
+    saas_metrics: dict[str, Any] = Field(
+        default_factory=dict,
+        description="SaaS health metrics: total_customers, avg_contract_value, tier_distribution, etc.",
+    )
+
     # --- Issue #125: Red Flag Scan (quick-scan mode) ---
     red_flag_scan: dict[str, Any] | None = None
 
@@ -1241,6 +1254,20 @@ class ReportDataComputer:
             display_names,
         )
 
+        # --- Issue #143: Confidence distribution ---
+        conf_dist: dict[str, int] = {"high": 0, "medium": 0, "low": 0}
+        low_conf_count = 0
+        for f in all_findings:
+            conf = str(f.get("confidence", "medium")).lower()
+            if conf not in conf_dist:
+                conf = "medium"
+            conf_dist[conf] += 1
+            if conf == "low":
+                low_conf_count += 1
+
+        # --- Issue #115: SaaS health metrics ---
+        saas_metrics = self._compute_saas_metrics(revenue_by_customer, merged_data)
+
         return ReportComputedData(
             total_findings=total_findings,
             total_gaps=total_gaps,
@@ -1331,6 +1358,11 @@ class ReportDataComputer:
             revenue_data_coverage=revenue_data_coverage,
             risk_waterfall=risk_waterfall,
             concentration_treemap=concentration_treemap,
+            # Issue #143: Confidence Calibration
+            confidence_distribution=conf_dist,
+            low_confidence_count=low_conf_count,
+            # Issue #115: SaaS Health Metrics
+            saas_metrics=saas_metrics,
         )
 
     # --- Issue #113: Helper methods for business-oriented analysis ---
@@ -1528,6 +1560,44 @@ class ReportDataComputer:
 
         treemap.sort(key=lambda x: -x["revenue"])
         return treemap
+
+    @staticmethod
+    def _compute_saas_metrics(
+        revenue_by_customer: dict[str, float],
+        merged_data: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Compute SaaS health metrics from revenue and customer data.
+
+        Returns a dict with: total_customers, customers_with_revenue,
+        avg_contract_value, top_customer_pct, tier_distribution.
+        """
+        total_customers = len(merged_data)
+        customers_with_revenue = len(revenue_by_customer)
+        total_arr = sum(revenue_by_customer.values())
+
+        avg_cv = total_arr / customers_with_revenue if customers_with_revenue > 0 else 0.0
+
+        # Top customer concentration
+        sorted_rev = sorted(revenue_by_customer.values(), reverse=True)
+        top_pct = (sorted_rev[0] / total_arr * 100) if sorted_rev and total_arr > 0 else 0.0
+
+        # Tier distribution: Enterprise (>$100K), Mid-Market ($25K-$100K), SMB (<$25K)
+        tiers: dict[str, int] = {"Enterprise": 0, "Mid-Market": 0, "SMB": 0}
+        for rev in revenue_by_customer.values():
+            if rev >= 100_000:
+                tiers["Enterprise"] += 1
+            elif rev >= 25_000:
+                tiers["Mid-Market"] += 1
+            else:
+                tiers["SMB"] += 1
+
+        return {
+            "total_customers": total_customers,
+            "customers_with_revenue": customers_with_revenue,
+            "avg_contract_value": avg_cv,
+            "top_customer_pct": round(top_pct, 1),
+            "tier_distribution": tiers,
+        }
 
     @staticmethod
     def _compute_health_tiers(

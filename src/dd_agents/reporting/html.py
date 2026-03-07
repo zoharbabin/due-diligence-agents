@@ -45,6 +45,7 @@ from dd_agents.reporting.html_quality import QualityRenderer
 from dd_agents.reporting.html_recommendations import RecommendationsRenderer
 from dd_agents.reporting.html_red_flags import RedFlagAssessmentRenderer
 from dd_agents.reporting.html_risk import RiskRenderer
+from dd_agents.reporting.html_saas_metrics import SaaSMetricsRenderer
 from dd_agents.reporting.html_strategy import StrategyRenderer
 
 if TYPE_CHECKING:
@@ -155,6 +156,8 @@ class HTMLReportGenerator:
             DashboardRenderer(computed, merged_data, renderer_config),
             # 2b. Financial Impact (revenue-at-risk waterfall, treemap — Issue #102)
             FinancialImpactRenderer(computed, merged_data, renderer_config),
+            # 2c. SaaS Health Metrics (KPI cards, tier distribution — Issue #115)
+            SaaSMetricsRenderer(computed, merged_data, renderer_config),
             # 3. P0/P1 entity tables
             FindingsTableRenderer(computed, merged_data, renderer_config),
             # 4. Change of Control analysis
