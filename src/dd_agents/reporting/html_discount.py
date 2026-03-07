@@ -81,7 +81,9 @@ class DiscountAnalysisRenderer(SectionRenderer):
                 "</tr></thead><tbody>"
             )
             for entry in top_discounted[:15]:
-                name = self.escape(str(entry.get("entity", "")))
+                csn = str(entry.get("entity", ""))
+                display = self.data.display_names.get(csn, csn) if self.data else csn
+                name = self.escape(display)
                 pct = entry.get("discount_pct", 0.0)
                 parts.append(f"<tr><td>{name}</td><td>{pct:.1f}%</td></tr>")
             parts.append("</tbody></table>")

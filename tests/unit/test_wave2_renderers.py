@@ -161,6 +161,24 @@ class TestDiscountRenderer:
         assert "Top Discounted Entities" in html
         assert "Customer A" in html
 
+    def test_top_discounted_uses_display_name(self) -> None:
+        data = _make_data(
+            display_names={"acme_corp": "Acme Corporation"},
+            discount_analysis={
+                "total_pricing_findings": 1,
+                "customers_with_discounts": 1,
+                "distribution": {},
+                "top_discounted": [
+                    {"entity": "acme_corp", "discount_pct": 25.0},
+                ],
+                "findings": [],
+            },
+        )
+        r = DiscountAnalysisRenderer(data, {})
+        html = r.render()
+        assert "Acme Corporation" in html
+        assert "acme_corp" not in html
+
     def test_xss_escaping_top_discounted(self) -> None:
         data = _make_data(
             discount_analysis={

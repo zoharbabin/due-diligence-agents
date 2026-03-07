@@ -73,6 +73,30 @@ class TestFindingsCsvExport:
         lines = result.strip().split("\n")
         assert len(lines) == 2  # header + 1 row
 
+    def test_csv_injection_sanitized(self) -> None:
+        from dd_agents.reporting.export import export_findings_csv
+
+        computed = ReportComputedData(
+            material_findings=[
+                {
+                    "title": "=CMD('calc')",
+                    "severity": "P1",
+                    "category": "+malicious",
+                    "_domain": "legal",
+                    "_customer_safe_name": "@evil",
+                    "agent": "legal",
+                    "description": "-formula injection",
+                },
+            ],
+        )
+        result = export_findings_csv(computed)
+        reader = csv.DictReader(io.StringIO(result))
+        row = next(reader)
+        assert row["title"].startswith("\t=")
+        assert row["category"].startswith("\t+")
+        assert row["entity"].startswith("\t@")
+        assert row["description"].startswith("\t-")
+
 
 class TestRiskSummaryExport:
     def test_risk_summary_structure(self) -> None:

@@ -43,6 +43,16 @@ def export_findings_json(computed: ReportComputedData, merged_data: dict[str, An
     return json.dumps(output, indent=2, default=str)
 
 
+_CSV_INJECTION_PREFIXES = ("=", "+", "-", "@", "|", "%")
+
+
+def _sanitize_csv_field(value: str) -> str:
+    """Prefix dangerous CSV fields with a tab to prevent formula injection."""
+    if value and value[0] in _CSV_INJECTION_PREFIXES:
+        return "\t" + value
+    return value
+
+
 def export_findings_csv(computed: ReportComputedData) -> str:
     """Export material findings as CSV."""
     buf = io.StringIO()
@@ -63,14 +73,14 @@ def export_findings_csv(computed: ReportComputedData) -> str:
     for f in computed.material_findings:
         writer.writerow(
             {
-                "severity": f.get("severity", "P3"),
-                "title": f.get("title", ""),
-                "category": f.get("category", ""),
-                "domain": f.get("_domain", ""),
-                "entity": f.get("_customer_safe_name", ""),
-                "confidence": f.get("confidence", "medium"),
-                "agent": f.get("agent", ""),
-                "description": str(f.get("description", ""))[:500],
+                "severity": _sanitize_csv_field(str(f.get("severity", "P3"))),
+                "title": _sanitize_csv_field(str(f.get("title", ""))),
+                "category": _sanitize_csv_field(str(f.get("category", ""))),
+                "domain": _sanitize_csv_field(str(f.get("_domain", ""))),
+                "entity": _sanitize_csv_field(str(f.get("_customer_safe_name", ""))),
+                "confidence": _sanitize_csv_field(str(f.get("confidence", "medium"))),
+                "agent": _sanitize_csv_field(str(f.get("agent", ""))),
+                "description": _sanitize_csv_field(str(f.get("description", ""))[:500]),
             }
         )
     return buf.getvalue()

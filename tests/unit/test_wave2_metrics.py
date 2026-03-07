@@ -377,7 +377,7 @@ class TestLiabilityAnalysis:
             ),
         ]
         result = ReportDataComputer._compute_liability_analysis(findings)
-        assert result["liability_cap_count"] >= 1
+        assert result["liability_cap_count"] == 1
 
     def test_indemnification_count(self) -> None:
         """Indemnification findings should be counted."""
