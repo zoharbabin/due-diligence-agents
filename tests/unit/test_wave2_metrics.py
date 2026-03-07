@@ -534,7 +534,7 @@ class TestValuationBridge:
         assert result["valuation_impact"]["premium"] == pytest.approx(exposure * 12.0)
 
     def test_risk_categories_from_waterfall(self) -> None:
-        """Risk categories should be extracted from waterfall amounts."""
+        """Risk categories should be extracted from waterfall amounts as a sorted list."""
         waterfall = {
             "change_of_control": {"amount": 50_000.0, "contracts": 2},
             "pricing_risk": {"amount": 30_000.0, "contracts": 1},
@@ -544,8 +544,14 @@ class TestValuationBridge:
             920_000.0,
             waterfall,
         )
-        assert result["risk_categories"]["change_of_control"] == 50_000.0
-        assert result["risk_categories"]["pricing_risk"] == 30_000.0
+        cats = result["risk_categories"]
+        assert isinstance(cats, list)
+        assert len(cats) == 2
+        # Sorted by exposure descending
+        assert cats[0]["category"] == "Change Of Control"
+        assert cats[0]["exposure"] == 50_000.0
+        assert cats[1]["category"] == "Pricing Risk"
+        assert cats[1]["exposure"] == 30_000.0
 
 
 class TestNewFieldsOnModel:
@@ -600,3 +606,108 @@ class TestRagIndicators:
         }
         result = ReportDataComputer().compute(merged)
         assert result.section_rag.get("ip_risk") == "amber"
+
+
+class TestRendererKeyAlignment:
+    """Verify computed_metrics output keys match what renderers actually read."""
+
+    def test_liability_keys_match_renderer(self) -> None:
+        """Liability analysis keys must match what LiabilityRenderer reads."""
+        merged: dict[str, Any] = {
+            "a": {
+                "customer": "A",
+                "findings": [
+                    _make_finding(title="Insurance requirement gap", agent="legal"),
+                    _make_finding(title="Uncapped liability in MSA", agent="legal"),
+                ],
+                "gaps": [],
+            }
+        }
+        result = ReportDataComputer().compute(merged)
+        la = result.liability_analysis
+        # These are the exact keys the renderer reads (html_liability.py)
+        assert "total_liability_findings" in la
+        assert "insurance_count" in la
+        assert "liability_cap_count" in la  # NOT "liability_caps"
+        assert "uncapped_count" in la
+        assert "indemnification_count" in la
+        assert "findings" in la
+
+    def test_ip_risk_keys_match_renderer(self) -> None:
+        """IP risk keys must match what IPRiskRenderer reads."""
+        merged: dict[str, Any] = {
+            "a": {
+                "customer": "A",
+                "findings": [
+                    _make_finding(title="Open source GPL dependency", agent="producttech"),
+                ],
+                "gaps": [],
+            }
+        }
+        result = ReportDataComputer().compute(merged)
+        ip = result.ip_risk_analysis
+        assert "total_ip_findings" in ip
+        assert "ip_ownership_gaps" in ip
+        assert "open_source_count" in ip
+        assert "license_risk_count" in ip  # NOT "license_risks"
+        assert "findings" in ip
+
+    def test_discount_keys_match_renderer(self) -> None:
+        """Discount analysis keys must match what DiscountAnalysisRenderer reads."""
+        merged: dict[str, Any] = {
+            "a": {
+                "customer": "A",
+                "findings": [
+                    _make_finding(title="15% discount below list price", agent="commercial"),
+                ],
+                "gaps": [],
+            }
+        }
+        result = ReportDataComputer().compute(merged)
+        da = result.discount_analysis
+        assert "avg_discount_pct" in da  # NOT "avg_discount"
+        assert "max_discount_pct" in da  # NOT "max_discount"
+        assert "top_discounted" in da
+
+    def test_timeline_cliff_risk_is_bool(self) -> None:
+        """Timeline cliff_risk must be a bool, not a count."""
+        merged: dict[str, Any] = {
+            "a": {
+                "customer": "A",
+                "findings": [
+                    _make_finding(title="Contract expires 2026-03-15", agent="legal"),
+                ],
+                "gaps": [],
+            }
+        }
+        result = ReportDataComputer().compute(merged)
+        ct = result.contract_timeline
+        assert "cliff_risk" in ct
+        assert isinstance(ct["cliff_risk"], bool)
+
+    def test_entity_migration_risk_is_string(self) -> None:
+        """Entity migration_risk_score must be a string label."""
+        merged: dict[str, Any] = {
+            "a": {
+                "customer": "A",
+                "findings": [
+                    _make_finding(title="Legal entity migration required", agent="legal"),
+                ],
+                "gaps": [],
+            }
+        }
+        result = ReportDataComputer().compute(merged)
+        ed = result.entity_distribution
+        assert "migration_risk_score" in ed
+        assert isinstance(ed["migration_risk_score"], str)
+        assert ed["migration_risk_score"] in ("critical", "high", "medium", "low")
+
+    def test_valuation_bridge_risk_categories_is_list(self) -> None:
+        """Valuation bridge risk_categories must be a list of dicts."""
+        waterfall = {"change_of_control": {"amount": 50_000.0, "contracts": 2}}
+        result = ReportDataComputer._compute_valuation_bridge(1_000_000.0, 950_000.0, waterfall)
+        cats = result["risk_categories"]
+        assert isinstance(cats, list)
+        if cats:
+            assert "category" in cats[0]
+            assert "exposure" in cats[0]

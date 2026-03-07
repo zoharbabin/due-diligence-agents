@@ -21,7 +21,7 @@ class LiabilityRenderer(SectionRenderer):
             return ""
 
         insurance = analysis.get("insurance_count", 0)
-        liability_caps = analysis.get("liability_caps", 0)
+        liability_caps = analysis.get("liability_cap_count", 0)
         uncapped = analysis.get("uncapped_count", 0)
         indemnification = analysis.get("indemnification_count", 0)
 

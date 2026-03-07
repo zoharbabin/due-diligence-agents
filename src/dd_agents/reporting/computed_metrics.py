@@ -2773,11 +2773,19 @@ class ReportDataComputer:
         # Estimated valuation impact at typical SaaS multiples
         multiples = {"conservative": 5.0, "base": 8.0, "premium": 12.0}
         impact = {k: round(exposure * v, 0) for k, v in multiples.items()}
+        # Build risk_categories as a list of dicts for renderer iteration
+        risk_categories: list[dict[str, Any]] = [
+            {"category": k.replace("_", " ").title(), "exposure": v.get("amount", 0.0)}
+            for k, v in risk_waterfall.items()
+            if v.get("amount", 0) > 0
+        ]
+        risk_categories.sort(key=lambda x: x.get("exposure", 0.0), reverse=True)
+
         return {
             "total_arr": total_arr,
             "risk_adjusted_arr": risk_adjusted_arr,
             "total_exposure": exposure,
             "exposure_pct": round(exposure_pct, 1),
             "valuation_impact": impact,
-            "risk_categories": {k: v.get("amount", 0) for k, v in risk_waterfall.items()},
+            "risk_categories": risk_categories,
         }

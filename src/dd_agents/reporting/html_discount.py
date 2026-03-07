@@ -38,8 +38,8 @@ class DiscountAnalysisRenderer(SectionRenderer):
             )
 
         # Average and max discount metrics
-        avg_discount = analysis.get("avg_discount", 0.0)
-        max_discount = analysis.get("max_discount", 0.0)
+        avg_discount = analysis.get("avg_discount_pct", 0.0)
+        max_discount = analysis.get("max_discount_pct", 0.0)
         if avg_discount > 0 or max_discount > 0:
             parts.append("<div class='metrics-strip'>")
             parts.append(

@@ -9,15 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from dd_agents.reporting.html_base import SectionRenderer
-
-
-def _fmt_currency(amount: float) -> str:
-    """Format a dollar amount for display."""
-    if amount >= 1_000_000:
-        return f"${amount / 1_000_000:.1f}M"
-    if amount >= 1_000:
-        return f"${amount / 1_000:.0f}K"
-    return f"${amount:,.0f}"
+from dd_agents.reporting.html_base import fmt_currency as _fmt_currency
 
 
 class ValuationBridgeRenderer(SectionRenderer):

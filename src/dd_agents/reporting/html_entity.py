@@ -26,15 +26,16 @@ class EntityDistributionRenderer(SectionRenderer):
         ]
 
         entities = analysis.get("total_entities_mentioned", 0)
-        migration_risk_score = analysis.get("migration_risk_score", 0.0)
+        migration_risk = str(analysis.get("migration_risk_score", "low"))
 
         # Migration risk badge color
-        if migration_risk_score >= 7.0:
-            risk_color = "var(--red)"
-        elif migration_risk_score >= 4.0:
-            risk_color = "var(--amber)"
-        else:
-            risk_color = "var(--green)"
+        _risk_colors: dict[str, str] = {
+            "critical": "var(--red)",
+            "high": "var(--red)",
+            "medium": "var(--amber)",
+            "low": "var(--green)",
+        }
+        risk_color = _risk_colors.get(migration_risk, "var(--green)")
 
         parts.append("<div class='metrics-strip'>")
         for label, value in [
@@ -47,11 +48,11 @@ class EntityDistributionRenderer(SectionRenderer):
                 f"<div class='label'>{self.escape(label)}</div>"
                 f"</div>"
             )
-        if migration_risk_score > 0:
+        if migration_risk != "low":
             parts.append(
                 f"<div class='metric-card'>"
-                f"<div class='value' style='color:{risk_color}'>{migration_risk_score:.1f}</div>"
-                f"<div class='label'>Migration Risk Score</div>"
+                f"<div class='value' style='color:{risk_color}'>{self.escape(migration_risk.title())}</div>"
+                f"<div class='label'>Migration Risk</div>"
                 f"</div>"
             )
         parts.append("</div>")

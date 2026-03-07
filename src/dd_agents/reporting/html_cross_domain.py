@@ -27,13 +27,14 @@ class CrossDomainRenderer(SectionRenderer):
         # P0 alerts
         for risk in risks:
             has_p0 = risk.get("has_p0", False)
-            entity = str(risk.get("entity", ""))
-            if has_p0 and entity:
+            csn = str(risk.get("entity", ""))
+            display = self.data.display_names.get(csn, csn) if self.data else csn
+            if has_p0 and csn:
                 parts.append(
                     self.render_alert(
                         "critical",
-                        f"P0 finding detected for {self.escape(entity)}",
-                        f"Entity {self.escape(entity)} has critical findings spanning "
+                        f"P0 finding detected for {display}",
+                        f"Entity {display} has critical findings spanning "
                         f"{risk.get('domain_count', 0)} domains. Immediate review required.",
                     )
                 )
@@ -49,7 +50,9 @@ class CrossDomainRenderer(SectionRenderer):
             "</tr></thead><tbody>"
         )
         for risk in risks[:15]:
-            entity = self.escape(str(risk.get("entity", "")))
+            csn = str(risk.get("entity", ""))
+            display = self.data.display_names.get(csn, csn) if self.data else csn
+            entity = self.escape(display)
             domain_count = risk.get("domain_count", 0)
             finding_count = risk.get("finding_count", 0)
             risk_score = risk.get("risk_score", 0.0)

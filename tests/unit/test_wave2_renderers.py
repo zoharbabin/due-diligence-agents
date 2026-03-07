@@ -143,8 +143,8 @@ class TestDiscountRenderer:
             discount_analysis={
                 "total_pricing_findings": 3,
                 "customers_with_discounts": 2,
-                "avg_discount": 15.5,
-                "max_discount": 40.0,
+                "avg_discount_pct": 15.5,
+                "max_discount_pct": 40.0,
                 "distribution": {"0-10%": 1, "10-20%": 1, "20%+": 1},
                 "top_discounted": [
                     {"entity": "Customer A", "discount_pct": 40.0},
@@ -260,7 +260,7 @@ class TestEntityRenderer:
             entity_distribution={
                 "entity_findings_count": 3,
                 "total_entities_mentioned": 5,
-                "migration_risk_score": 8.0,
+                "migration_risk_score": "critical",
                 "entity_names": ["Entity Alpha", "Entity Beta"],
                 "findings": [_make_finding()],
             }
@@ -268,23 +268,23 @@ class TestEntityRenderer:
         r = EntityDistributionRenderer(data, {})
         html = r.render()
         assert "sec-entity" in html
-        assert "8.0" in html
-        assert "Migration Risk Score" in html
+        assert "Critical" in html
+        assert "Migration Risk" in html
         assert "Entity Alpha" in html
-        assert "var(--red)" in html  # score >= 7.0
+        assert "var(--red)" in html  # critical = red
 
-    def test_migration_risk_green(self) -> None:
+    def test_migration_risk_low_hides_badge(self) -> None:
         data = _make_data(
             entity_distribution={
                 "entity_findings_count": 1,
                 "total_entities_mentioned": 1,
-                "migration_risk_score": 2.0,
+                "migration_risk_score": "low",
                 "findings": [],
             }
         )
         r = EntityDistributionRenderer(data, {})
         html = r.render()
-        assert "var(--green)" in html
+        assert "Migration Risk</div>" not in html  # low risk hides the metric card badge
 
 
 # ---------------------------------------------------------------------------
@@ -305,7 +305,7 @@ class TestTimelineRenderer:
                 "date_mentions_count": 20,
                 "earliest_expiry": "2026-06-01",
                 "latest_expiry": "2029-12-31",
-                "cliff_risk_count": 5,
+                "cliff_risk": True,
                 "findings": [_make_finding()],
             }
         )
@@ -321,7 +321,7 @@ class TestTimelineRenderer:
             contract_timeline={
                 "expiry_findings_count": 3,
                 "date_mentions_count": 5,
-                "cliff_risk_count": 0,
+                "cliff_risk": False,
                 "findings": [],
             }
         )
@@ -350,7 +350,7 @@ class TestLiabilityRenderer:
             {
                 "total_liability_findings": 5,
                 "insurance_count": 2,
-                "liability_caps": 3,
+                "liability_cap_count": 3,
                 "uncapped_count": 1,
                 "indemnification_count": 2,
                 "findings": [_make_finding(severity="P0", title="Uncapped liability")],
@@ -371,7 +371,7 @@ class TestLiabilityRenderer:
             {
                 "total_liability_findings": 2,
                 "insurance_count": 0,
-                "liability_caps": 2,
+                "liability_cap_count": 2,
                 "uncapped_count": 0,
                 "indemnification_count": 1,
                 "findings": [_make_finding()],
@@ -389,7 +389,7 @@ class TestLiabilityRenderer:
             {
                 "total_liability_findings": 1,
                 "insurance_count": 0,
-                "liability_caps": 0,
+                "liability_cap_count": 0,
                 "uncapped_count": 0,
                 "indemnification_count": 0,
                 "findings": [_make_finding(title="<img onerror=alert(1)>")],
@@ -421,7 +421,7 @@ class TestIPRiskRenderer:
                 "total_ip_findings": 4,
                 "ip_ownership_gaps": 2,
                 "open_source_count": 3,
-                "license_risks": 1,
+                "license_risk_count": 1,
                 "findings": [_make_finding(severity="P1", title="IP ownership unclear")],
             },
         )
@@ -441,7 +441,7 @@ class TestIPRiskRenderer:
                 "total_ip_findings": 1,
                 "ip_ownership_gaps": 0,
                 "open_source_count": 0,
-                "license_risks": 1,
+                "license_risk_count": 1,
                 "findings": [],
             },
         )

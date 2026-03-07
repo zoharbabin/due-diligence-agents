@@ -11,15 +11,7 @@ from __future__ import annotations
 import html
 
 from dd_agents.reporting.html_base import SectionRenderer
-
-
-def _fmt_currency(amount: float) -> str:
-    """Format a dollar amount for display (e.g., $1.2M, $500K, $36)."""
-    if amount >= 1_000_000:
-        return f"${amount / 1_000_000:.1f}M"
-    if amount >= 1_000:
-        return f"${amount / 1_000:.0f}K"
-    return f"${amount:,.0f}"
+from dd_agents.reporting.html_base import fmt_currency as _fmt_currency
 
 
 def _fmt_pct(value: float) -> str:

@@ -22,7 +22,7 @@ class IPRiskRenderer(SectionRenderer):
 
         ownership_gaps = analysis.get("ip_ownership_gaps", 0)
         open_source = analysis.get("open_source_count", 0)
-        license_risks = analysis.get("license_risks", 0)
+        license_risks = analysis.get("license_risk_count", 0)
 
         parts: list[str] = [
             "<section id='sec-ip-risk' class='report-section'>",

@@ -28,7 +28,7 @@ class TimelineRenderer(SectionRenderer):
         dates = timeline.get("date_mentions_count", 0)
         earliest_expiry = timeline.get("earliest_expiry", "")
         latest_expiry = timeline.get("latest_expiry", "")
-        cliff_risk_count = timeline.get("cliff_risk_count", 0)
+        cliff_risk = bool(timeline.get("cliff_risk", False))
 
         kpi_items: list[tuple[str, str]] = [
             ("Date-Related Findings", str(total)),
@@ -49,13 +49,13 @@ class TimelineRenderer(SectionRenderer):
             )
         parts.append("</div>")
 
-        if cliff_risk_count > 0:
+        if cliff_risk:
             parts.append(
                 self.render_alert(
-                    "critical" if cliff_risk_count > 3 else "high",
-                    f"Cliff risk detected: {cliff_risk_count} contracts",
-                    f"{cliff_risk_count} contracts have clustered expiry dates creating cliff risk. "
-                    f"Consider staggering renewals to mitigate concentration.",
+                    "critical",
+                    "Cliff risk detected: clustered contract expirations",
+                    "Multiple contracts have clustered expiry dates in the same quarter, "
+                    "creating cliff risk. Consider staggering renewals to mitigate concentration.",
                 )
             )
 
