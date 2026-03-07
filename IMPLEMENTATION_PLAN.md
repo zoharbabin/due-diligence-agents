@@ -253,26 +253,75 @@ pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/ && ruff
 
 ---
 
+## Phase 7: Wave 4 — Portfolio, Review, Templates, API, Contract Graph
+**Goal**: Multi-project management, collaborative review, report templates, REST API, contract ontology.
+**Dependencies**: Phase 6 complete
+**Status**: COMPLETE
+
+### 7.1 Multi-Project Portfolio View (#118)
+**Status**: Complete — 27 tests
+- [x] Implement `src/dd_agents/models/project.py` — ProjectEntry, ProjectRegistry, PortfolioComparison
+- [x] Implement `src/dd_agents/persistence/project_registry.py` — ProjectRegistryManager, ProjectLock, _safe_slug
+- [x] Write `tests/unit/test_project_registry.py` — 27 tests
+
+### 7.2 Collaborative Review & Annotation Layer (#122)
+**Status**: Complete — 22 tests
+- [x] Implement `src/dd_agents/models/review.py` — Annotation, ReviewAssignment, ReviewProgress, ReviewState
+- [x] Implement `src/dd_agents/review/manager.py` — ReviewManager with CRUD, progress, export
+- [x] Write `tests/unit/test_review.py` — 22 tests
+
+### 7.3 Configurable Report Templates (#123)
+**Status**: Complete — 23 tests
+- [x] Implement `src/dd_agents/reporting/templates.py` — ReportBranding, ReportSections, TemplateLibrary, BUILTIN_TEMPLATES
+- [x] Write `tests/unit/test_report_templates.py` — 23 tests
+
+### 7.4 REST API & Webhook Notifications (#133)
+**Status**: Complete — 16 tests
+- [x] Implement `src/dd_agents/api/server.py` — FastAPI REST API (optional dep)
+- [x] Implement `src/dd_agents/api/webhooks.py` — WebhookDispatcher, Slack/email notifications
+- [x] Write `tests/unit/test_api.py` — 16 tests
+
+### 7.5 Contract Ontology & Relationship Reasoning (#152)
+**Status**: Complete — 27 tests (after fixes)
+- [x] Implement `src/dd_agents/models/ontology.py` — DocumentType, ClauseType, RelationshipType, ClauseNode, OntologyGraph
+- [x] Implement `src/dd_agents/reasoning/contract_graph.py` — ContractKnowledgeGraph with NetworkX
+- [x] Write `tests/unit/test_ontology.py` — 27 tests
+
+### 7.6 CLI Commands
+**Status**: Complete
+- [x] Add `dd-agents portfolio` command group (add/list/compare/remove)
+- [x] Add `dd-agents review` command group (annotate/assign/progress/export)
+- [x] Add `dd-agents templates` command group (list/show)
+- [x] Add `[api]` optional dependency to pyproject.toml
+
+### Phase 7 Acceptance
+- [x] `pytest tests/unit/ -x -q` — 2797 tests pass (134 new)
+- [x] `mypy src/ --strict` — clean (164 source files)
+- [x] `ruff check src/ tests/` — clean
+- [x] PR #162 created linking Issues #118, #122, #123, #133, #152
+
+---
+
 ## Completion Criteria
 
 The project is complete when ALL of the following are true:
-- [x] All 6 phases have status "Complete"
-- [x] `pytest tests/ -x` passes — 2663 unit tests, 17 integration, 9 E2E (3 skipped without API key)
-- [x] `mypy src/ --strict` passes — 0 errors across 123 source files
+- [x] All 7 phases have status "Complete"
+- [x] `pytest tests/ -x` passes — 2797 unit tests, 17 integration, 9 E2E (3 skipped without API key)
+- [x] `mypy src/ --strict` passes — 0 errors across 164 source files
 - [x] `ruff check src/ tests/` is clean
 - [x] `ruff format --check src/ tests/` is clean
 
-> **Status: COMPLETE** — All 6 phases implemented and verified. Production hardening (v0.3.0) added 253 additional unit tests. v0.3.1 adds security, documentation, and config cleanup. v0.4.0 adds board-ready executive HTML report (Issue #113), sidebar navigation, CSS variables, business analysis renderers (CoC, privacy, health tiers, recommendations, methodology), alert boxes, RAG indicators, and expanded category normalization. See `PRODUCTION_HARDENING_PLAN.md` for post-implementation hardening work.
+> **Status: COMPLETE** — All 7 phases implemented and verified. Production hardening (v0.3.0) added 253 additional unit tests. v0.3.1 adds security, documentation, and config cleanup. v0.4.0 adds board-ready executive HTML report (Issue #113), sidebar navigation, CSS variables, business analysis renderers (CoC, privacy, health tiers, recommendations, methodology), alert boxes, RAG indicators, and expanded category normalization. v0.5.0 (Wave 4) adds portfolio management, collaborative review, report templates, REST API with webhooks, and contract ontology reasoning (Issues #118, #122, #123, #133, #152). See `PRODUCTION_HARDENING_PLAN.md` for post-implementation hardening work.
 
 ## Test Summary
 
 | Category | Count |
 |----------|-------|
-| Unit tests (models, utils, entity resolution, extraction, config, hooks, tools, orchestrator, agents, reporting, validation, search, glm_ocr, type safety, visual grounding, entity dedup, OCR registry, layout PDF, HTML report, HTML renderers, report rendering, extraction backend, turn limits, severity recalibration, executive synthesis, data quality classification, follow-up verification, assessment, red flag scanner, cost tracker, batch scheduler, financial impact) | 2663 |
+| Unit tests (models, utils, entity resolution, extraction, config, hooks, tools, orchestrator, agents, reporting, validation, search, glm_ocr, type safety, visual grounding, entity dedup, OCR registry, layout PDF, HTML report, HTML renderers, report rendering, extraction backend, turn limits, severity recalibration, executive synthesis, data quality classification, follow-up verification, assessment, red flag scanner, cost tracker, batch scheduler, financial impact, project registry, review, report templates, API, ontology) | 2797 |
 | Integration tests (pipeline steps 1-11) | 17 |
 | E2E tests (pre-agent: config, tiers, discovery, registry, run manager, cache) | 6 |
 | E2E tests (API-dependent: dry run, full pipeline, incremental — skipped without key) | 3 |
-| **Total** | **2663 passed, 3 skipped** |
+| **Total** | **2797 passed, 3 skipped** |
 
 ## Git History
 

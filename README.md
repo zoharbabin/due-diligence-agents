@@ -1,6 +1,6 @@
 # Due Diligence Agent SDK
 
-> **Status**: Production-tested. Full 35-step pipeline, contract search, auto-config, data room assessment, NL query, and PDF export commands operational with 2,663 passing unit tests, mypy strict clean (152 source files), ruff clean.
+> **Status**: Production-tested. Full 35-step pipeline, contract search, auto-config, data room assessment, NL query, PDF export, portfolio management, collaborative review, report templates, REST API, and contract reasoning operational with 2,797 passing unit tests, mypy strict clean (164 source files), ruff clean.
 
 Standalone Python application for forensic M&A due diligence. Eight agents (4 specialists + optional Judge + Executive Synthesis + Red Flag Scanner + Acquirer Intelligence) analyze contract data rooms, extract clauses, build governance graphs, detect gaps, and produce a board-ready HTML report + 14-sheet Excel report — all under deterministic Python orchestration with hook-enforced quality gates. Powered by `claude-agent-sdk` v0.1.39+ (Claude API or AWS Bedrock).
 
@@ -26,6 +26,9 @@ due-diligence-agents/
 │       ├── search/              # Contract search: analyzer, Excel writer, runner
 │       ├── query/               # Natural language query engine (NL Q&A over findings)
 │       ├── tools/               # Custom MCP tools (validate_finding, etc.)
+│       ├── review/              # Collaborative review & annotation layer
+│       ├── api/                 # REST API server (FastAPI, optional) + webhook notifications
+│       ├── reasoning/           # Contract ontology & relationship reasoning (NetworkX graph)
 │       ├── testing/             # Synthetic data room generator for E2E tests
 │       ├── utils/               # Naming conventions, constants, shared utilities
 │       └── vector_store/        # Optional ChromaDB integration
@@ -169,6 +172,73 @@ dd-agents query --report _dd/forensic-dd/runs/latest -q "How many P0 findings?"
 dd-agents query --report _dd/forensic-dd/runs/latest
 ```
 
+## Portfolio Management
+
+Manage multiple DD projects and compare across deals:
+
+```bash
+# Register a new DD project
+dd-agents portfolio add "Alpha Acquisition" --data-room ./alpha_data_room
+
+# List all projects
+dd-agents portfolio list
+
+# Compare risk profiles across deals
+dd-agents portfolio compare
+
+# Remove a project from the registry
+dd-agents portfolio remove alpha_acquisition
+```
+
+## Collaborative Review
+
+Annotate findings, assign reviewers, and track sign-off progress:
+
+```bash
+# Annotate a finding (by finding ID from the report)
+dd-agents review annotate FINDING_ID --reviewer alice --status reviewed --comment "Verified"
+
+# Assign a reviewer to a section
+dd-agents review assign alice --section legal
+
+# Check review progress
+dd-agents review progress --run-dir _dd/forensic-dd/runs/latest --total 200
+
+# Export annotations as CSV
+dd-agents review export --run-dir _dd/forensic-dd/runs/latest --format csv
+```
+
+## Report Templates
+
+Browse and apply pre-built report templates for different audiences:
+
+```bash
+# List available templates
+dd-agents templates list
+
+# Show template details
+dd-agents templates show board_summary
+```
+
+Built-in templates: **Full Report**, **Board Summary**, **Legal Deep Dive**, **Financial Analysis**, **Technical Assessment**. Custom templates can be saved as JSON files.
+
+## REST API (Optional)
+
+Start a REST API server for programmatic access (requires `pip install -e ".[api]"`):
+
+```bash
+# Start the API server
+DD_API_KEY="your-secret-key" uvicorn dd_agents.api.server:app --port 8000
+
+# Example: start a run via API
+curl -X POST http://localhost:8000/api/v1/runs \
+  -H "Authorization: Bearer your-secret-key" \
+  -H "Content-Type: application/json" \
+  -d '{"config_path": "deal-config.json"}'
+```
+
+Webhook notifications (HTTP, Slack, email) can be configured via the `/api/v1/webhooks` endpoint.
+
 ## Implementation Plan
 
 The full implementation plan is in [`docs/plan/`](docs/plan/). Start with the [executive overview](docs/plan/PLAN.md).
@@ -226,12 +296,13 @@ Optional extras for additional capabilities:
 pip install -e ".[vector]"    # ChromaDB for semantic cross-document search
 pip install -e ".[ocr]"       # pytesseract + Pillow for OCR fallback
 pip install -e ".[glm-ocr]"   # GLM-OCR vision-language model (Apple Silicon)
+pip install -e ".[api]"       # FastAPI + uvicorn for REST API server
 ```
 
 For full development with all extras:
 
 ```bash
-pip install -e ".[dev,vector,ocr,glm-ocr]"
+pip install -e ".[dev,vector,ocr,glm-ocr,api]"
 # or use the Makefile:
 make install-dev
 ```
