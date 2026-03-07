@@ -161,7 +161,7 @@ class FinancialImpactRenderer(SectionRenderer):
 
         parts: list[str] = [
             "<h3>Customer Revenue Concentration</h3>",
-            "<div class='treemap' style='display:flex;flex-wrap:wrap;gap:2px;min-height:120px'>",
+            "<div style='display:flex;flex-wrap:wrap;gap:2px;min-height:120px'>",
         ]
 
         for item in items[:20]:  # Cap at 20 for readability
@@ -173,7 +173,7 @@ class FinancialImpactRenderer(SectionRenderer):
             min_width = max(pct, 5)  # Minimum 5% width for visibility
 
             parts.append(
-                f"<div class='treemap-cell' style='flex-basis:{min_width}%;background:{color};"
+                f"<div style='flex-basis:{min_width}%;background:{color};"
                 f"padding:8px;color:#fff;border-radius:4px;min-width:60px' "
                 f"title='{name}: {revenue} ({_fmt_pct(pct)})'>"
                 f"<strong>{name}</strong><br>{revenue} ({_fmt_pct(pct)})"

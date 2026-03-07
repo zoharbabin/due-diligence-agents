@@ -151,7 +151,7 @@ class TestDiscountAnalysis:
         computer = ReportDataComputer()
         result = computer.compute(merged)
         analysis = result.discount_analysis
-        assert analysis["total_pricing_findings"] >= 1
+        assert analysis["total_pricing_findings"] == 1
 
     def test_discount_empty_when_no_pricing(self) -> None:
         """Empty discount analysis when no pricing findings."""
@@ -197,8 +197,8 @@ class TestRenewalAnalysis:
         computer = ReportDataComputer()
         result = computer.compute(merged)
         analysis = result.renewal_analysis
-        assert analysis["total_renewal_findings"] >= 1
-        assert analysis["auto_renew_count"] >= 1
+        assert analysis["total_renewal_findings"] == 1
+        assert analysis["auto_renew_count"] == 1
 
     def test_evergreen_clause_detected(self) -> None:
         """Evergreen contract clauses should be detected as renewals."""
@@ -217,7 +217,7 @@ class TestRenewalAnalysis:
         }
         computer = ReportDataComputer()
         result = computer.compute(merged)
-        assert result.renewal_analysis["total_renewal_findings"] >= 1
+        assert result.renewal_analysis["total_renewal_findings"] == 1
 
     def test_renewal_empty_state(self) -> None:
         merged = {"a": _customer("A")}
@@ -242,7 +242,7 @@ class TestRenewalAnalysis:
         }
         computer = ReportDataComputer()
         result = computer.compute(merged)
-        assert result.renewal_analysis["escalation_cap_count"] >= 1
+        assert result.renewal_analysis["escalation_cap_count"] == 1
 
 
 # ===========================================================================
@@ -670,7 +670,7 @@ class TestDiscountAnalysisStrengthened:
         computer = ReportDataComputer()
         result = computer.compute(merged)
         dist = result.discount_analysis.get("distribution", {})
-        assert dist.get("0-10%", 0) >= 1
+        assert dist.get("0-10%", 0) == 1
 
     def test_discount_bucket_25_pct(self) -> None:
         """25% discount should go in 10-25% bucket."""
@@ -690,7 +690,7 @@ class TestDiscountAnalysisStrengthened:
         computer = ReportDataComputer()
         result = computer.compute(merged)
         dist = result.discount_analysis.get("distribution", {})
-        assert dist.get("10-25%", 0) >= 1
+        assert dist.get("10-25%", 0) == 1
 
     def test_no_discount_keyword_no_match(self) -> None:
         """Finding without pricing keywords should not be counted."""
@@ -778,7 +778,7 @@ class TestRenewalAnalysisStrengthened:
             }
             computer = ReportDataComputer()
             result = computer.compute(merged)
-            assert result.renewal_analysis["total_renewal_findings"] >= 1, f"Failed for: {word}"
+            assert result.renewal_analysis["total_renewal_findings"] == 1, f"Failed for: {word}"
 
 
 class TestComplianceAnalysisStrengthened:
@@ -801,7 +801,7 @@ class TestComplianceAnalysisStrengthened:
         }
         computer = ReportDataComputer()
         result = computer.compute(merged)
-        assert result.compliance_analysis["dpa_findings_count"] >= 1
+        assert result.compliance_analysis["dpa_findings_count"] == 1
 
     def test_jurisdiction_keyword_match(self) -> None:
         """Jurisdiction keywords should be classified correctly."""
@@ -820,7 +820,7 @@ class TestComplianceAnalysisStrengthened:
         }
         computer = ReportDataComputer()
         result = computer.compute(merged)
-        assert result.compliance_analysis["jurisdiction_findings_count"] >= 1
+        assert result.compliance_analysis["jurisdiction_findings_count"] == 1
 
     def test_regulatory_keyword_fcpa(self) -> None:
         """FCPA should be detected as regulatory finding."""
@@ -839,7 +839,7 @@ class TestComplianceAnalysisStrengthened:
         }
         computer = ReportDataComputer()
         result = computer.compute(merged)
-        assert result.compliance_analysis["regulatory_findings_count"] >= 1
+        assert result.compliance_analysis["regulatory_findings_count"] == 1
 
     def test_non_compliance_finding_excluded(self) -> None:
         """Finding without compliance keywords should not be counted."""
@@ -874,7 +874,7 @@ class TestEntityDistributionStrengthened:
         }
         computer = ReportDataComputer()
         result = computer.compute(merged)
-        assert result.entity_distribution["entity_findings_count"] >= 1
+        assert result.entity_distribution["entity_findings_count"] == 1
 
     def test_non_entity_finding_excluded(self) -> None:
         """Finding without entity keywords should not be counted."""
@@ -1108,3 +1108,63 @@ class TestNoiseClassificationStrengthened:
             description="FY2026 revenue waterfall data unavailable",
         )
         assert _is_data_quality_finding(f)
+
+    def test_binary_pricing_not_noise(self) -> None:
+        """'binary pricing model' should NOT be noise — it's a material pricing finding."""
+        from dd_agents.reporting.computed_metrics import _is_noise_finding
+
+        f = _finding(
+            "Revenue shows binary pricing model across customer base",
+            category="pricing",
+            agent="commercial",
+            description="Two-tier binary pricing with enterprise and standard tiers",
+        )
+        assert not _is_noise_finding(f)
+
+    def test_binary_file_is_noise(self) -> None:
+        """'binary file format' should be noise."""
+        from dd_agents.reporting.computed_metrics import _is_noise_finding
+
+        f = _finding(
+            "Contract in binary file format, cannot parse",
+            category="uncategorized",
+            agent="legal",
+            description="Binary file detected, no extractable text",
+        )
+        assert _is_noise_finding(f)
+
+
+class TestEmptyAgentDedup:
+    """Tests for empty agent field handling in semantic dedup."""
+
+    def test_empty_agents_not_merged(self) -> None:
+        """Two findings with empty agent fields should NOT merge."""
+        from dd_agents.reporting.merge import FindingMerger
+
+        findings = [
+            {
+                "severity": "P1",
+                "category": "coc",
+                "title": "Change of control clause",
+                "description": "CoC clause found",
+                "citations": [
+                    {"source_type": "contract", "source_path": "a.pdf", "exact_quote": "q", "location": "p1"}
+                ],
+                "confidence": "high",
+                "agent": "",
+            },
+            {
+                "severity": "P1",
+                "category": "coc",
+                "title": "Change of control clause",
+                "description": "CoC clause found",
+                "citations": [
+                    {"source_type": "contract", "source_path": "a.pdf", "exact_quote": "q", "location": "p2"}
+                ],
+                "confidence": "high",
+                "agent": "",
+            },
+        ]
+        merger = FindingMerger()
+        result = merger._semantic_dedup(findings)
+        assert len(result) == 2  # Same (empty) agent — must NOT merge

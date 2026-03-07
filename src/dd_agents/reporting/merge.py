@@ -547,8 +547,8 @@ class FindingMerger:
                     continue
                 fj = findings[j]
                 aj = fj.get("agent", "")
-                # Only merge across different agents
-                if ai and aj and ai == aj:
+                # Only merge across different agents (including both-empty)
+                if ai == aj:
                     continue
                 # Only merge if referencing the same document (require both paths known)
                 si = self._first_source_path(fi)
