@@ -67,6 +67,30 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _clause_lib_renderer(computed: Any, merged_data: dict[str, Any], config: dict[str, Any]) -> SectionRenderer:
+    from dd_agents.reporting.html_clause_library import ClauseLibraryRenderer
+
+    return ClauseLibraryRenderer(computed, merged_data, config)
+
+
+def _key_employee_renderer(computed: Any, merged_data: dict[str, Any], config: dict[str, Any]) -> SectionRenderer:
+    from dd_agents.reporting.html_key_employee import KeyEmployeeRenderer
+
+    return KeyEmployeeRenderer(computed, merged_data, config)
+
+
+def _tech_stack_renderer(computed: Any, merged_data: dict[str, Any], config: dict[str, Any]) -> SectionRenderer:
+    from dd_agents.reporting.html_tech_stack import TechStackRenderer
+
+    return TechStackRenderer(computed, merged_data, config)
+
+
+def _product_adoption_renderer(computed: Any, merged_data: dict[str, Any], config: dict[str, Any]) -> SectionRenderer:
+    from dd_agents.reporting.html_product_adoption import ProductAdoptionRenderer
+
+    return ProductAdoptionRenderer(computed, merged_data, config)
+
+
 class HTMLReportGenerator:
     """Generate a self-contained HTML due-diligence report.
 
@@ -199,6 +223,14 @@ class HTMLReportGenerator:
             IPRiskRenderer(computed, merged_data, renderer_config),
             # 12c. Cross-Domain Risk Correlation (Issue #103)
             CrossDomainRenderer(computed, merged_data, renderer_config),
+            # 12d. Clause Analysis (Issue #119)
+            _clause_lib_renderer(computed, merged_data, renderer_config),
+            # 12e. Key Employee & Organizational Risk (Issue #131)
+            _key_employee_renderer(computed, merged_data, renderer_config),
+            # 12f. Technology Stack Assessment (Issue #132)
+            _tech_stack_renderer(computed, merged_data, renderer_config),
+            # 12g. Product Adoption Matrix (Issue #138)
+            _product_adoption_renderer(computed, merged_data, renderer_config),
             # 13. Cross-Reference Reconciliation
             CrossRefRenderer(computed, merged_data, renderer_config),
             # 14. Entity Health Tiers

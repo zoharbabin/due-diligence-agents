@@ -58,6 +58,17 @@ VALID_CATEGORIES: set[str] = {
     "key_person_risk",
     "debt_covenant",
     "customer_concentration",
+    # Issue #131: Key Employee & Organizational Risk
+    "employment_agreement",
+    "retention_risk",
+    "non_compete_enforcement",
+    "organizational_risk",
+    # Issue #132: Technology Stack & Technical Debt
+    "technical_debt",
+    "security_posture",
+    "scalability",
+    "migration_complexity",
+    "architecture_risk",
     "Other",
 }
 

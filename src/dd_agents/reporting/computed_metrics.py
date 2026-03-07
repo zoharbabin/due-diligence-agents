@@ -989,6 +989,36 @@ class ReportComputedData(BaseModel):
     # --- Issue #116: Valuation Impact Bridge ---
     valuation_bridge: dict[str, Any] = Field(default_factory=dict)
 
+    # --- Issue #119: Clause Library ---
+    clause_analysis: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Clause taxonomy analysis: clause_counts, clause_findings, total_classified",
+    )
+
+    # --- Issue #131: Key Employee & Organizational Risk ---
+    key_employee_analysis: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Key employee risk: retention, non-compete, organizational findings",
+    )
+
+    # --- Issue #132: Technology Stack Assessment ---
+    tech_stack_analysis: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Tech stack: security gaps, technical debt, migration risk",
+    )
+
+    # --- Issue #138: Product Adoption Matrix ---
+    product_adoption: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Product adoption: products, customer-product matrix, single-product risk",
+    )
+
+    # --- Issue #144: Language Distribution ---
+    language_distribution: dict[str, int] = Field(
+        default_factory=dict,
+        description="Count of findings by source document language",
+    )
+
 
 class ReportDataComputer:
     """Single-pass computation of all report metrics.
@@ -1575,6 +1605,12 @@ class ReportDataComputer:
             valuation_bridge=valuation_bridge,
             # Issue #117: Integration Playbook
             integration_playbook=integration_playbook,
+            # Wave 3 analyses
+            clause_analysis=self._compute_clause_analysis(material_findings),
+            key_employee_analysis=self._compute_key_employee_analysis(all_findings),
+            tech_stack_analysis=self._compute_tech_stack_analysis(all_findings),
+            product_adoption=self._compute_product_adoption(all_findings, merged_data),
+            language_distribution=self._compute_language_distribution(all_findings),
         )
 
     # --- Issue #113: Helper methods for business-oriented analysis ---
@@ -2961,3 +2997,196 @@ class ReportDataComputer:
             "risk_factors": risk_factors,
             "milestones": milestones,
         }
+
+    # --- Issue #119: Clause Library ---
+
+    @staticmethod
+    def _compute_clause_analysis(
+        material_findings: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Classify material findings into canonical clause types."""
+        from dd_agents.reporting.html_clause_library import ClauseLibraryRenderer
+
+        return ClauseLibraryRenderer.compute_clause_analysis(material_findings)
+
+    # --- Issue #131: Key Employee & Organizational Risk ---
+
+    @staticmethod
+    def _compute_key_employee_analysis(
+        all_findings: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Compute key employee and organizational risk analysis."""
+        ke_keywords: list[str] = [
+            "key person",
+            "key employee",
+            "key man",
+            "retention risk",
+            "employment agreement",
+            "non-compete",
+            "noncompete",
+            "non compete",
+            "organizational risk",
+            "succession",
+            "vesting cliff",
+            "severance",
+            "single point of failure",
+            "key executive",
+            "founder dependency",
+        ]
+        ret_kw = ["retention", "vesting", "flight risk", "severance", "acceleration"]
+        nc_kw = ["non-compete", "noncompete", "non compete", "non-solicit"]
+
+        findings: list[dict[str, Any]] = []
+        retention_count = 0
+        noncompete_count = 0
+
+        for f in all_findings:
+            combined = f"{f.get('title', '')} {f.get('description', '')} {f.get('category', '')}".lower()
+            if any(kw in combined for kw in ke_keywords):
+                findings.append(f)
+                if any(kw in combined for kw in ret_kw):
+                    retention_count += 1
+                if any(kw in combined for kw in nc_kw):
+                    noncompete_count += 1
+
+        if not findings:
+            return {}
+
+        return {
+            "total_findings": len(findings),
+            "retention_risk_count": retention_count,
+            "noncompete_gap_count": noncompete_count,
+            "findings": findings,
+        }
+
+    # --- Issue #132: Technology Stack Assessment ---
+
+    @staticmethod
+    def _compute_tech_stack_analysis(
+        all_findings: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Compute technology stack and technical debt analysis."""
+        tech_kw: list[str] = [
+            "technical debt",
+            "tech debt",
+            "technology stack",
+            "tech stack",
+            "deprecated",
+            "end of life",
+            "end-of-life",
+            "migration complexity",
+            "vendor lock",
+            "lock-in",
+            "scalability",
+            "architecture risk",
+            "security posture",
+            "soc2",
+            "soc 2",
+            "penetration test",
+            "vulnerability",
+            "legacy system",
+            "unsupported version",
+        ]
+        sec_kw = ["security", "soc2", "soc 2", "penetration", "vulnerability", "encryption", "access control"]
+        debt_kw = ["technical debt", "tech debt", "deprecated", "end of life", "legacy"]
+        mig_kw = ["migration", "vendor lock", "lock-in", "proprietary api"]
+
+        findings: list[dict[str, Any]] = []
+        security_count = 0
+        debt_count = 0
+        migration_count = 0
+
+        for f in all_findings:
+            combined = f"{f.get('title', '')} {f.get('description', '')} {f.get('category', '')}".lower()
+            if any(kw in combined for kw in tech_kw):
+                # Classify sub-category
+                if any(kw in combined for kw in sec_kw):
+                    f = {**f, "_tech_subcategory": "Security Posture"}
+                    security_count += 1
+                elif any(kw in combined for kw in debt_kw):
+                    f = {**f, "_tech_subcategory": "Technical Debt"}
+                    debt_count += 1
+                elif any(kw in combined for kw in mig_kw):
+                    f = {**f, "_tech_subcategory": "Migration Complexity"}
+                    migration_count += 1
+                else:
+                    f = {**f, "_tech_subcategory": "Technology Stack"}
+                findings.append(f)
+
+        if not findings:
+            return {}
+
+        return {
+            "total_findings": len(findings),
+            "security_gap_count": security_count,
+            "tech_debt_count": debt_count,
+            "migration_risk_count": migration_count,
+            "findings": findings,
+        }
+
+    # --- Issue #138: Product Adoption Matrix ---
+
+    @staticmethod
+    def _compute_product_adoption(
+        all_findings: list[dict[str, Any]],
+        merged_data: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Compute product adoption matrix from findings and merged data."""
+        prod_kw = ["product_scope", "platform", "module", "sku", "product_line", "product"]
+        products_seen: set[str] = set()
+        customer_products: dict[str, set[str]] = {}
+
+        for f in all_findings:
+            cat = str(f.get("category", "")).lower()
+            title = str(f.get("title", "")).lower()
+            combined = f"{cat} {title}"
+
+            if not any(kw in combined for kw in prod_kw):
+                continue
+
+            csn = str(f.get("_customer_safe_name", ""))
+            if not csn:
+                continue
+
+            # Extract product name from title — best-effort heuristic
+            product_name = str(f.get("title", "Unknown Product"))
+            # Clean up: use the part after common separators
+            for sep in [" — ", " - ", ": "]:
+                if sep in product_name:
+                    product_name = product_name.split(sep)[-1].strip()
+                    break
+
+            products_seen.add(product_name)
+            if csn not in customer_products:
+                customer_products[csn] = set()
+            customer_products[csn].add(product_name)
+
+        if not products_seen or not customer_products:
+            return {}
+
+        sorted_products = sorted(products_seen)
+        matrix = {csn: sorted(prods) for csn, prods in customer_products.items()}
+
+        return {
+            "products": sorted_products,
+            "matrix": matrix,
+        }
+
+    # --- Issue #144: Language Distribution ---
+
+    @staticmethod
+    def _compute_language_distribution(
+        all_findings: list[dict[str, Any]],
+    ) -> dict[str, int]:
+        """Aggregate source language from finding citations."""
+        dist: dict[str, int] = {}
+        for f in all_findings:
+            citations = f.get("citations", [])
+            if not isinstance(citations, list):
+                continue
+            for cit in citations:
+                if isinstance(cit, dict):
+                    lang = cit.get("source_language")
+                    if lang and isinstance(lang, str):
+                        dist[lang] = dist.get(lang, 0) + 1
+        return dist

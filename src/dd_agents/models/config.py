@@ -145,6 +145,10 @@ class JudgeConfig(BaseModel):
     sampling_rates: SamplingRates = Field(default_factory=SamplingRates)
     ocr_completeness_check: bool = True
     cross_agent_contradiction_check: bool = True
+    web_research_enabled: bool = Field(
+        default=False,
+        description="Enable web research via google-researcher-mcp for claim verification (Issue #139).",
+    )
 
 
 class ExtractionConfig(BaseModel):

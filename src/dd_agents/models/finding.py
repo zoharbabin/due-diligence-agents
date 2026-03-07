@@ -131,6 +131,10 @@ class Citation(BaseModel):
     # JSON string escaping. No custom serializer needed -- Pydantic v2 handles
     # this natively via model_dump_json().
     access_date: str | None = None  # Required when source_type == web_research
+    source_language: str | None = Field(
+        default=None,
+        description="ISO 639-1 language code of the source document (Issue #144).",
+    )
     page_number: int | None = Field(default=None, description="1-based page number for visual grounding")
     bounding_box: BoundingBox | None = Field(default=None, description="Coordinate box for visual grounding")
     verification_status: str | None = Field(
