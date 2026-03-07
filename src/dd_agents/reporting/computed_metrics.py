@@ -853,6 +853,17 @@ class ReportComputedData(BaseModel):
     material_gaps: list[dict[str, Any]] = Field(default_factory=list)
     noise_gaps: list[dict[str, Any]] = Field(default_factory=list)
 
+    # --- Issue #125: Red Flag Scan (quick-scan mode) ---
+    red_flag_scan: dict[str, Any] | None = None
+
+    # --- Issue #102: Revenue-at-Risk & Financial Impact ---
+    revenue_by_customer: dict[str, float] = Field(default_factory=dict)
+    total_contracted_arr: float = 0.0
+    risk_adjusted_arr: float = 0.0
+    revenue_data_coverage: float = 0.0
+    risk_waterfall: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    concentration_treemap: list[dict[str, Any]] = Field(default_factory=list)
+
 
 class ReportDataComputer:
     """Single-pass computation of all report metrics.
@@ -1186,6 +1197,10 @@ class ReportDataComputer:
         material_gaps_list = [g for g in all_gaps_flat if not _is_noise_gap(g)]
         noise_gaps_list = [g for g in all_gaps_flat if _is_noise_gap(g)]
 
+        # --- Issue #102: Revenue-at-Risk ---
+        revenue_by_customer = self._extract_revenue_from_cross_refs(merged_data)
+        total_contracted_arr = sum(revenue_by_customer.values())
+
         # --- Issue #113: Topic classification, health tiers, recommendations ---
         topic_findings = self._classify_by_topic(all_findings)
         extracted_amounts, total_arr = self._extract_financials(all_findings)
@@ -1207,6 +1222,23 @@ class ReportDataComputer:
             avg_gov,
             total_gaps,
             topic_findings,
+        )
+
+        # --- Issue #102: Waterfall and treemap ---
+        risk_waterfall = self._compute_risk_waterfall(revenue_by_customer, topic_findings)
+        # Total exposure = union of unique customers across ALL categories to avoid
+        # double-counting when one customer has findings in multiple categories.
+        all_at_risk_csns: set[str] = set()
+        for cat_data in risk_waterfall.values():
+            all_at_risk_csns.update(cat_data.get("customers", []))
+        total_risk_exposure = sum(revenue_by_customer.get(csn, 0.0) for csn in all_at_risk_csns)
+        risk_adjusted_arr = max(0.0, total_contracted_arr - total_risk_exposure)
+        customers_with_revenue = len(revenue_by_customer)
+        revenue_data_coverage = customers_with_revenue / len(merged_data) if merged_data else 0.0
+        concentration_treemap = self._build_concentration_treemap(
+            revenue_by_customer,
+            customer_risk_raw,
+            display_names,
         )
 
         return ReportComputedData(
@@ -1292,6 +1324,13 @@ class ReportDataComputer:
             material_gaps=material_gaps_list,
             noise_gaps=noise_gaps_list,
             executive_synthesis=executive_synthesis,
+            # Issue #102: Revenue-at-Risk
+            revenue_by_customer=revenue_by_customer,
+            total_contracted_arr=total_contracted_arr,
+            risk_adjusted_arr=risk_adjusted_arr,
+            revenue_data_coverage=revenue_data_coverage,
+            risk_waterfall=risk_waterfall,
+            concentration_treemap=concentration_treemap,
         )
 
     # --- Issue #113: Helper methods for business-oriented analysis ---
@@ -1364,6 +1403,131 @@ class ReportDataComputer:
                 )
                 total += amt
         return extracted, total
+
+    # --- Issue #102: Revenue-at-Risk helpers ---
+
+    _REVENUE_KEYWORDS: frozenset[str] = frozenset(
+        {
+            "arr",
+            "acv",
+            "contract_value",
+            "annual_value",
+            "revenue",
+            "mrr",
+            "annual_recurring",
+            "total_contract",
+            "committed_value",
+        }
+    )
+
+    @staticmethod
+    def _extract_revenue_from_cross_refs(
+        merged_data: dict[str, Any],
+    ) -> dict[str, float]:
+        """Extract per-customer revenue from cross-reference data points.
+
+        Looks for data_point fields containing revenue keywords.
+        Prefers reference_value (authoritative) over contract_value.
+        Returns ``{customer_safe_name: best_revenue_estimate}``.
+        """
+        revenue: dict[str, float] = {}
+        for csn, data in merged_data.items():
+            if not isinstance(data, dict):
+                continue
+            best = 0.0
+            for xr in data.get("cross_references", []):
+                if not isinstance(xr, dict):
+                    continue
+                dp = str(xr.get("data_point", "")).lower().replace(" ", "_")
+                if not any(kw in dp for kw in ReportDataComputer._REVENUE_KEYWORDS):
+                    continue
+                # Prefer reference_value (source of truth) then contract_value
+                for field in ("reference_value", "contract_value"):
+                    raw = str(xr.get(field, ""))
+                    amounts = _extract_dollar_amounts(raw)
+                    if amounts:
+                        candidate = max(amounts)
+                        if candidate > best:
+                            best = candidate
+                        break  # found a value from this field, stop
+            if best > 0:
+                revenue[csn] = best
+        return revenue
+
+    @staticmethod
+    def _compute_risk_waterfall(
+        revenue_by_customer: dict[str, float],
+        topic_findings: dict[str, list[dict[str, Any]]],
+    ) -> dict[str, dict[str, Any]]:
+        """Compute revenue-at-risk waterfall by risk category.
+
+        Each category maps affected customers (via findings) to their revenue.
+        Returns ``{category: {"amount": float, "contracts": int, "customers": [str]}}``.
+        """
+        waterfall: dict[str, dict[str, Any]] = {}
+
+        category_map: dict[str, str] = {
+            "coc": "change_of_control",
+            "tfc": "termination_for_convenience",
+            "concentration": "customer_concentration",
+            "pricing": "pricing_risk",
+        }
+
+        for topic_key, waterfall_key in category_map.items():
+            findings = topic_findings.get(topic_key, [])
+            affected_csns: set[str] = set()
+            for f in findings:
+                csn = f.get("_customer_safe_name", "")
+                if csn:
+                    affected_csns.add(csn)
+
+            amount = sum(revenue_by_customer.get(csn, 0.0) for csn in affected_csns)
+            if amount > 0 or affected_csns:
+                waterfall[waterfall_key] = {
+                    "amount": amount,
+                    "contracts": len(affected_csns),
+                    "customers": sorted(affected_csns),
+                }
+
+        return waterfall
+
+    @staticmethod
+    def _build_concentration_treemap(
+        revenue_by_customer: dict[str, float],
+        customer_risk_raw: dict[str, dict[str, int]],
+        display_names: dict[str, str],
+    ) -> list[dict[str, Any]]:
+        """Build treemap data sorted by revenue descending.
+
+        Each entry: ``{customer_safe_name, display_name, revenue, pct, risk_level}``.
+        """
+        total = sum(revenue_by_customer.values())
+        if total <= 0:
+            return []
+
+        treemap: list[dict[str, Any]] = []
+        for csn, rev in revenue_by_customer.items():
+            sev = customer_risk_raw.get(csn, {})
+            if sev.get("P0", 0) > 0:
+                risk = "critical"
+            elif sev.get("P1", 0) > 0:
+                risk = "high"
+            elif sev.get("P2", 0) > 0:
+                risk = "medium"
+            else:
+                risk = "low"
+            treemap.append(
+                {
+                    "customer_safe_name": csn,
+                    "display_name": display_names.get(csn, csn),
+                    "revenue": rev,
+                    "pct": round(rev / total * 100, 1),
+                    "risk_level": risk,
+                }
+            )
+
+        treemap.sort(key=lambda x: -x["revenue"])
+        return treemap
 
     @staticmethod
     def _compute_health_tiers(

@@ -77,12 +77,20 @@ def main() -> None:
     default=False,
     help="Validate config and print what would run without executing.",
 )
+@click.option(
+    "--quick-scan",
+    "quick_scan",
+    is_flag=True,
+    default=False,
+    help="Run a quick Red Flag scan only (steps 1-13 + Red Flag Scanner agent).",
+)
 def run(
     config_path: Path,
     mode: str | None,
     verbose: bool,
     resume_from: int,
     dry_run: bool,
+    quick_scan: bool,
 ) -> None:
     """Run the due diligence pipeline with a deal-config.json file."""
     if verbose:
@@ -150,6 +158,8 @@ def run(
     run_options: dict[str, Any] = {}
     if mode is not None:
         run_options["execution_mode"] = mode
+    if quick_scan:
+        run_options["quick_scan"] = True
 
     console.print()
     console.print(

@@ -1,8 +1,8 @@
 # Due Diligence Agent SDK
 
-> **Status**: Production-tested. Full 35-step pipeline, contract search, auto-config, and data room assessment commands operational with 2,172+ passing unit tests, mypy strict clean, ruff clean.
+> **Status**: Production-tested. Full 35-step pipeline, contract search, auto-config, and data room assessment commands operational with 2,257+ passing unit tests, mypy strict clean, ruff clean.
 
-Standalone Python application for forensic M&A due diligence. Six agents (4 specialists + optional Judge + Executive Synthesis) analyze contract data rooms, extract clauses, build governance graphs, detect gaps, and produce a board-ready HTML report + 14-sheet Excel report — all under deterministic Python orchestration with hook-enforced quality gates. Powered by `claude-agent-sdk` v0.1.39+ (Claude API or AWS Bedrock).
+Standalone Python application for forensic M&A due diligence. Seven agents (4 specialists + optional Judge + Executive Synthesis + Red Flag Scanner) analyze contract data rooms, extract clauses, build governance graphs, detect gaps, and produce a board-ready HTML report + 14-sheet Excel report — all under deterministic Python orchestration with hook-enforced quality gates. Powered by `claude-agent-sdk` v0.1.39+ (Claude API or AWS Bedrock).
 
 ## Project Structure
 
@@ -15,7 +15,7 @@ due-diligence-agents/
 │   └── dd_agents/               # Main package
 │       ├── models/              # Pydantic v2 data models (20+ schemas)
 │       ├── orchestrator/        # 35-step pipeline, state machine, checkpoints
-│       ├── agents/              # 4 specialists + optional Judge, prompt builder
+│       ├── agents/              # 4 specialists + Judge + Executive Synthesis + Red Flag Scanner
 │       ├── extraction/          # Document extraction: pymupdf, markitdown, GLM-OCR, Claude vision
 │       ├── entity_resolution/   # 6-pass cascading matcher, dedup, cache, rapidfuzz
 │       ├── inventory/           # File discovery, customer registry, references

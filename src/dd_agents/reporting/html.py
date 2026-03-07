@@ -37,11 +37,13 @@ from dd_agents.reporting.html_dashboard import DashboardRenderer
 from dd_agents.reporting.html_diff import DiffRenderer
 from dd_agents.reporting.html_domains import DomainRenderer
 from dd_agents.reporting.html_executive import ExecutiveSummaryRenderer
+from dd_agents.reporting.html_financial import FinancialImpactRenderer
 from dd_agents.reporting.html_findings_table import FindingsTableRenderer
 from dd_agents.reporting.html_gaps import GapRenderer
 from dd_agents.reporting.html_methodology import MethodologyRenderer
 from dd_agents.reporting.html_quality import QualityRenderer
 from dd_agents.reporting.html_recommendations import RecommendationsRenderer
+from dd_agents.reporting.html_red_flags import RedFlagAssessmentRenderer
 from dd_agents.reporting.html_risk import RiskRenderer
 from dd_agents.reporting.html_strategy import StrategyRenderer
 
@@ -71,6 +73,7 @@ class HTMLReportGenerator:
         deal_config: dict[str, Any] | None = None,
         acquirer_intelligence: dict[str, Any] | None = None,
         executive_synthesis: dict[str, Any] | None = None,
+        red_flag_scan: dict[str, Any] | None = None,
         run_dir: Path | None = None,
     ) -> None:
         """Write the HTML report to *output_path*.
@@ -94,6 +97,9 @@ class HTMLReportGenerator:
         executive_synthesis:
             Optional output from the ExecutiveSynthesisAgent — calibrated
             Go/No-Go signal, severity overrides, and executive narrative.
+        red_flag_scan:
+            Optional output from the RedFlagScannerAgent (Issue #125) —
+            stoplight signal, flags, and recommendation.
         run_dir:
             Pipeline run directory (for loading audit.json, report_diff.json, etc.).
         """
@@ -112,6 +118,10 @@ class HTMLReportGenerator:
         # Inject acquirer intelligence if provided (Issue #110)
         if acquirer_intelligence and isinstance(acquirer_intelligence, dict):
             computed.acquirer_intelligence = acquirer_intelligence
+
+        # Inject red flag scan results if provided (Issue #125)
+        if red_flag_scan and isinstance(red_flag_scan, dict):
+            computed.red_flag_scan = red_flag_scan
 
         # Config dict passed to renderers for metadata they need
         renderer_config: dict[str, Any] = {
@@ -137,10 +147,14 @@ class HTMLReportGenerator:
 
         # Section renderers (professional DD report flow — rendering overhaul)
         renderers: list[SectionRenderer] = [
+            # 0. Red Flag Assessment (quick-scan mode — Issue #125, renders only when data present)
+            RedFlagAssessmentRenderer(computed, merged_data, renderer_config),
             # 1. Executive summary (Go/No-Go, risk heatmap, deal breakers, key metrics)
             ExecutiveSummaryRenderer(computed, merged_data, renderer_config),
             # 2. Dashboard (deal header + metrics strip — material counts)
             DashboardRenderer(computed, merged_data, renderer_config),
+            # 2b. Financial Impact (revenue-at-risk waterfall, treemap — Issue #102)
+            FinancialImpactRenderer(computed, merged_data, renderer_config),
             # 3. P0/P1 entity tables
             FindingsTableRenderer(computed, merged_data, renderer_config),
             # 4. Change of Control analysis

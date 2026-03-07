@@ -4,6 +4,38 @@ All notable changes to this project will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.0] - 2026-03-06
+
+### Added
+
+- **Revenue-at-Risk & Financial Impact Quantification** (Issue #102) — new report section with:
+  - Per-customer revenue extraction from cross-reference data (ARR, ACV, contract value keywords)
+  - Revenue-at-risk waterfall chart (CoC exposure, TfC exposure, concentration risk, pricing risk)
+  - Customer concentration treemap sized by revenue with risk-level color coding
+  - Financial impact metrics strip (Total ARR, Revenue at Risk, Risk-Adjusted ARR)
+  - Data completeness indicator showing revenue coverage percentage
+  - `FinancialImpactRenderer` with full HTML escaping and print mode support
+- **Red Flag Detection & Quick Scan Mode** (Issue #125) — early deal-killer warning:
+  - `--quick-scan` CLI flag for rapid 5-minute red flag assessment
+  - `RedFlagScannerAgent` — lightweight single-turn agent scanning 8 deal-killer categories (litigation, IP gaps, undisclosed contracts, key-person dependency, financial restatements, regulatory violations, customer concentration, debt covenants)
+  - `RedFlagAssessmentRenderer` — single-page HTML report with stoplight indicators (green/yellow/red), confidence scoring, source citations, and recommended actions
+  - `classify_signal()` — deterministic signal classification from flag severity and confidence
+  - `RED_FLAG_SCANNER` agent type added to `AgentType` enum
+- **Agent Cost Optimization** (Issue #129) — model selection, cost tracking, budget management:
+  - 3 preset model profiles: economy (Haiku-heavy, ~$5-8/run), standard (Sonnet-heavy, ~$10-15/run), premium (Opus for synthesis, ~$40-60/run)
+  - `AgentModelsConfig` in deal config with per-agent model overrides
+  - `CostTracker` — per-agent, per-step token/cost tracking with hard budget limits
+  - `ModelProfile` — preset configurations with `get_model_for_agent()` lookup
+  - Pricing table for Claude model family (Opus 4.6, Sonnet 4.6, Haiku 4.5)
+  - Note: modules delivered and tested; full engine-level integration (automatic token recording, budget enforcement) deferred to Phase 3 pending SDK token-reporting support
+- **Parallel Agent Execution Optimization** (Issue #148) — smart batch scheduling:
+  - `CustomerComplexity` scoring: file count + document size → simple/medium/complex tiers
+  - `BatchScheduler` — priority queue scheduling (simple customers first for fast wins)
+  - Token-aware batch splitting with configurable size and token limits
+  - Per-step timing already tracked in `StepResult.duration_ms`
+  - Note: modules delivered and tested; engine step 16 integration deferred to Phase 3 (current `AgentTeam.spawn_specialists()` batching is functional)
+- 68 new unit tests (2259 total) covering red flag scanner, cost tracking, model profiles, batch scheduling, signal classification, and double-counting prevention
+
 ## [0.4.2] - 2026-03-06
 
 ### Added

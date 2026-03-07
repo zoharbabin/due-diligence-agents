@@ -26,6 +26,13 @@ from dd_agents.agents.prompt_builder import (
     AgentType,
     PromptBuilder,
 )
+from dd_agents.agents.red_flag_scanner import (
+    RED_FLAG_CATEGORIES,
+    RED_FLAG_TOOLS,
+    RedFlagScannerAgent,
+    RedFlagScannerOutput,
+    classify_signal,
+)
 from dd_agents.agents.specialists import (
     COMMERCIAL_FOCUS_AREAS,
     FINANCE_FOCUS_AREAS,
@@ -65,6 +72,12 @@ __all__ = [
     "ExecutiveSynthesisAgent",
     "ExecutiveSynthesisOutput",
     "EXECUTIVE_SYNTHESIS_TOOLS",
+    # Red Flag Scanner
+    "RedFlagScannerAgent",
+    "RedFlagScannerOutput",
+    "RED_FLAG_CATEGORIES",
+    "RED_FLAG_TOOLS",
+    "classify_signal",
     # Judge
     "JudgeAgent",
     "DEFAULT_SAMPLING_RATES",

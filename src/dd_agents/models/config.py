@@ -241,6 +241,40 @@ class BuyerStrategy(BaseModel):
         return v
 
 
+class AgentModelsConfig(BaseModel):
+    """Agent model selection configuration (Issue #129).
+
+    Supports three preset profiles (economy/standard/premium) and
+    per-agent overrides for fine-grained control.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    profile: str = Field(
+        default="standard",
+        description="Model profile: economy (Haiku-heavy), standard (Sonnet-heavy), premium (Opus for synthesis).",
+    )
+    overrides: dict[str, str] = Field(
+        default_factory=dict,
+        description="Per-agent model overrides. Keys are agent names, values are model IDs.",
+    )
+    budget_limit_usd: float | None = Field(
+        default=None,
+        description="Optional hard budget limit in USD per pipeline run.",
+    )
+
+    def resolve_model(self, agent_name: str) -> str:
+        """Return the model ID for a given agent, checking overrides first."""
+        if agent_name in self.overrides:
+            return self.overrides[agent_name]
+
+        from dd_agents.agents.cost_tracker import get_model_profiles
+
+        profiles = get_model_profiles()
+        profile = profiles.get(self.profile, profiles["standard"])
+        return profile.get_model_for_agent(agent_name)
+
+
 class DealConfig(BaseModel):
     """
     Root configuration model. Validated from deal-config.json.
@@ -261,6 +295,7 @@ class DealConfig(BaseModel):
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
     reporting: ReportingConfig = Field(default_factory=ReportingConfig)
     forensic_dd: ForensicDDConfig = Field(default_factory=ForensicDDConfig)
+    agent_models: AgentModelsConfig = Field(default_factory=AgentModelsConfig)
     buyer_strategy: BuyerStrategy | None = Field(
         default=None,
         description="Optional buyer strategy context. When absent, all buyer-specific features are disabled.",
