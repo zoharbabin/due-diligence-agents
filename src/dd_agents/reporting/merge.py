@@ -518,7 +518,7 @@ class FindingMerger:
     # Semantic dedup (Issue #150)
     # ------------------------------------------------------------------
 
-    _SEMANTIC_THRESHOLD = 80  # rapidfuzz token_sort_ratio threshold
+    _SEMANTIC_THRESHOLD: int = 80  # rapidfuzz token_sort_ratio threshold
 
     def _semantic_dedup(self, findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Merge semantically similar findings using fuzzy title matching.
@@ -550,10 +550,10 @@ class FindingMerger:
                 # Only merge across different agents
                 if ai and aj and ai == aj:
                     continue
-                # Only merge if referencing the same document
+                # Only merge if referencing the same document (require both paths known)
                 si = self._first_source_path(fi)
                 sj = self._first_source_path(fj)
-                if si and sj and si != sj:
+                if not si or not sj or si != sj:
                     continue
                 tj = str(fj.get("title", ""))
                 score = fuzz.token_sort_ratio(ti, tj)
@@ -565,7 +565,16 @@ class FindingMerger:
             else:
                 winner = self._pick_winner(group)
                 winner.setdefault("metadata", {})["semantic_dedup"] = True
-                winner["metadata"]["corroborated_by"] = len({a for f in group for a in [f.get("agent", "")] if a})
+                # Aggregate agents from both agent field AND prior dedup contributing_agents
+                all_agents: set[str] = set()
+                for f in group:
+                    if f.get("agent"):
+                        all_agents.add(f["agent"])
+                    for ca in f.get("metadata", {}).get("contributing_agents", []):
+                        if ca:
+                            all_agents.add(ca)
+                winner["metadata"]["contributing_agents"] = sorted(all_agents)
+                winner["metadata"]["corroborated_by"] = len(all_agents)
                 result.append(winner)
         return result
 

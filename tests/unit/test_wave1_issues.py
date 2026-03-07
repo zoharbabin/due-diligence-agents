@@ -642,3 +642,469 @@ class TestNewCategories:
         from dd_agents.tools.validate_finding import VALID_CATEGORIES
 
         assert "contract_timeline" in VALID_CATEGORIES
+
+
+# ===========================================================================
+# Strengthened analysis method tests (audit findings)
+# ===========================================================================
+
+
+class TestDiscountAnalysisStrengthened:
+    """Precise tests for discount distribution bucketing and edge cases."""
+
+    def test_discount_bucket_10_pct(self) -> None:
+        """10% discount should go in 0-10% bucket."""
+        merged = {
+            "a": _customer(
+                "A",
+                findings=[
+                    _finding(
+                        "Customer receives 10% discount on subscription",
+                        category="discount",
+                        agent="finance",
+                        description="Standard enterprise pricing applied",
+                    ),
+                ],
+            ),
+        }
+        computer = ReportDataComputer()
+        result = computer.compute(merged)
+        dist = result.discount_analysis.get("distribution", {})
+        assert dist.get("0-10%", 0) >= 1
+
+    def test_discount_bucket_25_pct(self) -> None:
+        """25% discount should go in 10-25% bucket."""
+        merged = {
+            "a": _customer(
+                "A",
+                findings=[
+                    _finding(
+                        "Customer receives 25% discount on renewal",
+                        category="discount",
+                        agent="finance",
+                        description="Standard enterprise pricing applied",
+                    ),
+                ],
+            ),
+        }
+        computer = ReportDataComputer()
+        result = computer.compute(merged)
+        dist = result.discount_analysis.get("distribution", {})
+        assert dist.get("10-25%", 0) >= 1
+
+    def test_no_discount_keyword_no_match(self) -> None:
+        """Finding without pricing keywords should not be counted."""
+        merged = {
+            "a": _customer(
+                "A",
+                findings=[_finding("Change of control clause", category="coc", agent="legal")],
+            ),
+        }
+        computer = ReportDataComputer()
+        result = computer.compute(merged)
+        assert result.discount_analysis["total_pricing_findings"] == 0
+
+    def test_rebate_keyword_match(self) -> None:
+        """Rebate keyword should be detected as pricing finding."""
+        merged = {
+            "a": _customer(
+                "A",
+                findings=[
+                    _finding(
+                        "Annual rebate program for volume customers",
+                        category="discount",
+                        agent="finance",
+                        description="Quarterly rebate of 5% on spend over $100K",
+                    ),
+                ],
+            ),
+        }
+        computer = ReportDataComputer()
+        result = computer.compute(merged)
+        assert result.discount_analysis["total_pricing_findings"] == 1
+
+
+class TestRenewalAnalysisStrengthened:
+    """Precise tests for renewal classification logic."""
+
+    def test_auto_renewal_counted(self) -> None:
+        """Auto-renewal finding should increment auto count."""
+        merged = {
+            "a": _customer(
+                "A",
+                findings=[
+                    _finding(
+                        "Contract auto-renews annually",
+                        category="renewal",
+                        agent="commercial",
+                        description="Auto-renewal clause with 30-day notice",
+                    ),
+                ],
+            ),
+        }
+        computer = ReportDataComputer()
+        result = computer.compute(merged)
+        assert result.renewal_analysis["auto_renew_count"] == 1
+        assert result.renewal_analysis["manual_renew_count"] == 0
+
+    def test_manual_renewal_counted(self) -> None:
+        """Manual renewal finding should increment manual count."""
+        merged = {
+            "a": _customer(
+                "A",
+                findings=[
+                    _finding(
+                        "Manual renewal required before term end",
+                        category="renewal",
+                        agent="commercial",
+                        description="Contract requires manual renewal by customer",
+                    ),
+                ],
+            ),
+        }
+        computer = ReportDataComputer()
+        result = computer.compute(merged)
+        assert result.renewal_analysis["manual_renew_count"] == 1
+        assert result.renewal_analysis["auto_renew_count"] == 0
+
+    def test_expiry_keyword_detection(self) -> None:
+        """'expir' should match 'expires', 'expiration', 'expiry'."""
+        for word in ["expires", "expiration date", "contract expiry"]:
+            merged = {
+                "a": _customer(
+                    "A",
+                    findings=[_finding(f"Contract {word} December 2026", agent="commercial")],
+                ),
+            }
+            computer = ReportDataComputer()
+            result = computer.compute(merged)
+            assert result.renewal_analysis["total_renewal_findings"] >= 1, f"Failed for: {word}"
+
+
+class TestComplianceAnalysisStrengthened:
+    """Precise tests for compliance finding classification."""
+
+    def test_dpa_category_match(self) -> None:
+        """Finding with 'dpa' in text should be counted as DPA finding."""
+        merged = {
+            "a": _customer(
+                "A",
+                findings=[
+                    _finding(
+                        "Missing DPA for EU data transfers",
+                        category="dpa",
+                        agent="legal",
+                        description="No DPA on file despite EU personal data processing",
+                    ),
+                ],
+            ),
+        }
+        computer = ReportDataComputer()
+        result = computer.compute(merged)
+        assert result.compliance_analysis["dpa_findings_count"] >= 1
+
+    def test_jurisdiction_keyword_match(self) -> None:
+        """Jurisdiction keywords should be classified correctly."""
+        merged = {
+            "a": _customer(
+                "A",
+                findings=[
+                    _finding(
+                        "Governed by Delaware law",
+                        category="governing_law",
+                        agent="legal",
+                        description="Contract specifies governing law as State of Delaware",
+                    ),
+                ],
+            ),
+        }
+        computer = ReportDataComputer()
+        result = computer.compute(merged)
+        assert result.compliance_analysis["jurisdiction_findings_count"] >= 1
+
+    def test_regulatory_keyword_fcpa(self) -> None:
+        """FCPA should be detected as regulatory finding."""
+        merged = {
+            "a": _customer(
+                "A",
+                findings=[
+                    _finding(
+                        "FCPA compliance clause present",
+                        category="regulatory",
+                        agent="legal",
+                        description="Foreign Corrupt Practices Act compliance provisions",
+                    ),
+                ],
+            ),
+        }
+        computer = ReportDataComputer()
+        result = computer.compute(merged)
+        assert result.compliance_analysis["regulatory_findings_count"] >= 1
+
+    def test_non_compliance_finding_excluded(self) -> None:
+        """Finding without compliance keywords should not be counted."""
+        merged = {
+            "a": _customer(
+                "A",
+                findings=[_finding("Change of control clause", category="coc", agent="legal")],
+            ),
+        }
+        computer = ReportDataComputer()
+        result = computer.compute(merged)
+        assert result.compliance_analysis["total_compliance_findings"] == 0
+
+
+class TestEntityDistributionStrengthened:
+    """Precise tests for entity distribution logic."""
+
+    def test_subsidiary_keyword_detected(self) -> None:
+        """'subsidiary' in finding should count as entity finding."""
+        merged = {
+            "a": _customer(
+                "A",
+                findings=[
+                    _finding(
+                        "Contract signed by subsidiary entity",
+                        category="governance",
+                        agent="legal",
+                        description="Agreement executed by wholly-owned subsidiary",
+                    ),
+                ],
+            ),
+        }
+        computer = ReportDataComputer()
+        result = computer.compute(merged)
+        assert result.entity_distribution["entity_findings_count"] >= 1
+
+    def test_non_entity_finding_excluded(self) -> None:
+        """Finding without entity keywords should not be counted."""
+        merged = {
+            "a": _customer(
+                "A",
+                findings=[
+                    _finding(
+                        "Pricing below market rate",
+                        category="discount",
+                        agent="finance",
+                    ),
+                ],
+            ),
+        }
+        computer = ReportDataComputer()
+        result = computer.compute(merged)
+        assert result.entity_distribution["entity_findings_count"] == 0
+
+
+class TestTimelineStrengthened:
+    """Precise tests for date regex and timeline extraction."""
+
+    def test_iso_date_detected(self) -> None:
+        """ISO format 2026-12-31 should be detected."""
+        merged = {
+            "a": _customer(
+                "A",
+                findings=[
+                    _finding(
+                        "Contract term ends 2026-12-31",
+                        category="termination",
+                        agent="commercial",
+                        description="MSA expires on 2026-12-31",
+                    ),
+                ],
+            ),
+        }
+        computer = ReportDataComputer()
+        result = computer.compute(merged)
+        assert result.contract_timeline["date_mentions_count"] >= 1
+
+    def test_us_date_detected(self) -> None:
+        """US format 12/31/2026 should be detected."""
+        merged = {
+            "a": _customer(
+                "A",
+                findings=[
+                    _finding(
+                        "Contract expires 12/31/2026",
+                        category="termination",
+                        agent="commercial",
+                        description="Term ends on 12/31/2026",
+                    ),
+                ],
+            ),
+        }
+        computer = ReportDataComputer()
+        result = computer.compute(merged)
+        assert result.contract_timeline["date_mentions_count"] >= 1
+
+    def test_month_name_date_detected(self) -> None:
+        """Month name format 'December 2026' should be detected."""
+        merged = {
+            "a": _customer(
+                "A",
+                findings=[
+                    _finding(
+                        "Renewal scheduled for December 2026",
+                        category="renewal",
+                        agent="commercial",
+                        description="Next renewal period is December 2026",
+                    ),
+                ],
+            ),
+        }
+        computer = ReportDataComputer()
+        result = computer.compute(merged)
+        assert result.contract_timeline["date_mentions_count"] >= 1
+
+    def test_month_day_year_detected(self) -> None:
+        """'January 15, 2025' format should be detected."""
+        merged = {
+            "a": _customer(
+                "A",
+                findings=[
+                    _finding(
+                        "Contract signed January 15, 2025",
+                        category="contract_timeline",
+                        agent="commercial",
+                        description="Effective date January 15, 2025",
+                    ),
+                ],
+            ),
+        }
+        computer = ReportDataComputer()
+        result = computer.compute(merged)
+        assert result.contract_timeline["date_mentions_count"] >= 1
+
+    def test_no_dates_zero_count(self) -> None:
+        """Finding without dates should not increment date count."""
+        merged = {
+            "a": _customer(
+                "A",
+                findings=[
+                    _finding(
+                        "Contract has unusual terms",
+                        category="contract_timeline",
+                        agent="commercial",
+                        description="Unusual termination provisions noted",
+                    ),
+                ],
+            ),
+        }
+        computer = ReportDataComputer()
+        result = computer.compute(merged)
+        assert result.contract_timeline["date_mentions_count"] == 0
+
+
+class TestSemanticDedupStrengthened:
+    """Additional semantic dedup tests from audit findings."""
+
+    def test_empty_source_path_blocks_merge(self) -> None:
+        """Findings with empty source_path should not merge."""
+        from dd_agents.reporting.merge import FindingMerger
+
+        findings = [
+            {
+                "severity": "P1",
+                "category": "coc",
+                "title": "Change of control clause",
+                "description": "CoC clause found",
+                "citations": [{"source_type": "contract", "source_path": "", "exact_quote": "q", "location": ""}],
+                "confidence": "high",
+                "agent": "legal",
+            },
+            {
+                "severity": "P1",
+                "category": "coc",
+                "title": "Change of control clause",
+                "description": "CoC clause found",
+                "citations": [{"source_type": "contract", "source_path": "", "exact_quote": "q", "location": ""}],
+                "confidence": "high",
+                "agent": "commercial",
+            },
+        ]
+        merger = FindingMerger()
+        result = merger._semantic_dedup(findings)
+        assert len(result) == 2  # Should NOT merge when document unknown
+
+    def test_same_agent_not_merged(self) -> None:
+        """Findings from same agent should NOT merge even with similar titles."""
+        from dd_agents.reporting.merge import FindingMerger
+
+        findings = [
+            {
+                "severity": "P1",
+                "category": "coc",
+                "title": "Change of control clause in section 5",
+                "description": "CoC in section 5",
+                "citations": [
+                    {"source_type": "contract", "source_path": "a.pdf", "exact_quote": "q", "location": "p1"}
+                ],
+                "confidence": "high",
+                "agent": "legal",
+            },
+            {
+                "severity": "P2",
+                "category": "coc",
+                "title": "Change of control clause in section 7",
+                "description": "CoC in section 7",
+                "citations": [
+                    {"source_type": "contract", "source_path": "a.pdf", "exact_quote": "q", "location": "p2"}
+                ],
+                "confidence": "high",
+                "agent": "legal",
+            },
+        ]
+        merger = FindingMerger()
+        result = merger._semantic_dedup(findings)
+        assert len(result) == 2  # Same agent — must NOT merge
+
+
+class TestNoiseClassificationStrengthened:
+    """Tests for noise pattern precision after audit fix."""
+
+    def test_consent_not_available_is_material(self) -> None:
+        """'consent not available' should NOT be noise — it's a material DD finding."""
+        from dd_agents.reporting.computed_metrics import _is_noise_finding
+
+        f = _finding(
+            "Change of control consent not available from Customer X",
+            category="coc",
+            agent="legal",
+            description="Customer has not provided consent for assignment",
+        )
+        assert not _is_noise_finding(f)
+
+    def test_file_not_available_is_noise(self) -> None:
+        """'file not available' should be noise."""
+        from dd_agents.reporting.computed_metrics import _is_noise_finding
+
+        f = _finding(
+            "Contract file not available for review",
+            category="uncategorized",
+            agent="legal",
+            description="File not available in data room",
+        )
+        assert _is_noise_finding(f)
+
+    def test_dq_pattern_does_not_match_real_finding(self) -> None:
+        """'Cannot verify AR aging' should NOT be data quality (it's about AR quality)."""
+        from dd_agents.reporting.computed_metrics import _is_data_quality_finding
+
+        f = _finding(
+            "Cannot verify AR aging due to payment delays",
+            category="finance",
+            agent="finance",
+            description="Accounts receivable aging schedule inconsistent",
+        )
+        assert not _is_data_quality_finding(f)
+
+    def test_dq_pattern_matches_data_gap(self) -> None:
+        """'data unavailable' should be data quality finding."""
+        from dd_agents.reporting.computed_metrics import _is_data_quality_finding
+
+        f = _finding(
+            "Revenue data unavailable for analysis",
+            category="uncategorized",
+            agent="finance",
+            description="FY2026 revenue waterfall data unavailable",
+        )
+        assert _is_data_quality_finding(f)

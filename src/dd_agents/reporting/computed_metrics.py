@@ -37,7 +37,9 @@ _DATAROOM_FOLDER_RE = re.compile(r"^\d+[\._]\d*[\._]?\s*")
 
 _NOISE_PATTERNS: list[str] = [
     "cannot assess",
-    "not available",
+    "file not available",
+    "content not available",
+    "document not available",
     "inaccessible",
     "binary",
     "no extractable",
@@ -61,7 +63,7 @@ _RECALIBRATION_RULES: list[dict[str, object]] = [
         "name": "competitor_only_coc",
         "max_severity": "P3",
         "title_patterns": ["competitor"],
-        "text_patterns": ["change of control", "change-of-control", " coc ", "coc "],
+        "text_patterns": ["change of control", "change-of-control", " coc ", "coc ", "coc_"],
         "require_all": True,
         "reason": "Competitor-only CoC: buyer rarely competes with target's customers",
     },
@@ -125,11 +127,11 @@ _DATA_QUALITY_PATTERNS: list[str] = [
     "files unreadable",
     "file unreadable",
     "document unreadable",
-    "cannot verify ar",
-    "cannot verify revenue",
-    "cannot validate revenue",
-    "cannot validate financial",
-    "cannot assess financial",
+    "cannot verify ar quality",
+    "cannot verify revenue data",
+    "cannot validate revenue data",
+    "cannot validate financial data",
+    "cannot assess financial data",
 ]
 
 _DATA_QUALITY_CATEGORIES: set[str] = {
@@ -216,6 +218,7 @@ CANONICAL_CATEGORIES: dict[str, dict[str, list[str]]] = {
             "termination_convenience",
             "tfc",
             "revenue_quality",
+            "contract_timeline",
         ],
         "IP & Ownership": [
             "intellectual_property",
@@ -2074,7 +2077,18 @@ class ReportDataComputer:
         customers_with_discounts: set[str] = set()
         distribution: dict[str, int] = {"0-10%": 0, "10-25%": 0, "25-50%": 0, ">50%": 0}
 
-        pricing_keywords = ["discount", "pricing", "rate card", "price", "below market", "list price"]
+        pricing_keywords = [
+            "discount",
+            "pricing",
+            "rate card",
+            "price",
+            "below market",
+            "list price",
+            "rebate",
+            "markdown",
+            "promotional",
+            "volume discount",
+        ]
         for f in all_findings:
             combined = f"{f.get('title', '')} {f.get('description', '')}".lower()
             if any(kw in combined for kw in pricing_keywords):
@@ -2174,6 +2188,11 @@ class ReportDataComputer:
             "sanctions",
             "export control",
             "antitrust",
+            "fcpa",
+            "ofac",
+            "itar",
+            "aml",
+            "kyc",
         ]
 
         dpa_findings: list[dict[str, Any]] = []
@@ -2254,6 +2273,10 @@ class ReportDataComputer:
     _DATE_RE = re.compile(
         r"\b(\d{4}[-/]\d{1,2}[-/]\d{1,2})\b"
         r"|\b(\d{1,2}[-/]\d{1,2}[-/]\d{4})\b"
+        r"|\b(?:january|february|march|april|may|june|july|august|september|"
+        r"october|november|december)\s+\d{1,2},?\s+\d{4}\b"
+        r"|\b\d{1,2}\s+(?:january|february|march|april|may|june|july|august|september|"
+        r"october|november|december)\s+\d{4}\b"
         r"|\b(?:january|february|march|april|may|june|july|august|september|"
         r"october|november|december)\s+\d{4}\b",
         re.IGNORECASE,

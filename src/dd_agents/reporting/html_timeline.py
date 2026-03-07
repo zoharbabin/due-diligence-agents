@@ -64,7 +64,7 @@ class TimelineRenderer(SectionRenderer):
             for f in findings[:15]:
                 sev = str(f.get("severity", "P3"))
                 title = self.escape(str(f.get("title", "")))
-                customer = self.escape(str(f.get("_customer", f.get("_customer_safe_name", ""))))
+                customer = self.escape(self._resolve_display_name(f))
                 parts.append(f"<tr><td>{self.severity_badge(sev)}</td><td>{customer}</td><td>{title}</td></tr>")
             parts.append("</tbody></table>")
 
