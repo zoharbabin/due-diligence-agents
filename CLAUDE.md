@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Python application for forensic M&A due diligence. 7 AI agents (4 specialists + optional Judge + Executive Synthesis + Red Flag Scanner) analyze contract data rooms under a 35-step pipeline with 5 blocking gates, producing a board-ready HTML report + 14-sheet Excel report. Python orchestrates; agents are workers.
+Python application for forensic M&A due diligence. 8 AI agents (4 specialists + optional Judge + Executive Synthesis + Red Flag Scanner + Acquirer Intelligence) analyze contract data rooms under a 35-step pipeline with 5 blocking gates, producing a board-ready HTML report + 14-sheet Excel report. Python orchestrates; agents are workers.
 
 **Package**: `dd_agents` under `src/dd_agents/`
 **SDK**: `claude-agent-sdk` v0.1.39+ (Python 3.12+)
@@ -36,7 +36,7 @@ dd-agents run path/to/deal-config.json
 ## Architecture
 
 - **Orchestrator** (`orchestrator/engine.py`): 35 async steps as methods on `PipelineEngine`. State machine with checkpoint/resume.
-- **Agents** (`agents/`): 4 specialists (Legal, Finance, Commercial, ProductTech) + optional Judge. Spawned via `claude-agent-sdk`.
+- **Agents** (`agents/`): 4 specialists (Legal, Finance, Commercial, ProductTech) + Judge + Executive Synthesis + Red Flag Scanner + Acquirer Intelligence. Spawned via `claude-agent-sdk`.
 - **Persistence**: Three tiers — PERMANENT (never wiped), VERSIONED (archived per run), FRESH (rebuilt each run).
 - **Hooks** (`hooks/`): Flat return format `{"decision": "block"|"allow", "reason": "..."}` for ALL hook types. Never nest under `hookSpecificOutput`.
 - **Models** (`models/`): Pydantic v2 for all schemas. `model_json_schema()` for structured outputs.

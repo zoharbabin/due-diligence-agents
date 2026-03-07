@@ -2,7 +2,7 @@
 
 > **Status**: Production-tested. Full 35-step pipeline, contract search, auto-config, data room assessment, NL query, and PDF export commands operational with 2,663 passing unit tests, mypy strict clean (152 source files), ruff clean.
 
-Standalone Python application for forensic M&A due diligence. Seven agents (4 specialists + optional Judge + Executive Synthesis + Red Flag Scanner) analyze contract data rooms, extract clauses, build governance graphs, detect gaps, and produce a board-ready HTML report + 14-sheet Excel report — all under deterministic Python orchestration with hook-enforced quality gates. Powered by `claude-agent-sdk` v0.1.39+ (Claude API or AWS Bedrock).
+Standalone Python application for forensic M&A due diligence. Eight agents (4 specialists + optional Judge + Executive Synthesis + Red Flag Scanner + Acquirer Intelligence) analyze contract data rooms, extract clauses, build governance graphs, detect gaps, and produce a board-ready HTML report + 14-sheet Excel report — all under deterministic Python orchestration with hook-enforced quality gates. Powered by `claude-agent-sdk` v0.1.39+ (Claude API or AWS Bedrock).
 
 ## Project Structure
 
@@ -15,7 +15,7 @@ due-diligence-agents/
 │   └── dd_agents/               # Main package
 │       ├── models/              # Pydantic v2 data models (20+ schemas)
 │       ├── orchestrator/        # 35-step pipeline, state machine, checkpoints
-│       ├── agents/              # 4 specialists + Judge + Executive Synthesis + Red Flag Scanner
+│       ├── agents/              # 4 specialists + Judge + Executive Synthesis + Red Flag Scanner + Acquirer Intelligence
 │       ├── extraction/          # Document extraction: pymupdf, markitdown, GLM-OCR, Claude vision
 │       ├── entity_resolution/   # 6-pass cascading matcher, dedup, cache, rapidfuzz
 │       ├── inventory/           # File discovery, customer registry, references
@@ -231,7 +231,7 @@ pip install -e ".[glm-ocr]"   # GLM-OCR vision-language model (Apple Silicon)
 For full development with all extras:
 
 ```bash
-pip install -e ".[dev,vector,ocr]"
+pip install -e ".[dev,vector,ocr,glm-ocr]"
 # or use the Makefile:
 make install-dev
 ```
