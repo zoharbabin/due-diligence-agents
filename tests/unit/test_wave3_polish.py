@@ -147,7 +147,7 @@ class TestClauseLibrary:
     def test_library_has_entries(self) -> None:
         from dd_agents.reporting.clause_library import CLAUSE_LIBRARY
 
-        assert len(CLAUSE_LIBRARY) >= 15
+        assert len(CLAUSE_LIBRARY) == 18
 
     def test_classify_finding_coc(self) -> None:
         from dd_agents.reporting.clause_library import classify_finding
@@ -187,7 +187,7 @@ class TestClauseLibrary:
         types = list_clause_types()
         assert "change_of_control" in types
         assert "liability_cap" in types
-        assert len(types) >= 15
+        assert len(types) == 18
 
     def test_clause_library_renderer_empty(self) -> None:
         from dd_agents.reporting.html_clause_library import ClauseLibraryRenderer
@@ -242,7 +242,7 @@ class TestClauseLibrary:
             _make_finding(category="xyz_unknown", title="Unknown finding"),
         ]
         result = ClauseLibraryRenderer.compute_clause_analysis(findings)
-        assert result["total_classified"] >= 2
+        assert result["total_classified"] == 2
         assert "change_of_control" in result["clause_counts"]
 
 
@@ -662,7 +662,7 @@ class TestMultiLanguage:
 
         assert LANGUAGE_NAMES["en"] == "English"
         assert LANGUAGE_NAMES["de"] == "German"
-        assert len(LANGUAGE_NAMES) >= 10
+        assert len(LANGUAGE_NAMES) == 10
 
     def test_citation_has_source_language(self) -> None:
         from dd_agents.models.finding import Citation
@@ -777,3 +777,256 @@ class TestHTMLReportIntegration:
         assert "sec-key-employee" in html
         assert "sec-tech-stack" in html
         assert "sec-product-adoption" in html
+
+
+# ===========================================================================
+# Audit round: _compute_* methods direct tests
+# ===========================================================================
+
+
+class TestComputeKeyEmployeeAnalysis:
+    """Direct tests for _compute_key_employee_analysis."""
+
+    def test_empty_findings_returns_empty(self) -> None:
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+        result = ReportDataComputer._compute_key_employee_analysis([])
+        assert result == {}
+
+    def test_matches_key_person(self) -> None:
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+        findings = [
+            _make_finding(title="Key person dependency on CTO"),
+            _make_finding(title="Revenue growth steady"),
+        ]
+        result = ReportDataComputer._compute_key_employee_analysis(findings)
+        assert result["total_findings"] == 1
+        assert result["retention_risk_count"] == 0
+        assert result["noncompete_gap_count"] == 0
+
+    def test_retention_and_noncompete_overlap(self) -> None:
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+        findings = [
+            _make_finding(title="Key employee retention risk with non-compete gap"),
+        ]
+        result = ReportDataComputer._compute_key_employee_analysis(findings)
+        assert result["total_findings"] == 1
+        assert result["retention_risk_count"] == 1
+        assert result["noncompete_gap_count"] == 1
+
+    def test_no_matches_returns_empty(self) -> None:
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+        findings = [_make_finding(title="Standard revenue clause")]
+        result = ReportDataComputer._compute_key_employee_analysis(findings)
+        assert result == {}
+
+
+class TestComputeTechStackAnalysis:
+    """Direct tests for _compute_tech_stack_analysis."""
+
+    def test_empty_findings_returns_empty(self) -> None:
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+        result = ReportDataComputer._compute_tech_stack_analysis([])
+        assert result == {}
+
+    def test_security_subcategory(self) -> None:
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+        findings = [_make_finding(title="SOC2 compliance gap in security posture")]
+        result = ReportDataComputer._compute_tech_stack_analysis(findings)
+        assert result["total_findings"] == 1
+        assert result["security_gap_count"] == 1
+        assert result["findings"][0]["_tech_subcategory"] == "Security Posture"
+
+    def test_debt_subcategory(self) -> None:
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+        findings = [_make_finding(title="Legacy system with technical debt")]
+        result = ReportDataComputer._compute_tech_stack_analysis(findings)
+        assert result["total_findings"] == 1
+        assert result["tech_debt_count"] == 1
+        assert result["findings"][0]["_tech_subcategory"] == "Technical Debt"
+
+    def test_migration_subcategory(self) -> None:
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+        findings = [_make_finding(title="Vendor lock-in with migration complexity")]
+        result = ReportDataComputer._compute_tech_stack_analysis(findings)
+        assert result["total_findings"] == 1
+        assert result["migration_risk_count"] == 1
+        assert result["findings"][0]["_tech_subcategory"] == "Migration Complexity"
+
+    def test_default_subcategory(self) -> None:
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+        findings = [_make_finding(title="Technology stack uses deprecated framework")]
+        result = ReportDataComputer._compute_tech_stack_analysis(findings)
+        assert result["total_findings"] == 1
+        # deprecated matches debt_kw, so it's Technical Debt
+        assert result["findings"][0]["_tech_subcategory"] == "Technical Debt"
+
+    def test_no_tech_findings_returns_empty(self) -> None:
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+        findings = [_make_finding(title="Revenue recognition issue")]
+        result = ReportDataComputer._compute_tech_stack_analysis(findings)
+        assert result == {}
+
+
+class TestComputeProductAdoption:
+    """Direct tests for _compute_product_adoption."""
+
+    def test_empty_findings_returns_empty(self) -> None:
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+        result = ReportDataComputer._compute_product_adoption([], {})
+        assert result == {}
+
+    def test_extracts_products_from_findings(self) -> None:
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+        findings = [
+            _make_finding(
+                title="Platform license — Enterprise Suite",
+                category="product_scope",
+                customer="acme",
+            ),
+            _make_finding(
+                title="Module: Analytics Dashboard",
+                category="product_scope",
+                customer="acme",
+            ),
+            _make_finding(
+                title="Platform — Core API",
+                category="product",
+                customer="beta_corp",
+            ),
+        ]
+        result = ReportDataComputer._compute_product_adoption(findings, {})
+        assert "products" in result
+        assert "matrix" in result
+        assert len(result["products"]) == 3
+        assert "acme" in result["matrix"]
+        assert len(result["matrix"]["acme"]) == 2
+
+    def test_no_product_findings_returns_empty(self) -> None:
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+        findings = [_make_finding(title="Revenue clause", category="revenue")]
+        result = ReportDataComputer._compute_product_adoption(findings, {})
+        assert result == {}
+
+    def test_missing_csn_skipped(self) -> None:
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+        findings = [
+            _make_finding(title="Platform scope", category="product_scope", customer=""),
+        ]
+        result = ReportDataComputer._compute_product_adoption(findings, {})
+        assert result == {}
+
+
+class TestComputeLanguageDistribution:
+    """Direct tests for _compute_language_distribution."""
+
+    def test_empty_returns_empty(self) -> None:
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+        result = ReportDataComputer._compute_language_distribution([])
+        assert result == {}
+
+    def test_aggregates_from_citations(self) -> None:
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+        findings = [
+            {
+                "title": "Finding 1",
+                "citations": [
+                    {"source_language": "en", "source_path": "/a.pdf"},
+                    {"source_language": "de", "source_path": "/b.pdf"},
+                ],
+            },
+            {
+                "title": "Finding 2",
+                "citations": [{"source_language": "en", "source_path": "/c.pdf"}],
+            },
+        ]
+        result = ReportDataComputer._compute_language_distribution(findings)
+        assert result == {"en": 2, "de": 1}
+
+    def test_skips_missing_language(self) -> None:
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+        findings = [
+            {"title": "Finding", "citations": [{"source_path": "/a.pdf"}]},
+        ]
+        result = ReportDataComputer._compute_language_distribution(findings)
+        assert result == {}
+
+    def test_skips_non_list_citations(self) -> None:
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+        findings = [{"title": "Finding", "citations": "not a list"}]
+        result = ReportDataComputer._compute_language_distribution(findings)
+        assert result == {}
+
+
+class TestClauseLibraryEdgeCases:
+    """Edge case tests for clause library classification."""
+
+    def test_classify_with_missing_fields(self) -> None:
+        from dd_agents.reporting.clause_library import classify_finding
+
+        result = classify_finding({})
+        assert result is None
+
+    def test_classify_category_normalization(self) -> None:
+        from dd_agents.reporting.clause_library import classify_finding
+
+        f = _make_finding(category="change of control")
+        # Spaces replaced with underscores → direct match
+        assert classify_finding(f) == "change_of_control"
+
+    def test_classify_returns_first_keyword_match(self) -> None:
+        from dd_agents.reporting.clause_library import classify_finding
+
+        # "liability cap" keyword matches liability_cap
+        f = _make_finding(
+            category="custom",
+            title="liability cap with indemnification clause",
+        )
+        result = classify_finding(f)
+        assert result == "liability_cap"
+
+
+class TestWebResearchEdgeCases:
+    """Additional web research tests."""
+
+    def test_unverified_result_low_confidence(self) -> None:
+        from dd_agents.tools.web_research import format_web_research_result
+
+        result = format_web_research_result("query", verified=False)
+        assert result["confidence"] == "low"
+        assert result["verified_against_data_room"] is False
+
+    def test_result_has_access_date_format(self) -> None:
+        from dd_agents.tools.web_research import format_web_research_result
+
+        result = format_web_research_result("query")
+        # ISO date format YYYY-MM-DD
+        assert len(result["access_date"]) == 10
+        assert result["access_date"][4] == "-"
+
+
+class TestBadgeCSSClass:
+    """Verify .badge CSS class is defined."""
+
+    def test_badge_class_in_css(self) -> None:
+        from dd_agents.reporting.html_base import render_css
+
+        css = render_css()
+        assert ".badge" in css

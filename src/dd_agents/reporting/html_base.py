@@ -594,6 +594,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .finding-detail .fd-description { margin-bottom: 8px; }
 .finding-detail .fd-badges { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
 
+/* Generic badge */
+.badge { display: inline-block; padding: 2px 10px; border-radius: 12px;
+         font-size: 0.85em; font-weight: 600; }
+
 /* Severity badge */
 .severity-badge { display: inline-block; padding: 2px 10px; border-radius: 12px;
                   color: white; font-weight: 600; font-size: 0.8em; }

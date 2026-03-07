@@ -1610,6 +1610,7 @@ class ReportDataComputer:
             key_employee_analysis=self._compute_key_employee_analysis(all_findings),
             tech_stack_analysis=self._compute_tech_stack_analysis(all_findings),
             product_adoption=self._compute_product_adoption(all_findings, merged_data),
+            language_distribution=self._compute_language_distribution(all_findings),
         )
 
     # --- Issue #113: Helper methods for business-oriented analysis ---
@@ -3170,3 +3171,22 @@ class ReportDataComputer:
             "products": sorted_products,
             "matrix": matrix,
         }
+
+    # --- Issue #144: Language Distribution ---
+
+    @staticmethod
+    def _compute_language_distribution(
+        all_findings: list[dict[str, Any]],
+    ) -> dict[str, int]:
+        """Aggregate source language from finding citations."""
+        dist: dict[str, int] = {}
+        for f in all_findings:
+            citations = f.get("citations", [])
+            if not isinstance(citations, list):
+                continue
+            for cit in citations:
+                if isinstance(cit, dict):
+                    lang = cit.get("source_language")
+                    if lang and isinstance(lang, str):
+                        dist[lang] = dist.get(lang, 0) + 1
+        return dist
