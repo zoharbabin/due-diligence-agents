@@ -304,6 +304,243 @@ dd-agents query --report _dd/forensic-dd/runs/latest
 
 ---
 
+## portfolio
+
+Manage multiple DD projects and compare across deals.
+
+```
+dd-agents portfolio COMMAND [OPTIONS]
+```
+
+### portfolio add
+
+Register a new DD project.
+
+```
+dd-agents portfolio add NAME [OPTIONS]
+```
+
+**Arguments:**
+- `NAME` -- Human-readable project name
+
+**Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--data-room` | path | current dir | Path to the data room folder |
+| `--deal-type` | string | none | Deal type (acquisition, merger, etc.) |
+| `--buyer` | string | none | Buyer company name |
+| `--target` | string | none | Target company name |
+| `--base-dir` | path | `~/.dd-agents` | Registry base directory |
+
+**Examples:**
+
+```bash
+dd-agents portfolio add "Alpha Acquisition" --data-room ./alpha --deal-type acquisition
+dd-agents portfolio add "Beta Merger" --data-room ./beta --buyer "Acme" --target "Beta Inc"
+```
+
+### portfolio list
+
+List all registered projects with status and finding counts.
+
+```
+dd-agents portfolio list [OPTIONS]
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--base-dir` | path | `~/.dd-agents` | Registry base directory |
+
+### portfolio compare
+
+Compare risk profiles across all active (non-archived) projects.
+
+```
+dd-agents portfolio compare [OPTIONS]
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--base-dir` | path | `~/.dd-agents` | Registry base directory |
+
+Outputs total findings, average risk score, severity distribution, and per-project
+risk benchmarks (min/max/mean).
+
+### portfolio remove
+
+Remove a project from the registry (does not delete data room files).
+
+```
+dd-agents portfolio remove SLUG [OPTIONS]
+```
+
+**Arguments:**
+- `SLUG` -- Project slug (shown in `portfolio list`)
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--base-dir` | path | `~/.dd-agents` | Registry base directory |
+
+---
+
+## review
+
+Collaborative review and annotation workflow for DD findings.
+
+```
+dd-agents review COMMAND [OPTIONS]
+```
+
+### review annotate
+
+Add an annotation to a finding.
+
+```
+dd-agents review annotate FINDING_ID [OPTIONS]
+```
+
+**Arguments:**
+- `FINDING_ID` -- Finding identifier (from the report)
+
+**Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--reviewer` | string | required | Reviewer name |
+| `--status` | choice | `reviewed` | `reviewed`, `disputed`, `accepted`, `rejected` |
+| `--comment` | string | none | Annotation comment |
+| `--severity-override` | string | none | Override severity (P0-P4) |
+| `--run-dir` | path | latest run | Path to the pipeline run directory |
+
+**Examples:**
+
+```bash
+dd-agents review annotate abc123 --reviewer alice --status reviewed --comment "Verified"
+dd-agents review annotate def456 --reviewer bob --status disputed --severity-override P0
+```
+
+### review assign
+
+Assign a reviewer to a section or customer.
+
+```
+dd-agents review assign REVIEWER [OPTIONS]
+```
+
+**Arguments:**
+- `REVIEWER` -- Reviewer name
+
+**Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--section` | string | none | Section to assign (legal, finance, commercial, producttech) |
+| `--customer` | string | none | Customer safe name to assign |
+| `--run-dir` | path | latest run | Path to the pipeline run directory |
+
+**Examples:**
+
+```bash
+dd-agents review assign alice --section legal
+dd-agents review assign bob --customer acme_corp
+```
+
+### review progress
+
+Show review progress (how many findings reviewed, disputed, accepted).
+
+```
+dd-agents review progress [OPTIONS]
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--run-dir` | path | latest run | Path to the pipeline run directory |
+| `--total` | int | 0 | Total number of findings (for percentage calculation) |
+
+**Examples:**
+
+```bash
+dd-agents review progress --run-dir _dd/forensic-dd/runs/latest --total 200
+```
+
+### review export
+
+Export annotations as JSON or CSV.
+
+```
+dd-agents review export [OPTIONS]
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--run-dir` | path | latest run | Path to the pipeline run directory |
+| `--format` | choice | `json` | Output format: `json` or `csv` |
+
+**Examples:**
+
+```bash
+dd-agents review export --run-dir _dd/forensic-dd/runs/latest --format csv > annotations.csv
+```
+
+---
+
+## templates
+
+Browse and inspect pre-built report templates.
+
+```
+dd-agents templates COMMAND
+```
+
+### templates list
+
+List all available report templates (built-in and custom).
+
+```
+dd-agents templates list [OPTIONS]
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--templates-dir` | path | none | Directory with custom template JSON files |
+
+Built-in templates:
+
+| Template ID | Name | Audience |
+|-------------|------|----------|
+| `full_report` | Full DD Report | Complete analysis with all sections |
+| `board_summary` | Board Summary | Executive summary for board presentation |
+| `legal_deep_dive` | Legal Deep Dive | Detailed legal analysis (CoC, TfC, privacy, IP) |
+| `financial_analysis` | Financial Analysis | Revenue, SaaS metrics, valuation |
+| `technical_assessment` | Technical Assessment | Product and technology focused |
+
+### templates show
+
+Show details of a specific template (sections included, branding, detail level).
+
+```
+dd-agents templates show TEMPLATE_ID [OPTIONS]
+```
+
+**Arguments:**
+- `TEMPLATE_ID` -- Template identifier (from `templates list`)
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--templates-dir` | path | none | Directory with custom template JSON files |
+
+**Examples:**
+
+```bash
+dd-agents templates list
+dd-agents templates show board_summary
+dd-agents templates show legal_deep_dive
+```
+
+---
+
 ## Global Options
 
 The `--version` flag is available on the top-level group:

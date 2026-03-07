@@ -94,6 +94,11 @@ Update the phase status in IMPLEMENTATION_PLAN.md after completing each phase.
 | `search/*` | `docs/plan/22-llm-robustness.md` + `docs/search-guide.md` |
 | `errors.py` | `docs/plan/12-error-recovery.md` |
 | `cli.py` | `docs/plan/03-project-structure.md` |
+| `review/*` | Issue #122 (Collaborative Review & Annotation Layer) |
+| `api/*` | Issue #133 (REST API & Webhook Notifications) |
+| `reasoning/*` | `docs/plan/21-ontology-and-reasoning.md` |
+| `persistence/project_registry.py` | `docs/plan/13-multi-project.md` |
+| `reporting/templates.py` | Issue #123 (Configurable Report Templates) |
 
 ## Don't Do This
 
