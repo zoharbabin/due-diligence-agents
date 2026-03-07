@@ -44,10 +44,12 @@ class FindingMerger:
         run_id: str = "",
         timestamp: str = "",
         file_inventory: list[str] | None = None,
+        file_precedence: dict[str, float] | None = None,
     ) -> None:
         self.run_id = run_id or datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         self.timestamp = timestamp or datetime.now(UTC).isoformat()
         self._file_index = self._build_file_index(file_inventory or [])
+        self._file_precedence: dict[str, float] = file_precedence or {}
 
     # ------------------------------------------------------------------
     # File inventory index for citation path resolution
@@ -499,13 +501,13 @@ class FindingMerger:
             return first.get("exact_quote") or ""
         return ""
 
-    @staticmethod
-    def _pick_winner(group: list[dict[str, Any]]) -> dict[str, Any]:
-        """Keep highest severity, longest exact_quote.  Record contributors."""
+    def _pick_winner(self, group: list[dict[str, Any]]) -> dict[str, Any]:
+        """Keep highest severity, highest source precedence, longest quote.  Record contributors."""
         sorted_group = sorted(
             group,
             key=lambda f: (
                 SEVERITY_ORDER.get(f.get("severity", "P3"), 9),
+                -self._source_precedence(f),
                 -len(FindingMerger._first_quote(f)),
             ),
         )
@@ -513,6 +515,22 @@ class FindingMerger:
         winner.setdefault("metadata", {})
         winner["metadata"]["contributing_agents"] = [a for a in {f.get("agent", "") for f in group} if a]
         return winner
+
+    def _source_precedence(self, finding: dict[str, Any]) -> float:
+        """Look up the precedence score for a finding's primary citation source."""
+        if not self._file_precedence:
+            return 0.0
+        source = self._first_source_path(finding)
+        if not source:
+            return 0.0
+        # Try exact match, then basename match
+        if source in self._file_precedence:
+            return self._file_precedence[source]
+        basename = source.rsplit("/", 1)[-1].lower() if "/" in source else source.lower()
+        for path, score in self._file_precedence.items():
+            if path.lower().endswith(basename):
+                return score
+        return 0.0
 
     # ------------------------------------------------------------------
     # Semantic dedup (Issue #150)
