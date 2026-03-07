@@ -1,6 +1,6 @@
 # Due Diligence Agent SDK
 
-> **Status**: Production-tested. Full 35-step pipeline, contract search, auto-config, data room assessment, NL query, PDF export, portfolio management, collaborative review, report templates, REST API, and contract reasoning operational with 2,797 passing unit tests, mypy strict clean (164 source files), ruff clean.
+> **Status**: Production-tested. Full 35-step pipeline, contract search, auto-config, data room assessment, NL query, PDF export, portfolio management, collaborative review, report templates, REST API, contract reasoning, and document precedence engine operational with 2,851 passing unit tests, mypy strict clean (169 source files), ruff clean.
 
 Standalone Python application for forensic M&A due diligence. Eight agents (4 specialists + optional Judge + Executive Synthesis + Red Flag Scanner + Acquirer Intelligence) analyze contract data rooms, extract clauses, build governance graphs, detect gaps, and produce a board-ready HTML report + 14-sheet Excel report — all under deterministic Python orchestration with hook-enforced quality gates. Powered by `claude-agent-sdk` v0.1.39+ (Claude API or AWS Bedrock).
 
@@ -251,7 +251,7 @@ The full implementation plan is in [`docs/plan/`](docs/plan/). Start with the [e
 | 03 | [Project Structure](docs/plan/03-project-structure.md) | `src/dd_agents/` package layout, module boundaries, entry points |
 | 04 | [Data Models](docs/plan/04-data-models.md) | Pydantic v2 models: findings, gaps, manifests, config, inventory, quality scores |
 | 05 | [Orchestrator](docs/plan/05-orchestrator.md) | 35-step pipeline, 5 blocking gates, state machine, step dependencies |
-| 06 | [Agents](docs/plan/06-agents.md) | 6 agent definitions, prompt construction, model selection, tool access |
+| 06 | [Agents](docs/plan/06-agents.md) | 8 agent definitions, prompt construction, model selection, tool access |
 | 07 | [Tools & Hooks](docs/plan/07-tools-and-hooks.md) | Stop hooks, PreToolUse guards, custom MCP tools, validation hooks |
 | 08 | [Extraction](docs/plan/08-extraction.md) | PDF pre-inspection, 7-step fallback chain (pymupdf → GLM-OCR → Claude vision), checksum cache |
 | 09 | [Entity Resolution](docs/plan/09-entity-resolution.md) | 6-pass cascading matcher, cache learning, rapidfuzz |

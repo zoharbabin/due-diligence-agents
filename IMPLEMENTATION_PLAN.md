@@ -295,8 +295,8 @@ pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/ && ruff
 - [x] Add `[api]` optional dependency to pyproject.toml
 
 ### Phase 7 Acceptance
-- [x] `pytest tests/unit/ -x -q` — 2797 tests pass (134 new)
-- [x] `mypy src/ --strict` — clean (164 source files)
+- [x] `pytest tests/unit/ -x -q` — 2851 tests pass
+- [x] `mypy src/ --strict` — clean (169 source files)
 - [x] `ruff check src/ tests/` — clean
 - [x] PR #162 created linking Issues #118, #122, #123, #133, #152
 
@@ -306,8 +306,8 @@ pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/ && ruff
 
 The project is complete when ALL of the following are true:
 - [x] All 7 phases have status "Complete"
-- [x] `pytest tests/ -x` passes — 2797 unit tests, 17 integration, 9 E2E (3 skipped without API key)
-- [x] `mypy src/ --strict` passes — 0 errors across 164 source files
+- [x] `pytest tests/ -x` passes — 2851 unit tests, 17 integration, 9 E2E (3 skipped without API key)
+- [x] `mypy src/ --strict` passes — 0 errors across 169 source files
 - [x] `ruff check src/ tests/` is clean
 - [x] `ruff format --check src/ tests/` is clean
 
@@ -317,11 +317,11 @@ The project is complete when ALL of the following are true:
 
 | Category | Count |
 |----------|-------|
-| Unit tests (models, utils, entity resolution, extraction, config, hooks, tools, orchestrator, agents, reporting, validation, search, glm_ocr, type safety, visual grounding, entity dedup, OCR registry, layout PDF, HTML report, HTML renderers, report rendering, extraction backend, turn limits, severity recalibration, executive synthesis, data quality classification, follow-up verification, assessment, red flag scanner, cost tracker, batch scheduler, financial impact, project registry, review, report templates, API, ontology) | 2797 |
+| Unit tests (models, utils, entity resolution, extraction, config, hooks, tools, orchestrator, agents, reporting, validation, search, glm_ocr, type safety, visual grounding, entity dedup, OCR registry, layout PDF, HTML report, HTML renderers, report rendering, extraction backend, turn limits, severity recalibration, executive synthesis, data quality classification, follow-up verification, assessment, red flag scanner, cost tracker, batch scheduler, financial impact, project registry, review, report templates, API, ontology, precedence) | 2851 |
 | Integration tests (pipeline steps 1-11) | 17 |
 | E2E tests (pre-agent: config, tiers, discovery, registry, run manager, cache) | 6 |
 | E2E tests (API-dependent: dry run, full pipeline, incremental — skipped without key) | 3 |
-| **Total** | **2797 passed, 3 skipped** |
+| **Total** | **2851 passed, 3 skipped** |
 
 ## Git History
 
