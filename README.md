@@ -29,6 +29,7 @@ due-diligence-agents/
 │       ├── review/              # Collaborative review & annotation layer
 │       ├── api/                 # REST API server (FastAPI, optional) + webhook notifications
 │       ├── reasoning/           # Contract ontology & relationship reasoning (NetworkX graph)
+│       ├── precedence/          # Document precedence: folder priority, version chains, scoring
 │       ├── testing/             # Synthetic data room generator for E2E tests
 │       ├── utils/               # Naming conventions, constants, shared utilities
 │       └── vector_store/        # Optional ChromaDB integration

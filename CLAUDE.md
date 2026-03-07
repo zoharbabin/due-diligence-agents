@@ -99,6 +99,7 @@ Update the phase status in IMPLEMENTATION_PLAN.md after completing each phase.
 | `reasoning/*` | `docs/plan/21-ontology-and-reasoning.md` |
 | `persistence/project_registry.py` | `docs/plan/13-multi-project.md` |
 | `reporting/templates.py` | Issue #123 (Configurable Report Templates) |
+| `precedence/*` | Issue #163 (Document Precedence Engine) |
 
 ## Don't Do This
 
