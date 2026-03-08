@@ -327,11 +327,10 @@ dd-agents portfolio add NAME [OPTIONS]
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `--data-room` | path | current dir | Path to the data room folder |
+| `--data-room` | path | required | Path to the data room folder |
 | `--deal-type` | string | none | Deal type (acquisition, merger, etc.) |
 | `--buyer` | string | none | Buyer company name |
 | `--target` | string | none | Target company name |
-| `--base-dir` | path | `~/.dd-agents` | Registry base directory |
 
 **Examples:**
 
@@ -342,45 +341,49 @@ dd-agents portfolio add "Beta Merger" --data-room ./beta --buyer "Acme" --target
 
 ### portfolio list
 
-List all registered projects with status and finding counts.
+List all registered projects with status, finding counts, and risk scores.
 
 ```
-dd-agents portfolio list [OPTIONS]
+dd-agents portfolio list
 ```
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `--base-dir` | path | `~/.dd-agents` | Registry base directory |
+Displays a table with name, status, deal type, customer count, finding count,
+risk score, and last run date for each project.
 
 ### portfolio compare
 
-Compare risk profiles across all active (non-archived) projects.
+Compare risk profiles across deals.
 
 ```
-dd-agents portfolio compare [OPTIONS]
+dd-agents portfolio compare [SLUGS...]
 ```
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `--base-dir` | path | `~/.dd-agents` | Registry base directory |
+**Arguments:**
+- `SLUGS` -- Optional project slugs to compare (omit to compare all active projects)
 
-Outputs total findings, average risk score, severity distribution, and per-project
-risk benchmarks (min/max/mean).
+Outputs total findings, average risk score, severity distribution, and
+risk benchmarks (min/median/max).
+
+**Examples:**
+
+```bash
+# Compare all active projects
+dd-agents portfolio compare
+
+# Compare specific projects
+dd-agents portfolio compare alpha_acquisition beta_merger
+```
 
 ### portfolio remove
 
 Remove a project from the registry (does not delete data room files).
 
 ```
-dd-agents portfolio remove SLUG [OPTIONS]
+dd-agents portfolio remove SLUG
 ```
 
 **Arguments:**
 - `SLUG` -- Project slug (shown in `portfolio list`)
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `--base-dir` | path | `~/.dd-agents` | Registry base directory |
 
 ---
 
@@ -397,27 +400,28 @@ dd-agents review COMMAND [OPTIONS]
 Add an annotation to a finding.
 
 ```
-dd-agents review annotate FINDING_ID [OPTIONS]
+dd-agents review annotate [OPTIONS]
 ```
-
-**Arguments:**
-- `FINDING_ID` -- Finding identifier (from the report)
 
 **Options:**
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
+| `--run-dir` | path | required | Path to the pipeline run directory |
+| `--finding` | string | required | Finding title (partial match) |
 | `--reviewer` | string | required | Reviewer name |
 | `--status` | choice | `reviewed` | `reviewed`, `disputed`, `accepted`, `rejected` |
 | `--comment` | string | none | Annotation comment |
-| `--severity-override` | string | none | Override severity (P0-P4) |
-| `--run-dir` | path | latest run | Path to the pipeline run directory |
+| `--severity` | string | none | Override severity (P0-P4) |
 
 **Examples:**
 
 ```bash
-dd-agents review annotate abc123 --reviewer alice --status reviewed --comment "Verified"
-dd-agents review annotate def456 --reviewer bob --status disputed --severity-override P0
+dd-agents review annotate --run-dir _dd/forensic-dd/runs/latest \
+  --finding "Liability cap" --reviewer alice --status reviewed --comment "Verified"
+
+dd-agents review annotate --run-dir _dd/forensic-dd/runs/latest \
+  --finding "CoC clause" --reviewer bob --status disputed --severity P0
 ```
 
 ### review assign
@@ -425,30 +429,29 @@ dd-agents review annotate def456 --reviewer bob --status disputed --severity-ove
 Assign a reviewer to a section or customer.
 
 ```
-dd-agents review assign REVIEWER [OPTIONS]
+dd-agents review assign [OPTIONS]
 ```
-
-**Arguments:**
-- `REVIEWER` -- Reviewer name
 
 **Options:**
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
+| `--run-dir` | path | required | Path to the pipeline run directory |
+| `--reviewer` | string | required | Reviewer name |
 | `--section` | string | none | Section to assign (legal, finance, commercial, producttech) |
 | `--customer` | string | none | Customer safe name to assign |
-| `--run-dir` | path | latest run | Path to the pipeline run directory |
 
 **Examples:**
 
 ```bash
-dd-agents review assign alice --section legal
-dd-agents review assign bob --customer acme_corp
+dd-agents review assign --run-dir _dd/forensic-dd/runs/latest --reviewer alice --section legal
+dd-agents review assign --run-dir _dd/forensic-dd/runs/latest --reviewer bob --customer acme_corp
 ```
 
 ### review progress
 
-Show review progress (how many findings reviewed, disputed, accepted).
+Show review progress for a pipeline run. Automatically counts total findings
+from the merged findings directory.
 
 ```
 dd-agents review progress [OPTIONS]
@@ -456,13 +459,12 @@ dd-agents review progress [OPTIONS]
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `--run-dir` | path | latest run | Path to the pipeline run directory |
-| `--total` | int | 0 | Total number of findings (for percentage calculation) |
+| `--run-dir` | path | required | Path to the pipeline run directory |
 
 **Examples:**
 
 ```bash
-dd-agents review progress --run-dir _dd/forensic-dd/runs/latest --total 200
+dd-agents review progress --run-dir _dd/forensic-dd/runs/latest
 ```
 
 ### review export
@@ -475,13 +477,18 @@ dd-agents review export [OPTIONS]
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `--run-dir` | path | latest run | Path to the pipeline run directory |
+| `--run-dir` | path | required | Path to the pipeline run directory |
 | `--format` | choice | `json` | Output format: `json` or `csv` |
+| `--output` | path | stdout | Output file path (prints to stdout if omitted) |
 
 **Examples:**
 
 ```bash
-dd-agents review export --run-dir _dd/forensic-dd/runs/latest --format csv > annotations.csv
+# Export as JSON to stdout
+dd-agents review export --run-dir _dd/forensic-dd/runs/latest
+
+# Export as CSV to file
+dd-agents review export --run-dir _dd/forensic-dd/runs/latest --format csv --output annotations.csv
 ```
 
 ---
@@ -496,15 +503,11 @@ dd-agents templates COMMAND
 
 ### templates list
 
-List all available report templates (built-in and custom).
+List all available report templates.
 
 ```
-dd-agents templates list [OPTIONS]
+dd-agents templates list
 ```
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `--templates-dir` | path | none | Directory with custom template JSON files |
 
 Built-in templates:
 
@@ -521,15 +524,11 @@ Built-in templates:
 Show details of a specific template (sections included, branding, detail level).
 
 ```
-dd-agents templates show TEMPLATE_ID [OPTIONS]
+dd-agents templates show TEMPLATE_ID
 ```
 
 **Arguments:**
 - `TEMPLATE_ID` -- Template identifier (from `templates list`)
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `--templates-dir` | path | none | Directory with custom template JSON files |
 
 **Examples:**
 
