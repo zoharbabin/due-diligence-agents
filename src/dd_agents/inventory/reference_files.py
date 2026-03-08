@@ -30,6 +30,12 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _CATEGORY_PATTERNS: list[tuple[str, ReferenceFileCategory, str]] = [
+    # Buyer Context — checked first so _buyer/ dir files are never misclassified
+    (
+        r"(_buyer|_acquirer|buyer.?context|10-k|annual.?report|earnings.?call|investor.?presentation)",
+        ReferenceFileCategory.BUYER_CONTEXT,
+        "Buyer context and strategy document",
+    ),
     # Financial
     (
         r"(financ|revenue|arr|mrr|bookings|billing|invoice|p&l|profit.?loss|balance.?sheet|cash.?flow)",
@@ -67,12 +73,6 @@ _CATEGORY_PATTERNS: list[tuple[str, ReferenceFileCategory, str]] = [
         r"(employee|headcount|hr|human.?resource|payroll|benefit|compensation|org.?chart)",
         ReferenceFileCategory.HR,
         "Human resources or employee data",
-    ),
-    # Buyer Context
-    (
-        r"(_buyer|_acquirer|buyer.?context|10-k|annual.?report|earnings.?call|investor.?presentation)",
-        ReferenceFileCategory.BUYER_CONTEXT,
-        "Buyer context and strategy document",
     ),
 ]
 

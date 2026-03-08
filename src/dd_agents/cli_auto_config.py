@@ -398,7 +398,7 @@ class DataRoomAnalyzer:
                 spa_prompt,
             )
             spa_data = self._parse_response(spa_text)
-            self._merge_spa_into_config(config, spa_data, ingested_context)
+            self._merge_spa_into_config(config, spa_data)
 
         return config
 
@@ -665,7 +665,6 @@ class DataRoomAnalyzer:
         self,
         config: dict[str, Any],
         spa_data: dict[str, Any],
-        ctx: IngestedContext,
     ) -> None:
         """Merge SPA extraction results into the config dict."""
         # Merge budget_range into buyer_strategy
@@ -688,10 +687,8 @@ class DataRoomAnalyzer:
         # Add entity variants from SPA
         additional_variants = spa_data.get("additional_entity_variants", [])
         if additional_variants and isinstance(additional_variants, list):
-            existing_variants = config.get("target", {}).get(
-                "entity_name_variants_for_contract_matching",
-                [],
-            )
+            target = config.setdefault("target", {})
+            existing_variants = target.setdefault("entity_name_variants_for_contract_matching", [])
             for variant in additional_variants:
                 if isinstance(variant, str) and variant not in existing_variants:
                     existing_variants.append(variant)

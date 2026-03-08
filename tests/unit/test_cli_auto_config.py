@@ -776,9 +776,8 @@ class TestMergeSpaIntoConfig:
         analyzer = DataRoomAnalyzer(data_room_path=dr)
         config: dict[str, Any] = {"buyer_strategy": {"budget_range": "", "notes": ""}}
         spa_data = {"budget_range": "$10M cash", "spa_notes": "", "additional_entity_variants": []}
-        ctx = IngestedContext()
 
-        analyzer._merge_spa_into_config(config, spa_data, ctx)
+        analyzer._merge_spa_into_config(config, spa_data)
         assert config["buyer_strategy"]["budget_range"] == "$10M cash"
 
     def test_appends_to_existing_budget(self, tmp_path: Path) -> None:
@@ -786,9 +785,8 @@ class TestMergeSpaIntoConfig:
         analyzer = DataRoomAnalyzer(data_room_path=dr)
         config: dict[str, Any] = {"buyer_strategy": {"budget_range": "Existing info.", "notes": ""}}
         spa_data = {"budget_range": "Plus $5M escrow.", "spa_notes": "", "additional_entity_variants": []}
-        ctx = IngestedContext()
 
-        analyzer._merge_spa_into_config(config, spa_data, ctx)
+        analyzer._merge_spa_into_config(config, spa_data)
         assert "Existing info." in config["buyer_strategy"]["budget_range"]
         assert "Plus $5M escrow." in config["buyer_strategy"]["budget_range"]
 
@@ -804,12 +802,29 @@ class TestMergeSpaIntoConfig:
             "spa_notes": "",
             "additional_entity_variants": ["NewEntity", "Existing"],
         }
-        ctx = IngestedContext()
 
-        analyzer._merge_spa_into_config(config, spa_data, ctx)
+        analyzer._merge_spa_into_config(config, spa_data)
         variants = config["target"]["entity_name_variants_for_contract_matching"]
         assert "NewEntity" in variants
         assert variants.count("Existing") == 1  # no duplicates
+
+    def test_merges_entity_variants_when_key_missing(self, tmp_path: Path) -> None:
+        """Variants must be stored even when the target key doesn't exist yet."""
+        dr = _create_data_room(tmp_path)
+        analyzer = DataRoomAnalyzer(data_room_path=dr)
+        config: dict[str, Any] = {
+            "target": {"name": "WidgetCo"},
+            "buyer_strategy": {"budget_range": "", "notes": ""},
+        }
+        spa_data = {
+            "budget_range": "",
+            "spa_notes": "",
+            "additional_entity_variants": ["WidgetCo ULC"],
+        }
+
+        analyzer._merge_spa_into_config(config, spa_data)
+        variants = config["target"]["entity_name_variants_for_contract_matching"]
+        assert "WidgetCo ULC" in variants
 
     def test_merges_key_executives(self, tmp_path: Path) -> None:
         dr = _create_data_room(tmp_path)
@@ -821,9 +836,8 @@ class TestMergeSpaIntoConfig:
             "additional_entity_variants": [],
             "key_executives": [{"name": "John Smith", "title": "CFO", "company": "WidgetCo"}],
         }
-        ctx = IngestedContext()
 
-        analyzer._merge_spa_into_config(config, spa_data, ctx)
+        analyzer._merge_spa_into_config(config, spa_data)
         assert len(config["key_executives"]) == 1
         assert config["key_executives"][0]["name"] == "John Smith"
 
@@ -832,9 +846,8 @@ class TestMergeSpaIntoConfig:
         analyzer = DataRoomAnalyzer(data_room_path=dr)
         config: dict[str, Any] = {}
         spa_data = {"budget_range": "$22M", "spa_notes": "ULC entity", "additional_entity_variants": []}
-        ctx = IngestedContext()
 
-        analyzer._merge_spa_into_config(config, spa_data, ctx)
+        analyzer._merge_spa_into_config(config, spa_data)
         assert config["buyer_strategy"]["budget_range"] == "$22M"
         assert "SPA STRUCTURE: ULC entity" in config["buyer_strategy"]["notes"]
 
@@ -1197,6 +1210,20 @@ class TestBuyerContextClassification:
         classifier = ReferenceFileClassifier()
         files = [
             FileEntry(path="ref/annual-report-2024.pdf", text_path="ref/annual-report-2024.txt"),
+        ]
+
+        result = classifier.classify(files, customer_dirs=[])
+        assert len(result) == 1
+        assert result[0].category == "Buyer Context"
+
+    def test_buyer_dir_takes_precedence_over_financial(self) -> None:
+        """Files in _buyer/ should be classified as buyer context even if they match financial patterns."""
+        from dd_agents.inventory.reference_files import ReferenceFileClassifier
+        from dd_agents.models.inventory import FileEntry
+
+        classifier = ReferenceFileClassifier()
+        files = [
+            FileEntry(path="_buyer/revenue-summary.md", text_path="_buyer/revenue-summary.md"),
         ]
 
         result = classifier.classify(files, customer_dirs=[])
