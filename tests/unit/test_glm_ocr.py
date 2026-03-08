@@ -84,7 +84,7 @@ class TestGlmOcrExtractor:
 
         page_texts = [
             "THIS AGREEMENT is made on the Effective Date.",
-            "1. Definitions. Channel Partner means BlueRush.",
+            "1. Definitions. Channel Partner means Vendor Co.",
             "2. Territory. The Territory shall be worldwide.",
         ]
         mock_mlx.return_value = (

@@ -91,7 +91,7 @@ _CONTROL_CHAR_THRESHOLD = 0.01
 # extractions that technically pass quality gates but contain far less
 # text than expected for the file size.
 _EXPECTED_TEXT_RATIOS: dict[str, float] = {
-    ".pdf": 0.09,  # pymupdf median from PathFactory audit (was 0.5)
+    ".pdf": 0.09,  # pymupdf median from production audit (was 0.5)
     ".docx": 0.15,  # was 0.3
     ".doc": 0.15,  # was 0.3
     ".xlsx": 0.05,  # was 0.2
@@ -493,7 +493,7 @@ class ExtractionPipeline:
 
             # Check for Identity-H fonts — only flag as missing_tounicode
             # if the extracted text also has control-char corruption.
-            # 25/26 Identity-H PDFs in PathFactory extract cleanly.
+            # 25/26 Identity-H PDFs in production data room extract cleanly.
             has_identity_h = False
             fonts = page.get_fonts(full=True)
             for font in fonts:

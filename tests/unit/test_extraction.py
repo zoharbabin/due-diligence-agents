@@ -839,7 +839,7 @@ class TestExtractionPipeline:
                 "DocuSign Envelope ID: ABC123-DEF456",
                 "9/29/2023",
                 "CEO",
-                "Dev Ganesan",
+                "Jane Smith",
                 "",
                 "--- Page 4 ---",
                 "DocuSign Envelope ID: ABC123-DEF456",

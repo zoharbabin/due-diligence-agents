@@ -11,7 +11,7 @@ PDFs and images.  Two deployment backends are tried in order:
 If neither backend is available the extractor returns ``("", 0.0)`` so
 the pipeline falls through to the next method (pytesseract).
 
-Optimal configuration (benchmarked on BLUERUSH data room):
+Optimal configuration (benchmarked on production data room):
     Model: mlx-community/GLM-OCR-8bit (1.5 GB)
     DPI: 200, max image dimension: 1024px
     max_tokens: 2048, temperature: 0.0

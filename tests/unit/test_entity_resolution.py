@@ -251,10 +251,10 @@ class TestPass3FuzzyMatch:
 
     def test_medium_length_threshold(self) -> None:
         """Names 5-8 chars need >= 95 score."""
-        targets = {preprocess_name("Cisco"): "Cisco"}  # 5 chars preprocessed
-        # "ciscoX" is 6 chars preprocessed, close-ish to "cisco"
-        # but "ciscox" (6 chars) vs "cisco" (5 chars) won't be high enough
-        pp = "ciscox"  # 6 chars
+        targets = {preprocess_name("Nexon"): "Nexon"}  # 5 chars preprocessed
+        # "nexonx" is 6 chars preprocessed, close-ish to "nexon"
+        # but "nexonx" (6 chars) vs "nexon" (5 chars) won't be high enough
+        pp = "nexonx"  # 6 chars
         match, _ = _pass_3_fuzzy_match(pp, targets, [])
         # Score won't reach 95 for 6-char name
         # This verifies the threshold is applied
