@@ -83,11 +83,11 @@ def parse_version_indicator(filename: str) -> tuple[str, int]:
     if best_keyword:
         return best_keyword, best_rank
 
-    # Check for explicit version number
+    # Check for explicit version number (capped at 10 to match keyword scale)
     match = _VERSION_NUM_RE.search(lower)
     if match:
-        version_num = int(match.group(1))
-        return f"v{version_num}", version_num
+        version_num = min(int(match.group(1)), 10)
+        return f"v{match.group(1)}", version_num
 
     return "", _NEUTRAL_RANK
 

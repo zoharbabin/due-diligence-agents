@@ -850,3 +850,105 @@ class TestPrecedenceOrchestratorIntegration:
 
         assert files[0].folder_tier == 1  # Executed → AUTHORITATIVE
         assert files[1].folder_tier == 3  # Drafts → SUPPLEMENTARY
+
+
+# ===================================================================
+# Phase 9: Edge cases from critical review
+# ===================================================================
+
+
+class TestEdgeCases:
+    """Edge cases identified during critical code review."""
+
+    def test_large_version_number_capped(self) -> None:
+        """Version numbers like v999 are capped at rank 10 (max keyword rank)."""
+        ind, rank = parse_version_indicator("MSA_v999.pdf")
+        assert ind == "v999"
+        assert rank == 10  # capped, not 999
+
+    def test_v0_gets_neutral_rank(self) -> None:
+        """v0 gets rank 0, which is below neutral (correct — v0 is pre-release)."""
+        ind, rank = parse_version_indicator("MSA_v0.pdf")
+        assert ind == "v0"
+        # v0 ranks below neutral; scorer normalizes via min(rank/10, 1.0)
+        assert rank == 0
+
+    def test_scorer_invalid_folder_tier(self) -> None:
+        """Invalid folder_tier value falls back to WORKING tier."""
+        scorer = PrecedenceScorer()
+        entry = _fe("Customer/file.pdf", mtime=1000.0)
+        entry.version_rank = 5
+        entry.folder_tier = 99  # invalid
+        score = scorer.compute_score(entry, max_mtime=1000.0)
+        assert 0.0 <= score <= 1.0
+
+    def test_classify_empty_folder_name(self) -> None:
+        """Empty or whitespace folder name defaults to WORKING."""
+        clf = FolderPriorityClassifier()
+        assert clf.classify("") == FolderTier.WORKING
+        assert clf.classify("   ") == FolderTier.WORKING
+
+    def test_classify_multi_pattern_folder(self) -> None:
+        """Folder matching multiple tier patterns returns first match (most authoritative)."""
+        clf = FolderPriorityClassifier()
+        # "Final" (tier 1) should match before "Draft" (tier 3)
+        assert clf.classify("Final Draft") == FolderTier.AUTHORITATIVE
+
+    def test_windows_backslash_paths(self) -> None:
+        """Windows-style backslash paths are handled correctly."""
+        from dd_agents.precedence.version_chains import _base_name, _customer_prefix
+
+        assert _base_name("Customer\\Executed\\MSA.pdf") == "msa"
+        assert _customer_prefix("Customer\\Executed\\MSA.pdf") == "Customer/Executed"
+
+    def test_checkpoint_roundtrip_preserves_precedence(self) -> None:
+        """PipelineState file_precedence survives checkpoint serialization."""
+
+        from dd_agents.orchestrator.state import PipelineState
+        from dd_agents.orchestrator.steps import PipelineStep
+
+        state = PipelineState(
+            run_id="test",
+            current_step=PipelineStep.BUILD_INVENTORY,
+            file_precedence={"Customer/MSA.pdf": 0.85, "Customer/NDA.pdf": 0.6},
+        )
+
+        checkpoint = state.to_checkpoint_dict()
+        assert checkpoint["file_precedence"] == {"Customer/MSA.pdf": 0.85, "Customer/NDA.pdf": 0.6}
+
+        restored = PipelineState.from_checkpoint_dict(checkpoint)
+        assert restored.file_precedence == {"Customer/MSA.pdf": 0.85, "Customer/NDA.pdf": 0.6}
+
+    def test_scorer_negative_mtime(self) -> None:
+        """Negative mtime is treated same as zero (no recency bonus)."""
+        scorer = PrecedenceScorer()
+        entry = _fe("Customer/file.pdf", mtime=-100.0)
+        entry.version_rank = 5
+        entry.folder_tier = 2
+        score = scorer.compute_score(entry, max_mtime=1000.0)
+        assert 0.0 <= score <= 1.0
+        # Negative mtime → recency_score = 0.0
+        assert score < 0.7
+
+    def test_merge_basename_fallback_uses_max(self) -> None:
+        """Basename fallback in merge picks highest score among matches."""
+        from dd_agents.reporting.merge import FindingMerger
+
+        merger = FindingMerger(
+            run_id="test",
+            file_precedence={
+                "Customer1/MSA.pdf": 0.3,
+                "Customer2/MSA.pdf": 0.9,
+            },
+        )
+
+        finding = {
+            "title": "Issue",
+            "severity": "P2",
+            "agent": "legal",
+            "citations": [{"source_path": "MSA.pdf", "exact_quote": "q"}],
+        }
+
+        score = merger._source_precedence(finding)
+        # Should return max of 0.3 and 0.9
+        assert score == 0.9

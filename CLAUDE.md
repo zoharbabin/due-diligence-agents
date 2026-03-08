@@ -40,7 +40,7 @@ dd-agents run path/to/deal-config.json
 - **Persistence**: Three tiers — PERMANENT (never wiped), VERSIONED (archived per run), FRESH (rebuilt each run).
 - **Hooks** (`hooks/`): Flat return format `{"decision": "block"|"allow", "reason": "..."}` for ALL hook types. Never nest under `hookSpecificOutput`.
 - **Models** (`models/`): Pydantic v2 for all schemas. `model_json_schema()` for structured outputs.
-- **Validation** (`validation/`): 5-layer numerical audit, 30 DoD checks. Fail-closed — validation failures block the pipeline.
+- **Validation** (`validation/`): 6-layer numerical audit, 30 DoD checks. Fail-closed — validation failures block the pipeline.
 
 ## Code Style
 
