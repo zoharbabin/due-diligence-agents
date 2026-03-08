@@ -255,7 +255,7 @@ def pass_3_fuzzy_match(
 
 **Threshold rationale**:
 - Names >8 chars (e.g., "metro solutions") have enough signal for 88% threshold
-- Names 5-8 chars (e.g., "cisco") need 95% to avoid false positives
+- Names 5-8 chars (e.g., "nexon") need 95% to avoid false positives
 - Names <=5 chars (e.g., "d b", "hp") are NEVER fuzzy matched -- too ambiguous
 
 ### Pass 4: TF-IDF Cosine Similarity
