@@ -3,10 +3,12 @@
 Replaces ``pytesseract`` as the preferred OCR method for scanned/degraded
 PDFs and images.  Two deployment backends are tried in order:
 
-1. **mlx-vlm** (Apple Silicon) — fastest, loads the 8-bit quantized model
-   locally via Apple's MLX framework.
-2. **Ollama** (cross-platform) — uses ``ollama chat`` with the ``glm-ocr``
-   model over localhost.
+1. **Ollama** (cross-platform, concurrent) — uses ``ollama chat`` with the
+   ``glm-ocr`` model over localhost.  Preferred because HTTP-based calls
+   are thread-safe and allow parallel extraction across worker threads.
+2. **mlx-vlm** (Apple Silicon) — loads the 8-bit quantized model locally
+   via Apple's MLX framework.  Used only when Ollama is unavailable.
+   Metal GPU inference is serialized through a lock (not thread-safe).
 
 If neither backend is available the extractor returns ``("", 0.0)`` so
 the pipeline falls through to the next method (pytesseract).
@@ -118,7 +120,8 @@ def _import_ollama() -> Any:
 
 # pypdfium2's underlying PDFium C library is not thread-safe — concurrent
 # render() calls from multiple worker threads cause intermittent crashes.
-# Serialize all PDF rendering through this lock.
+# Serialize individual page renders through this lock (narrower than locking
+# the entire function, so threads can interleave open/save/close work).
 _pdfium_lock = threading.Lock()
 
 
@@ -128,38 +131,48 @@ def _render_pdf_pages(filepath: Path, work_dir: Path) -> list[Path]:
     Returns a list of image paths in *work_dir*.  Images are capped at
     :data:`MAX_IMAGE_DIM` pixels on their longest side.
 
-    All rendering is serialized through ``_pdfium_lock`` because the
-    underlying PDFium C library is not thread-safe.
+    Individual page render calls are serialized through ``_pdfium_lock``
+    because the underlying PDFium C library is not thread-safe, but
+    document open/close and image saving happen outside the lock.
     """
     pdfium = _import_pdfium()
     if pdfium is None:
         logger.warning("pypdfium2 is not installed -- cannot render PDF pages for GLM-OCR")
         return []
 
-    with _pdfium_lock:
-        try:
-            doc = pdfium.PdfDocument(str(filepath))
-        except Exception:
-            logger.exception("pypdfium2 failed to open %s", filepath)
-            return []
+    try:
+        doc = pdfium.PdfDocument(str(filepath))
+    except Exception as exc:
+        # Password-protected and corrupt PDFs are common in data rooms —
+        # log a clean one-liner instead of a full traceback.
+        exc_msg = str(exc).lower()
+        if "password" in exc_msg or "encrypted" in exc_msg:
+            logger.debug("Skipping password-protected PDF: %s", filepath.name)
+        else:
+            logger.warning("pypdfium2 failed to open %s: %s", filepath.name, exc)
+        return []
 
-        paths: list[Path] = []
-        try:
-            num_pages = min(len(doc), _MAX_PAGES)
-            for i in range(num_pages):
-                try:
+    paths: list[Path] = []
+    try:
+        num_pages = min(len(doc), _MAX_PAGES)
+        for i in range(num_pages):
+            try:
+                # Only the render() call needs the lock — it invokes the
+                # PDFium C library which is not thread-safe.
+                with _pdfium_lock:
                     page = doc[i]
                     bitmap = page.render(scale=DPI / 72)
                     img = bitmap.to_pil()
-                    img = _resize_image(img)
 
-                    out_path = work_dir / f"page_{i + 1:03d}.png"
-                    img.save(str(out_path), optimize=True)
-                    paths.append(out_path)
-                except Exception:
-                    logger.warning("Failed to render page %d of %s", i + 1, filepath)
-        finally:
-            doc.close()
+                # Resize and save can happen outside the lock.
+                img = _resize_image(img)
+                out_path = work_dir / f"page_{i + 1:03d}.png"
+                img.save(str(out_path), optimize=True)
+                paths.append(out_path)
+            except Exception:
+                logger.warning("Failed to render page %d of %s", i + 1, filepath)
+    finally:
+        doc.close()
 
     return paths
 
@@ -257,23 +270,18 @@ def _mlx_ocr_pages(
     return results
 
 
-def _try_mlx_extract(filepath: Path, model: Any, processor: Any) -> tuple[str, float]:
-    """Attempt extraction via mlx-vlm.  Returns ``(text, confidence)``.
+def _try_mlx_extract_on_images(image_paths: list[Path], model: Any, processor: Any) -> tuple[str, float]:
+    """Run MLX inference on pre-rendered images.  Returns ``(text, confidence)``.
 
     *model* and *processor* are pre-loaded by the caller.
+    *image_paths* are pre-rendered page images (prepared outside the MLX lock).
     """
     imports = _import_mlx_vlm()
     if imports is None:
         return "", CONFIDENCE_FAILURE
     _load_fn, generate_fn, apply_chat_template_fn = imports
 
-    work_dir = Path(tempfile.mkdtemp(prefix="dd_glm_mlx_"))
     try:
-        image_paths = _prepare_images(filepath, work_dir)
-
-        if not image_paths:
-            return "", CONFIDENCE_FAILURE
-
         page_texts = _mlx_ocr_pages(image_paths, model, processor, generate_fn, apply_chat_template_fn)
         if not page_texts or not any(t.strip() for t in page_texts):
             return "", CONFIDENCE_FAILURE
@@ -281,10 +289,8 @@ def _try_mlx_extract(filepath: Path, model: Any, processor: Any) -> tuple[str, f
         assembled = _assemble_pages(page_texts)
         return assembled, _CONFIDENCE_GLM_OCR
     except Exception:
-        logger.exception("MLX GLM-OCR extraction failed for %s", filepath)
+        logger.exception("MLX GLM-OCR inference failed")
         return "", CONFIDENCE_FAILURE
-    finally:
-        shutil.rmtree(work_dir, ignore_errors=True)
 
 
 # ── Ollama backend ───────────────────────────────────────────────────
@@ -353,17 +359,18 @@ _GLM_OCR_EXTENSIONS: frozenset[str] = frozenset({".pdf"} | IMAGE_EXTENSIONS)
 class GlmOcrExtractor:
     """Extracts text from scanned PDFs and images using GLM-OCR.
 
-    Tries mlx-vlm first (Apple Silicon, fastest), then Ollama
-    (cross-platform).  Returns ``("", 0.0)`` if neither is available.
+    Tries Ollama first (concurrent, HTTP-based), then mlx-vlm as fallback
+    (Apple Silicon, serialized).  Returns ``("", 0.0)`` if neither is
+    available.
 
     The MLX model is loaded lazily on first use and cached for the
     lifetime of the extractor instance — subsequent files reuse the
     same model without re-downloading or re-loading.
 
-    Thread-safety: all MLX/Metal operations are serialized through
-    ``_lock`` because Apple Metal command buffers are not thread-safe.
-    Concurrent Metal submissions cause a hard process abort:
-    ``[IOGPUMetalCommandBuffer validate]: failed assertion``.
+    Thread-safety: MLX/Metal inference is serialized through ``_mlx_lock``
+    because Apple Metal command buffers are not thread-safe.  Image
+    preparation (PDF rendering, resizing) happens outside the lock so
+    multiple threads can prepare images concurrently.
 
     Usage::
 
@@ -385,13 +392,14 @@ class GlmOcrExtractor:
         self._mlx_checked = False
         # Serializes MLX model loading and inference — Metal GPU is
         # not thread-safe and concurrent command buffer submissions
-        # crash the process.
-        self._lock = threading.Lock()
+        # crash the process.  Only held during generate() calls, NOT
+        # during image preparation.
+        self._mlx_lock = threading.Lock()
 
     def _ensure_mlx_model(self) -> bool:
         """Load the MLX model/processor on first call.  Returns *True* if available.
 
-        Must be called while holding ``self._lock``.
+        Must be called while holding ``self._mlx_lock``.
         """
         if self._mlx_checked:
             return self._mlx_model is not None
@@ -420,6 +428,13 @@ class GlmOcrExtractor:
             # during the download/load window.
             self._mlx_checked = True
 
+    def _has_mlx(self) -> bool:
+        """Check if MLX backend is available (thread-safe)."""
+        if self._mlx_checked:
+            return self._mlx_model is not None
+        with self._mlx_lock:
+            return self._ensure_mlx_model()
+
     def extract(self, filepath: Path) -> tuple[str, float]:
         """Extract text from *filepath* using GLM-OCR.
 
@@ -437,18 +452,31 @@ class GlmOcrExtractor:
             logger.debug("GLM-OCR does not support extension %s", suffix)
             return "", CONFIDENCE_FAILURE
 
-        # Backend 1: mlx-vlm (Apple Silicon).
-        # Lock serializes model loading AND inference — Metal command
-        # buffers crash the process if submitted from multiple threads.
-        with self._lock:
-            if self._ensure_mlx_model():
-                text, conf = _try_mlx_extract(filepath, self._mlx_model, self._mlx_processor)
-                if text.strip():
-                    return text, conf
-
-        # Backend 2: Ollama (HTTP-based, thread-safe without lock).
+        # Backend 1: Ollama (HTTP-based, thread-safe, concurrent).
+        # Preferred because multiple worker threads can OCR in parallel.
         text, conf = _try_ollama_extract(filepath)
         if text.strip():
             return text, conf
+
+        # Backend 2: mlx-vlm (Apple Silicon, serialized).
+        # Fallback when Ollama is not available.  Image preparation
+        # (PDF rendering) happens outside the lock; only Metal GPU
+        # inference is serialized.
+        if self._has_mlx():
+            work_dir = Path(tempfile.mkdtemp(prefix="dd_glm_mlx_"))
+            try:
+                # Prepare images WITHOUT holding the MLX lock — this
+                # allows other threads to render their PDFs concurrently.
+                image_paths = _prepare_images(filepath, work_dir)
+                if not image_paths:
+                    return "", CONFIDENCE_FAILURE
+
+                # Only the Metal GPU inference needs serialization.
+                with self._mlx_lock:
+                    text, conf = _try_mlx_extract_on_images(image_paths, self._mlx_model, self._mlx_processor)
+                if text.strip():
+                    return text, conf
+            finally:
+                shutil.rmtree(work_dir, ignore_errors=True)
 
         return "", CONFIDENCE_FAILURE

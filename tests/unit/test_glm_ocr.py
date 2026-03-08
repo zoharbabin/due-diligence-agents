@@ -76,9 +76,9 @@ class TestGlmOcrExtractor:
         assert text == ""
         assert conf == 0.0
 
-    @patch("dd_agents.extraction.glm_ocr._try_mlx_extract")
-    def test_extract_pdf_via_mlx(self, mock_mlx: MagicMock, tmp_path: Path) -> None:
-        """PDF extraction via mlx-vlm returns page-marked text."""
+    @patch("dd_agents.extraction.glm_ocr._try_ollama_extract")
+    def test_extract_pdf_via_ollama(self, mock_ollama: MagicMock, tmp_path: Path) -> None:
+        """PDF extraction via Ollama (preferred backend) returns page-marked text."""
         src = tmp_path / "contract.pdf"
         src.write_bytes(b"%PDF-1.4 fake content")
 
@@ -87,15 +87,12 @@ class TestGlmOcrExtractor:
             "1. Definitions. Channel Partner means Vendor Co.",
             "2. Territory. The Territory shall be worldwide.",
         ]
-        mock_mlx.return_value = (
+        mock_ollama.return_value = (
             "\n\n".join(f"--- Page {i + 1} ---\n{t}" for i, t in enumerate(page_texts)),
             0.8,
         )
 
         extractor = GlmOcrExtractor()
-        extractor._mlx_checked = True
-        extractor._mlx_model = MagicMock()
-        extractor._mlx_processor = MagicMock()
         text, conf = extractor.extract(src)
 
         assert "--- Page 1 ---" in text
@@ -105,17 +102,19 @@ class TestGlmOcrExtractor:
         assert "Definitions" in text
         assert conf == 0.8
 
-    @patch("dd_agents.extraction.glm_ocr._try_mlx_extract", return_value=("", 0.0))
-    @patch("dd_agents.extraction.glm_ocr._try_ollama_extract")
-    def test_extract_pdf_falls_back_to_ollama(
-        self, mock_ollama: MagicMock, mock_mlx: MagicMock, tmp_path: Path
+    @patch("dd_agents.extraction.glm_ocr._try_mlx_extract_on_images")
+    @patch("dd_agents.extraction.glm_ocr._prepare_images")
+    @patch("dd_agents.extraction.glm_ocr._try_ollama_extract", return_value=("", 0.0))
+    def test_extract_pdf_falls_back_to_mlx(
+        self, mock_ollama: MagicMock, mock_prepare: MagicMock, mock_mlx: MagicMock, tmp_path: Path
     ) -> None:
-        """When mlx-vlm fails, Ollama is tried as fallback."""
+        """When Ollama fails, mlx-vlm is tried as fallback."""
         src = tmp_path / "contract.pdf"
         src.write_bytes(b"%PDF-1.4 fake content")
 
-        mock_ollama.return_value = (
-            "--- Page 1 ---\nOllama extracted text.",
+        mock_prepare.return_value = [tmp_path / "p1.png"]
+        mock_mlx.return_value = (
+            "--- Page 1 ---\nMLX extracted text.",
             0.8,
         )
 
@@ -125,14 +124,17 @@ class TestGlmOcrExtractor:
         extractor._mlx_processor = MagicMock()
         text, conf = extractor.extract(src)
 
-        mock_mlx.assert_called_once()
         mock_ollama.assert_called_once()
-        assert "Ollama extracted text" in text
+        mock_mlx.assert_called_once()
+        assert "MLX extracted text" in text
         assert conf == 0.8
 
-    @patch("dd_agents.extraction.glm_ocr._try_mlx_extract", return_value=("", 0.0))
+    @patch("dd_agents.extraction.glm_ocr._try_mlx_extract_on_images", return_value=("", 0.0))
+    @patch("dd_agents.extraction.glm_ocr._prepare_images", return_value=[Path("/fake/p1.png")])
     @patch("dd_agents.extraction.glm_ocr._try_ollama_extract", return_value=("", 0.0))
-    def test_extract_both_backends_fail(self, mock_ollama: MagicMock, mock_mlx: MagicMock, tmp_path: Path) -> None:
+    def test_extract_both_backends_fail(
+        self, mock_ollama: MagicMock, mock_prepare: MagicMock, mock_mlx: MagicMock, tmp_path: Path
+    ) -> None:
         """When both backends fail, returns empty with 0.0 confidence."""
         src = tmp_path / "contract.pdf"
         src.write_bytes(b"%PDF-1.4 fake content")
@@ -146,39 +148,33 @@ class TestGlmOcrExtractor:
         assert text == ""
         assert conf == 0.0
 
-    @patch("dd_agents.extraction.glm_ocr._try_mlx_extract")
-    def test_extract_image_file(self, mock_mlx: MagicMock, tmp_path: Path) -> None:
+    @patch("dd_agents.extraction.glm_ocr._try_ollama_extract")
+    def test_extract_image_file(self, mock_ollama: MagicMock, tmp_path: Path) -> None:
         """Direct image files are processed as single-page documents."""
         src = tmp_path / "scan.png"
         src.write_bytes(b"\x89PNG fake image data")
 
-        mock_mlx.return_value = (
+        mock_ollama.return_value = (
             "--- Page 1 ---\nScanned text from image.",
             0.8,
         )
 
         extractor = GlmOcrExtractor()
-        extractor._mlx_checked = True
-        extractor._mlx_model = MagicMock()
-        extractor._mlx_processor = MagicMock()
         text, conf = extractor.extract(src)
 
         assert "--- Page 1 ---" in text
         assert "Scanned text" in text
         assert conf == 0.8
 
-    @patch("dd_agents.extraction.glm_ocr._try_mlx_extract")
-    def test_extract_tiff_image(self, mock_mlx: MagicMock, tmp_path: Path) -> None:
+    @patch("dd_agents.extraction.glm_ocr._try_ollama_extract")
+    def test_extract_tiff_image(self, mock_ollama: MagicMock, tmp_path: Path) -> None:
         """TIFF images are supported."""
         src = tmp_path / "scan.tiff"
         src.write_bytes(b"II\x2a\x00 fake tiff")
 
-        mock_mlx.return_value = ("--- Page 1 ---\nTIFF text.", 0.8)
+        mock_ollama.return_value = ("--- Page 1 ---\nTIFF text.", 0.8)
 
         extractor = GlmOcrExtractor()
-        extractor._mlx_checked = True
-        extractor._mlx_model = MagicMock()
-        extractor._mlx_processor = MagicMock()
         text, conf = extractor.extract(src)
         assert conf == 0.8
 
@@ -206,7 +202,9 @@ class TestGlmOcrExtractor:
 
         with (
             patch("dd_agents.extraction.glm_ocr._import_mlx_vlm", return_value=mock_imports),
-            patch("dd_agents.extraction.glm_ocr._try_mlx_extract", return_value=("text", 0.8)),
+            patch("dd_agents.extraction.glm_ocr._try_ollama_extract", return_value=("", 0.0)),
+            patch("dd_agents.extraction.glm_ocr._prepare_images", return_value=[tmp_path / "p.png"]),
+            patch("dd_agents.extraction.glm_ocr._try_mlx_extract_on_images", return_value=("text", 0.8)),
         ):
             extractor.extract(src1)
             extractor.extract(src2)
@@ -242,33 +240,27 @@ class TestMlxBackend:
         src.write_bytes(b"%PDF-1.4 fake")
 
         extractor = GlmOcrExtractor()
-        with patch("dd_agents.extraction.glm_ocr._import_mlx_vlm", return_value=None):
+        with (
+            patch("dd_agents.extraction.glm_ocr._import_mlx_vlm", return_value=None),
+            patch("dd_agents.extraction.glm_ocr._try_ollama_extract", return_value=("", 0.0)),
+        ):
             text, conf = extractor.extract(src)
 
         assert text == ""
         assert conf == 0.0
 
     @patch("dd_agents.extraction.glm_ocr._mlx_ocr_pages")
-    @patch("dd_agents.extraction.glm_ocr._render_pdf_pages")
     @patch("dd_agents.extraction.glm_ocr._import_mlx_vlm", return_value=(MagicMock(), MagicMock(), MagicMock()))
-    def test_mlx_pdf_with_page_markers(
-        self, mock_import: MagicMock, mock_render: MagicMock, mock_ocr: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_mlx_pdf_with_page_markers(self, mock_import: MagicMock, mock_ocr: MagicMock, tmp_path: Path) -> None:
         """MLX extraction produces correct page markers for PDFs."""
-        from dd_agents.extraction.glm_ocr import _try_mlx_extract
+        from dd_agents.extraction.glm_ocr import _try_mlx_extract_on_images
 
-        src = tmp_path / "doc.pdf"
-        src.write_bytes(b"%PDF-1.4 fake")
-
-        mock_render.return_value = [
-            tmp_path / "p1.png",
-            tmp_path / "p2.png",
-        ]
+        image_paths = [tmp_path / "p1.png", tmp_path / "p2.png"]
         mock_ocr.return_value = ["Page one text.", "Page two text."]
 
         mock_model = MagicMock()
         mock_processor = MagicMock()
-        text, conf = _try_mlx_extract(src, mock_model, mock_processor)
+        text, conf = _try_mlx_extract_on_images(image_paths, mock_model, mock_processor)
 
         assert "--- Page 1 ---" in text
         assert "--- Page 2 ---" in text
@@ -277,23 +269,17 @@ class TestMlxBackend:
         assert conf > 0.0
 
     @patch("dd_agents.extraction.glm_ocr._mlx_ocr_pages")
-    @patch("dd_agents.extraction.glm_ocr._render_pdf_pages")
     @patch("dd_agents.extraction.glm_ocr._import_mlx_vlm", return_value=(MagicMock(), MagicMock(), MagicMock()))
-    def test_mlx_empty_pages_skipped(
-        self, mock_import: MagicMock, mock_render: MagicMock, mock_ocr: MagicMock, tmp_path: Path
-    ) -> None:
-        """Pages with empty OCR output are still included with markers."""
-        from dd_agents.extraction.glm_ocr import _try_mlx_extract
+    def test_mlx_empty_pages_skipped(self, mock_import: MagicMock, mock_ocr: MagicMock, tmp_path: Path) -> None:
+        """Pages with empty OCR output are excluded from assembly."""
+        from dd_agents.extraction.glm_ocr import _try_mlx_extract_on_images
 
-        src = tmp_path / "doc.pdf"
-        src.write_bytes(b"%PDF-1.4 fake")
-
-        mock_render.return_value = [tmp_path / "p1.png", tmp_path / "p2.png"]
+        image_paths = [tmp_path / "p1.png", tmp_path / "p2.png"]
         mock_ocr.return_value = ["Real text here.", ""]
 
         mock_model = MagicMock()
         mock_processor = MagicMock()
-        text, conf = _try_mlx_extract(src, mock_model, mock_processor)
+        text, conf = _try_mlx_extract_on_images(image_paths, mock_model, mock_processor)
 
         # Only non-empty pages contribute
         assert "--- Page 1 ---" in text

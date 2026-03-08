@@ -522,7 +522,13 @@ class ExtractionPipeline:
             # Capture MuPDF warnings at debug level (stderr suppressed globally).
             warnings = fitz.TOOLS.mupdf_warnings()
             if warnings:
-                logger.debug("MuPDF warnings for %s: %s", filepath, warnings)
+                # Truncate repetitive MuPDF C-level warnings (e.g. "closepath
+                # with no current point ... repeated 46 times").
+                lines = warnings.strip().splitlines()
+                summary = lines[0] if lines else warnings
+                if len(lines) > 1:
+                    summary += f" (+ {len(lines) - 1} more)"
+                logger.debug("MuPDF: %s: %s", filepath.name, summary)
             doc.close()
 
     @staticmethod
@@ -671,8 +677,16 @@ class ExtractionPipeline:
         failure_reasons: list[str] = []
         pdf_type = self._inspect_pdf(filepath)
 
+        # Encrypted PDFs cannot be extracted by any method — short-circuit
+        # immediately to avoid noisy tracebacks from every backend.
+        if pdf_type == "encrypted":
+            logger.info("Skipping password-protected PDF: %s", filepath.name)
+            chain.append("encrypted")
+            failure_reasons.append("Password-protected PDF")
+            return self._failed_entry(filepath, chain, failure_reasons=failure_reasons)
+
         # Skip text extractors for PDFs that would produce garbage.
-        skip_text_extractors = pdf_type in ("scanned", "missing_tounicode", "encrypted")
+        skip_text_extractors = pdf_type in ("scanned", "missing_tounicode")
 
         # 1. pymupdf — per-page extraction with explicit page markers.
         if not skip_text_extractors:
@@ -1006,7 +1020,13 @@ class ExtractionPipeline:
             # Capture MuPDF warnings at debug level (stderr suppressed globally).
             warnings = fitz.TOOLS.mupdf_warnings()
             if warnings:
-                logger.debug("MuPDF warnings for %s: %s", filepath, warnings)
+                # Truncate repetitive MuPDF C-level warnings (e.g. "closepath
+                # with no current point ... repeated 46 times").
+                lines = warnings.strip().splitlines()
+                summary = lines[0] if lines else warnings
+                if len(lines) > 1:
+                    summary += f" (+ {len(lines) - 1} more)"
+                logger.debug("MuPDF: %s: %s", filepath.name, summary)
             doc.close()
 
         text = "\n".join(parts)

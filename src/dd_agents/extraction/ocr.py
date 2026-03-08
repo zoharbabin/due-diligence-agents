@@ -70,8 +70,12 @@ class OCRExtractor:
         work_dir = Path(tempfile.mkdtemp(prefix="dd_ocr_"))
         try:
             return self._do_extract(filepath, work_dir, pytesseract)
-        except Exception:
-            logger.exception("OCR extraction failed for %s", filepath)
+        except Exception as exc:
+            exc_msg = str(exc).lower()
+            if "password" in exc_msg or "encrypted" in exc_msg:
+                logger.debug("Skipping password-protected file for OCR: %s", filepath.name)
+            else:
+                logger.warning("OCR extraction failed for %s: %s", filepath.name, exc)
             return "", CONFIDENCE_FAILURE
         finally:
             # Always clean up the temporary working directory.
