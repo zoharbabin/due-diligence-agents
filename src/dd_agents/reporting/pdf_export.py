@@ -20,8 +20,9 @@ PLAYWRIGHT_AVAILABLE = False
 WEASYPRINT_AVAILABLE = False
 
 try:
-    from playwright.async_api import async_playwright as _async_pw  # type: ignore[import-not-found]  # noqa: F401
+    import playwright.async_api as _pw_api  # type: ignore[import-not-found,import-untyped]
 
+    _async_pw = _pw_api.async_playwright  # noqa: F841
     PLAYWRIGHT_AVAILABLE = True
 except ImportError:
     pass

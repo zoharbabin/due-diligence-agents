@@ -116,41 +116,50 @@ def _import_ollama() -> Any:
 
 # ── PDF → image rendering ────────────────────────────────────────────
 
+# pypdfium2's underlying PDFium C library is not thread-safe — concurrent
+# render() calls from multiple worker threads cause intermittent crashes.
+# Serialize all PDF rendering through this lock.
+_pdfium_lock = threading.Lock()
+
 
 def _render_pdf_pages(filepath: Path, work_dir: Path) -> list[Path]:
     """Render PDF pages to PNG images using pypdfium2.
 
     Returns a list of image paths in *work_dir*.  Images are capped at
     :data:`MAX_IMAGE_DIM` pixels on their longest side.
+
+    All rendering is serialized through ``_pdfium_lock`` because the
+    underlying PDFium C library is not thread-safe.
     """
     pdfium = _import_pdfium()
     if pdfium is None:
         logger.warning("pypdfium2 is not installed -- cannot render PDF pages for GLM-OCR")
         return []
 
-    try:
-        doc = pdfium.PdfDocument(str(filepath))
-    except Exception:
-        logger.exception("pypdfium2 failed to open %s", filepath)
-        return []
+    with _pdfium_lock:
+        try:
+            doc = pdfium.PdfDocument(str(filepath))
+        except Exception:
+            logger.exception("pypdfium2 failed to open %s", filepath)
+            return []
 
-    paths: list[Path] = []
-    try:
-        num_pages = min(len(doc), _MAX_PAGES)
-        for i in range(num_pages):
-            try:
-                page = doc[i]
-                bitmap = page.render(scale=DPI / 72)
-                img = bitmap.to_pil()
-                img = _resize_image(img)
+        paths: list[Path] = []
+        try:
+            num_pages = min(len(doc), _MAX_PAGES)
+            for i in range(num_pages):
+                try:
+                    page = doc[i]
+                    bitmap = page.render(scale=DPI / 72)
+                    img = bitmap.to_pil()
+                    img = _resize_image(img)
 
-                out_path = work_dir / f"page_{i + 1:03d}.png"
-                img.save(str(out_path), optimize=True)
-                paths.append(out_path)
-            except Exception:
-                logger.warning("Failed to render page %d of %s", i + 1, filepath)
-    finally:
-        doc.close()
+                    out_path = work_dir / f"page_{i + 1:03d}.png"
+                    img.save(str(out_path), optimize=True)
+                    paths.append(out_path)
+                except Exception:
+                    logger.warning("Failed to render page %d of %s", i + 1, filepath)
+        finally:
+            doc.close()
 
     return paths
 
