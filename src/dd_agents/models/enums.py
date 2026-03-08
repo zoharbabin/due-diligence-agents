@@ -188,4 +188,5 @@ class ReferenceFileCategory(StrEnum):
     COMPLIANCE = "Compliance"
     HR = "HR"
     BUYER_CONTEXT = "Buyer Context"
+    DD_OUTPUT = "DD Output"
     OTHER = "Other"

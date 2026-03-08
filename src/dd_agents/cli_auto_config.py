@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 # Directories/files to exclude from the tree output.
 _TREE_EXCLUDE_PATTERN = (
-    "__MACOSX|.DS_Store|_dd|_batch*|_findings|_ocr*|_output|_product*|_scripts|_index|results|__pycache__"
+    "__MACOSX|.DS_Store|_dd|_buyer|_batch*|_findings|_ocr*|_output|_product*|_scripts|_index|results|__pycache__"
 )
 
 _MAX_TREE_CHARS = 50_000
@@ -88,6 +88,7 @@ def _tree_via_walk(data_room_path: Path, max_depth: int) -> str:
         "__MACOSX",
         ".DS_Store",
         "_dd",
+        "_buyer",
         "_findings",
         "_index",
         "results",

@@ -198,6 +198,16 @@ class TestGetTreeOutput:
         for line in entry_lines:
             assert "somefile.txt" not in line, f"_dd contents should be excluded: {line}"
 
+    def test_excludes_buyer_directory(self, tmp_path: Path) -> None:
+        dr = _create_data_room(tmp_path)
+        (dr / "_buyer").mkdir()
+        (dr / "_buyer" / "10k-business.md").write_text("buyer doc")
+        result = get_tree_output(dr)
+        tree_lines = result.split("\n")
+        entry_lines = [line for line in tree_lines[1:] if line.strip()]
+        for line in entry_lines:
+            assert "10k-business.md" not in line, f"_buyer contents should be excluded: {line}"
+
     def test_fallback_when_tree_binary_missing(self, tmp_path: Path) -> None:
         dr = _create_data_room(tmp_path)
         with patch("dd_agents.cli_auto_config._tree_via_binary", return_value=None):
@@ -1229,6 +1239,101 @@ class TestBuyerContextClassification:
         result = classifier.classify(files, customer_dirs=[])
         assert len(result) == 1
         assert result[0].category == "Buyer Context"
+
+
+class TestDDOutputClassification:
+    """Tests for DD output / buyer work product exclusion from specialist analysis."""
+
+    def test_readout_deck_excluded_from_reference_files(self) -> None:
+        """DD readout decks must not be routed to any specialist agent."""
+        from dd_agents.inventory.reference_files import ReferenceFileClassifier
+        from dd_agents.models.inventory import FileEntry
+
+        classifier = ReferenceFileClassifier()
+        files = [
+            FileEntry(
+                path="10. DD readout decks/ZoharDraft_PF.pptx",
+                text_path="10. DD readout decks/ZoharDraft_PF.pptx",
+            ),
+        ]
+        result = classifier.classify(files, customer_dirs=[])
+        assert len(result) == 0, "DD readout deck should be excluded from reference files"
+
+    def test_dd_output_routed_to_no_agents(self) -> None:
+        from dd_agents.inventory.reference_files import ReferenceFileClassifier
+        from dd_agents.models.enums import ReferenceFileCategory
+
+        classifier = ReferenceFileClassifier()
+        agents = classifier.route_to_agents(ReferenceFileCategory.DD_OUTPUT)
+        assert agents == []
+
+    def test_internal_analysis_excluded_from_reference_files(self) -> None:
+        from dd_agents.inventory.reference_files import ReferenceFileClassifier
+        from dd_agents.models.inventory import FileEntry
+
+        classifier = ReferenceFileClassifier()
+        files = [
+            FileEntry(
+                path="3. Internal analysis/synergy_model.xlsx",
+                text_path="3. Internal analysis/synergy_model.xlsx",
+            ),
+        ]
+        result = classifier.classify(files, customer_dirs=[])
+        assert len(result) == 0, "Internal analysis should be excluded from reference files"
+
+    def test_dd_report_excluded_from_reference_files(self) -> None:
+        from dd_agents.inventory.reference_files import ReferenceFileClassifier
+        from dd_agents.models.inventory import FileEntry
+
+        classifier = ReferenceFileClassifier()
+        files = [
+            FileEntry(path="dd-report-draft.docx", text_path="dd-report-draft.docx"),
+        ]
+        result = classifier.classify(files, customer_dirs=[])
+        assert len(result) == 0, "DD report draft should be excluded from reference files"
+
+    def test_synergy_model_excluded_from_reference_files(self) -> None:
+        from dd_agents.inventory.reference_files import ReferenceFileClassifier
+        from dd_agents.models.inventory import FileEntry
+
+        classifier = ReferenceFileClassifier()
+        files = [
+            FileEntry(path="synergy_model_v2.xlsx", text_path="synergy_model_v2.xlsx"),
+        ]
+        result = classifier.classify(files, customer_dirs=[])
+        assert len(result) == 0, "Synergy model should be excluded from reference files"
+
+    def test_internal_analysis_takes_precedence_over_financial(self) -> None:
+        """Files in 'internal analysis' dirs should be excluded even if they match financial patterns."""
+        from dd_agents.inventory.reference_files import ReferenceFileClassifier
+        from dd_agents.models.inventory import FileEntry
+
+        classifier = ReferenceFileClassifier()
+        files = [
+            FileEntry(
+                path="3. Internal analysis/Long-term income statement/financial_model.xlsx",
+                text_path="3. Internal analysis/Long-term income statement/financial_model.xlsx",
+            ),
+        ]
+        result = classifier.classify(files, customer_dirs=[])
+        assert len(result) == 0, "Financial model in internal analysis dir should be excluded"
+
+    def test_non_dd_output_still_classified(self) -> None:
+        """Ensure normal reference files are still classified when DD output files are excluded."""
+        from dd_agents.inventory.reference_files import ReferenceFileClassifier
+        from dd_agents.models.inventory import FileEntry
+
+        classifier = ReferenceFileClassifier()
+        files = [
+            FileEntry(
+                path="10. DD readout decks/ZoharDraft_PF.pptx",
+                text_path="10. DD readout decks/ZoharDraft_PF.pptx",
+            ),
+            FileEntry(path="revenue_summary.xlsx", text_path="revenue_summary.xlsx"),
+        ]
+        result = classifier.classify(files, customer_dirs=[])
+        assert len(result) == 1, "Only the revenue file should remain"
+        assert result[0].category == "Financial"
 
 
 # =========================================================================
