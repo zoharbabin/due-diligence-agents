@@ -34,6 +34,9 @@ class CustomerRegistryBuilder:
         self,
         data_room_path: Path,
         files: list[FileEntry],
+        *,
+        layout: str = "auto",
+        target_name: str = "",
     ) -> tuple[list[CustomerEntry], CountsJson]:
         """Build the customer registry and aggregate counts.
 
@@ -43,12 +46,22 @@ class CustomerRegistryBuilder:
             Root of the data room.
         files:
             Discovered file entries from :class:`FileDiscovery`.
+        layout:
+            ``"auto"`` (default) detects two- or three-level structure.
+            ``"single_target"`` treats the entire data room as one entity
+            (for single-target acquisition data rooms where folders are
+            categories, not customers).
+        target_name:
+            Display name for the single target entity.  Required when
+            *layout* is ``"single_target"``.
 
         Returns
         -------
         tuple[list[CustomerEntry], CountsJson]
             The customer list and the aggregate counts structure.
         """
+        if layout == "single_target":
+            return self._build_single_target(files, target_name)
         # Bucket files by group/customer
         customer_files: dict[tuple[str, str], list[str]] = defaultdict(list)
         reference_file_paths: list[str] = []
@@ -139,6 +152,59 @@ class CustomerRegistryBuilder:
             counts.total_files,
         )
         return customers, counts
+
+    def _build_single_target(
+        self,
+        files: list[FileEntry],
+        target_name: str,
+    ) -> tuple[list[CustomerEntry], CountsJson]:
+        """Build registry for a single-target acquisition data room.
+
+        All files are assigned to one customer entity (the target).
+        No reference files are produced — every file belongs to the target.
+        """
+        if not target_name:
+            target_name = "Target"
+            logger.warning("single_target layout with empty target_name — using 'Target'")
+
+        try:
+            safe_name = customer_safe_name(target_name)
+        except ValueError:
+            safe_name = "target"
+            logger.warning("Could not compute safe_name for %r — using 'target'", target_name)
+
+        ext_counts: dict[str, int] = defaultdict(int)
+        all_paths: list[str] = []
+        for entry in files:
+            all_paths.append(entry.path)
+            suffix = PurePosixPath(entry.path).suffix.lower()
+            if suffix:
+                ext_counts[suffix] = ext_counts.get(suffix, 0) + 1
+
+        customer_entry = CustomerEntry(
+            group=safe_name,
+            name=target_name,
+            safe_name=safe_name,
+            path=".",
+            file_count=len(all_paths),
+            files=sorted(all_paths),
+        )
+
+        counts = CountsJson(
+            total_files=len(files),
+            total_customers=1,
+            total_reference_files=0,
+            files_by_extension=dict(sorted(ext_counts.items())),
+            files_by_group={safe_name: len(files)},
+            customers_by_group={safe_name: 1},
+        )
+
+        logger.info(
+            "Registry (single_target): 1 customer '%s', %d files",
+            target_name,
+            len(files),
+        )
+        return [customer_entry], counts
 
     def write_csv(self, customers: list[CustomerEntry], output_path: Path) -> None:
         """Write the customer registry to ``customers.csv``.

@@ -108,12 +108,6 @@ def run(
     model_overrides: tuple[str, ...],
 ) -> None:
     """Run the due diligence pipeline with a deal-config.json file."""
-    if verbose:
-        logging.basicConfig(level=logging.WARNING, format="%(name)s: %(message)s")
-        logging.getLogger("dd_agents").setLevel(logging.DEBUG)
-        logging.getLogger("claude_agent_sdk").setLevel(logging.WARNING)
-        logging.getLogger("asyncio").setLevel(logging.WARNING)
-
     # --- Load and validate config ---
     try:
         deal_config = load_deal_config(config_path)
@@ -176,6 +170,12 @@ def run(
         )
         raise SystemExit(1)
 
+    # --- Set up logging: always write to file, -v adds terminal output ---
+    from dd_agents.cli_logging import close_pipeline_logging, setup_pipeline_logging
+
+    log_dir = project_dir / "_dd" / "forensic-dd"
+    log_path = setup_pipeline_logging(log_dir=log_dir, verbose=verbose)
+
     # --- Run pipeline ---
     from dd_agents.orchestrator.engine import BlockingGateError, PipelineEngine
 
@@ -198,7 +198,8 @@ def run(
             f"[bold green]Starting pipeline[/bold green]\n"
             f"Project: {project_dir}\n"
             f"Mode: {deal_config.execution.execution_mode.value}\n"
-            f"Resume from: {'step ' + str(resume_from) if resume_from else 'beginning'}",
+            f"Resume from: {'step ' + str(resume_from) if resume_from else 'beginning'}\n"
+            f"Log: {log_path}",
             title="Pipeline",
             border_style="green",
         )
@@ -245,6 +246,8 @@ def run(
             for label, p in existing:
                 summary_parts.append(f"  {label}: [link=file://{p}]{p}[/link]")
 
+        summary_parts.append(f"  Log: [link=file://{log_path}]{log_path}[/link]")
+
         console.print(
             Panel(
                 "\n".join(summary_parts),
@@ -252,6 +255,7 @@ def run(
                 border_style="green",
             )
         )
+        close_pipeline_logging()
 
     except BlockingGateError as exc:
         console.print()
@@ -262,10 +266,13 @@ def run(
                 f"Step: {engine.state.current_step.value}",
                 "The pipeline cannot continue past this blocking gate.",
                 "",
+                f"Full log: {log_path}",
+                "",
                 "To resume from a specific step after fixing the issue:",
                 f"  dd-agents run {config_path} --resume-from {engine.state.current_step.step_number}",
             ],
         )
+        close_pipeline_logging()
         raise SystemExit(2) from exc
 
     except KeyboardInterrupt:
@@ -274,12 +281,14 @@ def run(
             Panel(
                 "[bold yellow]Pipeline interrupted by user[/bold yellow]\n"
                 f"Last completed step: {engine.state.current_step.value}\n"
+                f"Log: {log_path}\n"
                 "\nTo resume:\n"
                 f"  dd-agents run {config_path} --resume-from {engine.state.current_step.step_number}",
                 title="Interrupted",
                 border_style="yellow",
             )
         )
+        close_pipeline_logging()
         # Use os._exit to bypass atexit handlers that join thread pool
         # worker threads — those threads may be blocked on long-running
         # OCR subprocesses and would cause the process to hang.
@@ -295,10 +304,13 @@ def run(
             extra_lines=[
                 f"Step: {engine.state.current_step.value}",
                 "",
+                f"Full log: {log_path}",
+                "",
                 "Traceback:",
                 traceback.format_exc(),
             ],
         )
+        close_pipeline_logging()
         raise SystemExit(1) from exc
 
 

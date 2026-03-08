@@ -327,6 +327,61 @@ class TestCustomerRegistryBuilder:
         assert data["total_files"] == 9
         assert data["total_customers"] == 3
 
+    def test_single_target_groups_all_files(self, tmp_path: Path) -> None:
+        """single_target layout should produce one customer with all files."""
+        dr = _create_data_room(tmp_path)
+        disco = FileDiscovery()
+        files = disco.discover(dr)
+
+        builder = CustomerRegistryBuilder()
+        customers, counts = builder.build(dr, files, layout="single_target", target_name="Target Corp")
+
+        assert len(customers) == 1
+        assert customers[0].name == "Target Corp"
+        assert customers[0].file_count == 9  # all files
+        assert counts.total_customers == 1
+        assert counts.total_reference_files == 0  # no reference files in single_target
+
+    def test_single_target_safe_name(self, tmp_path: Path) -> None:
+        """single_target layout should compute safe_name from target_name."""
+        dr = _create_data_room(tmp_path)
+        disco = FileDiscovery()
+        files = disco.discover(dr)
+
+        builder = CustomerRegistryBuilder()
+        customers, _ = builder.build(dr, files, layout="single_target", target_name="PathFactory Holdings ULC")
+
+        assert len(customers) == 1
+        assert customers[0].safe_name == "pathfactory_holdings"
+
+    def test_single_target_includes_nested_files(self, tmp_path: Path) -> None:
+        """single_target layout should include files at all nesting levels."""
+        dr = _create_data_room(tmp_path)
+        disco = FileDiscovery()
+        files = disco.discover(dr)
+
+        builder = CustomerRegistryBuilder()
+        customers, _ = builder.build(dr, files, layout="single_target", target_name="Target Corp")
+
+        file_paths = set(customers[0].files)
+        # Root-level file
+        assert "revenue_summary.xlsx" in file_paths
+        # Deeply nested file
+        assert "GroupA/Acme Corp/msa.pdf" in file_paths
+
+    def test_auto_layout_is_default(self, tmp_path: Path) -> None:
+        """Default layout='auto' should produce the same results as before."""
+        dr = _create_data_room(tmp_path)
+        disco = FileDiscovery()
+        files = disco.discover(dr)
+
+        builder = CustomerRegistryBuilder()
+        customers_default, _ = builder.build(dr, files)
+        customers_auto, _ = builder.build(dr, files, layout="auto")
+
+        assert len(customers_default) == len(customers_auto)
+        assert {c.name for c in customers_default} == {c.name for c in customers_auto}
+
 
 # =========================================================================
 # ReferenceFileClassifier

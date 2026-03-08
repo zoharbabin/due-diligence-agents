@@ -702,7 +702,24 @@ class PipelineEngine:
 
         files = getattr(state, "_discovered_files", [])
         builder = CustomerRegistryBuilder()
-        customers, counts = builder.build(state.project_dir, files)
+
+        # Detect layout mode from deal config.
+        layout = "auto"
+        target_name = ""
+        if state.deal_config and isinstance(state.deal_config, dict):
+            dr_cfg = state.deal_config.get("data_room", {})
+            if isinstance(dr_cfg, dict):
+                layout = dr_cfg.get("layout", "auto")
+            target_cfg = state.deal_config.get("target", {})
+            if isinstance(target_cfg, dict):
+                target_name = target_cfg.get("name", "")
+
+        customers, counts = builder.build(
+            state.project_dir,
+            files,
+            layout=layout,
+            target_name=target_name,
+        )
 
         inv_dir = self._inventory_dir(state)
         builder.write_csv(customers, inv_dir / "customers.csv")

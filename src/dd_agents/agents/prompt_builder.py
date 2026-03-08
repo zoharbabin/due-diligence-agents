@@ -730,12 +730,16 @@ class PromptBuilder:
         """Estimate the prompt tokens one customer entry will occupy.
 
         Accounts for the header lines (name, safe_name, path, file count)
-        plus one line per file in the listing.
+        plus one line per file in the listing.  Capped at
+        :attr:`MAX_LISTED_FILES` to match the inline listing limit.
         """
         # Fixed header: "### Customer: ...", safe_name, path, "Files (N):"
         chars = 160
-        for fp in customer.files or []:
+        files = customer.files or []
+        for fp in files[: PromptBuilder.MAX_LISTED_FILES]:
             chars += len(fp) + 8  # "    - {fp}\n"
+        if len(files) > PromptBuilder.MAX_LISTED_FILES:
+            chars += 120  # truncation notice
         return max(1, chars // 4)
 
     @staticmethod
@@ -832,6 +836,11 @@ class PromptBuilder:
                 lines.append(f"Subsidiaries: {', '.join(deal_config.target.subsidiaries)}")
         return "\n".join(lines)
 
+    # Maximum files to list inline per customer.  Beyond this, the agent
+    # discovers remaining files via directory traversal.  Keeps prompts
+    # within the model's context window for large single-target data rooms.
+    MAX_LISTED_FILES: int = 500
+
     def _build_customer_list(
         self,
         agent_name: str,
@@ -846,10 +855,6 @@ class PromptBuilder:
             lines.append(f"Customer {idx}: {cust.name} (safe_name: {cust.safe_name})")
             lines.append(f"  Path: {cust.path}")
             if cust.files:
-                if file_precedence:
-                    lines.append(f"  Files ({cust.file_count}) — ordered by precedence:")
-                else:
-                    lines.append(f"  Files ({cust.file_count}):")
                 # Sort files by precedence score (highest first) if available
                 sorted_files = list(cust.files)
                 if file_precedence:
@@ -862,9 +867,26 @@ class PromptBuilder:
                             )
                         )
                     )
-                for fp in sorted_files:
+
+                # Cap inline listing for very large customers.
+                truncated = len(sorted_files) > self.MAX_LISTED_FILES
+                display_files = sorted_files[: self.MAX_LISTED_FILES] if truncated else sorted_files
+
+                if file_precedence:
+                    lines.append(f"  Files ({cust.file_count}) — ordered by precedence:")
+                else:
+                    lines.append(f"  Files ({cust.file_count}):")
+
+                for fp in display_files:
                     annotation = self._file_annotation(fp, file_precedence)
                     lines.append(f"    - {fp}{annotation}")
+
+                if truncated:
+                    omitted = len(sorted_files) - self.MAX_LISTED_FILES
+                    lines.append(
+                        f"    ... and {omitted} more files. Use `ls -R` on the data room "
+                        f"directory to discover all files. You MUST analyze every file."
+                    )
             lines.append("")
 
         lines.append(
@@ -947,7 +969,11 @@ class PromptBuilder:
             "Read the EXACT paths shown in the customer file lists — do not "
             "construct alternative paths or look for converted versions.\n"
             "For large files (>100KB), use Grep to search for specific terms "
-            "instead of reading the entire file."
+            "instead of reading the entire file.\n\n"
+            "If the file list says '... and N more files', use `ls -R` on the "
+            "customer's directory (shown as 'Path:') to discover ALL files. "
+            "You MUST analyze every file in the data room, not just those "
+            "listed inline."
         )
 
     @staticmethod
