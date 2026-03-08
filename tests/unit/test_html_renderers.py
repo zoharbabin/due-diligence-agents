@@ -1781,7 +1781,7 @@ class TestCleanDisplayName:
         """Names without numeric prefix should just be title-cased."""
         from dd_agents.reporting.computed_metrics import _clean_display_name
 
-        assert _clean_display_name("snapapp") == "Snapapp"
+        assert _clean_display_name("acme_app") == "Acme App"
 
     def test_clean_display_name_double_digit_prefix(self) -> None:
         from dd_agents.reporting.computed_metrics import _clean_display_name
@@ -1851,12 +1851,12 @@ class TestMaterialNoiseComputed:
         """Display names should be generated for all customers."""
         merged = {
             "1_5_customer_contracts": {"customer": "1_5_customer_contracts", "findings": [], "gaps": []},
-            "snapapp": {"customer": "snapapp", "findings": [], "gaps": []},
+            "acme_app": {"customer": "acme_app", "findings": [], "gaps": []},
         }
         computed = _compute(merged)
         assert "1_5_customer_contracts" in computed.display_names
         assert computed.display_names["1_5_customer_contracts"] == "Customer Contracts"
-        assert computed.display_names["snapapp"] == "Snapapp"
+        assert computed.display_names["acme_app"] == "Acme App"
 
     def test_top_findings_by_domain(self) -> None:
         """Top findings per domain should be capped at 10 and sorted by severity."""

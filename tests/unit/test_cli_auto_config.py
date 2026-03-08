@@ -161,7 +161,7 @@ def _make_buyer_strategy_response() -> dict:
 def _make_spa_extraction_response() -> dict:
     """Return a valid SPA extraction response."""
     return {
-        "budget_range": "$22M base purchase price in cash.",
+        "budget_range": "$50M base purchase price in cash.",
         "spa_notes": "Target is a ULC. 2-year non-compete. Escrow of $2M for 18 months.",
         "additional_entity_variants": ["WidgetCo ULC", "Widget Holdings Inc."],
         "key_executives": [
@@ -700,7 +700,7 @@ class TestMultiTurnAnalysis:
 
         ctx = IngestedContext(
             buyer_doc_contents=["Buyer business description."],
-            spa_content="SHARE PURCHASE AGREEMENT... purchase price $22M...",
+            spa_content="SHARE PURCHASE AGREEMENT... purchase price $50M...",
             buyer_docs_dir="_buyer",
         )
 
@@ -715,7 +715,7 @@ class TestMultiTurnAnalysis:
             )
 
         assert call_count == 3  # Turn 1 + Turn 2 + Turn 3
-        assert "$22M" in result["buyer_strategy"]["budget_range"]
+        assert "$50M" in result["buyer_strategy"]["budget_range"]
         assert "SPA STRUCTURE" in result["buyer_strategy"]["notes"]
 
     @pytest.mark.asyncio
@@ -775,7 +775,7 @@ class TestMultiTurnAnalysis:
         # Turn 2 skipped (no buyer docs), Turn 3 runs (SPA)
         assert call_count == 2
         assert "buyer_strategy" in result
-        assert "$22M" in result["buyer_strategy"]["budget_range"]
+        assert "$50M" in result["buyer_strategy"]["budget_range"]
 
 
 class TestMergeSpaIntoConfig:
@@ -855,11 +855,11 @@ class TestMergeSpaIntoConfig:
         dr = _create_data_room(tmp_path)
         analyzer = DataRoomAnalyzer(data_room_path=dr)
         config: dict[str, Any] = {}
-        spa_data = {"budget_range": "$22M", "spa_notes": "ULC entity", "additional_entity_variants": []}
+        spa_data = {"budget_range": "$50M", "spa_notes": "Delaware corp", "additional_entity_variants": []}
 
         analyzer._merge_spa_into_config(config, spa_data)
-        assert config["buyer_strategy"]["budget_range"] == "$22M"
-        assert "SPA STRUCTURE: ULC entity" in config["buyer_strategy"]["notes"]
+        assert config["buyer_strategy"]["budget_range"] == "$50M"
+        assert "SPA STRUCTURE: Delaware corp" in config["buyer_strategy"]["notes"]
 
 
 # =========================================================================
@@ -945,10 +945,10 @@ class TestSpaExtractionPrompts:
             "BuyerCo",
             "TargetCo",
             base_config,
-            "This SPA is between BuyerCo and TargetCo for $22M...",
+            "This SPA is between BuyerCo and TargetCo for $50M...",
         )
         assert "BuyerCo" in prompt
-        assert "$22M" in prompt
+        assert "$50M" in prompt
 
     def test_spa_content_truncated_when_too_long(self, tmp_path: Path) -> None:
         dr = _create_data_room(tmp_path)
@@ -1252,8 +1252,8 @@ class TestDDOutputClassification:
         classifier = ReferenceFileClassifier()
         files = [
             FileEntry(
-                path="10. DD readout decks/ZoharDraft_PF.pptx",
-                text_path="10. DD readout decks/ZoharDraft_PF.pptx",
+                path="DD readout decks/draft_readout.pptx",
+                text_path="DD readout decks/draft_readout.pptx",
             ),
         ]
         result = classifier.classify(files, customer_dirs=[])
@@ -1326,8 +1326,8 @@ class TestDDOutputClassification:
         classifier = ReferenceFileClassifier()
         files = [
             FileEntry(
-                path="10. DD readout decks/ZoharDraft_PF.pptx",
-                text_path="10. DD readout decks/ZoharDraft_PF.pptx",
+                path="DD readout decks/draft_readout.pptx",
+                text_path="DD readout decks/draft_readout.pptx",
             ),
             FileEntry(path="revenue_summary.xlsx", text_path="revenue_summary.xlsx"),
         ]
