@@ -519,16 +519,11 @@ class ExtractionPipeline:
         except Exception:
             return "normal"
         finally:
-            # Capture MuPDF warnings at debug level (stderr suppressed globally).
-            warnings = fitz.TOOLS.mupdf_warnings()
-            if warnings:
-                # Truncate repetitive MuPDF C-level warnings (e.g. "closepath
-                # with no current point ... repeated 46 times").
-                lines = warnings.strip().splitlines()
-                summary = lines[0] if lines else warnings
-                if len(lines) > 1:
-                    summary += f" (+ {len(lines) - 1} more)"
-                logger.debug("MuPDF: %s: %s", filepath.name, summary)
+            # Drain MuPDF C-level warnings buffer (stderr is already
+            # suppressed globally).  These are internal PDF library
+            # diagnostics (e.g. "repaired broken tree structure",
+            # "bogus font ascent") that don't affect extraction.
+            fitz.TOOLS.mupdf_warnings()
             doc.close()
 
     @staticmethod
@@ -1017,16 +1012,11 @@ class ExtractionPipeline:
         except Exception as exc:
             logger.debug("pymupdf extraction error for %s: %s", filepath, exc)
         finally:
-            # Capture MuPDF warnings at debug level (stderr suppressed globally).
-            warnings = fitz.TOOLS.mupdf_warnings()
-            if warnings:
-                # Truncate repetitive MuPDF C-level warnings (e.g. "closepath
-                # with no current point ... repeated 46 times").
-                lines = warnings.strip().splitlines()
-                summary = lines[0] if lines else warnings
-                if len(lines) > 1:
-                    summary += f" (+ {len(lines) - 1} more)"
-                logger.debug("MuPDF: %s: %s", filepath.name, summary)
+            # Drain MuPDF C-level warnings buffer (stderr is already
+            # suppressed globally).  These are internal PDF library
+            # diagnostics (e.g. "repaired broken tree structure",
+            # "bogus font ascent") that don't affect extraction.
+            fitz.TOOLS.mupdf_warnings()
             doc.close()
 
         text = "\n".join(parts)

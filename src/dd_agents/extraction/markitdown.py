@@ -85,7 +85,7 @@ class MarkitdownExtractor:
             if text:
                 return text, confidence
         except Exception:
-            logger.debug("markitdown failed for %s, trying fallbacks", filepath)
+            logger.debug("markitdown failed for %s, trying fallbacks", filepath.name)
 
         # Fallback: macOS textutil handles .doc/.docx/.rtf/.html natively.
         text, confidence = self._run_textutil(filepath)
