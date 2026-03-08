@@ -1485,7 +1485,8 @@ Throughput (measured on Apple M3 Max, 36 GB, macOS 15.3):
 | bf16 / 1600px / 300 DPI | 0.01 | >1600s | Hallucination, unusable |
 
 Key performance findings from dd-agents testing (production data room,
-16-page scanned OEM agreement — hardest PDF in the data room):
+OEM Agreement — 16-page scanned contract, hardest PDF in
+the data room):
 - **Image tokens are the bottleneck:** 300 DPI = ~6,064 tokens/page
   (17s prefill). 150 DPI + 720px cap = ~1,000 tokens (1s prefill)
 - **4-bit quantization = 2x faster than bf16** with zero quality loss
@@ -1521,7 +1522,7 @@ Key performance findings from dd-agents testing (production data room,
 - Multiple deployment options — mlx-vlm (Apple Silicon, simplest),
   Ollama (cross-platform), vLLM/SGLang (Linux GPU servers)
 - Fine-tunable via LLaMA-Factory for domain-specific document layouts
-- **Tested against hardest scanned PDF in production data room:** Won 5/6 artifact checks vs
+- **Tested against hardest production PDF:** Won 5/6 artifact checks vs
   pytesseract (0 losses), found all 12 key legal terms, 50.7K chars
   extracted vs pytesseract's 46.7K for the same 16-page scanned contract
 
@@ -1654,18 +1655,18 @@ speed (9.4s/2pp), and VRAM (1.5 GB).
   3. Non-English documents appear (Korean, Japanese, Chinese contracts)
   4. pytesseract output quality is insufficient (low density, garbled
      text from complex layouts)
-- **Quality results (tested):** Against the hardest scanned PDF in the
-  production data room (16-page scanned OEM agreement):
+- **Quality results (tested):** Against the hardest scanned PDF in a
+  production data room (OEM Agreement, 16 pages):
   - pytesseract artifacts fixed: "THISAGREEMENT" → "THIS AGREEMENT",
     "White4labeled" → "White-labeled", "= Definitions" → "1. Definitions",
     "#TAQMND" garbage eliminated, "# computer program" → "a computer
     program". Score: GLM-OCR 5, pytesseract 0, ties 1
   - All 12 key legal terms found (Effective Date, Channel Partner,
-    Party A, Party B, Product Name, Territory, Confidential Information,
+    Licensor, Licensee, Product Name, Territory, Confidential Information,
     Intellectual Property, Termination, Governing Law, indemnif,
     limitation of liability)
   - Total chars: GLM-OCR 50.7K vs pytesseract 46.7K (more complete)
-- **Resolution vs quantization A/B test** (2-page scanned amendment):
+- **Resolution vs quantization A/B test** (OEM Amendment, 2 pages):
 
   | Config | Errors (4 checked) | Speed | Image size |
   |--------|-------------------|-------|-----------|
