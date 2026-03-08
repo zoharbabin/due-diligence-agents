@@ -270,9 +270,10 @@ class ExtractionPipeline:
                 is_plaintext=is_plaintext,
             )
 
-        with ThreadPoolExecutor(max_workers=workers) as executor:
-            future_to_filepath = {executor.submit(_process_file, fp): fp for fp in files}
+        executor = ThreadPoolExecutor(max_workers=workers)
+        future_to_filepath = {executor.submit(_process_file, fp): fp for fp in files}
 
+        try:
             for future in as_completed(future_to_filepath):
                 try:
                     result = future.result()
@@ -336,6 +337,14 @@ class ExtractionPipeline:
                         total_files,
                         pct,
                     )
+        except KeyboardInterrupt:
+            logger.warning("Extraction interrupted — cancelling pending files")
+            for f in future_to_filepath:
+                f.cancel()
+            executor.shutdown(wait=False, cancel_futures=True)
+            raise
+        finally:
+            executor.shutdown(wait=False)
 
         # Remove stale cache entries for deleted files.
         cache.remove_stale(files)

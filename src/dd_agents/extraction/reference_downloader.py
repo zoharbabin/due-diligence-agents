@@ -151,10 +151,9 @@ class ReferenceDownloader:
         urls_to_process = list(url_map.items())[: self._max_downloads]
         results: list[DownloadResult] = []
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=self._workers) as executor:
-            future_to_url = {
-                executor.submit(self._download_and_extract, url): (url, refs) for url, refs in urls_to_process
-            }
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=self._workers)
+        future_to_url = {executor.submit(self._download_and_extract, url): (url, refs) for url, refs in urls_to_process}
+        try:
             for future in concurrent.futures.as_completed(future_to_url):
                 url, referencing_files = future_to_url[future]
                 try:
@@ -164,6 +163,14 @@ class ReferenceDownloader:
                     result = DownloadResult(url=url, success=False, error=str(exc))
                 result.referencing_files = referencing_files
                 results.append(result)
+        except KeyboardInterrupt:
+            logger.warning("Reference download interrupted — cancelling pending downloads")
+            for f in future_to_url:
+                f.cancel()
+            executor.shutdown(wait=False, cancel_futures=True)
+            raise
+        finally:
+            executor.shutdown(wait=False)
 
         succeeded = sum(1 for r in results if r.success)
         failed = len(results) - succeeded
