@@ -523,14 +523,18 @@ class FindingMerger:
         source = self._first_source_path(finding)
         if not source:
             return 0.0
-        # Try exact match, then basename match
+        # Try exact match first
         if source in self._file_precedence:
             return self._file_precedence[source]
+        # Basename fallback: take the maximum score among matches
+        # (multiple customers may have files with the same name)
         basename = source.rsplit("/", 1)[-1].lower() if "/" in source else source.lower()
-        for path, score in self._file_precedence.items():
-            if path.lower().endswith(basename):
-                return score
-        return 0.0
+        matches = [
+            score
+            for path, score in self._file_precedence.items()
+            if path.lower().endswith("/" + basename) or path.lower() == basename
+        ]
+        return max(matches) if matches else 0.0
 
     # ------------------------------------------------------------------
     # Semantic dedup (Issue #150)

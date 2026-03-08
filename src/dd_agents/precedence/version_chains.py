@@ -39,14 +39,25 @@ _KEYWORD_RANKS: dict[str, int] = {
 
 _NEUTRAL_RANK = 5  # default when no keyword found
 
+# Compiled word-boundary patterns for keyword matching in filenames.
+# Boundaries are _ - space . or start/end (since \b treats _ as word char).
+_KEYWORD_PATTERNS: dict[str, re.Pattern[str]] = {
+    kw: re.compile(
+        r"(?:^|[_\-\s.])" + re.escape(kw) + r"(?=[_\-\s.]|$)",
+        re.IGNORECASE,
+    )
+    for kw in _KEYWORD_RANKS
+}
+
 # Regex for explicit version numbers: v1, v2, v10, V3, etc.
-# Use lookbehind/ahead instead of \b since _ is a word char.
+# Match at word boundaries (start/punctuation/whitespace) since \b treats _ as word char.
 _VERSION_NUM_RE = re.compile(r"(?:^|[_\-\s.])v(\d+)(?=[_\-\s.]|$)", re.IGNORECASE)
 
-# Regex to strip version indicators and common suffixes for base-name comparison
+# Regex to strip version indicators and common suffixes for base-name comparison.
+# Uses boundary anchors so "resigned" doesn't match "signed".
 _STRIP_RE = re.compile(
-    r"[_\-\s]*(v\d+|signed|executed|final|definitive|closing|amended|current|"
-    r"redline|markup|draft|wip|superseded|void|old|expired|deprecated|copy)[_\-\s]*",
+    r"(?:^|(?<=[_\-\s]))(v\d+|signed|executed|final|definitive|closing|amended|current|"
+    r"redline|markup|draft|wip|superseded|void|old|expired|deprecated|copy)(?=[_\-\s]|$)",
     re.IGNORECASE,
 )
 
@@ -61,11 +72,11 @@ def parse_version_indicator(filename: str) -> tuple[str, int]:
     """
     lower = filename.lower()
 
-    # Check keywords (highest rank wins)
+    # Check keywords (highest rank wins, word-boundary aware)
     best_keyword = ""
     best_rank = -1
     for keyword, rank in _KEYWORD_RANKS.items():
-        if keyword in lower and rank > best_rank:
+        if rank > best_rank and _KEYWORD_PATTERNS[keyword].search(lower):
             best_keyword = keyword
             best_rank = rank
 
@@ -87,6 +98,9 @@ def _base_name(path: str) -> str:
     Strips version indicators, extensions, and normalizes separators
     so that ``MSA_v1.pdf`` and ``MSA_v2_signed.pdf`` share the same base.
     """
+    # Normalize path separators for cross-platform consistency
+    path = path.replace("\\", "/")
+
     # Take filename only (strip directory)
     filename = path.rsplit("/", 1)[-1] if "/" in path else path
 

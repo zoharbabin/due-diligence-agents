@@ -307,6 +307,18 @@ class TestParseVersionIndicator:
         assert ind == "signed"
         assert rank == 10
 
+    def test_partial_word_not_matched(self) -> None:
+        """Keywords embedded in other words are NOT matched (word-boundary aware)."""
+        # "resigned" should NOT match "signed"
+        ind, rank = parse_version_indicator("resigned_employee_list.pdf")
+        assert ind == ""
+        assert rank == 5
+
+        # "bold" should NOT match "old"
+        ind2, rank2 = parse_version_indicator("bold_strategy.pdf")
+        assert ind2 == ""
+        assert rank2 == 5
+
     def test_redline_keyword(self) -> None:
         """Detect 'redline' as supplementary indicator."""
         ind, rank = parse_version_indicator("MSA_redline.pdf")
