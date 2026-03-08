@@ -73,31 +73,39 @@ The pipeline is organized into 7 phases:
 
 **Phase 1: Setup (Steps 1-3)**
 Validate config, initialize persistence layer, check cross-skill dependencies.
+Step 1 is effectively blocking -- if config validation fails, the pipeline halts.
 
 **Phase 2: Discovery and Extraction (Steps 4-5)**
 Discover files in the data room. Extract text from PDFs and Office documents using
 pymupdf with fallback to markitdown, OCR, or Claude vision. Step 5 is a **blocking gate** --
 extraction must succeed for at least a minimum threshold of files.
 
-**Phase 3: Inventory (Steps 6-12)**
-Build customer inventory, run entity resolution (6-pass fuzzy matching), build reference
-registry, count customer mentions, and verify inventory integrity. Steps 11-12 are
-conditional (database reconciliation and incremental classification).
+**Phase 3: Inventory and Resolution (Steps 6-12)**
+Build customer inventory with document precedence scoring (version chains, folder
+trust tiers, recency), run entity resolution (6-pass cascading fuzzy matcher),
+build reference registry, count customer mentions, and verify inventory integrity.
+Steps 11-12 are conditional (database reconciliation and incremental classification).
 
 **Phase 4: Agent Execution (Steps 13-17)**
-Create the specialist team (Legal, Finance, Commercial, ProductTech), prepare prompts,
-route references, and spawn agents in parallel batches. Step 17 is a **blocking gate** --
-coverage must meet minimum thresholds across all domains.
+Create the specialist team (Legal, Finance, Commercial, ProductTech), prepare prompts
+with document precedence context, route references, and spawn agents in parallel
+batches. Step 17 is a **blocking gate** -- coverage must meet minimum thresholds
+across all domains.
 
 **Phase 5: Quality Review (Steps 18-22)**
 Merge incremental results (if applicable). Optionally spawn the Judge agent for
 adversarial review of specialist findings. Steps 19-22 run only when `judge.enabled`
-is true.
+is true in the deal config.
 
 **Phase 6: Reporting (Steps 23-31)**
-Merge and deduplicate findings across agents, build the numerical manifest, run the
-numerical audit (**blocking gate**, step 27), full QA audit (**blocking gate**, step 28),
-generate Excel and HTML reports, and validate the output (**blocking gate**, step 31).
+Step 23 runs pre-merge validation (cross-agent anomaly detection, citation verification,
+P0/P1 follow-up). Steps 24-25 merge and deduplicate findings across agents and identify
+coverage gaps. Step 26 builds the numerical manifest. Steps 27-28 run the numerical
+audit (**blocking gate**) and full QA audit (**blocking gate**). Step 29 builds the
+incremental diff. Step 30 generates both Excel and HTML reports, and also runs the
+Executive Synthesis agent (Go/No-Go calibration), the Acquirer Intelligence agent
+(when `buyer_strategy` is configured), and the Red Flag Scanner (when `--quick-scan`
+is used). Step 31 is the post-generation validation **blocking gate**.
 
 **Phase 7: Finalization (Steps 32-35)**
 Write run metadata, update run history, save entity resolution cache, shut down.
@@ -110,12 +118,27 @@ Five steps are blocking gates that halt the pipeline on failure:
 |------|------|---------------|
 | 5 | Bulk Extraction | Minimum extraction success rate |
 | 17 | Coverage Gate | Agent coverage across all domains |
-| 27 | Numerical Audit | Financial figure consistency |
+| 27 | Numerical Audit | Financial figure consistency across 6 validation layers |
 | 28 | Full QA Audit | 30 definition-of-done checks |
 | 31 | Post-Generation Validation | Report completeness and integrity |
 
 When a gate fails, the pipeline stops with exit code 2 and prints instructions for
 resuming after the issue is fixed.
+
+## Agents
+
+The pipeline uses up to 8 AI agents:
+
+| Agent | Phase | Description |
+|-------|-------|-------------|
+| Legal | 4 | Contract clause analysis (CoC, TfC, IP, privacy, liability) |
+| Finance | 4 | Revenue recognition, SaaS metrics, financial risk |
+| Commercial | 4 | Customer concentration, pricing, renewal risk |
+| ProductTech | 4 | Technology dependencies, integration complexity |
+| Judge | 5 | Adversarial review of specialist findings (optional) |
+| Executive Synthesis | 6 | Go/No-Go calibration, severity recalibration |
+| Acquirer Intelligence | 6 | Buyer thesis alignment, synergy validation (when `buyer_strategy` configured) |
+| Red Flag Scanner | 6 | Quick stoplight triage (when `--quick-scan` used) |
 
 ## Output Directory Structure
 
@@ -137,6 +160,7 @@ _dd/forensic-dd/
         ├── report/
         │   ├── dd_report.html     # Interactive HTML report
         │   └── dd_report.xlsx     # 14-sheet Excel report
+        ├── pre_merge_validation.json  # Cross-agent validation report
         ├── audit.json             # QA validation results
         ├── metadata.json          # Run metadata and costs
         └── dod_results.json       # Definition-of-done check results
@@ -160,6 +184,9 @@ dd-agents run deal-config.json --resume-from 17
 
 If a blocking gate fails (exit code 2), fix the underlying issue (e.g., add missing
 documents to the data room) and resume from that step.
+
+When resuming from steps 3-5, the FRESH persistence tier is automatically wiped to
+prevent stale inventory data from a prior interrupted run.
 
 ## Next Steps
 
