@@ -154,3 +154,43 @@ class TestAPIServerImport:
         from dd_agents.api import webhooks
 
         assert webhooks.WebhookDispatcher is not None
+
+
+class TestPathValidation:
+    """Test path traversal protection in API server."""
+
+    def test_validate_path_rejects_traversal(self) -> None:
+        """Paths with '..' components are rejected."""
+        from dd_agents.api import server
+
+        if not server.HAS_FASTAPI:
+            return  # Skip if FastAPI not installed
+
+        import pytest
+
+        with pytest.raises(Exception, match="traversal"):
+            server._validate_path("../../etc/passwd")
+
+    def test_validate_path_rejects_nested_traversal(self) -> None:
+        """Nested traversal paths are rejected."""
+        from dd_agents.api import server
+
+        if not server.HAS_FASTAPI:
+            return
+
+        import pytest
+
+        with pytest.raises(Exception, match="traversal"):
+            server._validate_path("/tmp/safe/../../etc/passwd")
+
+    def test_validate_path_allows_normal_path(self) -> None:
+        """Normal paths are allowed through."""
+        from dd_agents.api import server
+
+        if not server.HAS_FASTAPI:
+            return
+
+        result = server._validate_path("/tmp/safe/config.json")
+        # On macOS /tmp resolves to /private/tmp
+        assert result.name == "config.json"
+        assert "safe" in str(result)
