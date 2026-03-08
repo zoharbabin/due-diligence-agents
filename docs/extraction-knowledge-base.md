@@ -28,7 +28,8 @@
 17. [Visual Grounding and Source Attribution](#17-visual-grounding-and-source-attribution)
 18. [Structured LLM Output Techniques](#18-structured-llm-output-techniques)
 19. [Pipeline Improvement Roadmap](#19-pipeline-improvement-roadmap)
-20. [Future Research Areas](#20-future-research-areas)
+20. [Implemented Extensions](#20-implemented-extensions)
+21. [Future Research Areas](#21-future-research-areas)
 
 ---
 
@@ -122,9 +123,10 @@ FAILED — confidence 0.0
 | Method | Base Confidence | Page Markers | Notes |
 |--------|----------------|--------------|-------|
 | pymupdf | 0.9 | Yes | Best quality, preserves layout; scaled by text-to-file-size ratio |
+| layout_pdf | 0.85 | Yes | Layout-aware with table detection via pymupdf blocks |
 | pdftotext | 0.7 | Yes (from \f) | Good for form-heavy PDFs |
 | markitdown | 0.9 | No | Catches edge cases pymupdf misses |
-| GLM-OCR | 0.8 | Yes | High-quality vision-LM OCR; mlx-vlm or Ollama backend |
+| GLM-OCR | 0.8 | Yes | High-quality vision-LM OCR; mlx-vlm or Ollama backend; auto-detected via OCRBackendRegistry |
 | pytesseract | 0.6 | Yes | Slow but handles scanned docs |
 | Claude vision | 0.65 | No | Last-resort visual description via Claude Agent SDK |
 | Direct read | 0.5 | No | PDF binary → mostly garbage |
@@ -1040,6 +1042,7 @@ Single-chunk customers get a standard prompt. Multi-chunk customers get:
 | `CONFIDENCE_FAILURE` | 0.0 | Shared constant — extraction failure (all extractors) |
 | `CONFIDENCE_FALLBACK_READ` | 0.5 | Shared constant — direct text read confidence |
 | `_CONFIDENCE_CLAUDE_VISION` | 0.65 | Claude vision last-resort confidence |
+| `_CONFIDENCE_LAYOUT` | 0.85 | Layout-aware PDF extraction with table detection |
 | `_CONFIDENCE_GLM_OCR` | 0.8 | GLM-OCR confidence (higher than pytesseract) |
 | `QUOTE_MATCH_THRESHOLD` | 80 (0-100) | Citation verification fuzzy match minimum |
 | `OCR_PAGE_TIMEOUT` | 30 seconds | Per-page timeout for pytesseract |
@@ -1075,6 +1078,7 @@ where expected chars is derived from file size and per-format ratios (§14.5).
 | Score | Meaning | Extraction Method |
 |-------|---------|-------------------|
 | 0.9 | Primary method succeeded | pymupdf, markitdown (Office) |
+| 0.85 | Layout-aware extraction | LayoutPDFBackend (table detection) |
 | 0.8 | High-quality OCR | GLM-OCR (vision-language model) |
 | 0.7 | First fallback | pdftotext (poppler) |
 | 0.65 | Visual description | Claude vision (SDK last resort) |
@@ -1480,9 +1484,8 @@ Throughput (measured on Apple M3 Max, 36 GB, macOS 15.3):
 | bf16 / 1600px / 150 DPI | 0.08 | 189s | Default — too slow |
 | bf16 / 1600px / 300 DPI | 0.01 | >1600s | Hallucination, unusable |
 
-Key performance findings from dd-agents testing (BLUERUSH data room,
-Broadridge OEM Agreement — 16-page scanned contract, hardest PDF in
-the data room):
+Key performance findings from dd-agents testing (production data room,
+16-page scanned OEM agreement — hardest PDF in the data room):
 - **Image tokens are the bottleneck:** 300 DPI = ~6,064 tokens/page
   (17s prefill). 150 DPI + 720px cap = ~1,000 tokens (1s prefill)
 - **4-bit quantization = 2x faster than bf16** with zero quality loss
@@ -1518,7 +1521,7 @@ the data room):
 - Multiple deployment options — mlx-vlm (Apple Silicon, simplest),
   Ollama (cross-platform), vLLM/SGLang (Linux GPU servers)
 - Fine-tunable via LLaMA-Factory for domain-specific document layouts
-- **Tested against hardest BLUERUSH PDF:** Won 5/6 artifact checks vs
+- **Tested against hardest scanned PDF in production data room:** Won 5/6 artifact checks vs
   pytesseract (0 losses), found all 12 key legal terms, 50.7K chars
   extracted vs pytesseract's 46.7K for the same 16-page scanned contract
 
@@ -1652,17 +1655,17 @@ speed (9.4s/2pp), and VRAM (1.5 GB).
   4. pytesseract output quality is insufficient (low density, garbled
      text from complex layouts)
 - **Quality results (tested):** Against the hardest scanned PDF in the
-  BLUERUSH data room (Broadridge OEM Agreement, 16 pages):
+  production data room (16-page scanned OEM agreement):
   - pytesseract artifacts fixed: "THISAGREEMENT" → "THIS AGREEMENT",
     "White4labeled" → "White-labeled", "= Definitions" → "1. Definitions",
     "#TAQMND" garbage eliminated, "# computer program" → "a computer
     program". Score: GLM-OCR 5, pytesseract 0, ties 1
   - All 12 key legal terms found (Effective Date, Channel Partner,
-    BlueRush, Broadridge, IndiVideo, Territory, Confidential Information,
+    Party A, Party B, Product Name, Territory, Confidential Information,
     Intellectual Property, Termination, Governing Law, indemnif,
     limitation of liability)
   - Total chars: GLM-OCR 50.7K vs pytesseract 46.7K (more complete)
-- **Resolution vs quantization A/B test** (Broadridge Amendment, 2 pages):
+- **Resolution vs quantization A/B test** (2-page scanned amendment):
 
   | Config | Errors (4 checked) | Speed | Image size |
   |--------|-------------------|-------|-----------|
@@ -1929,8 +1932,8 @@ citation fidelity):
 
 | Priority | Improvement | Effort | Impact on Completeness | Impact on Accuracy | Impact on Citations |
 |----------|-------------|--------|----------------------|-------------------|-------------------|
-| **P0** | Add PDF pre-inspection and control-char detection (Bug L) | Low | Medium — catches missing ToUnicode CMaps | **High** — eliminates garbled text | None |
-| **P0** | Replace pytesseract with PaddleOCR (109 languages) | Medium | High — solves Korean/Japanese/Chinese | Medium | None |
+| ~~P0~~ | ~~Add PDF pre-inspection and control-char detection (Bug L)~~ | ~~Low~~ | — | — | **DONE** — `_inspect_pdf()` classifies PDFs before extraction; control-char gate on pymupdf/pdftotext |
+| ~~P0~~ | ~~Replace pytesseract with GLM-OCR~~ | ~~Medium~~ | — | — | **DONE** — `GlmOcrExtractor` integrated as Step 4 in PDF chain; `OCRBackendRegistry` auto-detects mlx-vlm/Ollama/pytesseract |
 | **P0** | Add layout-aware PDF extraction (MinerU or PP-StructureV3) | High | Low (most PDFs already work) | **High** — tables, reading order, formulas | Medium — page coordinates |
 | ~~P1~~ | ~~Adopt structured LLM output~~ | ~~Medium~~ | — | — | **DONE** — Issue #4, `output_format` on `ClaudeAgentOptions`, constrained decoding |
 | ~~P1~~ | ~~Add citation verification~~ | ~~Medium~~ | — | — | **DONE** — Issue #5, progressive 4-scope search, 99.6% verification rate |
@@ -2096,7 +2099,7 @@ Reading order detection is particularly important for:
 PDF extraction, Docling (MIT) for Office documents, and instructor (MIT)
 for structured output. For scanned PDF OCR, **GLM-OCR** (MIT) is the
 recommended pytesseract replacement — tested against the hardest scanned
-PDF in the BLUERUSH data room and won 5/6 artifact checks vs pytesseract.
+PDF in a production data room and won 5/6 artifact checks vs pytesseract.
 Optimal config: 4-bit quantized model (1.25 GB) at 720px/150 DPI via
 mlx-vlm on Apple Silicon (0.30 pages/sec on M3 Max). 3-6x slower per
 page than pytesseract but significantly higher quality on degraded scans.
@@ -2107,11 +2110,84 @@ cost and does not support CJK languages.
 
 ---
 
-## 20. Future Research Areas
+## 20. Implemented Extensions
 
-### 20.1 Known Limitations to Address
+The following capabilities were added after the initial extraction pipeline was built.
+They are fully integrated and tested.
 
-1. **Non-English OCR** — pytesseract is hardcoded to `lang="eng"`. Korean
+### 20.1 Layout-Aware PDF Extraction (`layout_pdf.py`)
+
+**Module:** `src/dd_agents/extraction/layout_pdf.py`
+
+`LayoutPDFBackend` uses pymupdf's `page.get_text("blocks")` to detect tabular
+structures in PDFs. Blocks are grouped by Y-coordinate (5-point tolerance) to form
+rows, then sorted by X within each row. Three or more consecutive rows with the same
+column count are rendered as a Markdown table. Confidence: 0.85.
+
+This preserves pricing schedules, payment tables, and SLA metrics that pymupdf's
+plain text extraction flattens to whitespace-separated text.
+
+### 20.2 Visual Grounding Coordinate Index (`coordinates.py`)
+
+**Module:** `src/dd_agents/extraction/coordinates.py`
+
+`CoordinateIndex` stores block-level coordinate data (x0, y0, x1, y1) from pymupdf
+extraction and provides reverse lookup from text quotes to page positions. Each
+`TextBlock` carries page number and bounding box coordinates.
+
+Supports persistence to/from JSON for downstream use in citation verification and
+interactive HTML review. This is the foundation for the visual grounding capability
+described in §17.
+
+### 20.3 Language Detection (`language_detect.py`)
+
+**Module:** `src/dd_agents/extraction/language_detect.py`
+
+`detect_language()` uses stopword frequency analysis to identify the primary language
+of extracted text. Supports 10 languages: English, German, French, Spanish, Portuguese,
+Italian, Dutch, Japanese, Chinese, and Korean. No external dependencies.
+
+Used by agents to adapt prompts for non-English documents. Minimum text length for
+reliable detection: 50 characters.
+
+### 20.4 OCR Backend Registry (`ocr_registry.py`)
+
+**Module:** `src/dd_agents/extraction/ocr_registry.py`
+
+`OCRBackendRegistry` auto-detects available OCR backends at runtime and selects the
+best one based on the `extraction.ocr_backend` config setting:
+
+- `"auto"` (default): detect best available — prefers GLM-OCR (mlx-vlm) → GLM-OCR (Ollama) → pytesseract
+- `"glm_ocr"`: force GLM-OCR
+- `"pytesseract"`: force pytesseract
+- `"none"`: skip OCR entirely (text-only extraction)
+
+This allows the pipeline to transparently use the highest-quality OCR available on
+the deployment platform without manual configuration.
+
+### 20.5 GLM-OCR Extractor (`glm_ocr.py`)
+
+**Module:** `src/dd_agents/extraction/glm_ocr.py`
+
+`GlmOcrExtractor` implements the same `extract(filepath) -> (text, confidence)`
+interface as `OCRExtractor`. Supports two backends:
+
+- **mlx-vlm** (Apple Silicon): fastest, preferred on macOS
+- **Ollama** (cross-platform): works on Linux/Windows
+
+Integrated as Step 4 in the PDF fallback chain (before pytesseract). Confidence: 0.8.
+Page markers injected per page. 100-page PDF limit (pipeline already handles chunking).
+
+Production deployment: 8-bit model, 1024px max dimension, 200 DPI.
+
+---
+
+## 21. Future Research Areas
+
+### 21.1 Known Limitations to Address
+
+1. ~~**Non-English OCR**~~ — **Partially addressed:** `language_detect.py` (§20.3)
+   detects 10 languages. GLM-OCR (§20.5) supports 100+ languages. pytesseract is hardcoded to `lang="eng"`. Korean
    MSAs, Japanese contracts need language detection + multi-language OCR.
    → **Addressed in §19.1 (P0):** PaddleOCR supports 109 languages. See
    §16.4 (MinerU) and §16.5 (PP-StructureV3).
@@ -2144,7 +2220,7 @@ cost and does not support CJK languages.
    (§18.1, Issue #4) now guarantees schema-valid JSON, reducing the
    likelihood of parse failures that previously required retries.
 
-### 20.2 Potential Quality Improvements
+### 21.2 Potential Quality Improvements
 
 1. **Cross-document entity resolution** — Detect when "ABC Corp" in one
    document is "ABC Corporation" in another and merge their analysis.
@@ -2167,7 +2243,7 @@ cost and does not support CJK languages.
    changed, carrying forward unchanged results. Currently the full
    search is re-run even when only extraction changed.
 
-### 20.3 Research Questions
+### 21.3 Research Questions
 
 - What is the optimal chars/page density threshold for scanned PDF
   detection? Current value (50) was set empirically from two data rooms.
