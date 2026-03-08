@@ -15,7 +15,7 @@ pip install -e ".[dev]"
 ```
 
 This installs all core dependencies (claude-agent-sdk, pydantic, openpyxl, networkx,
-rapidfuzz, markitdown, pymupdf, click, rich) plus dev tools (pytest, mypy, ruff).
+rapidfuzz, markitdown, pymupdf, scikit-learn, click, rich) plus dev tools (pytest, mypy, ruff).
 
 ### Optional Dependencies
 
@@ -23,7 +23,7 @@ Install extras for additional capabilities:
 
 ```bash
 pip install -e ".[vector]"     # ChromaDB for semantic cross-document search
-pip install -e ".[ocr]"        # pytesseract + Pillow for OCR fallback on scanned PDFs
+pip install -e ".[ocr]"        # pytesseract + Pillow + pdf2image for OCR fallback on scanned PDFs
 pip install -e ".[glm-ocr]"    # GLM-OCR vision-language model (Apple Silicon)
 pip install -e ".[api]"        # FastAPI + uvicorn for REST API server
 ```
@@ -38,7 +38,7 @@ pip install -e ".[dev,vector,ocr,glm-ocr,api]"
 
 | Dependency | Install | Purpose |
 |-----------|---------|---------|
-| `poppler` | `brew install poppler` (macOS) / `apt install poppler-utils` (Linux) | Fallback PDF extraction |
+| `poppler` | `brew install poppler` (macOS) / `apt install poppler-utils` (Linux) | Fallback PDF extraction via `pdftotext` |
 | `tesseract-ocr` | `brew install tesseract` (macOS) / `apt install tesseract-ocr` (Linux) | OCR for scanned PDFs |
 
 ## API Key Setup
@@ -53,6 +53,24 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 export AWS_PROFILE=default
 export AWS_REGION=us-east-1
 ```
+
+Optional environment variables:
+
+```bash
+# Override the default Claude model
+export DD_MODEL="claude-sonnet-4-20250514"
+
+# REST API authentication key (required for API server)
+export DD_API_KEY="your-secret-api-key"
+
+# ChromaDB: persist vector search index to disk (default: memory-only)
+export CHROMA_PERSIST_DIR="./chroma_data"
+
+# Logging level (default: INFO)
+export LOG_LEVEL="DEBUG"
+```
+
+See `.env.example` for the full list.
 
 ## Verify Installation
 
@@ -95,6 +113,12 @@ The pipeline executes 35 steps: extraction, entity resolution, agent analysis,
 quality validation, and report generation. See [Running the Pipeline](running-pipeline.md)
 for options and details.
 
+For a quick red-flag triage without full analysis:
+
+```bash
+dd-agents run deal-config.json --quick-scan --model-profile economy
+```
+
 ### 3. Review the Report
 
 After the pipeline completes, find the outputs in `_dd/forensic-dd/runs/<timestamp>/report/`:
@@ -131,6 +155,31 @@ docker run -e ANTHROPIC_API_KEY="sk-ant-..." \
 
 After the pipeline completes, several additional tools are available:
 
+### Contract Search
+
+Search customer contracts with custom questions without running the full pipeline:
+
+```bash
+dd-agents search prompts.json --data-room ./data_room
+```
+
+### Natural Language Query
+
+Ask questions about findings interactively or via a single question:
+
+```bash
+dd-agents query --report _dd/forensic-dd/runs/latest -q "How many P0 findings?"
+dd-agents query --report _dd/forensic-dd/runs/latest  # interactive REPL
+```
+
+### PDF Export
+
+Export the HTML report to a print-optimized PDF:
+
+```bash
+dd-agents export-pdf _dd/forensic-dd/runs/latest/report/dd_report.html
+```
+
 ### Portfolio Management
 
 Track multiple DD projects and compare risk profiles across deals:
@@ -146,9 +195,13 @@ dd-agents portfolio compare
 Annotate findings, assign reviewers, and track sign-off progress:
 
 ```bash
-dd-agents review annotate FINDING_ID --reviewer alice --status reviewed
-dd-agents review assign alice --section legal
-dd-agents review progress --run-dir _dd/forensic-dd/runs/latest --total 200
+dd-agents review annotate --run-dir _dd/forensic-dd/runs/latest \
+  --finding "Liability cap" --reviewer alice --status reviewed
+
+dd-agents review assign --run-dir _dd/forensic-dd/runs/latest \
+  --reviewer alice --section legal
+
+dd-agents review progress --run-dir _dd/forensic-dd/runs/latest
 ```
 
 ### Report Templates
