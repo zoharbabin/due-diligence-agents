@@ -89,24 +89,28 @@ def _import_mlx_vlm() -> tuple[Any, Any, Any] | None:
 
 _ollama_module: Any = None
 _ollama_checked: bool = False
+_ollama_lock = threading.Lock()
 
 
 def _import_ollama() -> Any:
     """Return the ``ollama`` module if available, else *None*.
 
     Caches the result so the import check (and log message) only
-    happens once per process.
+    happens once per process.  Thread-safe via ``_ollama_lock``.
     """
     global _ollama_module, _ollama_checked  # noqa: PLW0603
     if _ollama_checked:
         return _ollama_module
-    try:
-        import ollama
+    with _ollama_lock:
+        if _ollama_checked:
+            return _ollama_module
+        try:
+            import ollama
 
-        _ollama_module = ollama
-    except (ImportError, ModuleNotFoundError):
-        _ollama_module = None
-    _ollama_checked = True
+            _ollama_module = ollama
+        except (ImportError, ModuleNotFoundError):
+            _ollama_module = None
+        _ollama_checked = True
     return _ollama_module
 
 
@@ -394,38 +398,12 @@ class GlmOcrExtractor:
             self._mlx_model, self._mlx_processor = load_fn(MODEL_ID_MLX)
             logger.info("GLM-OCR MLX model loaded: %s", MODEL_ID_MLX)
             return True
-        except (ValueError, TypeError) as first_err:
-            # mlx_vlm.load_processor hardcodes use_fast=True which fails
-            # on some transformers versions for models without a fast
-            # processor class.  Temporarily patch AutoProcessor to force
-            # use_fast=False and retry.
-            try:
-                from transformers import AutoProcessor as _AutoProc  # noqa: N814
-
-                _orig = _AutoProc.from_pretrained
-
-                @staticmethod  # type: ignore[misc]
-                def _slow_from_pretrained(*a: Any, **kw: Any) -> Any:
-                    kw["use_fast"] = False
-                    return _orig(*a, **kw)
-
-                _AutoProc.from_pretrained = _slow_from_pretrained  # type: ignore[assignment]
-                try:
-                    self._mlx_model, self._mlx_processor = load_fn(MODEL_ID_MLX)
-                finally:
-                    _AutoProc.from_pretrained = _orig  # type: ignore[assignment]
-                logger.info("GLM-OCR MLX model loaded (slow processor): %s", MODEL_ID_MLX)
-                return True
-            except Exception:
-                logger.warning(
-                    "Failed to load MLX model %s (initial: %s)",
-                    MODEL_ID_MLX,
-                    first_err,
-                    exc_info=True,
-                )
-                return False
         except Exception:
-            logger.warning("Failed to load MLX model %s", MODEL_ID_MLX, exc_info=True)
+            logger.warning(
+                "GLM-OCR MLX model unavailable (%s) — falling back to Ollama/pytesseract. "
+                "Try: pip install --upgrade mlx-vlm transformers",
+                MODEL_ID_MLX,
+            )
             return False
         finally:
             # Set _mlx_checked AFTER model load completes (or fails) to

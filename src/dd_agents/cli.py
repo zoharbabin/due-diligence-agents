@@ -280,7 +280,12 @@ def run(
                 border_style="yellow",
             )
         )
-        raise SystemExit(130) from None
+        # Use os._exit to bypass atexit handlers that join thread pool
+        # worker threads — those threads may be blocked on long-running
+        # OCR subprocesses and would cause the process to hang.
+        import os as _os
+
+        _os._exit(130)
 
     except Exception as exc:
         console.print()
