@@ -106,7 +106,22 @@ This checks all required fields, value constraints, and version compatibility.
     "budget_limit_usd": null
   },
   "data_room": {
-    "path": "./data_room"
+    "path": "./data_room",
+    "groups": [
+      {"name": "Enterprise", "patterns": ["Enterprise/*"]},
+      {"name": "SMB", "patterns": ["SMB/*"]}
+    ],
+    "reference_dir": "Reference Materials"
+  },
+  "precedence": {
+    "enabled": true,
+    "folder_priority": {
+      "Board Materials": 1,
+      "Team Notes": 3
+    }
+  },
+  "extraction": {
+    "ocr_backend": "auto"
   }
 }
 ```
@@ -150,6 +165,28 @@ Controls which Claude models are used:
 - `profile`: `economy` (Haiku), `standard` (Sonnet), `premium` (Opus)
 - `overrides`: per-agent model IDs, e.g. `{"legal": "claude-opus-4-6"}`
 - `budget_limit_usd`: optional hard spending cap per run
+
+### data_room
+
+- `path`: path to the data room folder (required)
+- `groups`: optional list of customer groups with name and glob patterns
+- `reference_dir`: subfolder name for reference/cross-cutting files (e.g. corporate docs)
+
+### precedence (optional)
+
+Controls how conflicting or overlapping files are ranked. When enabled (default),
+the pipeline classifies folders into trust tiers, detects version chains in filenames,
+and computes a composite precedence score for each file.
+
+- `enabled`: whether to run precedence analysis (default: true)
+- `folder_priority`: custom folder-name → tier mapping (1=authoritative, 2=working, 3=supplementary, 4=historical)
+
+Built-in folder patterns are applied automatically (e.g. "executed" → tier 1, "draft" → tier 3).
+Custom overrides take priority over built-in patterns.
+
+### extraction (optional)
+
+- `ocr_backend`: OCR engine preference — `auto` (default), `pytesseract`, `glm_ocr`, or `none`
 
 ### buyer_strategy (optional)
 

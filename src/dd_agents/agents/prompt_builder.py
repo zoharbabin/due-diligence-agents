@@ -361,6 +361,7 @@ class PromptBuilder:
         customers: list[CustomerEntry] | list[str],
         reference_files: list[ReferenceFile] | None = None,
         deal_config: DealConfig | dict[str, Any] | None = None,
+        file_precedence: dict[str, Any] | None = None,
     ) -> str:
         """Build a complete, self-contained specialist prompt.
 
@@ -378,6 +379,9 @@ class PromptBuilder:
             The loaded :class:`DealConfig`, or a raw dict from pipeline
             state.  Automatically coerced to :class:`DealConfig` if a
             dict is passed.  May be ``None`` for tests.
+        file_precedence:
+            Optional mapping of file path → FileEntry with precedence metadata.
+            When provided, file lists are annotated with precedence status.
         """
         raw_deal_config = deal_config
         deal_config = self._coerce_deal_config(deal_config)
@@ -387,8 +391,12 @@ class PromptBuilder:
         # 1. Role & deal context
         sections.append(self._build_role_section(agent_name, deal_config))
 
-        # 2. Customer list
-        sections.append(self._build_customer_list(agent_name, customers))
+        # 2. Customer list (with optional precedence annotations)
+        sections.append(self._build_customer_list(agent_name, customers, file_precedence))
+
+        # 2b. Document precedence rules (Issue #163)
+        if file_precedence:
+            sections.append(self._build_precedence_rules())
 
         # 3. File access instructions (Issue #87)
         sections.append(self._build_file_access_instructions())
@@ -824,7 +832,12 @@ class PromptBuilder:
                 lines.append(f"Subsidiaries: {', '.join(deal_config.target.subsidiaries)}")
         return "\n".join(lines)
 
-    def _build_customer_list(self, agent_name: str, customers: list[CustomerEntry]) -> str:
+    def _build_customer_list(
+        self,
+        agent_name: str,
+        customers: list[CustomerEntry],
+        file_precedence: dict[str, Any] | None = None,
+    ) -> str:
         lines = [
             "## ALL CUSTOMERS (you MUST process every one, every file)",
             "",
@@ -833,9 +846,25 @@ class PromptBuilder:
             lines.append(f"Customer {idx}: {cust.name} (safe_name: {cust.safe_name})")
             lines.append(f"  Path: {cust.path}")
             if cust.files:
-                lines.append(f"  Files ({cust.file_count}):")
-                for fp in cust.files:
-                    lines.append(f"    - {fp}")
+                if file_precedence:
+                    lines.append(f"  Files ({cust.file_count}) — ordered by precedence:")
+                else:
+                    lines.append(f"  Files ({cust.file_count}):")
+                # Sort files by precedence score (highest first) if available
+                sorted_files = list(cust.files)
+                if file_precedence:
+                    sorted_files.sort(
+                        key=lambda fp: (
+                            -(
+                                file_precedence[fp].precedence_score
+                                if fp in file_precedence and hasattr(file_precedence[fp], "precedence_score")
+                                else 0.0
+                            )
+                        )
+                    )
+                for fp in sorted_files:
+                    annotation = self._file_annotation(fp, file_precedence)
+                    lines.append(f"    - {fp}{annotation}")
             lines.append("")
 
         lines.append(
@@ -861,6 +890,51 @@ class PromptBuilder:
             f"5. Do NOT re-read a customer's output file after writing it. Write it once correctly."
         )
         return "\n".join(lines)
+
+    @staticmethod
+    def _file_annotation(fp: str, file_precedence: dict[str, Any] | None) -> str:
+        """Build a precedence annotation string for a file in the prompt."""
+        if not file_precedence or fp not in file_precedence:
+            return ""
+        entry = file_precedence[fp]
+        if not hasattr(entry, "is_latest_version"):
+            return ""
+
+        parts: list[str] = []
+        if not entry.is_latest_version and entry.superseded_by:
+            superseder_name = (
+                entry.superseded_by.rsplit("/", 1)[-1] if "/" in entry.superseded_by else entry.superseded_by
+            )
+            parts.append(f"SUPERSEDED by {superseder_name}")
+        elif entry.precedence_score >= 0.8:
+            parts.append("AUTHORITATIVE")
+        else:
+            parts.append("CURRENT")
+
+        if entry.version_indicator:
+            parts.append(entry.version_indicator)
+        if entry.mtime_iso:
+            parts.append(entry.mtime_iso)
+
+        return f"  [{', '.join(parts)}]" if parts else ""
+
+    @staticmethod
+    def _build_precedence_rules() -> str:
+        """Build the document precedence rules section for agent prompts (Issue #163)."""
+        return (
+            "## DOCUMENT PRECEDENCE RULES\n\n"
+            "Files above are annotated with precedence status. Follow these rules strictly:\n"
+            "1. Files marked AUTHORITATIVE or CURRENT are the primary sources of truth.\n"
+            "2. Files marked SUPERSEDED have been replaced by a newer version — read them for "
+            "historical context only, never cite superseded terms as current.\n"
+            "3. When two files contain conflicting terms for the same clause, the file with "
+            "higher precedence wins. If still ambiguous, the file with the later modification "
+            "date wins.\n"
+            "4. Always note in your finding when you detect a conflict between document versions, "
+            "citing both the current and superseded terms.\n"
+            "5. Flag as a gap (P1) when only a superseded version exists with no authoritative "
+            "replacement in the data room."
+        )
 
     @staticmethod
     def _build_file_access_instructions() -> str:

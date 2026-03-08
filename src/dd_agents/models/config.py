@@ -279,6 +279,22 @@ class AgentModelsConfig(BaseModel):
         return profile.get_model_for_agent(agent_name)
 
 
+class PrecedenceConfig(BaseModel):
+    """Document precedence configuration (Issue #163).
+
+    Controls folder priority classification and version chain detection.
+    All fields are optional — sensible defaults apply when absent.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    enabled: bool = Field(default=True, description="Enable document precedence analysis")
+    folder_priority: dict[str, int] = Field(
+        default_factory=dict,
+        description="Folder name → tier override (1=authoritative, 2=working, 3=supplementary, 4=historical)",
+    )
+
+
 class DealConfig(BaseModel):
     """
     Root configuration model. Validated from deal-config.json.
@@ -303,6 +319,10 @@ class DealConfig(BaseModel):
     buyer_strategy: BuyerStrategy | None = Field(
         default=None,
         description="Optional buyer strategy context. When absent, all buyer-specific features are disabled.",
+    )
+    precedence: PrecedenceConfig | None = Field(
+        default=None,
+        description="Optional document precedence config. When absent, default tier patterns apply.",
     )
 
     @field_validator("config_version")

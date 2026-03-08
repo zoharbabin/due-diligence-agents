@@ -61,14 +61,28 @@ class FileDiscovery:
                 rel_path = str(full_path.relative_to(data_room))
 
                 try:
-                    size = full_path.stat().st_size
+                    st = full_path.stat()
+                    size = st.st_size
+                    mtime = st.st_mtime
                 except OSError:
                     size = 0
+                    mtime = 0.0
+
+                mtime_iso = ""
+                if mtime > 0:
+                    try:
+                        import datetime as _dt  # noqa: TC004
+
+                        mtime_iso = _dt.datetime.fromtimestamp(mtime, tz=_dt.UTC).strftime("%Y-%m-%d")
+                    except (OSError, ValueError):
+                        mtime_iso = ""
 
                 entries.append(
                     FileEntry(
                         path=rel_path,
                         size=size,
+                        mtime=mtime,
+                        mtime_iso=mtime_iso,
                     )
                 )
 

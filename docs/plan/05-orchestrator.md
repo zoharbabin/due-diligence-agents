@@ -50,7 +50,7 @@ class PipelineStep(str, Enum):
     NUMERICAL_AUDIT             = "27_numerical_audit"             # BLOCKING GATE
     FULL_QA_AUDIT               = "28_full_qa_audit"               # BLOCKING GATE
     BUILD_REPORT_DIFF           = "29_build_report_diff"
-    GENERATE_EXCEL              = "30_generate_excel"
+    GENERATE_REPORTS            = "30_generate_reports"
     POST_GENERATION_VALIDATION  = "31_post_generation_validation"  # BLOCKING GATE
     FINALIZE_METADATA           = "32_finalize_metadata"
     UPDATE_RUN_HISTORY          = "33_update_run_history"

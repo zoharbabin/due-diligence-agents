@@ -13,6 +13,17 @@ class FileEntry(BaseModel):
     mime_type: str = ""
     size: int = 0
     checksum: str = ""  # SHA-256
+    # Precedence metadata (Issue #163)
+    mtime: float = Field(default=0.0, description="File modification timestamp (epoch seconds)")
+    mtime_iso: str = Field(default="", description="Human-readable ISO-8601 modification time")
+    version_indicator: str = Field(default="", description="Parsed from filename: v1, signed, draft, etc.")
+    version_rank: int = Field(default=0, description="Version authority rank (higher = more authoritative)")
+    folder_tier: int = Field(
+        default=2, description="Folder trust tier: 1=authoritative, 2=working, 3=supplementary, 4=historical"
+    )
+    precedence_score: float = Field(default=0.0, ge=0.0, le=1.0, description="Composite precedence score")
+    superseded_by: str = Field(default="", description="Path of file that supersedes this one")
+    is_latest_version: bool = Field(default=True, description="False if superseded by another file")
 
 
 class CustomerEntry(BaseModel):

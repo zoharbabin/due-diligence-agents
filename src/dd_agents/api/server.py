@@ -124,6 +124,18 @@ if HAS_FASTAPI:
     _run_status: dict[str, RunStatusResponse] = {}
 
     # ---------------------------------------------------------------------------
+    # Path validation (prevent directory traversal)
+    # ---------------------------------------------------------------------------
+
+    def _validate_path(user_path: str) -> Path:
+        """Resolve a user-provided path and reject traversal attempts."""
+        resolved = Path(user_path).resolve()
+        # Reject paths containing ".." components (even if resolved)
+        if ".." in Path(user_path).parts:
+            raise HTTPException(status_code=400, detail="Path traversal not allowed")
+        return resolved
+
+    # ---------------------------------------------------------------------------
     # Endpoints
     # ---------------------------------------------------------------------------
 
@@ -138,7 +150,7 @@ if HAS_FASTAPI:
         _api_key: str = Depends(verify_api_key),
     ) -> PipelineRunResponse:
         """Trigger a new pipeline run."""
-        config_path = Path(request.config_path)
+        config_path = _validate_path(request.config_path)
         if not config_path.exists():
             raise HTTPException(status_code=404, detail=f"Config not found: {request.config_path}")
 
@@ -177,7 +189,7 @@ if HAS_FASTAPI:
         if not run_dir:
             raise HTTPException(status_code=400, detail="run_dir query parameter required")
 
-        merged_dir = Path(run_dir) / "findings" / "merged"
+        merged_dir = _validate_path(run_dir) / "findings" / "merged"
         if not merged_dir.is_dir():
             raise HTTPException(status_code=404, detail=f"Findings not found at {merged_dir}")
 
@@ -214,7 +226,7 @@ if HAS_FASTAPI:
             from dd_agents.query.indexer import FindingIndexer
 
             indexer = FindingIndexer()
-            index = indexer.index_report(Path(request.run_dir))
+            index = indexer.index_report(_validate_path(request.run_dir))
             engine = QueryEngine(index)
             result = await engine.query(request.question)
             return QueryResponse(
