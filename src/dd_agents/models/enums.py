@@ -187,4 +187,5 @@ class ReferenceFileCategory(StrEnum):
     SALES = "Sales"
     COMPLIANCE = "Compliance"
     HR = "HR"
+    BUYER_CONTEXT = "Buyer Context"
     OTHER = "Other"

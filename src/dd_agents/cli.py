@@ -579,6 +579,41 @@ def init(
     help="Override the inferred deal type.",
 )
 @click.option(
+    "--buyer-docs",
+    "buyer_docs",
+    multiple=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Buyer business description files (10-K, annual report). Repeatable.",
+)
+@click.option(
+    "--spa",
+    "spa_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="SPA draft/redline file for deal structure extraction.",
+)
+@click.option(
+    "--press-release",
+    "press_release_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Acquisition press release for strategic context.",
+)
+@click.option(
+    "--buyer-docs-dir",
+    "buyer_docs_dir",
+    type=str,
+    default="_buyer",
+    show_default=True,
+    help="Folder name for converted buyer files in data room.",
+)
+@click.option(
+    "--interactive",
+    is_flag=True,
+    default=False,
+    help="Enable interactive follow-up questions for strategy refinement.",
+)
+@click.option(
     "--output",
     "output_path",
     type=click.Path(dir_okay=False, path_type=Path),
@@ -610,6 +645,11 @@ def auto_config(
     target: str,
     data_room: Path,
     deal_type: str | None,
+    buyer_docs: tuple[Path, ...],
+    spa_path: Path | None,
+    press_release_path: Path | None,
+    buyer_docs_dir: str,
+    interactive: bool,
     output_path: Path | None,
     dry_run: bool,
     force: bool,
@@ -624,6 +664,8 @@ def auto_config(
     Example:
         dd-agents auto-config "Apex Holdings" "WidgetCo" --data-room ./data_room
         dd-agents auto-config "Apex Holdings" "WidgetCo" --data-room ./data_room --dry-run
+        dd-agents auto-config "Apex Holdings" "WidgetCo" --data-room ./data_room \\
+          --buyer-docs ./10k.docx --spa ./spa.pdf --press-release ./pr.docx
     """
     if verbose:
         logging.basicConfig(level=logging.WARNING, format="%(name)s: %(message)s")
@@ -632,10 +674,12 @@ def auto_config(
         logging.getLogger("asyncio").setLevel(logging.WARNING)
 
     from dd_agents.cli_auto_config import (
+        BuyerContextIngester,
         DataRoomAnalyzer,
         build_reference_file_summary,
         get_tree_output,
         print_auto_config_summary,
+        run_interactive_refinement,
         validate_and_fix_config,
     )
     from dd_agents.cli_init import print_scan_summary, scan_data_room, write_config
@@ -645,21 +689,42 @@ def auto_config(
 
     console.print("\n[bold]dd-agents auto-config[/bold] -- AI-powered deal config generation\n")
 
-    # 1. Scan data room
+    # 1. Ingest buyer context documents (if provided)
+    ingested_context = None
+    has_buyer_context = bool(buyer_docs or spa_path or press_release_path)
+    if has_buyer_context:
+        console.print("Ingesting buyer context documents...")
+        ingester = BuyerContextIngester()
+        ingested_context = ingester.ingest(
+            data_room_path=data_room,
+            buyer_docs=list(buyer_docs) if buyer_docs else None,
+            spa_path=spa_path,
+            press_release_path=press_release_path,
+            buyer_docs_dir=buyer_docs_dir,
+        )
+        if ingested_context.buyer_doc_paths:
+            console.print(f"  Converted {len(ingested_context.buyer_doc_paths)} buyer doc(s) to {buyer_docs_dir}/")
+        if ingested_context.spa_content:
+            console.print(f"  Extracted SPA content ({len(ingested_context.spa_content):,} chars)")
+        if ingested_context.press_release_content:
+            console.print(f"  Extracted press release ({len(ingested_context.press_release_content):,} chars)")
+
+    # 2. Scan data room
     console.print("Scanning data room...")
     scan_result = scan_data_room(data_room)
     print_scan_summary(console, scan_result)
 
-    # 2. Get tree output
+    # 3. Get tree output
     tree_output = get_tree_output(data_room, max_depth=4)
 
-    # 3. Reference files
+    # 4. Reference files
     reference_files = build_reference_file_summary(data_room)
 
-    # 4. Analyze with Claude
+    # 5. Analyze with Claude (multi-turn when buyer context provided)
     analyzer = DataRoomAnalyzer(data_room_path=data_room)
 
-    with console.status("[bold cyan]Analyzing data room with Claude...[/bold cyan]"):
+    turns_desc = "multi-turn analysis" if has_buyer_context else "analysis"
+    with console.status(f"[bold cyan]Running {turns_desc} with Claude...[/bold cyan]"):
         try:
             config = asyncio.run(
                 analyzer.analyze(
@@ -669,13 +734,18 @@ def auto_config(
                     buyer=buyer,
                     target=target,
                     deal_type_hint=deal_type,
+                    ingested_context=ingested_context,
                 )
             )
         except Exception as exc:
             _print_error("Analysis Error", f"Claude analysis failed: {exc}")
             raise SystemExit(1) from exc
 
-    # 5. Validate and fix
+    # 6. Interactive refinement (if requested and buyer_strategy exists)
+    if interactive and config.get("buyer_strategy"):
+        config = run_interactive_refinement(config, console)
+
+    # 7. Validate and fix
     try:
         config = validate_and_fix_config(config, scan_result)
     except Exception as exc:
@@ -687,7 +757,7 @@ def auto_config(
     # Ensure data_room path is in config
     config.setdefault("data_room", {})["path"] = str(data_room.resolve())
 
-    # 6. Dry run or write
+    # 8. Dry run or write
     if dry_run:
         console.print()
         console.print(json.dumps(config, indent=2))

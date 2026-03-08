@@ -834,6 +834,12 @@ class PromptBuilder:
             )
             if deal_config.target.subsidiaries:
                 lines.append(f"Subsidiaries: {', '.join(deal_config.target.subsidiaries)}")
+            if deal_config.buyer_strategy:
+                bs = deal_config.buyer_strategy
+                if bs.thesis:
+                    lines.append(f"Acquisition thesis: {bs.thesis[:300]}")
+                if bs.focus_areas:
+                    lines.append(f"Buyer risk focus: {', '.join(bs.focus_areas[:5])}")
         return "\n".join(lines)
 
     # Maximum files to list inline per customer.  Beyond this, the agent

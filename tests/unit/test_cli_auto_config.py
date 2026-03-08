@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -11,9 +11,13 @@ from click.testing import CliRunner
 
 from dd_agents.cli import main
 from dd_agents.cli_auto_config import (
+    BuyerContextIngester,
     DataRoomAnalyzer,
+    IngestedContext,
     build_reference_file_summary,
+    convert_document_to_markdown,
     get_tree_output,
+    run_interactive_refinement,
     validate_and_fix_config,
 )
 from dd_agents.cli_init import DEFAULT_FOCUS_AREAS
@@ -130,6 +134,42 @@ def _make_valid_claude_response(
     }
 
 
+def _make_buyer_strategy_response() -> dict:
+    """Return a valid buyer_strategy dict as Claude would produce."""
+    return {
+        "buyer_strategy": {
+            "thesis": "Acquire WidgetCo to expand Apex's platform into widget intelligence.",
+            "key_synergies": [
+                "Cross-sell widget analytics to Apex enterprise customers",
+                "Integrate WidgetCo data engine with Apex platform",
+            ],
+            "integration_priorities": [
+                "Unified analytics dashboard",
+                "Customer migration program",
+            ],
+            "risk_tolerance": "moderate",
+            "focus_areas": [
+                "Customer overlap and CoC clause exposure",
+                "IP ownership clarity for widget algorithms",
+            ],
+            "budget_range": "",
+            "notes": "IMPORTANT: Acquirer Intelligence Agent should read buyer context at: _buyer/",
+        },
+    }
+
+
+def _make_spa_extraction_response() -> dict:
+    """Return a valid SPA extraction response."""
+    return {
+        "budget_range": "$22M base purchase price in cash.",
+        "spa_notes": "Target is a ULC. 2-year non-compete. Escrow of $2M for 18 months.",
+        "additional_entity_variants": ["WidgetCo ULC", "Widget Holdings Inc."],
+        "key_executives": [
+            {"name": "Jane Doe", "title": "CEO", "company": "WidgetCo Inc."},
+        ],
+    }
+
+
 # =========================================================================
 # get_tree_output tests
 # =========================================================================
@@ -220,6 +260,207 @@ class TestBuildReferenceFileSummary:
 
 
 # =========================================================================
+# Document conversion tests
+# =========================================================================
+
+
+class TestConvertDocumentToMarkdown:
+    """Tests for convert_document_to_markdown."""
+
+    def test_plain_text_file(self, tmp_path: Path) -> None:
+        txt_file = tmp_path / "test.txt"
+        txt_file.write_text("Hello, world!")
+        result = convert_document_to_markdown(txt_file)
+        assert "Hello, world!" in result
+
+    def test_markdown_file(self, tmp_path: Path) -> None:
+        md_file = tmp_path / "test.md"
+        md_file.write_text("# Title\n\nSome content.")
+        result = convert_document_to_markdown(md_file)
+        assert "Title" in result
+
+    def test_nonexistent_file_returns_empty(self, tmp_path: Path) -> None:
+        result = convert_document_to_markdown(tmp_path / "nonexistent.docx")
+        assert result == ""
+
+    def test_unsupported_extension_reads_as_text(self, tmp_path: Path) -> None:
+        csv_file = tmp_path / "data.csv"
+        csv_file.write_text("a,b,c\n1,2,3")
+        result = convert_document_to_markdown(csv_file)
+        assert "a,b,c" in result
+
+    def test_docx_with_mocked_markitdown(self, tmp_path: Path) -> None:
+        docx_file = tmp_path / "test.docx"
+        docx_file.write_text("fake docx content")
+
+        with patch(
+            "dd_agents.cli_auto_config._convert_via_markitdown",
+            return_value="# Converted\n\nContent from markitdown",
+        ):
+            result = convert_document_to_markdown(docx_file)
+        assert "Content from markitdown" in result
+
+    def test_falls_back_to_pandoc_when_markitdown_fails(self, tmp_path: Path) -> None:
+        docx_file = tmp_path / "test.docx"
+        docx_file.write_text("fake")
+
+        with (
+            patch("dd_agents.cli_auto_config._convert_via_markitdown", return_value=""),
+            patch(
+                "dd_agents.cli_auto_config._convert_via_pandoc",
+                return_value="# Pandoc output\n\nConverted via pandoc",
+            ),
+        ):
+            result = convert_document_to_markdown(docx_file)
+        assert "pandoc" in result.lower() or "Pandoc" in result
+
+    def test_handles_both_converters_failing(self, tmp_path: Path) -> None:
+        docx_file = tmp_path / "test.docx"
+        docx_file.write_text("raw content")
+
+        with (
+            patch("dd_agents.cli_auto_config._convert_via_markitdown", return_value=""),
+            patch("dd_agents.cli_auto_config._convert_via_pandoc", return_value=""),
+        ):
+            result = convert_document_to_markdown(docx_file)
+        # Falls back to direct read
+        assert "raw content" in result
+
+
+class TestCleanMarkdown:
+    """Tests for _clean_markdown."""
+
+    def test_removes_html_comments(self) -> None:
+        from dd_agents.cli_auto_config import _clean_markdown
+
+        result = _clean_markdown("Hello <!-- comment --> World")
+        assert "comment" not in result
+        assert "Hello" in result
+        assert "World" in result
+
+    def test_removes_pandoc_markup_tags(self) -> None:
+        from dd_agents.cli_auto_config import _clean_markdown
+
+        result = _clean_markdown("Text{.mark} here")
+        assert "{.mark}" not in result
+        assert "Text" in result
+
+    def test_fixes_escaped_quotes(self) -> None:
+        from dd_agents.cli_auto_config import _clean_markdown
+
+        result = _clean_markdown("it\\'s a test")
+        assert "it's a test" in result
+
+    def test_collapses_blank_lines(self) -> None:
+        from dd_agents.cli_auto_config import _clean_markdown
+
+        result = _clean_markdown("line1\n\n\n\n\nline2")
+        assert result == "line1\n\nline2"
+
+
+# =========================================================================
+# BuyerContextIngester tests
+# =========================================================================
+
+
+class TestBuyerContextIngester:
+    """Tests for BuyerContextIngester."""
+
+    def test_creates_buyer_dir(self, tmp_path: Path) -> None:
+        dr = _create_data_room(tmp_path)
+        buyer_doc = tmp_path / "10k.txt"
+        buyer_doc.write_text("Annual report content")
+
+        ingester = BuyerContextIngester()
+        ctx = ingester.ingest(
+            data_room_path=dr,
+            buyer_docs=[buyer_doc],
+        )
+        buyer_dir = dr / "_buyer"
+        assert buyer_dir.is_dir()
+        assert len(ctx.buyer_doc_paths) == 1
+        assert ctx.buyer_doc_paths[0].parent == buyer_dir
+
+    def test_converts_buyer_doc_to_markdown(self, tmp_path: Path) -> None:
+        dr = _create_data_room(tmp_path)
+        buyer_doc = tmp_path / "report.txt"
+        buyer_doc.write_text("# Business Description\n\nOur company does things.")
+
+        ingester = BuyerContextIngester()
+        ctx = ingester.ingest(data_room_path=dr, buyer_docs=[buyer_doc])
+
+        assert len(ctx.buyer_doc_contents) == 1
+        assert "Business Description" in ctx.buyer_doc_contents[0]
+
+    def test_custom_buyer_docs_dir(self, tmp_path: Path) -> None:
+        dr = _create_data_room(tmp_path)
+        buyer_doc = tmp_path / "doc.txt"
+        buyer_doc.write_text("content")
+
+        ingester = BuyerContextIngester()
+        ctx = ingester.ingest(
+            data_room_path=dr,
+            buyer_docs=[buyer_doc],
+            buyer_docs_dir="_acquirer",
+        )
+        assert ctx.buyer_docs_dir == "_acquirer"
+        assert (dr / "_acquirer").is_dir()
+
+    def test_spa_not_placed_in_data_room(self, tmp_path: Path) -> None:
+        dr = _create_data_room(tmp_path)
+        spa_file = tmp_path / "spa.txt"
+        spa_file.write_text("SHARE PURCHASE AGREEMENT between parties...")
+
+        ingester = BuyerContextIngester()
+        ctx = ingester.ingest(data_room_path=dr, spa_path=spa_file)
+
+        # SPA content extracted to memory
+        assert "SHARE PURCHASE AGREEMENT" in ctx.spa_content
+        # But no SPA file in data room
+        assert not (dr / "_buyer" / "spa.md").exists()
+
+    def test_press_release_extracted(self, tmp_path: Path) -> None:
+        dr = _create_data_room(tmp_path)
+        pr_file = tmp_path / "press-release.txt"
+        pr_file.write_text("FOR IMMEDIATE RELEASE: Apex acquires WidgetCo")
+
+        ingester = BuyerContextIngester()
+        ctx = ingester.ingest(data_room_path=dr, press_release_path=pr_file)
+
+        assert "Apex acquires WidgetCo" in ctx.press_release_content
+
+    def test_handles_missing_buyer_doc(self, tmp_path: Path) -> None:
+        dr = _create_data_room(tmp_path)
+        missing = tmp_path / "nonexistent.docx"
+
+        ingester = BuyerContextIngester()
+        ctx = ingester.ingest(data_room_path=dr, buyer_docs=[missing])
+
+        assert len(ctx.buyer_doc_paths) == 0
+        assert len(ctx.buyer_doc_contents) == 0
+
+    def test_handles_missing_spa(self, tmp_path: Path) -> None:
+        dr = _create_data_room(tmp_path)
+        missing = tmp_path / "nonexistent.pdf"
+
+        ingester = BuyerContextIngester()
+        ctx = ingester.ingest(data_room_path=dr, spa_path=missing)
+
+        assert ctx.spa_content == ""
+
+    def test_no_docs_returns_empty_context(self, tmp_path: Path) -> None:
+        dr = _create_data_room(tmp_path)
+
+        ingester = BuyerContextIngester()
+        ctx = ingester.ingest(data_room_path=dr)
+
+        assert ctx.buyer_doc_paths == []
+        assert ctx.buyer_doc_contents == []
+        assert ctx.spa_content == ""
+        assert ctx.press_release_content == ""
+
+
+# =========================================================================
 # DataRoomAnalyzer tests
 # =========================================================================
 
@@ -294,6 +535,23 @@ class TestDataRoomAnalyzer:
         assert "merger" in prompt
 
     @pytest.mark.asyncio
+    async def test_user_prompt_includes_spa_entities(self, tmp_path: Path) -> None:
+        dr = _create_data_room(tmp_path)
+        analyzer = DataRoomAnalyzer(data_room_path=dr)
+        scan_result = _make_scan_result()
+
+        prompt = analyzer._build_user_prompt(
+            tree_output="tree",
+            scan_result=scan_result,
+            reference_files=[],
+            buyer="Buyer",
+            target="Target",
+            spa_entities="HOLDCO LLC owns 100% of shares",
+        )
+        assert "HOLDCO LLC" in prompt
+        assert "SPA Entity Hints" in prompt
+
+    @pytest.mark.asyncio
     async def test_claude_error_propagates(self, tmp_path: Path) -> None:
         dr = _create_data_room(tmp_path)
         analyzer = DataRoomAnalyzer(data_room_path=dr)
@@ -360,6 +618,328 @@ class TestDataRoomAnalyzer:
             )
 
         assert result["buyer"]["name"] == "Apex Holdings, Inc."
+
+
+# =========================================================================
+# Multi-turn analysis tests
+# =========================================================================
+
+
+class TestMultiTurnAnalysis:
+    """Tests for multi-turn analysis with buyer context."""
+
+    @pytest.mark.asyncio
+    async def test_buyer_strategy_generated_when_docs_provided(self, tmp_path: Path) -> None:
+        dr = _create_data_room(tmp_path)
+        analyzer = DataRoomAnalyzer(data_room_path=dr)
+        scan_result = _make_scan_result()
+
+        base_response = _make_valid_claude_response()
+        strategy_response = _make_buyer_strategy_response()
+
+        call_count = 0
+        responses = [json.dumps(base_response), json.dumps(strategy_response)]
+
+        async def mock_call(system: str, user: str) -> str:
+            nonlocal call_count
+            idx = min(call_count, len(responses) - 1)
+            call_count += 1
+            return responses[idx]
+
+        ctx = IngestedContext(
+            buyer_doc_contents=["Apex is a technology holding company."],
+            buyer_docs_dir="_buyer",
+        )
+
+        with patch.object(analyzer, "_call_claude", side_effect=mock_call):
+            result = await analyzer.analyze(
+                tree_output="tree",
+                scan_result=scan_result,
+                reference_files=[],
+                buyer="Apex Holdings",
+                target="WidgetCo",
+                ingested_context=ctx,
+            )
+
+        assert "buyer_strategy" in result
+        assert result["buyer_strategy"]["thesis"]
+        assert call_count == 2  # Turn 1 + Turn 2
+
+    @pytest.mark.asyncio
+    async def test_spa_extraction_runs_when_spa_provided(self, tmp_path: Path) -> None:
+        dr = _create_data_room(tmp_path)
+        analyzer = DataRoomAnalyzer(data_room_path=dr)
+        scan_result = _make_scan_result()
+
+        base_response = _make_valid_claude_response()
+        strategy_response = _make_buyer_strategy_response()
+        spa_response = _make_spa_extraction_response()
+
+        call_count = 0
+        responses = [
+            json.dumps(base_response),
+            json.dumps(strategy_response),
+            json.dumps(spa_response),
+        ]
+
+        async def mock_call(system: str, user: str) -> str:
+            nonlocal call_count
+            idx = min(call_count, len(responses) - 1)
+            call_count += 1
+            return responses[idx]
+
+        ctx = IngestedContext(
+            buyer_doc_contents=["Buyer business description."],
+            spa_content="SHARE PURCHASE AGREEMENT... purchase price $22M...",
+            buyer_docs_dir="_buyer",
+        )
+
+        with patch.object(analyzer, "_call_claude", side_effect=mock_call):
+            result = await analyzer.analyze(
+                tree_output="tree",
+                scan_result=scan_result,
+                reference_files=[],
+                buyer="Apex Holdings",
+                target="WidgetCo",
+                ingested_context=ctx,
+            )
+
+        assert call_count == 3  # Turn 1 + Turn 2 + Turn 3
+        assert "$22M" in result["buyer_strategy"]["budget_range"]
+        assert "SPA STRUCTURE" in result["buyer_strategy"]["notes"]
+
+    @pytest.mark.asyncio
+    async def test_no_buyer_strategy_without_context(self, tmp_path: Path) -> None:
+        dr = _create_data_room(tmp_path)
+        analyzer = DataRoomAnalyzer(data_room_path=dr)
+        scan_result = _make_scan_result()
+        base_response = _make_valid_claude_response()
+
+        mock_call = AsyncMock(return_value=json.dumps(base_response))
+        with patch.object(analyzer, "_call_claude", mock_call):
+            result = await analyzer.analyze(
+                tree_output="tree",
+                scan_result=scan_result,
+                reference_files=[],
+                buyer="Apex Holdings",
+                target="WidgetCo",
+            )
+
+        assert "buyer_strategy" not in result
+        assert mock_call.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_spa_only_creates_buyer_strategy(self, tmp_path: Path) -> None:
+        """SPA without buyer docs still creates buyer_strategy for budget info."""
+        dr = _create_data_room(tmp_path)
+        analyzer = DataRoomAnalyzer(data_room_path=dr)
+        scan_result = _make_scan_result()
+
+        base_response = _make_valid_claude_response()
+        spa_response = _make_spa_extraction_response()
+
+        call_count = 0
+        responses = [json.dumps(base_response), json.dumps(spa_response)]
+
+        async def mock_call(system: str, user: str) -> str:
+            nonlocal call_count
+            idx = min(call_count, len(responses) - 1)
+            call_count += 1
+            return responses[idx]
+
+        ctx = IngestedContext(
+            spa_content="SHARE PURCHASE AGREEMENT...",
+            buyer_docs_dir="_buyer",
+        )
+
+        with patch.object(analyzer, "_call_claude", side_effect=mock_call):
+            result = await analyzer.analyze(
+                tree_output="tree",
+                scan_result=scan_result,
+                reference_files=[],
+                buyer="Apex Holdings",
+                target="WidgetCo",
+                ingested_context=ctx,
+            )
+
+        # Turn 2 skipped (no buyer docs), Turn 3 runs (SPA)
+        assert call_count == 2
+        assert "buyer_strategy" in result
+        assert "$22M" in result["buyer_strategy"]["budget_range"]
+
+
+class TestMergeSpaIntoConfig:
+    """Tests for _merge_spa_into_config."""
+
+    def test_merges_budget_range(self, tmp_path: Path) -> None:
+        dr = _create_data_room(tmp_path)
+        analyzer = DataRoomAnalyzer(data_room_path=dr)
+        config: dict[str, Any] = {"buyer_strategy": {"budget_range": "", "notes": ""}}
+        spa_data = {"budget_range": "$10M cash", "spa_notes": "", "additional_entity_variants": []}
+        ctx = IngestedContext()
+
+        analyzer._merge_spa_into_config(config, spa_data, ctx)
+        assert config["buyer_strategy"]["budget_range"] == "$10M cash"
+
+    def test_appends_to_existing_budget(self, tmp_path: Path) -> None:
+        dr = _create_data_room(tmp_path)
+        analyzer = DataRoomAnalyzer(data_room_path=dr)
+        config: dict[str, Any] = {"buyer_strategy": {"budget_range": "Existing info.", "notes": ""}}
+        spa_data = {"budget_range": "Plus $5M escrow.", "spa_notes": "", "additional_entity_variants": []}
+        ctx = IngestedContext()
+
+        analyzer._merge_spa_into_config(config, spa_data, ctx)
+        assert "Existing info." in config["buyer_strategy"]["budget_range"]
+        assert "Plus $5M escrow." in config["buyer_strategy"]["budget_range"]
+
+    def test_merges_entity_variants(self, tmp_path: Path) -> None:
+        dr = _create_data_room(tmp_path)
+        analyzer = DataRoomAnalyzer(data_room_path=dr)
+        config: dict[str, Any] = {
+            "target": {"entity_name_variants_for_contract_matching": ["Existing"]},
+            "buyer_strategy": {"budget_range": "", "notes": ""},
+        }
+        spa_data = {
+            "budget_range": "",
+            "spa_notes": "",
+            "additional_entity_variants": ["NewEntity", "Existing"],
+        }
+        ctx = IngestedContext()
+
+        analyzer._merge_spa_into_config(config, spa_data, ctx)
+        variants = config["target"]["entity_name_variants_for_contract_matching"]
+        assert "NewEntity" in variants
+        assert variants.count("Existing") == 1  # no duplicates
+
+    def test_merges_key_executives(self, tmp_path: Path) -> None:
+        dr = _create_data_room(tmp_path)
+        analyzer = DataRoomAnalyzer(data_room_path=dr)
+        config: dict[str, Any] = {"buyer_strategy": {"budget_range": "", "notes": ""}}
+        spa_data = {
+            "budget_range": "",
+            "spa_notes": "",
+            "additional_entity_variants": [],
+            "key_executives": [{"name": "John Smith", "title": "CFO", "company": "WidgetCo"}],
+        }
+        ctx = IngestedContext()
+
+        analyzer._merge_spa_into_config(config, spa_data, ctx)
+        assert len(config["key_executives"]) == 1
+        assert config["key_executives"][0]["name"] == "John Smith"
+
+    def test_creates_buyer_strategy_if_absent(self, tmp_path: Path) -> None:
+        dr = _create_data_room(tmp_path)
+        analyzer = DataRoomAnalyzer(data_room_path=dr)
+        config: dict[str, Any] = {}
+        spa_data = {"budget_range": "$22M", "spa_notes": "ULC entity", "additional_entity_variants": []}
+        ctx = IngestedContext()
+
+        analyzer._merge_spa_into_config(config, spa_data, ctx)
+        assert config["buyer_strategy"]["budget_range"] == "$22M"
+        assert "SPA STRUCTURE: ULC entity" in config["buyer_strategy"]["notes"]
+
+
+# =========================================================================
+# Buyer strategy prompt tests
+# =========================================================================
+
+
+class TestBuyerStrategyPrompts:
+    """Tests for buyer strategy prompt building."""
+
+    def test_buyer_strategy_system_prompt(self, tmp_path: Path) -> None:
+        dr = _create_data_room(tmp_path)
+        analyzer = DataRoomAnalyzer(data_room_path=dr)
+
+        prompt = analyzer._build_buyer_strategy_system_prompt("BuyerCo", "TargetCo")
+        assert "BuyerCo" in prompt
+        assert "TargetCo" in prompt
+        assert "buyer_strategy" in prompt
+        assert "thesis" in prompt
+
+    def test_buyer_strategy_prompt_includes_docs(self, tmp_path: Path) -> None:
+        from pathlib import Path as PathCls
+
+        dr = _create_data_room(tmp_path)
+        analyzer = DataRoomAnalyzer(data_room_path=dr)
+        base_config = _make_valid_claude_response()
+        ctx = IngestedContext(
+            buyer_doc_contents=["Our company is a technology leader."],
+            buyer_doc_paths=[PathCls("/data_room/_buyer/10k.md")],
+            buyer_docs_dir="_buyer",
+        )
+
+        prompt = analyzer._build_buyer_strategy_prompt("BuyerCo", "TargetCo", base_config, ctx)
+        assert "technology leader" in prompt
+        assert "_buyer/10k.md" in prompt
+
+    def test_buyer_strategy_prompt_includes_press_release(self, tmp_path: Path) -> None:
+        dr = _create_data_room(tmp_path)
+        analyzer = DataRoomAnalyzer(data_room_path=dr)
+        base_config = _make_valid_claude_response()
+        ctx = IngestedContext(
+            press_release_content="FOR IMMEDIATE RELEASE: Strategic acquisition announced",
+            buyer_docs_dir="_buyer",
+        )
+
+        prompt = analyzer._build_buyer_strategy_prompt("BuyerCo", "TargetCo", base_config, ctx)
+        assert "Strategic acquisition announced" in prompt
+
+    def test_buyer_strategy_prompt_without_docs(self, tmp_path: Path) -> None:
+        dr = _create_data_room(tmp_path)
+        analyzer = DataRoomAnalyzer(data_room_path=dr)
+        base_config = _make_valid_claude_response()
+        ctx = IngestedContext(buyer_docs_dir="_buyer")
+
+        prompt = analyzer._build_buyer_strategy_prompt("BuyerCo", "TargetCo", base_config, ctx)
+        assert "Deal Context" in prompt
+        # No buyer documents section
+        assert "Buyer Business Documents" not in prompt
+
+
+# =========================================================================
+# SPA extraction prompt tests
+# =========================================================================
+
+
+class TestSpaExtractionPrompts:
+    """Tests for SPA extraction prompt building."""
+
+    def test_spa_system_prompt(self, tmp_path: Path) -> None:
+        dr = _create_data_room(tmp_path)
+        analyzer = DataRoomAnalyzer(data_room_path=dr)
+
+        prompt = analyzer._build_spa_system_prompt()
+        assert "Share Purchase Agreement" in prompt
+        assert "budget_range" in prompt
+
+    def test_spa_extraction_prompt(self, tmp_path: Path) -> None:
+        dr = _create_data_room(tmp_path)
+        analyzer = DataRoomAnalyzer(data_room_path=dr)
+        base_config = _make_valid_claude_response()
+
+        prompt = analyzer._build_spa_extraction_prompt(
+            "BuyerCo",
+            "TargetCo",
+            base_config,
+            "This SPA is between BuyerCo and TargetCo for $22M...",
+        )
+        assert "BuyerCo" in prompt
+        assert "$22M" in prompt
+
+    def test_spa_content_truncated_when_too_long(self, tmp_path: Path) -> None:
+        dr = _create_data_room(tmp_path)
+        analyzer = DataRoomAnalyzer(data_room_path=dr)
+        base_config = _make_valid_claude_response()
+
+        long_spa = "A" * 100_000
+        prompt = analyzer._build_spa_extraction_prompt(
+            "BuyerCo",
+            "TargetCo",
+            base_config,
+            long_spa,
+        )
+        assert "truncated" in prompt
 
 
 # =========================================================================
@@ -443,6 +1023,185 @@ class TestValidateAndFixConfig:
         validated = validate_deal_config(result)
         assert validated.buyer.name == "Apex Holdings, Inc."
         assert validated.target.name == "WidgetCo Inc."
+
+    def test_buyer_strategy_invalid_risk_tolerance_fixed(self) -> None:
+        config = _make_valid_claude_response()
+        config["buyer_strategy"] = {
+            "thesis": "Test thesis",
+            "risk_tolerance": "very_risky",
+        }
+        scan_result = _make_scan_result()
+        result = validate_and_fix_config(config, scan_result)
+        assert result["buyer_strategy"]["risk_tolerance"] == "moderate"
+
+    def test_buyer_strategy_defaults_applied(self) -> None:
+        config = _make_valid_claude_response()
+        config["buyer_strategy"] = {"thesis": "Test"}
+        scan_result = _make_scan_result()
+        result = validate_and_fix_config(config, scan_result)
+        bs = result["buyer_strategy"]
+        assert bs["key_synergies"] == []
+        assert bs["integration_priorities"] == []
+        assert bs["focus_areas"] == []
+        assert bs["budget_range"] == ""
+        assert bs["notes"] == ""
+        assert bs["risk_tolerance"] == "moderate"
+
+    def test_config_with_buyer_strategy_passes_pydantic(self) -> None:
+        config = _make_valid_claude_response()
+        config["buyer_strategy"] = _make_buyer_strategy_response()["buyer_strategy"]
+        scan_result = _make_scan_result()
+        result = validate_and_fix_config(config, scan_result)
+        validated = validate_deal_config(result)
+        assert validated.buyer_strategy is not None
+        assert validated.buyer_strategy.thesis
+
+    def test_config_without_buyer_strategy_passes_pydantic(self) -> None:
+        config = _make_valid_claude_response()
+        scan_result = _make_scan_result()
+        result = validate_and_fix_config(config, scan_result)
+        validated = validate_deal_config(result)
+        assert validated.buyer_strategy is None
+
+
+# =========================================================================
+# Interactive refinement tests
+# =========================================================================
+
+
+class TestInteractiveRefinement:
+    """Tests for run_interactive_refinement."""
+
+    def test_accepts_thesis(self) -> None:
+        from unittest.mock import MagicMock
+
+        config = _make_valid_claude_response()
+        config["buyer_strategy"] = _make_buyer_strategy_response()["buyer_strategy"]
+        mock_console = MagicMock()
+
+        with patch("dd_agents.cli_auto_config._prompt_user", return_value="Y"):
+            result = run_interactive_refinement(config, mock_console)
+
+        assert result["buyer_strategy"]["thesis"] == config["buyer_strategy"]["thesis"]
+
+    def test_edits_risk_tolerance(self) -> None:
+        from unittest.mock import MagicMock
+
+        config = _make_valid_claude_response()
+        config["buyer_strategy"] = _make_buyer_strategy_response()["buyer_strategy"]
+        mock_console = MagicMock()
+
+        responses = iter(["Y", "aggressive", "", ""])
+
+        with patch("dd_agents.cli_auto_config._prompt_user", side_effect=responses):
+            result = run_interactive_refinement(config, mock_console)
+
+        assert result["buyer_strategy"]["risk_tolerance"] == "aggressive"
+
+    def test_adds_focus_areas(self) -> None:
+        from unittest.mock import MagicMock
+
+        config = _make_valid_claude_response()
+        config["buyer_strategy"] = _make_buyer_strategy_response()["buyer_strategy"]
+        original_count = len(config["buyer_strategy"]["focus_areas"])
+        mock_console = MagicMock()
+
+        responses = iter(["Y", "moderate", "new_risk_1, new_risk_2", ""])
+
+        with patch("dd_agents.cli_auto_config._prompt_user", side_effect=responses):
+            result = run_interactive_refinement(config, mock_console)
+
+        assert len(result["buyer_strategy"]["focus_areas"]) == original_count + 2
+
+    def test_no_buyer_strategy_returns_unchanged(self) -> None:
+        from unittest.mock import MagicMock
+
+        config = _make_valid_claude_response()
+        mock_console = MagicMock()
+
+        result = run_interactive_refinement(config, mock_console)
+        assert "buyer_strategy" not in result
+
+
+# =========================================================================
+# print_auto_config_summary tests
+# =========================================================================
+
+
+class TestPrintAutoConfigSummary:
+    """Tests for print_auto_config_summary."""
+
+    def test_includes_buyer_strategy_when_present(self) -> None:
+        from unittest.mock import MagicMock
+
+        from dd_agents.cli_auto_config import print_auto_config_summary
+
+        config = _make_valid_claude_response()
+        config["buyer_strategy"] = _make_buyer_strategy_response()["buyer_strategy"]
+        scan_result = _make_scan_result()
+        mock_console = MagicMock()
+
+        print_auto_config_summary(mock_console, config, scan_result)
+
+        # Verify Table was printed
+        mock_console.print.assert_called()
+
+    def test_works_without_buyer_strategy(self) -> None:
+        from unittest.mock import MagicMock
+
+        from dd_agents.cli_auto_config import print_auto_config_summary
+
+        config = _make_valid_claude_response()
+        scan_result = _make_scan_result()
+        mock_console = MagicMock()
+
+        print_auto_config_summary(mock_console, config, scan_result)
+        mock_console.print.assert_called()
+
+
+# =========================================================================
+# Reference file classification tests
+# =========================================================================
+
+
+class TestBuyerContextClassification:
+    """Tests for buyer context file classification and routing."""
+
+    def test_buyer_context_files_classified_correctly(self) -> None:
+        from dd_agents.inventory.reference_files import ReferenceFileClassifier
+        from dd_agents.models.enums import ReferenceFileCategory
+        from dd_agents.models.inventory import FileEntry
+
+        classifier = ReferenceFileClassifier()
+        files = [
+            FileEntry(path="_buyer/10-k-business.md", text_path="_buyer/10-k-business.md"),
+        ]
+
+        result = classifier.classify(files, customer_dirs=[])
+        assert len(result) == 1
+        assert result[0].category == ReferenceFileCategory.BUYER_CONTEXT.value
+
+    def test_buyer_context_routed_to_acquirer_agent(self) -> None:
+        from dd_agents.inventory.reference_files import ReferenceFileClassifier
+        from dd_agents.models.enums import ReferenceFileCategory
+
+        classifier = ReferenceFileClassifier()
+        agents = classifier.route_to_agents(ReferenceFileCategory.BUYER_CONTEXT)
+        assert "acquirer_intelligence" in agents
+        assert len(agents) == 1  # Only acquirer intelligence
+
+    def test_10k_pattern_matches_buyer_context(self) -> None:
+        from dd_agents.inventory.reference_files import ReferenceFileClassifier
+        from dd_agents.models.inventory import FileEntry
+
+        classifier = ReferenceFileClassifier()
+        files = [
+            FileEntry(path="ref/annual-report-2024.pdf", text_path="ref/annual-report-2024.txt"),
+        ]
+
+        result = classifier.classify(files, customer_dirs=[])
+        assert len(result) == 1
+        assert result[0].category == "Buyer Context"
 
 
 # =========================================================================
@@ -618,3 +1377,86 @@ class TestCliAutoConfig:
         assert "BUYER" in result.output
         assert "TARGET" in result.output
         assert "acquiring company" in result.output
+
+    def test_help_shows_new_options(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(main, ["auto-config", "--help"])
+        assert result.exit_code == 0
+        assert "--buyer-docs" in result.output
+        assert "--spa" in result.output
+        assert "--press-release" in result.output
+        assert "--buyer-docs-dir" in result.output
+        assert "--interactive" in result.output
+
+    def test_backward_compatible_no_buyer_docs(self, tmp_path: Path) -> None:
+        """Without --buyer-docs, no buyer_strategy is generated (same as before)."""
+        dr = _create_data_room(tmp_path)
+        output = tmp_path / "compat.json"
+        mock_response = _make_valid_claude_response()
+
+        runner = CliRunner()
+        with patch(
+            "dd_agents.cli_auto_config.DataRoomAnalyzer._call_claude",
+            new_callable=AsyncMock,
+            return_value=json.dumps(mock_response),
+        ):
+            result = runner.invoke(
+                main,
+                [
+                    "auto-config",
+                    "Apex Holdings",
+                    "WidgetCo",
+                    "--data-room",
+                    str(dr),
+                    "--output",
+                    str(output),
+                    "--force",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert output.exists()
+        output_config = json.loads(output.read_text())
+        assert "buyer_strategy" not in output_config
+
+    def test_with_buyer_docs_generates_strategy(self, tmp_path: Path) -> None:
+        """With --buyer-docs, buyer_strategy is generated."""
+        dr = _create_data_room(tmp_path)
+        buyer_doc = tmp_path / "10k.txt"
+        buyer_doc.write_text("Annual report: We are a technology company.")
+
+        base_response = _make_valid_claude_response()
+        strategy_response = _make_buyer_strategy_response()
+
+        call_count = 0
+        responses = [json.dumps(base_response), json.dumps(strategy_response)]
+
+        async def mock_call(system: str, user: str) -> str:
+            nonlocal call_count
+            idx = min(call_count, len(responses) - 1)
+            call_count += 1
+            return responses[idx]
+
+        runner = CliRunner()
+        with patch(
+            "dd_agents.cli_auto_config.DataRoomAnalyzer._call_claude",
+            side_effect=mock_call,
+        ):
+            result = runner.invoke(
+                main,
+                [
+                    "auto-config",
+                    "Apex Holdings",
+                    "WidgetCo",
+                    "--data-room",
+                    str(dr),
+                    "--buyer-docs",
+                    str(buyer_doc),
+                    "--dry-run",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "buyer_strategy" in result.output
+        # Buyer doc should be converted and placed in _buyer/
+        assert (dr / "_buyer" / "10k.md").exists()

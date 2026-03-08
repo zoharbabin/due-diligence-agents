@@ -19,6 +19,11 @@ Options:
 | `TARGET` | Company being acquired (positional, required) |
 | `--data-room PATH` | Path to data room folder (required) |
 | `--deal-type TYPE` | Override inferred deal type |
+| `--buyer-docs PATH` | Buyer business description files (10-K, annual report). Repeatable. |
+| `--spa PATH` | SPA draft/redline for deal structure extraction |
+| `--press-release PATH` | Acquisition press release for strategic context |
+| `--buyer-docs-dir NAME` | Folder name for converted buyer files in data room (default: `_buyer`) |
+| `--interactive` | Enable interactive follow-up questions for strategy refinement |
 | `--output PATH` | Output path (default: `deal-config.json`) |
 | `--dry-run` | Print config without writing |
 | `--force` | Overwrite existing file |
@@ -29,6 +34,19 @@ Preview before writing:
 ```bash
 dd-agents auto-config "Acme Corp" "Target Inc" --data-room ./data_room --dry-run
 ```
+
+Deep auto-config with buyer strategy generation:
+
+```bash
+dd-agents auto-config "Acme Corp" "Target Inc" --data-room ./data_room \
+  --buyer-docs ./10k-business.docx --buyer-docs ./earnings-call.docx \
+  --spa ./spa-draft.pdf --press-release ./acquisition-pr.docx \
+  --interactive
+```
+
+When `--buyer-docs`, `--spa`, or `--press-release` are provided, the command runs
+a multi-turn analysis that produces a `buyer_strategy` section in the config. This
+enables the Acquirer Intelligence Agent and buyer-specific report sections.
 
 ## Interactive Generation
 

@@ -15,6 +15,7 @@ from pathlib import Path, PurePosixPath
 from dd_agents.models.enums import ReferenceFileCategory
 from dd_agents.models.inventory import FileEntry, ReferenceFile
 from dd_agents.utils.constants import (
+    AGENT_ACQUIRER_INTELLIGENCE,
     AGENT_COMMERCIAL,
     AGENT_FINANCE,
     AGENT_LEGAL,
@@ -67,6 +68,12 @@ _CATEGORY_PATTERNS: list[tuple[str, ReferenceFileCategory, str]] = [
         ReferenceFileCategory.HR,
         "Human resources or employee data",
     ),
+    # Buyer Context
+    (
+        r"(_buyer|_acquirer|buyer.?context|10-k|annual.?report|earnings.?call|investor.?presentation)",
+        ReferenceFileCategory.BUYER_CONTEXT,
+        "Buyer context and strategy document",
+    ),
 ]
 
 # ---------------------------------------------------------------------------
@@ -81,6 +88,7 @@ _ROUTING_TABLE: dict[ReferenceFileCategory, list[str]] = {
     ReferenceFileCategory.SALES: [AGENT_COMMERCIAL, AGENT_FINANCE],
     ReferenceFileCategory.COMPLIANCE: [AGENT_LEGAL, AGENT_PRODUCTTECH],
     ReferenceFileCategory.HR: [AGENT_FINANCE, AGENT_LEGAL],
+    ReferenceFileCategory.BUYER_CONTEXT: [AGENT_ACQUIRER_INTELLIGENCE],
     ReferenceFileCategory.OTHER: list(ALL_SPECIALIST_AGENTS),
 }
 

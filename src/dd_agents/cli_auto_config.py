@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import subprocess
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from rich.table import Table
@@ -24,6 +26,15 @@ _TREE_EXCLUDE_PATTERN = (
 )
 
 _MAX_TREE_CHARS = 50_000
+
+# Maximum characters of buyer document content to include in a single prompt.
+_MAX_BUYER_DOC_CHARS = 80_000
+
+# Maximum characters of SPA content to include in extraction prompt.
+_MAX_SPA_CHARS = 60_000
+
+# Valid risk tolerance values for buyer_strategy.
+_VALID_RISK_TOLERANCES = {"conservative", "moderate", "aggressive"}
 
 
 def get_tree_output(data_room_path: Path, max_depth: int = 4) -> str:
@@ -132,6 +143,187 @@ def build_reference_file_summary(
     return result
 
 
+# ---------------------------------------------------------------------------
+# Document ingestion
+# ---------------------------------------------------------------------------
+
+# File extensions that can be converted to markdown.
+_CONVERTIBLE_EXTENSIONS = frozenset({".docx", ".doc", ".pdf", ".pptx", ".xlsx", ".rtf", ".html", ".htm"})
+
+
+def _clean_markdown(text: str) -> str:
+    """Remove common conversion artifacts from markdown output."""
+    # Remove HTML comments
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
+    # Remove pandoc markup tags like {.mark}
+    text = re.sub(r"\{\.[\w-]+\}", "", text)
+    # Fix escaped quotes
+    text = text.replace("\\'", "'")
+    # Remove stray bracket artifacts from pandoc list processing
+    text = re.sub(r"\[\\$\]", "", text)
+    # Collapse multiple blank lines
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def convert_document_to_markdown(filepath: Path) -> str:
+    """Convert a document file to markdown text.
+
+    Tries ``markitdown`` first, then ``pandoc`` as a system fallback.
+    Returns the extracted text, or empty string on failure.
+    """
+    ext = filepath.suffix.lower()
+    if ext not in _CONVERTIBLE_EXTENSIONS:
+        # Try reading as plain text
+        try:
+            return filepath.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return ""
+
+    # Try markitdown
+    text = _convert_via_markitdown(filepath)
+    if text:
+        return _clean_markdown(text)
+
+    # Try pandoc
+    text = _convert_via_pandoc(filepath)
+    if text:
+        return _clean_markdown(text)
+
+    # Last resort: direct read
+    try:
+        return filepath.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def _convert_via_markitdown(filepath: Path) -> str:
+    """Convert using markitdown library. Returns empty string on failure."""
+    try:
+        from markitdown import MarkItDown
+
+        converter = MarkItDown()
+        result = converter.convert(str(filepath))
+        text = result.text_content if hasattr(result, "text_content") else ""
+        if text and text.strip():
+            logger.debug("markitdown converted %s (%d chars)", filepath.name, len(text))
+            return text
+    except ImportError:
+        logger.debug("markitdown not installed, skipping")
+    except Exception as exc:
+        logger.debug("markitdown failed for %s: %s", filepath.name, exc)
+    return ""
+
+
+def _convert_via_pandoc(filepath: Path) -> str:
+    """Convert using pandoc system binary. Returns empty string on failure."""
+    try:
+        result = subprocess.run(
+            ["pandoc", str(filepath), "-t", "markdown", "--wrap=none"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            logger.debug("pandoc converted %s (%d chars)", filepath.name, len(result.stdout))
+            return result.stdout
+    except FileNotFoundError:
+        logger.debug("pandoc not installed, skipping")
+    except subprocess.TimeoutExpired:
+        logger.warning("pandoc timed out for %s", filepath.name)
+    except OSError as exc:
+        logger.debug("pandoc failed for %s: %s", filepath.name, exc)
+    return ""
+
+
+@dataclass
+class IngestedContext:
+    """Results of buyer document ingestion."""
+
+    buyer_doc_paths: list[Path] = field(default_factory=list)
+    buyer_doc_contents: list[str] = field(default_factory=list)
+    spa_content: str = ""
+    press_release_content: str = ""
+    buyer_docs_dir: str = "_buyer"
+
+
+class BuyerContextIngester:
+    """Convert and place buyer context documents in the data room."""
+
+    def ingest(
+        self,
+        data_room_path: Path,
+        buyer_docs: list[Path] | None = None,
+        spa_path: Path | None = None,
+        press_release_path: Path | None = None,
+        buyer_docs_dir: str = "_buyer",
+    ) -> IngestedContext:
+        """Convert docs to markdown, place in data room, return content summaries.
+
+        Buyer docs are converted and placed in ``{data_room}/{buyer_docs_dir}/``
+        so agents can read them at runtime. SPA and press release content are
+        extracted to memory only (not placed in data room for sensitivity reasons).
+        """
+        from pathlib import Path as PathCls
+
+        ctx = IngestedContext(buyer_docs_dir=buyer_docs_dir)
+
+        # Process buyer documents
+        if buyer_docs:
+            dest_dir = data_room_path / buyer_docs_dir
+            dest_dir.mkdir(parents=True, exist_ok=True)
+
+            for doc_path in buyer_docs:
+                doc_path = PathCls(doc_path)
+                if not doc_path.is_file():
+                    logger.warning("Buyer doc not found: %s", doc_path)
+                    continue
+
+                text = convert_document_to_markdown(doc_path)
+                if not text:
+                    logger.warning("Failed to convert buyer doc: %s", doc_path.name)
+                    continue
+
+                # Write markdown to buyer docs directory
+                md_name = doc_path.stem + ".md"
+                md_path = dest_dir / md_name
+                md_path.write_text(text, encoding="utf-8")
+                ctx.buyer_doc_paths.append(md_path)
+                ctx.buyer_doc_contents.append(text)
+                logger.info("Converted buyer doc: %s -> %s", doc_path.name, md_path.name)
+
+        # Extract SPA content (not placed in data room)
+        if spa_path:
+            spa_path_resolved = PathCls(spa_path)
+            if spa_path_resolved.is_file():
+                ctx.spa_content = convert_document_to_markdown(spa_path_resolved)
+                if ctx.spa_content:
+                    logger.info("Extracted SPA content: %d chars", len(ctx.spa_content))
+                else:
+                    logger.warning("Failed to extract SPA content from: %s", spa_path)
+            else:
+                logger.warning("SPA file not found: %s", spa_path)
+
+        # Extract press release content (not placed in data room)
+        if press_release_path:
+            pr_path_resolved = PathCls(press_release_path)
+            if pr_path_resolved.is_file():
+                ctx.press_release_content = convert_document_to_markdown(pr_path_resolved)
+                if ctx.press_release_content:
+                    logger.info("Extracted press release content: %d chars", len(ctx.press_release_content))
+                else:
+                    logger.warning("Failed to extract press release from: %s", press_release_path)
+            else:
+                logger.warning("Press release file not found: %s", press_release_path)
+
+        return ctx
+
+
+# ---------------------------------------------------------------------------
+# Data Room Analyzer
+# ---------------------------------------------------------------------------
+
+
 class DataRoomAnalyzer:
     """Analyze a data room using Claude to produce a complete deal-config."""
 
@@ -149,15 +341,69 @@ class DataRoomAnalyzer:
         buyer: str,
         target: str,
         deal_type_hint: str | None = None,
+        ingested_context: IngestedContext | None = None,
     ) -> dict[str, Any]:
-        """Run Claude analysis and return a config dict."""
+        """Run multi-turn Claude analysis and return a config dict.
+
+        Turn 1: Entity resolution from data room tree (always runs).
+        Turn 2: Buyer strategy synthesis (runs when buyer docs or PR provided).
+        Turn 3: SPA structure extraction (runs when SPA provided).
+        """
+        # Turn 1: Entity resolution (existing behavior)
         system_prompt = self._build_system_prompt(buyer, target)
-        user_prompt = self._build_user_prompt(tree_output, scan_result, reference_files, buyer, target, deal_type_hint)
+        spa_hint = ""
+        if ingested_context and ingested_context.spa_content:
+            spa_hint = ingested_context.spa_content[:5000]
+        user_prompt = self._build_user_prompt(
+            tree_output,
+            scan_result,
+            reference_files,
+            buyer,
+            target,
+            deal_type_hint,
+            spa_entities=spa_hint,
+        )
         raw_text = await self._call_claude(system_prompt, user_prompt)
-        return self._parse_response(raw_text)
+        config = self._parse_response(raw_text)
+
+        if ingested_context is None:
+            return config
+
+        # Turn 2: Buyer strategy synthesis
+        has_buyer_content = bool(ingested_context.buyer_doc_contents or ingested_context.press_release_content)
+        if has_buyer_content:
+            strategy_prompt = self._build_buyer_strategy_prompt(
+                buyer,
+                target,
+                config,
+                ingested_context,
+            )
+            strategy_text = await self._call_claude(
+                self._build_buyer_strategy_system_prompt(buyer, target),
+                strategy_prompt,
+            )
+            strategy = self._parse_response(strategy_text)
+            config["buyer_strategy"] = strategy.get("buyer_strategy", strategy)
+
+        # Turn 3: SPA extraction
+        if ingested_context.spa_content:
+            spa_prompt = self._build_spa_extraction_prompt(
+                buyer,
+                target,
+                config,
+                ingested_context.spa_content,
+            )
+            spa_text = await self._call_claude(
+                self._build_spa_system_prompt(),
+                spa_prompt,
+            )
+            spa_data = self._parse_response(spa_text)
+            self._merge_spa_into_config(config, spa_data, ingested_context)
+
+        return config
 
     # ------------------------------------------------------------------
-    # Prompt building
+    # Turn 1: Entity Resolution Prompts
     # ------------------------------------------------------------------
 
     def _build_system_prompt(self, buyer: str, target: str) -> str:
@@ -237,6 +483,7 @@ class DataRoomAnalyzer:
         buyer: str,
         target: str,
         deal_type_hint: str | None = None,
+        spa_entities: str = "",
     ) -> str:
         customer_names = scan_result.get("customer_names", [])
         groups = scan_result.get("groups", [])
@@ -278,10 +525,192 @@ class DataRoomAnalyzer:
             suffix = f"\n... and {len(customer_names) - 100} more" if len(customer_names) > 100 else ""
             parts.append("## Customer Folder Names (first 100)\n" + ", ".join(display) + suffix + "\n")
 
+        # SPA entity hints (if available)
+        if spa_entities:
+            parts.append(
+                "## SPA Entity Hints (from deal document)\n"
+                "The following excerpt from the SPA may contain entity names, "
+                "holding companies, and share structures. Use these to improve "
+                "entity resolution.\n\n"
+                f"{spa_entities[:5000]}\n"
+            )
+
         return "\n".join(parts)
 
     # ------------------------------------------------------------------
-    # Claude API call (identical pattern to search/analyzer.py:254-287)
+    # Turn 2: Buyer Strategy Prompts
+    # ------------------------------------------------------------------
+
+    def _build_buyer_strategy_system_prompt(self, buyer: str, target: str) -> str:
+        return (
+            "You are a senior M&A strategist synthesizing buyer context documents "
+            "into a structured acquisition strategy.\n\n"
+            f"**Buyer**: {buyer}\n"
+            f"**Target**: {target}\n\n"
+            "## Rules\n\n"
+            "- Every synergy and risk must cite specific capabilities from the buyer documents.\n"
+            "- Do NOT use generic boilerplate like 'technology synergies'. Be specific about "
+            "named products, markets, and capabilities.\n"
+            "- Frame risks as 'what matters to THIS buyer' not 'generic DD concerns'.\n"
+            "- The `notes` field must include explicit file path references directing the "
+            "Acquirer Intelligence Agent to read buyer context files.\n\n"
+            "## Output Format\n\n"
+            "Return ONLY a raw JSON object with a single key `buyer_strategy` containing:\n\n"
+            "{\n"
+            '  "buyer_strategy": {\n'
+            '    "thesis": "<1-3 paragraph strategic rationale>",\n'
+            '    "key_synergies": ["<specific synergy 1>", ...],\n'
+            '    "integration_priorities": ["<priority 1>", ...],\n'
+            '    "risk_tolerance": "conservative|moderate|aggressive",\n'
+            '    "focus_areas": ["<buyer-specific risk area 1>", ...],\n'
+            '    "budget_range": "<deal economics if known, else empty string>",\n'
+            '    "notes": "<strategic context and file references for agents>"\n'
+            "  }\n"
+            "}\n\n"
+            "Respond with ONLY the JSON object."
+        )
+
+    def _build_buyer_strategy_prompt(
+        self,
+        buyer: str,
+        target: str,
+        base_config: dict[str, Any],
+        ctx: IngestedContext,
+    ) -> str:
+        parts: list[str] = []
+
+        # Include base config context
+        target_info = base_config.get("target", {})
+        deal_info = base_config.get("deal", {})
+        parts.append(
+            f"## Deal Context\n"
+            f"- Buyer: {buyer}\n"
+            f"- Target: {target_info.get('name', target)}\n"
+            f"- Deal type: {deal_info.get('type', 'acquisition')}\n"
+            f"- DD focus areas: {', '.join(deal_info.get('focus_areas', []))}\n"
+        )
+
+        # Buyer documents
+        if ctx.buyer_doc_contents:
+            combined = "\n\n---\n\n".join(ctx.buyer_doc_contents)
+            if len(combined) > _MAX_BUYER_DOC_CHARS:
+                combined = combined[:_MAX_BUYER_DOC_CHARS] + "\n... (truncated)"
+            parts.append(f"## Buyer Business Documents\n\n{combined}\n")
+
+        # Buyer doc file paths for agent references
+        if ctx.buyer_doc_paths:
+            path_list = "\n".join(f"- {ctx.buyer_docs_dir}/{p.name}" for p in ctx.buyer_doc_paths)
+            parts.append(
+                f"## Buyer Document Paths in Data Room\n"
+                f"Include these paths in the notes field so the Acquirer Intelligence Agent "
+                f"can read them:\n{path_list}\n"
+            )
+
+        # Press release
+        if ctx.press_release_content:
+            pr_text = ctx.press_release_content
+            if len(pr_text) > 10_000:
+                pr_text = pr_text[:10_000] + "\n... (truncated)"
+            parts.append(f"## Acquisition Press Release\n\n{pr_text}\n")
+
+        return "\n".join(parts)
+
+    # ------------------------------------------------------------------
+    # Turn 3: SPA Extraction Prompts
+    # ------------------------------------------------------------------
+
+    def _build_spa_system_prompt(self) -> str:
+        return (
+            "You are a senior M&A lawyer extracting structured deal terms from a Share Purchase Agreement (SPA).\n\n"
+            "## Your Task\n\n"
+            "Extract the following from the SPA text:\n"
+            "1. **Purchase price** and structure (cash, stock, earnout)\n"
+            "2. **Payment waterfall** mechanics (debt repayment, expenses, escrow)\n"
+            "3. **Escrow terms** and holdback periods\n"
+            "4. **Non-compete/restricted periods**\n"
+            "5. **Closing conditions** and regulatory requirements\n"
+            "6. **Entity structure** (holding companies, share classes, acquisition vehicles)\n"
+            "7. **Material defined terms** (Business definition, key products)\n"
+            "8. **Knowledge holders** (named individuals with disclosure obligations)\n\n"
+            "## Output Format\n\n"
+            "Return ONLY a raw JSON object:\n\n"
+            "{\n"
+            '  "budget_range": "<purchase price and payment waterfall summary>",\n'
+            '  "spa_notes": "<entity structure, non-compete, closing conditions, key defined terms>",\n'
+            '  "additional_entity_variants": ["<entity1>", "<entity2>"],\n'
+            '  "key_executives": [{"name": "<name>", "title": "<title>", "company": "<company>"}]\n'
+            "}\n\n"
+            "Respond with ONLY the JSON object."
+        )
+
+    def _build_spa_extraction_prompt(
+        self,
+        buyer: str,
+        target: str,
+        base_config: dict[str, Any],
+        spa_content: str,
+    ) -> str:
+        spa_text = spa_content
+        if len(spa_text) > _MAX_SPA_CHARS:
+            spa_text = spa_text[:_MAX_SPA_CHARS] + "\n... (truncated)"
+
+        return (
+            f"## Parties\n"
+            f"- Buyer: {buyer}\n"
+            f"- Target: {base_config.get('target', {}).get('name', target)}\n\n"
+            f"## SPA Text\n\n{spa_text}\n"
+        )
+
+    def _merge_spa_into_config(
+        self,
+        config: dict[str, Any],
+        spa_data: dict[str, Any],
+        ctx: IngestedContext,
+    ) -> None:
+        """Merge SPA extraction results into the config dict."""
+        # Merge budget_range into buyer_strategy
+        if "buyer_strategy" not in config:
+            config["buyer_strategy"] = {}
+        bs = config["buyer_strategy"]
+
+        budget = spa_data.get("budget_range", "")
+        if budget:
+            existing = bs.get("budget_range", "")
+            bs["budget_range"] = f"{existing} {budget}".strip() if existing else budget
+
+        # Merge SPA notes
+        spa_notes = spa_data.get("spa_notes", "")
+        if spa_notes:
+            existing_notes = bs.get("notes", "")
+            separator = "\n\nSPA STRUCTURE: " if existing_notes else "SPA STRUCTURE: "
+            bs["notes"] = f"{existing_notes}{separator}{spa_notes}" if existing_notes else f"SPA STRUCTURE: {spa_notes}"
+
+        # Add entity variants from SPA
+        additional_variants = spa_data.get("additional_entity_variants", [])
+        if additional_variants and isinstance(additional_variants, list):
+            existing_variants = config.get("target", {}).get(
+                "entity_name_variants_for_contract_matching",
+                [],
+            )
+            for variant in additional_variants:
+                if isinstance(variant, str) and variant not in existing_variants:
+                    existing_variants.append(variant)
+
+        # Add key executives
+        key_execs = spa_data.get("key_executives", [])
+        if key_execs and isinstance(key_execs, list):
+            if "key_executives" not in config:
+                config["key_executives"] = []
+            existing_names = {e.get("name", "") for e in config["key_executives"] if isinstance(e, dict)}
+            for exec_item in key_execs:
+                if isinstance(exec_item, dict) and exec_item.get("name") not in existing_names:
+                    exec_item.setdefault("title", "")
+                    exec_item.setdefault("company", "")
+                    exec_item.setdefault("notes", "")
+                    config["key_executives"].append(exec_item)
+
+    # ------------------------------------------------------------------
+    # Claude API call
     # ------------------------------------------------------------------
 
     async def _call_claude(self, system_prompt: str, user_prompt: str) -> str:
@@ -369,6 +798,81 @@ class DataRoomAnalyzer:
         return data
 
 
+# ---------------------------------------------------------------------------
+# Interactive refinement
+# ---------------------------------------------------------------------------
+
+
+def run_interactive_refinement(
+    config: dict[str, Any],
+    console: Console,
+) -> dict[str, Any]:
+    """Interactively refine buyer_strategy with user input.
+
+    Prompts the user to review and adjust the generated buyer strategy.
+    Mutates and returns *config*.
+    """
+    bs = config.get("buyer_strategy")
+    if not bs or not isinstance(bs, dict):
+        return config
+
+    console.print("\n[bold]Buyer Strategy Review[/bold]\n")
+
+    # Show thesis
+    thesis = bs.get("thesis", "")
+    if thesis:
+        console.print(f"[bold cyan]Thesis:[/bold cyan] {thesis[:500]}")
+        response = _prompt_user("Accept thesis? [Y/edit] ", default="Y")
+        if response.lower() not in ("y", "yes", ""):
+            new_thesis = _prompt_user("Enter new thesis: ")
+            if new_thesis:
+                bs["thesis"] = new_thesis
+
+    # Risk tolerance
+    current_risk = bs.get("risk_tolerance", "moderate")
+    console.print(f"\n[bold cyan]Risk tolerance:[/bold cyan] {current_risk}")
+    response = _prompt_user(
+        "Risk tolerance [conservative/moderate/aggressive] ",
+        default=current_risk,
+    )
+    if response in _VALID_RISK_TOLERANCES:
+        bs["risk_tolerance"] = response
+
+    # Additional focus areas
+    console.print(f"\n[bold cyan]Focus areas:[/bold cyan] {', '.join(bs.get('focus_areas', []))}")
+    response = _prompt_user("Additional focus areas (comma-separated, or Enter to skip): ")
+    if response.strip():
+        additional = [a.strip() for a in response.split(",") if a.strip()]
+        bs.setdefault("focus_areas", []).extend(additional)
+
+    # Additional integration priorities
+    console.print(
+        f"\n[bold cyan]Integration priorities:[/bold cyan] {', '.join(bs.get('integration_priorities', [])[:5])}"
+    )
+    response = _prompt_user("Additional integration priorities (comma-separated, or Enter to skip): ")
+    if response.strip():
+        additional = [a.strip() for a in response.split(",") if a.strip()]
+        bs.setdefault("integration_priorities", []).extend(additional)
+
+    config["buyer_strategy"] = bs
+    console.print("\n[green]Buyer strategy updated.[/green]")
+    return config
+
+
+def _prompt_user(prompt: str, default: str = "") -> str:
+    """Prompt user for input with a default value."""
+    try:
+        response = input(prompt)
+        return response if response else default
+    except (EOFError, KeyboardInterrupt):
+        return default
+
+
+# ---------------------------------------------------------------------------
+# Validation and summary
+# ---------------------------------------------------------------------------
+
+
 def validate_and_fix_config(
     config: dict[str, Any],
     scan_result: dict[str, Any],
@@ -447,6 +951,21 @@ def validate_and_fix_config(
             elif folder_name not in c2v[clean_name]:
                 c2v[clean_name].append(folder_name)
 
+    # Fix buyer_strategy if present
+    bs = config.get("buyer_strategy")
+    if bs is not None and isinstance(bs, dict):
+        # Ensure risk_tolerance is valid
+        rt = bs.get("risk_tolerance", "")
+        if rt not in _VALID_RISK_TOLERANCES:
+            bs["risk_tolerance"] = "moderate"
+        # Ensure all required fields exist with defaults
+        bs.setdefault("thesis", "")
+        bs.setdefault("key_synergies", [])
+        bs.setdefault("integration_priorities", [])
+        bs.setdefault("focus_areas", [])
+        bs.setdefault("budget_range", "")
+        bs.setdefault("notes", "")
+
     # Final Pydantic validation
     from dd_agents.config import validate_deal_config
 
@@ -513,6 +1032,28 @@ def print_auto_config_summary(
     file_count = scan_result.get("file_count", 0)
     table.add_row("Customers", str(customer_count))
     table.add_row("Files", str(file_count))
+
+    # Buyer strategy summary
+    bs = config.get("buyer_strategy")
+    if bs and isinstance(bs, dict):
+        table.add_row("", "")  # spacer
+        table.add_row("Buyer Strategy", "")
+        thesis = bs.get("thesis", "")
+        if thesis:
+            table.add_row("  Thesis", thesis[:200] + ("..." if len(thesis) > 200 else ""))
+        synergies = bs.get("key_synergies", [])
+        if synergies:
+            table.add_row("  Synergies", f"{len(synergies)} items")
+        priorities = bs.get("integration_priorities", [])
+        if priorities:
+            table.add_row("  Integration", f"{len(priorities)} priorities")
+        table.add_row("  Risk Tolerance", bs.get("risk_tolerance", "moderate"))
+        bs_focus = bs.get("focus_areas", [])
+        if bs_focus:
+            table.add_row("  Buyer Focus", ", ".join(bs_focus[:5]))
+        budget = bs.get("budget_range", "")
+        if budget:
+            table.add_row("  Budget", budget[:200])
 
     # Notes
     deal_notes = deal.get("notes", "")
