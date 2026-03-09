@@ -25,6 +25,7 @@ from dd_agents.config import (
     load_deal_config,
 )
 
+logger = logging.getLogger(__name__)
 console = Console()
 err_console = Console(stderr=True)
 
@@ -1312,7 +1313,7 @@ def review_progress(run_dir: Path) -> None:
                 data = json.loads(f.read_text(encoding="utf-8"))
                 total += len(data.get("findings", []))
             except Exception:
-                pass
+                logger.debug("Failed to parse findings from %s", f.name)
 
     progress = mgr.compute_progress(total)
     console.print(

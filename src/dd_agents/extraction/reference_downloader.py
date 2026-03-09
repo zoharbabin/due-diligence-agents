@@ -394,6 +394,6 @@ def _extract_text(raw_bytes: bytes, url: str) -> str:
         if text.strip():
             return f"# External Reference: {url}\n\n{text}"
     except Exception:
-        pass
+        logger.debug("UTF-8 decode fallback failed for %s", url)
 
     return ""

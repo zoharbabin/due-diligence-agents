@@ -4,6 +4,31 @@ All notable changes to this project will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.1] - 2026-03-09
+
+### Added
+
+- **`read_office` MCP tool** (Issue #167, PR #168) — reads binary Office files (.xlsx, .xls, .docx, .doc, .pptx, .ppt) and returns structured text content.
+  - openpyxl for .xlsx with streaming row reader, column-letter headers, and char-budget early termination
+  - markitdown for .xls, .docx, .doc, .pptx, .ppt
+  - Cell sanitization: newlines → spaces, pipes escaped for valid markdown tables
+  - Fallback to pre-extracted text from `index/text/` when primary read fails
+  - 150K char output truncation
+  - Registered in tool server, specialist tools, and prompt builder file access instructions
+  - 27 new unit tests covering Excel reading, Word reading, error handling, fallback, truncation, and tool registration
+- **Document Precedence Engine** (Issue #163, PR #164) — 5-layer scoring system for document authority ranking.
+  - `FolderPriority` — 4-tier folder classification (authoritative/working/supplementary/historical)
+  - `VersionChainBuilder` — groups file families, detects version keywords (signed/executed/final/draft)
+  - `PrecedenceScorer` — weighted composite score (version 40%, folder 30%, recency 30%)
+  - `compute_precedence_index()` — wires all 3 components into pipeline step 6
+  - Flows to prompts (step 14), respawn (step 17), and merge (step 24)
+  - 42 new unit tests
+
+### Fixed
+
+- **Silent exception swallowing** — two `except Exception: pass` blocks now log debug messages instead of silently ignoring errors (`cli.py` finding count parsing, `reference_downloader.py` UTF-8 decode fallback).
+- **Contradictory Bash instruction in prompts** — changed `use 'ls -R'` to `use 'Glob(pattern="**/*")'` since agents don't have Bash access (`prompt_builder.py`).
+
 ## [0.5.0] - 2026-03-06
 
 ### Added
