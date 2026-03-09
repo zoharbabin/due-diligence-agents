@@ -167,7 +167,7 @@ def _clean_display_name(safe_name: str) -> str:
 
     Examples:
         "1_5_customer_contracts" → "Customer Contracts"
-        "snapapp" → "Snapapp"
+        "acme_app" → "Acme App"
         "3_9_mapping" → "Mapping"
     """
     name = _DISPLAY_NAME_PREFIX_RE.sub("", safe_name)

@@ -1021,7 +1021,7 @@ class TestQAAuditorDeferredChecks:
                     "citations": [
                         {
                             "source_type": "file",
-                            "source_path": "2. Legal Due Diligence/2.7. Vertu Management Agreement",
+                            "source_path": "2. Legal Due Diligence/2.7. Vendor Management Agreement",
                             "exact_quote": "test",
                         },
                         {

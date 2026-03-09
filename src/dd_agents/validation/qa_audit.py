@@ -406,7 +406,7 @@ class QAAuditor:
                     continue
                 # Skip directory and description references that lack a file
                 # extension.  Agents sometimes cite folder paths (e.g.
-                # "2. Legal Due Diligence/2.7. Vertu Management Agreement")
+                # "2. Legal Due Diligence/2.7. Vendor Management Agreement")
                 # or document descriptions ("4.1 Tax Returns folder").
                 if not _FILE_EXT_RE.search(source_path.rstrip("/")):
                     continue

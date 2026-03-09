@@ -502,7 +502,7 @@ class ExtractionPipeline:
 
             # Check for Identity-H fonts — only flag as missing_tounicode
             # if the extracted text also has control-char corruption.
-            # 25/26 Identity-H PDFs in production data room extract cleanly.
+            # 25/26 Identity-H PDFs in production data rooms extract cleanly.
             has_identity_h = False
             fonts = page.get_fonts(full=True)
             for font in fonts:

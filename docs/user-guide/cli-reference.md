@@ -152,6 +152,11 @@ dd-agents auto-config BUYER TARGET [OPTIONS]
 |--------|------|---------|-------------|
 | `--data-room` | path | required | Path to the data room folder |
 | `--deal-type` | choice | inferred | Override the AI-inferred deal type |
+| `--buyer-docs` | path | none | Buyer business description files (10-K, annual report). Repeatable. |
+| `--spa` | path | none | SPA draft/redline for deal structure extraction |
+| `--press-release` | path | none | Acquisition press release for strategic context |
+| `--buyer-docs-dir` | string | `_buyer` | Folder name for converted buyer files in data room |
+| `--interactive` | flag | off | Enable interactive follow-up questions for strategy refinement |
 | `--output` | path | `deal-config.json` | Output file path |
 | `--dry-run` | flag | off | Print config without writing |
 | `--force` | flag | off | Overwrite existing output file |
@@ -160,7 +165,7 @@ dd-agents auto-config BUYER TARGET [OPTIONS]
 **Examples:**
 
 ```bash
-# Basic usage
+# Basic usage (backward compatible)
 dd-agents auto-config "Acme Corp" "Target Inc" --data-room ./data_room
 
 # Preview without writing
@@ -169,7 +174,21 @@ dd-agents auto-config "Acme Corp" "Target Inc" --data-room ./data_room --dry-run
 # Override deal type and save to custom path
 dd-agents auto-config "Acme Corp" "Target Inc" --data-room ./data_room \
   --deal-type merger --output configs/my-deal.json --force
+
+# Deep auto-config with buyer strategy generation
+dd-agents auto-config "Acme Corp" "Target Inc" --data-room ./data_room \
+  --buyer-docs ./10k.docx --spa ./spa-draft.pdf --press-release ./pr.docx
+
+# Multiple buyer docs with interactive refinement
+dd-agents auto-config "Acme Corp" "Target Inc" --data-room ./data_room \
+  --buyer-docs ./10k.docx --buyer-docs ./earnings-call.docx \
+  --spa ./spa.pdf --interactive
 ```
+
+When `--buyer-docs`, `--spa`, or `--press-release` are provided, the command runs
+a multi-turn AI analysis to generate a `buyer_strategy` section. This enables the
+Acquirer Intelligence Agent and buyer-specific report sections. Buyer documents are
+converted to markdown and placed in `{data_room}/_buyer/` for agent access at runtime.
 
 ---
 

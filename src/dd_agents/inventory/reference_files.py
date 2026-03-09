@@ -15,6 +15,7 @@ from pathlib import Path, PurePosixPath
 from dd_agents.models.enums import ReferenceFileCategory
 from dd_agents.models.inventory import FileEntry, ReferenceFile
 from dd_agents.utils.constants import (
+    AGENT_ACQUIRER_INTELLIGENCE,
     AGENT_COMMERCIAL,
     AGENT_FINANCE,
     AGENT_LEGAL,
@@ -29,6 +30,19 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _CATEGORY_PATTERNS: list[tuple[str, ReferenceFileCategory, str]] = [
+    # Buyer Context — checked first so _buyer/ dir files are never misclassified
+    (
+        r"(_buyer|_acquirer|buyer.?context|10-k|annual.?report|earnings.?call|investor.?presentation)",
+        ReferenceFileCategory.BUYER_CONTEXT,
+        "Buyer context and strategy document",
+    ),
+    # DD Output / Buyer Work Product — checked second so files in "internal analysis"
+    # or "readout deck" dirs are excluded even when filenames match other categories
+    (
+        r"(readout|dd.?report|dd.?deck|dd.?draft|internal.?analysis|work.?product|synergy.?model)",
+        ReferenceFileCategory.DD_OUTPUT,
+        "DD output or buyer work product (excluded from specialist analysis)",
+    ),
     # Financial
     (
         r"(financ|revenue|arr|mrr|bookings|billing|invoice|p&l|profit.?loss|balance.?sheet|cash.?flow)",
@@ -81,6 +95,8 @@ _ROUTING_TABLE: dict[ReferenceFileCategory, list[str]] = {
     ReferenceFileCategory.SALES: [AGENT_COMMERCIAL, AGENT_FINANCE],
     ReferenceFileCategory.COMPLIANCE: [AGENT_LEGAL, AGENT_PRODUCTTECH],
     ReferenceFileCategory.HR: [AGENT_FINANCE, AGENT_LEGAL],
+    ReferenceFileCategory.BUYER_CONTEXT: [AGENT_ACQUIRER_INTELLIGENCE],
+    ReferenceFileCategory.DD_OUTPUT: [],
     ReferenceFileCategory.OTHER: list(ALL_SPECIALIST_AGENTS),
 }
 
@@ -118,6 +134,11 @@ class ReferenceFileClassifier:
 
             category, subcategory, description = self._classify_single(entry.path)
             agents = self.route_to_agents(category)
+
+            # DD output / buyer work products are not routed to any agent
+            if not agents:
+                logger.debug("Skipping DD output file: %s", entry.path)
+                continue
 
             ref_file = ReferenceFile(
                 file_path=entry.path,
