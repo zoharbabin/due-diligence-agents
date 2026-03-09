@@ -978,7 +978,7 @@ class PromptBuilder:
             "construct alternative paths or look for converted versions.\n"
             "For large files (>100KB), use Grep to search for specific terms "
             "instead of reading the entire file.\n\n"
-            "If the file list says '... and N more files', use `ls -R` on the "
+            "If the file list says '... and N more files', use `Glob(pattern=\"**/*\")` on the "
             "customer's directory (shown as 'Path:') to discover ALL files. "
             "You MUST analyze every file in the data room, not just those "
             "listed inline."

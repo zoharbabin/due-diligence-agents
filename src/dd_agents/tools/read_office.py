@@ -95,7 +95,12 @@ def read_office(
 
 
 def _read_excel(path: Path, sheet_name: str | None) -> str:
-    """Read an Excel file using openpyxl and return markdown tables."""
+    """Read an Excel file using openpyxl and return markdown tables.
+
+    Streams rows directly into the output to avoid loading the entire
+    spreadsheet into memory.  Stops reading once the output exceeds
+    ``_MAX_OUTPUT_CHARS`` (truncation is applied by the caller).
+    """
     from openpyxl import load_workbook
 
     wb = load_workbook(path, read_only=True, data_only=True)
@@ -108,15 +113,30 @@ def _read_excel(path: Path, sheet_name: str | None) -> str:
             sheet_names = list(wb.sheetnames)
 
         parts: list[str] = []
+        total_chars = 0
+        budget_exceeded = False
+
         for name in sheet_names:
+            if budget_exceeded:
+                break
+
             ws = wb[name]
+
+            # First pass: read rows to determine dimensions.
+            # Use a capped read to avoid unbounded memory on huge sheets.
             rows: list[list[str]] = []
             for raw_row in ws.iter_rows(values_only=True):
                 rows.append([_sanitize_cell(str(cell)) if cell is not None else "" for cell in raw_row])
+                # Check periodically — every 500 rows — whether we've read enough
+                if len(rows) % 500 == 0 and len(rows) > 0:
+                    est_chars = sum(sum(len(c) + 3 for c in r) for r in rows)
+                    if est_chars > _MAX_OUTPUT_CHARS * 2:
+                        break
 
             num_rows = len(rows)
             num_cols = max((len(r) for r in rows), default=0)
             parts.append(f"## Sheet: {name} ({num_rows} rows, {num_cols} columns)\n")
+            total_chars += len(parts[-1])
 
             if num_rows == 0:
                 parts.append("(empty sheet)\n")
@@ -131,7 +151,12 @@ def _read_excel(path: Path, sheet_name: str | None) -> str:
                 padded = list(row)
                 while len(padded) < num_cols:
                     padded.append("")
-                parts.append("| " + " | ".join(padded) + " |")
+                line = "| " + " | ".join(padded) + " |"
+                parts.append(line)
+                total_chars += len(line) + 1  # +1 for \n join
+                if total_chars > _MAX_OUTPUT_CHARS:
+                    budget_exceeded = True
+                    break
             parts.append("")
 
         return "\n".join(parts)
