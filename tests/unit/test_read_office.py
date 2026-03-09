@@ -281,6 +281,53 @@ class TestFallbackToExtractedText:
         assert "Revenue" in result["content"]
         assert result.get("method") == "extracted_text_fallback"
 
+    def test_fallback_with_full_path_convention(self, tmp_path: Path) -> None:
+        """Fallback resolves via full-path convention (slashes → __)."""
+        # Place the corrupt file in a subdirectory to get a multi-segment path
+        sub = tmp_path / "data_room"
+        sub.mkdir()
+        bad_xlsx = sub / "broken.xlsx"
+        bad_xlsx.write_bytes(b"PK\x03\x04broken zip content")
+
+        text_dir = tmp_path / "index" / "text"
+        text_dir.mkdir(parents=True)
+
+        # Use _safe_text_name to generate the correct fallback filename
+        from dd_agents.tools.read_office import _safe_text_name
+
+        safe = _safe_text_name(str(bad_xlsx))
+        (text_dir / safe).write_text("# Full Path Fallback\nCosts: $2M")
+
+        from dd_agents.tools.read_office import read_office
+
+        result = read_office(str(bad_xlsx), text_dir=str(text_dir))
+        assert result["status"] == "ok"
+        assert "Costs" in result["content"]
+        assert result.get("method") == "extracted_text_fallback"
+
+    def test_markitdown_failure_tries_fallback(self, tmp_path: Path) -> None:
+        """When markitdown raises an error, fallback is still attempted."""
+        from unittest.mock import patch
+
+        bad_docx = tmp_path / "report.docx"
+        bad_docx.write_bytes(b"PK\x03\x04dummy")
+
+        text_dir = tmp_path / "index" / "text"
+        text_dir.mkdir(parents=True)
+        (text_dir / "report.docx.md").write_text("# Extracted Content\nFallback data")
+
+        from dd_agents.tools.read_office import read_office
+
+        with patch(
+            "dd_agents.tools.read_office._read_with_markitdown",
+            side_effect=ValueError("markitdown returned empty content"),
+        ):
+            result = read_office(str(bad_docx), text_dir=str(text_dir))
+
+        assert result["status"] == "ok"
+        assert "Fallback data" in result["content"]
+        assert result.get("method") == "extracted_text_fallback"
+
     def test_no_fallback_when_text_dir_missing(self, tmp_path: Path) -> None:
         """Without text_dir, corrupted file returns error."""
         bad = tmp_path / "corrupt.xlsx"

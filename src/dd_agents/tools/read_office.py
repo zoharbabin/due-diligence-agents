@@ -17,6 +17,11 @@ logger = logging.getLogger(__name__)
 
 _MAX_OUTPUT_CHARS: int = 150_000
 
+
+class _SheetNotFoundError(Exception):
+    """Raised when a requested Excel sheet does not exist."""
+
+
 # openpyxl only supports .xlsx (OOXML), not legacy .xls (BIFF).
 # Legacy .xls/.doc/.ppt are routed through markitdown which handles them.
 _OPENPYXL_EXTENSIONS: frozenset[str] = frozenset({".xlsx"})
@@ -60,14 +65,16 @@ def read_office(
             content = _read_excel(path, sheet_name)
             method = "openpyxl"
         else:
+            if sheet_name:
+                logger.debug("sheet_name='%s' ignored for non-.xlsx file %s", sheet_name, path.name)
             content = _read_with_markitdown(path)
             method = "markitdown"
 
         content = _truncate(content)
         return {"status": "ok", "content": content, "method": method}
 
-    except ValueError as exc:
-        # Deterministic errors (e.g. invalid sheet name) — return immediately
+    except _SheetNotFoundError as exc:
+        # Deterministic errors (invalid sheet name) — return immediately, no fallback
         return {"status": "error", "reason": str(exc)}
 
     except Exception as exc:
@@ -96,7 +103,7 @@ def _read_excel(path: Path, sheet_name: str | None) -> str:
     try:
         if sheet_name:
             if sheet_name not in wb.sheetnames:
-                raise ValueError(f"Sheet '{sheet_name}' not found. Available: {wb.sheetnames}")
+                raise _SheetNotFoundError(f"Sheet '{sheet_name}' not found. Available: {wb.sheetnames}")
             sheet_names = [sheet_name]
         else:
             sheet_names = list(wb.sheetnames)
