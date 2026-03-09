@@ -166,6 +166,28 @@ class TestReadExcel:
         # Header row + separator + 1 data row = 3 lines
         assert len(lines) == 3
 
+    def test_read_xlsx_newline_in_cell_sanitized(self, tmp_path: Path) -> None:
+        """Newlines in cell values are replaced with spaces for valid markdown."""
+        openpyxl = pytest.importorskip("openpyxl")
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        assert ws is not None
+        ws.append(["Line1\nLine2", "OK"])
+        ws.append(["Normal", "Also\r\nfine"])
+        wb.save(tmp_path / "newlines.xlsx")
+
+        from dd_agents.tools.read_office import read_office
+
+        result = read_office(str(tmp_path / "newlines.xlsx"))
+        assert result["status"] == "ok"
+        # Newlines must not appear in table rows (they'd break markdown)
+        table_lines = [ln for ln in result["content"].split("\n") if ln.startswith("|")]
+        # Header + separator + 2 data rows = 4 lines
+        assert len(table_lines) == 4
+        # Content is preserved (newlines become spaces)
+        assert "Line1 Line2" in result["content"]
+        assert "Also fine" in result["content"]
+
 
 class TestReadDocx:
     """Tests for reading Word documents (.docx)."""

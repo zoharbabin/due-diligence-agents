@@ -112,7 +112,7 @@ def _read_excel(path: Path, sheet_name: str | None) -> str:
             ws = wb[name]
             rows: list[list[str]] = []
             for raw_row in ws.iter_rows(values_only=True):
-                rows.append([_escape_pipe(str(cell)) if cell is not None else "" for cell in raw_row])
+                rows.append([_sanitize_cell(str(cell)) if cell is not None else "" for cell in raw_row])
 
             num_rows = len(rows)
             num_cols = max((len(r) for r in rows), default=0)
@@ -139,9 +139,13 @@ def _read_excel(path: Path, sheet_name: str | None) -> str:
         wb.close()
 
 
-def _escape_pipe(value: str) -> str:
-    """Escape pipe characters in cell values so markdown tables render correctly."""
-    return value.replace("|", "\\|")
+def _sanitize_cell(value: str) -> str:
+    """Sanitize a cell value for safe embedding in a markdown table row.
+
+    - Replaces newlines with spaces (newlines break table row boundaries)
+    - Escapes pipe characters (pipes break column boundaries)
+    """
+    return value.replace("\r\n", " ").replace("\r", " ").replace("\n", " ").replace("|", "\\|")
 
 
 def _col_letter(index: int) -> str:
