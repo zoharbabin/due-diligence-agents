@@ -349,10 +349,10 @@ class TestCustomerRegistryBuilder:
         files = disco.discover(dr)
 
         builder = CustomerRegistryBuilder()
-        customers, _ = builder.build(dr, files, layout="single_target", target_name="PathFactory Holdings ULC")
+        customers, _ = builder.build(dr, files, layout="single_target", target_name="NovaBridge Holdings ULC")
 
         assert len(customers) == 1
-        assert customers[0].safe_name == "pathfactory_holdings"
+        assert customers[0].safe_name == "novabridge_holdings"
 
     def test_single_target_includes_nested_files(self, tmp_path: Path) -> None:
         """single_target layout should include files at all nesting levels."""
