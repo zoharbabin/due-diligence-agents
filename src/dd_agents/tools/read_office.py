@@ -17,10 +17,11 @@ logger = logging.getLogger(__name__)
 
 _MAX_OUTPUT_CHARS: int = 150_000
 
-_EXCEL_EXTENSIONS: frozenset[str] = frozenset({".xlsx", ".xls"})
-_WORD_EXTENSIONS: frozenset[str] = frozenset({".docx", ".doc"})
-_PPT_EXTENSIONS: frozenset[str] = frozenset({".pptx", ".ppt"})
-_ALL_OFFICE_EXTENSIONS: frozenset[str] = _EXCEL_EXTENSIONS | _WORD_EXTENSIONS | _PPT_EXTENSIONS
+# openpyxl only supports .xlsx (OOXML), not legacy .xls (BIFF).
+# Legacy .xls/.doc/.ppt are routed through markitdown which handles them.
+_OPENPYXL_EXTENSIONS: frozenset[str] = frozenset({".xlsx"})
+_MARKITDOWN_EXTENSIONS: frozenset[str] = frozenset({".xls", ".docx", ".doc", ".pptx", ".ppt"})
+_ALL_OFFICE_EXTENSIONS: frozenset[str] = _OPENPYXL_EXTENSIONS | _MARKITDOWN_EXTENSIONS
 
 
 def read_office(
@@ -55,7 +56,7 @@ def read_office(
 
     # Primary read attempt
     try:
-        if suffix in _EXCEL_EXTENSIONS:
+        if suffix in _OPENPYXL_EXTENSIONS:
             content = _read_excel(path, sheet_name)
             method = "openpyxl"
         else:
@@ -64,6 +65,10 @@ def read_office(
 
         content = _truncate(content)
         return {"status": "ok", "content": content, "method": method}
+
+    except ValueError as exc:
+        # Deterministic errors (e.g. invalid sheet name) — return immediately
+        return {"status": "error", "reason": str(exc)}
 
     except Exception as exc:
         logger.debug("Primary read failed for %s: %s", file_path, exc)
@@ -90,19 +95,18 @@ def _read_excel(path: Path, sheet_name: str | None) -> str:
     wb = load_workbook(path, read_only=True, data_only=True)
     try:
         if sheet_name:
-            sheet_names = [sheet_name] if sheet_name in wb.sheetnames else []
-            if not sheet_names:
-                wb.close()
+            if sheet_name not in wb.sheetnames:
                 raise ValueError(f"Sheet '{sheet_name}' not found. Available: {wb.sheetnames}")
+            sheet_names = [sheet_name]
         else:
-            sheet_names = wb.sheetnames
+            sheet_names = list(wb.sheetnames)
 
         parts: list[str] = []
         for name in sheet_names:
             ws = wb[name]
             rows: list[list[str]] = []
             for raw_row in ws.iter_rows(values_only=True):
-                rows.append([str(cell) if cell is not None else "" for cell in raw_row])
+                rows.append([_escape_pipe(str(cell)) if cell is not None else "" for cell in raw_row])
 
             num_rows = len(rows)
             num_cols = max((len(r) for r in rows), default=0)
@@ -112,24 +116,38 @@ def _read_excel(path: Path, sheet_name: str | None) -> str:
                 parts.append("(empty sheet)\n")
                 continue
 
-            # Build markdown table: first row as headers
-            headers = rows[0] if rows else []
-            # Pad headers if needed
-            while len(headers) < num_cols:
-                headers.append("")
-
-            parts.append("| " + " | ".join(headers) + " |")
-            parts.append("| " + " | ".join("---" for _ in headers) + " |")
-            for row in rows[1:]:
-                # Pad row to match header count
-                while len(row) < len(headers):
-                    row.append("")
-                parts.append("| " + " | ".join(row) + " |")
+            # Generate column headers (A, B, C, ...) so real data isn't
+            # misinterpreted as headers when row 1 contains data values.
+            col_headers = [_col_letter(i) for i in range(num_cols)]
+            parts.append("| " + " | ".join(col_headers) + " |")
+            parts.append("| " + " | ".join("---" for _ in col_headers) + " |")
+            for row in rows:
+                padded = list(row)
+                while len(padded) < num_cols:
+                    padded.append("")
+                parts.append("| " + " | ".join(padded) + " |")
             parts.append("")
 
         return "\n".join(parts)
     finally:
         wb.close()
+
+
+def _escape_pipe(value: str) -> str:
+    """Escape pipe characters in cell values so markdown tables render correctly."""
+    return value.replace("|", "\\|")
+
+
+def _col_letter(index: int) -> str:
+    """Convert 0-based column index to Excel-style letter (A, B, ..., Z, AA, ...)."""
+    result = ""
+    i = index
+    while True:
+        result = chr(65 + i % 26) + result
+        i = i // 26 - 1
+        if i < 0:
+            break
+    return result
 
 
 def _read_with_markitdown(path: Path) -> str:

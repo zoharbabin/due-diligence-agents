@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 
 class TestReadExcel:
-    """Tests for reading Excel files (.xlsx, .xls)."""
+    """Tests for reading Excel files (.xlsx)."""
 
     def test_read_xlsx_single_sheet(self, tmp_path: Path) -> None:
         """Read a simple .xlsx with one sheet returns markdown table."""
@@ -80,6 +80,22 @@ class TestReadExcel:
         assert "Widget" in result["content"]
         assert "999" not in result["content"]
 
+    def test_read_xlsx_invalid_sheet_name(self, tmp_path: Path) -> None:
+        """Invalid sheet_name falls back to extracted text or returns error."""
+        openpyxl = pytest.importorskip("openpyxl")
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        assert ws is not None
+        ws.title = "Data"
+        ws.append(["A", 1])
+        wb.save(tmp_path / "test.xlsx")
+
+        from dd_agents.tools.read_office import read_office
+
+        result = read_office(str(tmp_path / "test.xlsx"), sheet_name="NonExistent")
+        assert result["status"] == "error"
+        assert "not found" in result["reason"].lower()
+
     def test_read_xlsx_empty_sheet(self, tmp_path: Path) -> None:
         """Empty Excel file returns informative message."""
         openpyxl = pytest.importorskip("openpyxl")
@@ -107,6 +123,48 @@ class TestReadExcel:
         result = read_office(str(tmp_path / "dates.xlsx"))
         assert result["status"] == "ok"
         assert "2024" in result["content"]
+
+    def test_read_xlsx_uses_column_letter_headers(self, tmp_path: Path) -> None:
+        """Table headers are Excel column letters (A, B, C), not data values."""
+        openpyxl = pytest.importorskip("openpyxl")
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        assert ws is not None
+        ws.append(["Revenue", "$1M"])
+        ws.append(["Costs", "$500K"])
+        wb.save(tmp_path / "data.xlsx")
+
+        from dd_agents.tools.read_office import read_office
+
+        result = read_office(str(tmp_path / "data.xlsx"))
+        assert result["status"] == "ok"
+        content = result["content"]
+        # Column letters as headers, not first row values
+        assert "| A " in content
+        assert "| B " in content
+        # All data rows present (not skipped as header)
+        assert "Revenue" in content
+        assert "$1M" in content
+        assert "Costs" in content
+
+    def test_read_xlsx_pipe_in_cell_escaped(self, tmp_path: Path) -> None:
+        """Pipe characters in cell values are escaped for markdown tables."""
+        openpyxl = pytest.importorskip("openpyxl")
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        assert ws is not None
+        ws.append(["Option A | Option B", "Yes"])
+        wb.save(tmp_path / "pipes.xlsx")
+
+        from dd_agents.tools.read_office import read_office
+
+        result = read_office(str(tmp_path / "pipes.xlsx"))
+        assert result["status"] == "ok"
+        assert "\\|" in result["content"]
+        # The table should still be valid — 2 data columns, not 3
+        lines = [ln for ln in result["content"].split("\n") if ln.startswith("|")]
+        # Header row + separator + 1 data row = 3 lines
+        assert len(lines) == 3
 
 
 class TestReadDocx:
@@ -205,7 +263,7 @@ class TestOutputTruncation:
 class TestFallbackToExtractedText:
     """Tests for fallback to pre-extracted markdown in index/text/."""
 
-    def test_fallback_when_pandas_fails(self, tmp_path: Path) -> None:
+    def test_fallback_when_primary_read_fails(self, tmp_path: Path) -> None:
         """When primary read fails, falls back to extracted text."""
         # Create an xlsx that will fail to read
         bad_xlsx = tmp_path / "broken.xlsx"
@@ -232,6 +290,24 @@ class TestFallbackToExtractedText:
 
         result = read_office(str(bad))
         assert result["status"] == "error"
+
+
+class TestColLetter:
+    """Tests for _col_letter helper."""
+
+    def test_single_letters(self) -> None:
+        from dd_agents.tools.read_office import _col_letter
+
+        assert _col_letter(0) == "A"
+        assert _col_letter(25) == "Z"
+
+    def test_double_letters(self) -> None:
+        from dd_agents.tools.read_office import _col_letter
+
+        assert _col_letter(26) == "AA"
+        assert _col_letter(27) == "AB"
+        assert _col_letter(51) == "AZ"
+        assert _col_letter(52) == "BA"
 
 
 class TestToolRegistration:
