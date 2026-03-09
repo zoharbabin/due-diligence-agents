@@ -144,6 +144,34 @@ def _search_similar_definition() -> dict[str, Any]:
     return search_similar_tool_schema()
 
 
+def _read_office_definition() -> dict[str, Any]:
+    """Tool definition for read_office."""
+    return {
+        "name": "read_office",
+        "description": (
+            "Read the contents of a binary Office file (.xlsx, .xls, .docx, .doc, "
+            ".pptx, .ppt). Returns structured text content. Use this instead of "
+            "the Read tool for Office files — the Read tool returns garbled binary "
+            "for these formats."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": "Path to the Office file to read",
+                },
+                "sheet_name": {
+                    "type": "string",
+                    "description": ("For Excel files: specific sheet name to read. Omit to read all sheets."),
+                },
+            },
+            "required": ["file_path"],
+        },
+        "handler": "dd_agents.tools.read_office.read_office",
+    }
+
+
 def _report_progress_definition() -> dict[str, Any]:
     """Tool definition for report_progress."""
     return {
@@ -210,6 +238,7 @@ def create_tool_definitions() -> list[dict[str, Any]]:
             _get_customer_files_definition(),
             _resolve_entity_definition(),
             _search_similar_definition(),
+            _read_office_definition(),
             _report_progress_definition(),
         ]
 
@@ -234,6 +263,7 @@ SPECIALIST_CUSTOM_TOOLS: list[str] = [
     "get_customer_files",
     "resolve_entity",
     "search_similar",
+    "read_office",
     "report_progress",
 ]
 

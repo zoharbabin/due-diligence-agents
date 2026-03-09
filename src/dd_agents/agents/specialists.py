@@ -95,6 +95,7 @@ SPECIALIST_TOOLS: list[str] = [
     "verify_citation",
     "resolve_entity",
     "get_customer_files",
+    "read_office",
     "report_progress",
 ]
 

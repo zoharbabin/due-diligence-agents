@@ -969,9 +969,11 @@ class PromptBuilder:
         """Instructions telling agents to read original files directly (Issue #87)."""
         return (
             "## HOW TO READ FILES\n\n"
-            "Use the Read tool directly on the file paths listed above.\n"
-            "The Read tool handles all formats natively: .pdf, .xlsx, .xls, .docx, "
-            ".doc, .pptx, .csv, .txt, .json, .xml, images, and more.\n"
+            "Use the **Read** tool for: .pdf, .csv, .txt, .json, .xml, images.\n\n"
+            "Use the **read_office** tool for: .xlsx, .xls, .docx, .doc, .pptx, .ppt.\n"
+            "The Read tool CANNOT read binary Office files — it returns garbled content. "
+            'Always use `read_office(file_path="...")` for these formats. '
+            "For Excel files you can optionally pass `sheet_name` to read a specific sheet.\n\n"
             "Read the EXACT paths shown in the customer file lists — do not "
             "construct alternative paths or look for converted versions.\n"
             "For large files (>100KB), use Grep to search for specific terms "

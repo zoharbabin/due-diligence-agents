@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dd_agents.tools.get_customer_files import get_customer_files
+from dd_agents.tools.read_office import read_office
 from dd_agents.tools.report_progress import report_progress
 from dd_agents.tools.resolve_entity import resolve_entity
 from dd_agents.tools.server import (
@@ -29,5 +30,6 @@ __all__ = [
     "verify_citation",
     "get_customer_files",
     "resolve_entity",
+    "read_office",
     "report_progress",
 ]

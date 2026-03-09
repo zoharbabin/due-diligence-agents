@@ -549,6 +549,7 @@ class TestCreateToolDefinitions:
             "get_customer_files",
             "resolve_entity",
             "search_similar",
+            "read_office",
             "report_progress",
         }
         assert names == expected
