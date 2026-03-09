@@ -55,28 +55,31 @@ class LayoutPDFBackend:
             logger.debug("pymupdf (fitz) not available for layout extraction")
             return "", CONFIDENCE_FAILURE
 
-        try:
-            doc = fitz.open(str(filepath))
-        except Exception:
-            logger.warning("pymupdf failed to open %s for layout extraction", filepath)
-            return "", CONFIDENCE_FAILURE
+        from dd_agents.extraction.pipeline import _FITZ_LOCK
 
         parts: list[str] = []
-        try:
-            for page_num in range(len(doc)):
-                page = doc[page_num]
-                blocks = page.get_text("blocks")
-                if not blocks:
-                    continue
+        with _FITZ_LOCK:
+            try:
+                doc = fitz.open(str(filepath))
+            except Exception:
+                logger.warning("pymupdf failed to open %s for layout extraction", filepath)
+                return "", CONFIDENCE_FAILURE
 
-                text_blocks = [b for b in blocks if b[6] == 0]  # type 0 = text
+            try:
+                for page_num in range(len(doc)):
+                    page = doc[page_num]
+                    blocks = page.get_text("blocks")
+                    if not blocks:
+                        continue
 
-                tables = self._detect_tables(text_blocks)
-                page_text = self._blocks_to_markdown(text_blocks, tables, page_num + 1)
-                if page_text.strip():
-                    parts.append(page_text)
-        finally:
-            doc.close()
+                    text_blocks = [b for b in blocks if b[6] == 0]  # type 0 = text
+
+                    tables = self._detect_tables(text_blocks)
+                    page_text = self._blocks_to_markdown(text_blocks, tables, page_num + 1)
+                    if page_text.strip():
+                        parts.append(page_text)
+            finally:
+                doc.close()
 
         if parts:
             return "\n\n".join(parts), _CONFIDENCE_LAYOUT

@@ -44,6 +44,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# MuPDF (pymupdf) is NOT thread-safe.  Concurrent fitz.open() calls from
+# the ThreadPoolExecutor can race on internal C state and cause segfaults.
+# This lock serialises all pymupdf operations across worker threads.
+_FITZ_LOCK = threading.Lock()
+
 # Minimum characters for an extraction to be considered "successful".
 _MIN_TEXT_LEN = 20
 
@@ -481,50 +486,51 @@ class ExtractionPipeline:
         except ImportError:
             return "normal"
 
-        try:
-            doc = fitz.open(str(filepath))
-        except Exception:
-            return "normal"
+        with _FITZ_LOCK:
+            try:
+                doc = fitz.open(str(filepath))
+            except Exception:
+                return "normal"
 
-        try:
-            if doc.is_encrypted:
-                return "encrypted"
+            try:
+                if doc.is_encrypted:
+                    return "encrypted"
 
-            if len(doc) == 0:
-                return "scanned"
+                if len(doc) == 0:
+                    return "scanned"
 
-            page = doc[0]
-            page_text = page.get_text()
-            text_len = len(page_text.strip()) if page_text else 0
+                page = doc[0]
+                page_text = page.get_text()
+                text_len = len(page_text.strip()) if page_text else 0
 
-            if text_len < _SCANNED_PDF_THRESHOLD:
-                return "scanned"
+                if text_len < _SCANNED_PDF_THRESHOLD:
+                    return "scanned"
 
-            # Check for Identity-H fonts — only flag as missing_tounicode
-            # if the extracted text also has control-char corruption.
-            # 25/26 Identity-H PDFs in production data rooms extract cleanly.
-            has_identity_h = False
-            fonts = page.get_fonts(full=True)
-            for font in fonts:
-                # font tuple: (xref, ext, type, basefont, name, encoding, ...)
-                encoding = font[5] if len(font) > 5 else ""
-                if isinstance(encoding, str) and "Identity-H" in encoding:
-                    has_identity_h = True
-                    break
+                # Check for Identity-H fonts — only flag as missing_tounicode
+                # if the extracted text also has control-char corruption.
+                # 25/26 Identity-H PDFs in production data rooms extract cleanly.
+                has_identity_h = False
+                fonts = page.get_fonts(full=True)
+                for font in fonts:
+                    # font tuple: (xref, ext, type, basefont, name, encoding, ...)
+                    encoding = font[5] if len(font) > 5 else ""
+                    if isinstance(encoding, str) and "Identity-H" in encoding:
+                        has_identity_h = True
+                        break
 
-            if has_identity_h and ExtractionPipeline._has_control_char_corruption(page_text):
-                return "missing_tounicode"
+                if has_identity_h and ExtractionPipeline._has_control_char_corruption(page_text):
+                    return "missing_tounicode"
 
-            return "normal"
-        except Exception:
-            return "normal"
-        finally:
-            # Drain MuPDF C-level warnings buffer (stderr is already
-            # suppressed globally).  These are internal PDF library
-            # diagnostics (e.g. "repaired broken tree structure",
-            # "bogus font ascent") that don't affect extraction.
-            fitz.TOOLS.mupdf_warnings()
-            doc.close()
+                return "normal"
+            except Exception:
+                return "normal"
+            finally:
+                # Drain MuPDF C-level warnings buffer (stderr is already
+                # suppressed globally).  These are internal PDF library
+                # diagnostics (e.g. "repaired broken tree structure",
+                # "bogus font ascent") that don't affect extraction.
+                fitz.TOOLS.mupdf_warnings()
+                doc.close()
 
     @staticmethod
     def _has_control_char_corruption(text: str, threshold: float = _CONTROL_CHAR_THRESHOLD) -> bool:
@@ -980,44 +986,45 @@ class ExtractionPipeline:
         except ImportError:
             return ("", []) if capture_blocks else ""
 
-        try:
-            doc = fitz.open(str(filepath))
-        except Exception as exc:
-            logger.debug("pymupdf failed to open %s: %s", filepath, exc)
-            return ("", []) if capture_blocks else ""
-
         parts: list[str] = []
         blocks: list[dict[str, Any]] = []
-        try:
-            for page_num, page in enumerate(doc, start=1):
-                page_text = page.get_text()
-                if page_text and page_text.strip():
-                    parts.append(f"\n--- Page {page_num} ---\n\n{page_text}")
-                if capture_blocks:
-                    for block in page.get_text("blocks"):
-                        # block: (x0, y0, x1, y1, text, block_no, type)
-                        if len(block) >= 7 and block[6] == 0:  # type 0 = text
-                            text_content = str(block[4]).strip()
-                            if text_content:
-                                blocks.append(
-                                    {
-                                        "page": page_num,
-                                        "x0": float(block[0]),
-                                        "y0": float(block[1]),
-                                        "x1": float(block[2]),
-                                        "y1": float(block[3]),
-                                        "text": text_content,
-                                    }
-                                )
-        except Exception as exc:
-            logger.debug("pymupdf extraction error for %s: %s", filepath, exc)
-        finally:
-            # Drain MuPDF C-level warnings buffer (stderr is already
-            # suppressed globally).  These are internal PDF library
-            # diagnostics (e.g. "repaired broken tree structure",
-            # "bogus font ascent") that don't affect extraction.
-            fitz.TOOLS.mupdf_warnings()
-            doc.close()
+        with _FITZ_LOCK:
+            try:
+                doc = fitz.open(str(filepath))
+            except Exception as exc:
+                logger.debug("pymupdf failed to open %s: %s", filepath, exc)
+                return ("", []) if capture_blocks else ""
+
+            try:
+                for page_num, page in enumerate(doc, start=1):
+                    page_text = page.get_text()
+                    if page_text and page_text.strip():
+                        parts.append(f"\n--- Page {page_num} ---\n\n{page_text}")
+                    if capture_blocks:
+                        for block in page.get_text("blocks"):
+                            # block: (x0, y0, x1, y1, text, block_no, type)
+                            if len(block) >= 7 and block[6] == 0:  # type 0 = text
+                                text_content = str(block[4]).strip()
+                                if text_content:
+                                    blocks.append(
+                                        {
+                                            "page": page_num,
+                                            "x0": float(block[0]),
+                                            "y0": float(block[1]),
+                                            "x1": float(block[2]),
+                                            "y1": float(block[3]),
+                                            "text": text_content,
+                                        }
+                                    )
+            except Exception as exc:
+                logger.debug("pymupdf extraction error for %s: %s", filepath, exc)
+            finally:
+                # Drain MuPDF C-level warnings buffer (stderr is already
+                # suppressed globally).  These are internal PDF library
+                # diagnostics (e.g. "repaired broken tree structure",
+                # "bogus font ascent") that don't affect extraction.
+                fitz.TOOLS.mupdf_warnings()
+                doc.close()
 
         text = "\n".join(parts)
         if capture_blocks:
