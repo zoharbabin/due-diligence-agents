@@ -292,10 +292,10 @@ class TestFallbackToExtractedText:
         text_dir = tmp_path / "index" / "text"
         text_dir.mkdir(parents=True)
 
-        # Use _safe_text_name to generate the correct fallback filename
-        from dd_agents.tools.read_office import _safe_text_name
+        # Use the canonical _safe_text_name to generate the correct fallback filename
+        from dd_agents.extraction.pipeline import ExtractionPipeline
 
-        safe = _safe_text_name(str(bad_xlsx))
+        safe = ExtractionPipeline._safe_text_name(str(bad_xlsx))
         (text_dir / safe).write_text("# Full Path Fallback\nCosts: $2M")
 
         from dd_agents.tools.read_office import read_office

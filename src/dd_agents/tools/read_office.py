@@ -8,7 +8,6 @@ when primary reading fails.
 
 from __future__ import annotations
 
-import hashlib
 import logging
 from pathlib import Path
 from typing import Any
@@ -181,7 +180,9 @@ def _try_extracted_fallback(
         return None
 
     # Try full-path convention first (matches extraction pipeline)
-    safe_name = _safe_text_name(file_path)
+    from dd_agents.extraction.pipeline import ExtractionPipeline
+
+    safe_name = ExtractionPipeline._safe_text_name(file_path)
     extracted = text_dir_path / safe_name
     if extracted.exists():
         return extracted.read_text(encoding="utf-8")
@@ -193,25 +194,6 @@ def _try_extracted_fallback(
         return simple.read_text(encoding="utf-8")
 
     return None
-
-
-def _safe_text_name(source_path: str) -> str:
-    """Convert a source file path to a safe extracted-text filename.
-
-    Mirrors ``ExtractionPipeline._safe_text_name`` so the fallback finds
-    the correct file.
-    """
-    name = source_path.removeprefix("./")
-    name = name.replace("/", "__")
-    full = f"{name}.md"
-
-    max_len = 200
-    if len(full.encode("utf-8")) <= max_len:
-        return full
-
-    digest = hashlib.sha256(source_path.encode()).hexdigest()[:12]
-    truncated = name.encode("utf-8")[: max_len - len(digest) - 4].decode("utf-8", errors="ignore")
-    return f"{truncated}_{digest}.md"
 
 
 def _truncate(content: str) -> str:
