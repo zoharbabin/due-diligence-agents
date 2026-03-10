@@ -7,8 +7,11 @@ customer batching when prompts exceed the context budget.
 
 from __future__ import annotations
 
+import logging
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -424,7 +427,28 @@ class PromptBuilder:
         # 8. Robustness instructions (Issue #52 -- spec doc 22)
         sections.append(self.robustness_instructions())
 
-        return "\n\n---\n\n".join(sections)
+        prompt = "\n\n---\n\n".join(sections)
+
+        # Safety guard: if the assembled prompt exceeds the model context
+        # (200K tokens ≈ 800K chars), truncate the customer file listing.
+        # This protects against very large single-target data rooms with
+        # long cloud-storage paths (e.g. OneDrive).
+        max_prompt_chars = 600_000  # ~150K tokens, leaving room for agent turns
+        if len(prompt) > max_prompt_chars:
+            logger.warning(
+                "Prompt for %s is %d chars (~%dK tokens) — exceeds safety limit. "
+                "Truncating file listing from %d to %d files.",
+                agent_name,
+                len(prompt),
+                len(prompt) // 4000,
+                self.MAX_LISTED_FILES,
+                self.MAX_LISTED_FILES // 2,
+            )
+            self.MAX_LISTED_FILES = max(50, self.MAX_LISTED_FILES // 2)
+            sections[1] = self._build_customer_list(agent_name, customers, file_precedence)
+            prompt = "\n\n---\n\n".join(sections)
+
+        return prompt
 
     # ------------------------------------------------------------------
     # Judge prompt
@@ -844,8 +868,9 @@ class PromptBuilder:
 
     # Maximum files to list inline per customer.  Beyond this, the agent
     # discovers remaining files via directory traversal.  Keeps prompts
-    # within the model's context window for large single-target data rooms.
-    MAX_LISTED_FILES: int = 500
+    # within the model's context window for large single-target data rooms
+    # (e.g. 4K files with long OneDrive/cloud-storage paths).
+    MAX_LISTED_FILES: int = 200
 
     def _build_customer_list(
         self,
@@ -890,8 +915,8 @@ class PromptBuilder:
                 if truncated:
                     omitted = len(sorted_files) - self.MAX_LISTED_FILES
                     lines.append(
-                        f"    ... and {omitted} more files. Use `ls -R` on the data room "
-                        f"directory to discover all files. You MUST analyze every file."
+                        f'    ... and {omitted} more files. Use `Glob(pattern="**/*")` on the '
+                        f"customer's directory to discover all files. You MUST analyze every file."
                     )
             lines.append("")
 
