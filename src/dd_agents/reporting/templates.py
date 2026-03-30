@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path  # noqa: TC003 — used at runtime
 
 from pydantic import BaseModel, Field
@@ -201,17 +202,31 @@ class TemplateLibrary:
         return False
 
 
+_CSS_SAFE_RE = re.compile(r"^[a-zA-Z0-9 #(),._\-]+$")
+
+
+def _sanitize_css_value(value: str) -> str:
+    """Strip characters that could break out of a CSS property value."""
+    if not _CSS_SAFE_RE.match(value):
+        raise ValueError(f"Unsafe CSS value: {value!r}")
+    return value
+
+
 def generate_branding_css(branding: ReportBranding) -> str:
-    """Generate CSS custom properties from branding config."""
+    """Generate CSS custom properties from branding config.
+
+    All values are validated against a strict allowlist of safe CSS
+    characters to prevent CSS injection.
+    """
     parts = [":root {"]
     if branding.primary_color:
-        parts.append(f"  --brand-primary: {branding.primary_color};")
+        parts.append(f"  --brand-primary: {_sanitize_css_value(branding.primary_color)};")
     if branding.accent_color:
-        parts.append(f"  --brand-accent: {branding.accent_color};")
+        parts.append(f"  --brand-accent: {_sanitize_css_value(branding.accent_color)};")
     if branding.background_color:
-        parts.append(f"  --brand-bg: {branding.background_color};")
+        parts.append(f"  --brand-bg: {_sanitize_css_value(branding.background_color)};")
     if branding.font_family:
-        parts.append(f"  --brand-font: {branding.font_family};")
+        parts.append(f"  --brand-font: {_sanitize_css_value(branding.font_family)};")
     parts.append("}")
 
     if branding.font_family:

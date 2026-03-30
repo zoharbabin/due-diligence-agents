@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 from dd_agents.api.webhooks import (
@@ -53,26 +54,27 @@ class TestEmailConfig:
         assert config.to_addrs == ["team@example.com"]
 
 
+@patch("dd_agents.api.webhooks.validate_url", return_value="https://example.com")
 class TestWebhookDispatcher:
     """Test webhook dispatcher."""
 
-    def test_register_webhook(self) -> None:
+    def test_register_webhook(self, _mock_validate: MagicMock) -> None:
         dispatcher = WebhookDispatcher()
         dispatcher.register_webhook("https://example.com/hook", events=["run.completed"])
         assert len(dispatcher._webhooks) == 1
 
-    def test_register_slack(self) -> None:
+    def test_register_slack(self, _mock_validate: MagicMock) -> None:
         dispatcher = WebhookDispatcher()
         dispatcher.register_slack("https://hooks.slack.com/test")
         assert len(dispatcher._slack_urls) == 1
 
-    def test_register_email(self) -> None:
+    def test_register_email(self, _mock_validate: MagicMock) -> None:
         dispatcher = WebhookDispatcher()
         dispatcher.register_email(EmailConfig(to_addrs=["test@example.com"]))
         assert len(dispatcher._email_configs) == 1
 
     @patch("dd_agents.api.webhooks.send_webhook", return_value=True)
-    def test_dispatch_webhook(self, mock_send: MagicMock) -> None:
+    def test_dispatch_webhook(self, mock_send: MagicMock, _mock_validate: MagicMock) -> None:
         dispatcher = WebhookDispatcher()
         dispatcher.register_webhook("https://example.com/hook", events=["run.completed"])
         delivered = dispatcher.dispatch("run.completed", "run_123", {"total_findings": 50})
@@ -80,7 +82,7 @@ class TestWebhookDispatcher:
         mock_send.assert_called_once()
 
     @patch("dd_agents.api.webhooks.send_webhook", return_value=True)
-    def test_dispatch_filters_events(self, mock_send: MagicMock) -> None:
+    def test_dispatch_filters_events(self, mock_send: MagicMock, _mock_validate: MagicMock) -> None:
         dispatcher = WebhookDispatcher()
         dispatcher.register_webhook("https://example.com/hook", events=["run.failed"])
         delivered = dispatcher.dispatch("run.completed", "run_123")
@@ -88,23 +90,24 @@ class TestWebhookDispatcher:
         mock_send.assert_not_called()
 
     @patch("dd_agents.api.webhooks.send_slack_notification", return_value=True)
-    def test_dispatch_slack(self, mock_slack: MagicMock) -> None:
+    def test_dispatch_slack(self, mock_slack: MagicMock, _mock_validate: MagicMock) -> None:
         dispatcher = WebhookDispatcher()
         dispatcher.register_slack("https://hooks.slack.com/test")
         delivered = dispatcher.dispatch("run.completed", "run_123")
         assert delivered == 1
 
-    def test_dispatch_empty(self) -> None:
+    def test_dispatch_empty(self, _mock_validate: MagicMock) -> None:
         dispatcher = WebhookDispatcher()
         delivered = dispatcher.dispatch("run.completed", "run_123")
         assert delivered == 0
 
 
+@patch("dd_agents.api.webhooks.validate_url", return_value="https://example.com")
 class TestSendWebhook:
     """Test HTTP webhook sending."""
 
     @patch("dd_agents.api.webhooks.urllib.request.urlopen")
-    def test_send_success(self, mock_urlopen: MagicMock) -> None:
+    def test_send_success(self, mock_urlopen: MagicMock, _mock_validate: MagicMock) -> None:
         mock_resp = MagicMock()
         mock_resp.status = 200
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
@@ -116,13 +119,13 @@ class TestSendWebhook:
         assert result is True
 
     @patch("dd_agents.api.webhooks.urllib.request.urlopen", side_effect=Exception("Connection refused"))
-    def test_send_failure(self, mock_urlopen: MagicMock) -> None:
+    def test_send_failure(self, mock_urlopen: MagicMock, _mock_validate: MagicMock) -> None:
         payload = WebhookPayload(event="run.completed")
         result = send_webhook("https://example.com/hook", payload)
         assert result is False
 
     @patch("dd_agents.api.webhooks.urllib.request.urlopen")
-    def test_send_with_hmac(self, mock_urlopen: MagicMock) -> None:
+    def test_send_with_hmac(self, mock_urlopen: MagicMock, _mock_validate: MagicMock) -> None:
         mock_resp = MagicMock()
         mock_resp.status = 200
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
@@ -159,7 +162,7 @@ class TestAPIServerImport:
 class TestPathValidation:
     """Test path traversal protection in API server."""
 
-    def test_validate_path_rejects_traversal(self) -> None:
+    def test_validate_path_rejects_traversal(self, monkeypatch: Any) -> None:
         """Paths with '..' components are rejected."""
         from dd_agents.api import server
 
@@ -168,10 +171,11 @@ class TestPathValidation:
 
         import pytest
 
+        monkeypatch.setenv("DD_RUNS_DIR", "/tmp/safe")
         with pytest.raises(Exception, match="traversal"):
             server._validate_path("../../etc/passwd")
 
-    def test_validate_path_rejects_nested_traversal(self) -> None:
+    def test_validate_path_rejects_nested_traversal(self, monkeypatch: Any) -> None:
         """Nested traversal paths are rejected."""
         from dd_agents.api import server
 
@@ -180,16 +184,31 @@ class TestPathValidation:
 
         import pytest
 
+        monkeypatch.setenv("DD_RUNS_DIR", "/tmp/safe")
         with pytest.raises(Exception, match="traversal"):
             server._validate_path("/tmp/safe/../../etc/passwd")
 
-    def test_validate_path_allows_normal_path(self) -> None:
-        """Normal paths are allowed through."""
+    def test_validate_path_rejects_absolute_escape(self, monkeypatch: Any) -> None:
+        """Absolute paths outside the runs directory are rejected."""
         from dd_agents.api import server
 
         if not server.HAS_FASTAPI:
             return
 
+        import pytest
+
+        monkeypatch.setenv("DD_RUNS_DIR", "/tmp/safe")
+        with pytest.raises(Exception, match="traversal"):
+            server._validate_path("/etc/passwd")
+
+    def test_validate_path_allows_normal_path(self, monkeypatch: Any) -> None:
+        """Normal paths under the runs directory are allowed."""
+        from dd_agents.api import server
+
+        if not server.HAS_FASTAPI:
+            return
+
+        monkeypatch.setenv("DD_RUNS_DIR", "/tmp")
         result = server._validate_path("/tmp/safe/config.json")
         # On macOS /tmp resolves to /private/tmp
         assert result.name == "config.json"
