@@ -1,0 +1,15 @@
+{
+  "config_version": "1.0.0",
+  "buyer": {
+    "name": "Apex Holdings"
+  },
+  "target": {
+    "name": "Streamline Technologies"
+  },
+  "deal": {
+    "type": "acquisition",
+    "focus_areas": [
+      "change_of_control_clauses"
+    ]
+  }
+}

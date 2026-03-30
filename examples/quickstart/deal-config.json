@@ -1,0 +1,129 @@
+{
+  "config_version": "1.0.0",
+  "buyer": {
+    "name": "Meridian Holdings",
+    "ticker": "MRDH",
+    "exchange": "NYSE",
+    "notes": "Strategic acquirer focused on enterprise SaaS"
+  },
+  "target": {
+    "name": "NovaBridge Solutions",
+    "subsidiaries": ["NovaBridge EU GmbH"],
+    "previous_names": [
+      {
+        "name": "BridgePoint Software",
+        "period": "2019-2023",
+        "notes": "Rebranded to NovaBridge Solutions in Q1 2023"
+      }
+    ],
+    "acquired_entities": [
+      {
+        "name": "DataLoom Analytics",
+        "acquisition_date": "2024-06-01",
+        "deal_type": "acquisition",
+        "notes": "Acquired for analytics capabilities"
+      }
+    ],
+    "entity_name_variants_for_contract_matching": [
+      "NovaBridge",
+      "NovaBridge Solutions Inc.",
+      "NovaBridge Solutions, Inc.",
+      "BridgePoint Software"
+    ],
+    "notes": "B2B SaaS platform for supply-chain analytics"
+  },
+  "entity_aliases": {
+    "canonical_to_variants": {
+      "NovaBridge Solutions": [
+        "NovaBridge",
+        "NovaBridge Solutions Inc.",
+        "BridgePoint Software"
+      ],
+      "Acme Corp": ["Acme Corporation", "ACME"],
+      "Beta Inc": ["Beta Incorporated", "Beta Inc."],
+      "Gamma LLC": ["Gamma", "Gamma Group"]
+    },
+    "short_name_guard": ["NB", "DL"],
+    "exclusions": ["N/A", "TBD", "Various", "Unknown", "None"],
+    "parent_child": {
+      "NovaBridge Solutions": ["NovaBridge EU GmbH", "DataLoom Analytics"]
+    }
+  },
+  "data_room": {
+    "path": "examples/quickstart/sample_data_room",
+    "groups": {
+      "GroupA": {
+        "label": "Enterprise Customers",
+        "customers": ["Acme_Corp", "Beta_Inc"]
+      },
+      "GroupB": {
+        "label": "SMB Customers",
+        "customers": ["Gamma_LLC"]
+      }
+    },
+    "reference_dir": "_reference"
+  },
+  "source_of_truth": {
+    "customer_database": null
+  },
+  "key_executives": [
+    {
+      "name": "Sarah Chen",
+      "title": "CEO",
+      "company": "NovaBridge Solutions",
+      "notes": "Co-founder, in role since 2019"
+    },
+    {
+      "name": "Marcus Webb",
+      "title": "CFO",
+      "company": "NovaBridge Solutions",
+      "notes": ""
+    },
+    {
+      "name": "Diana Frost",
+      "title": "VP Corporate Development",
+      "company": "Meridian Holdings",
+      "notes": "Deal lead"
+    }
+  ],
+  "deal": {
+    "type": "acquisition",
+    "focus_areas": [
+      "change_of_control_clauses",
+      "ip_ownership",
+      "revenue_recognition",
+      "customer_concentration"
+    ],
+    "notes": "100% acquisition, expected close Q2 2026"
+  },
+  "judge": {
+    "enabled": false,
+    "max_iteration_rounds": 1,
+    "score_threshold": 70,
+    "sampling_rates": {
+      "p0": 0.0,
+      "p1": 0.0,
+      "p2": 0.0,
+      "p3": 0.0
+    },
+    "ocr_completeness_check": false,
+    "cross_agent_contradiction_check": false
+  },
+  "execution": {
+    "execution_mode": "full",
+    "staleness_threshold": 3,
+    "force_full_on_config_change": true
+  },
+  "reporting": {
+    "report_schema_override": null,
+    "include_diff_sheet": false,
+    "include_metadata_sheet": true
+  },
+  "forensic_dd": {
+    "enabled": true,
+    "domains": {
+      "disabled": [],
+      "custom": []
+    }
+  }
+}

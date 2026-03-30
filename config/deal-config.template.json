@@ -1,0 +1,118 @@
+{
+  "config_version": "1.0.0",
+  "buyer": {
+    "name": "BUYER_COMPANY_NAME",
+    "ticker": "",
+    "exchange": "",
+    "notes": ""
+  },
+  "target": {
+    "name": "TARGET_COMPANY_NAME",
+    "subsidiaries": [],
+    "previous_names": [
+      {
+        "name": "PREVIOUS_NAME_IF_ANY",
+        "period": "2018-2022",
+        "notes": ""
+      }
+    ],
+    "acquired_entities": [
+      {
+        "name": "ACQUIRED_ENTITY_NAME",
+        "acquisition_date": "2023-01-15",
+        "deal_type": "acquisition",
+        "notes": ""
+      }
+    ],
+    "entity_name_variants_for_contract_matching": [
+      "TARGET_SHORT_NAME",
+      "TARGET_DBA_NAME"
+    ],
+    "notes": ""
+  },
+  "entity_aliases": {
+    "canonical_to_variants": {
+      "TARGET_COMPANY_NAME": ["TARGET_SHORT_NAME", "TARGET_DBA_NAME"]
+    },
+    "short_name_guard": ["AB", "CD"],
+    "exclusions": ["N/A", "TBD", "Various", "Unknown", "None"],
+    "parent_child": {
+      "TARGET_COMPANY_NAME": ["SUBSIDIARY_1", "SUBSIDIARY_2"]
+    }
+  },
+  "source_of_truth": {
+    "customer_database": {
+      "file": "Global_References/Customer_Database.xlsx",
+      "sheet": "Active Customers",
+      "header_row": 1,
+      "columns": {
+        "customer_name": 1,
+        "parent_account": 2,
+        "entity": 3,
+        "platform": 4,
+        "contract_start": 5,
+        "contract_end": 6,
+        "arr": 7
+      },
+      "active_filter": {
+        "arr_column": 7,
+        "arr_condition": "> 0",
+        "end_date_condition": ">= today"
+      }
+    }
+  },
+  "key_executives": [
+    {
+      "name": "EXECUTIVE_FULL_NAME",
+      "title": "CEO",
+      "company": "TARGET_COMPANY_NAME",
+      "notes": ""
+    }
+  ],
+  "deal": {
+    "type": "acquisition",
+    "focus_areas": [
+      "change_of_control_clauses",
+      "ip_ownership",
+      "revenue_recognition",
+      "customer_concentration"
+    ],
+    "notes": ""
+  },
+  "judge": {
+    "enabled": true,
+    "max_iteration_rounds": 2,
+    "score_threshold": 70,
+    "sampling_rates": {
+      "p0": 1.0,
+      "p1": 0.20,
+      "p2": 0.10,
+      "p3": 0.0
+    },
+    "ocr_completeness_check": true,
+    "cross_agent_contradiction_check": true
+  },
+  "execution": {
+    "execution_mode": "full",
+    "staleness_threshold": 3,
+    "force_full_on_config_change": true
+  },
+  "reporting": {
+    "report_schema_override": null,
+    "include_diff_sheet": true,
+    "include_metadata_sheet": true
+  },
+  "data_room": {
+    "path": "PATH_TO_DATA_ROOM",
+    "groups": {},
+    "reference_dir": "_reference"
+  },
+  "forensic_dd": {
+    "enabled": true,
+    "domains": {
+      "disabled": [],
+      "custom": []
+    }
+  },
+  "buyer_strategy": null
+}

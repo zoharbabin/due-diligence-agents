@@ -1,0 +1,20 @@
+Due Diligence Agent SDK
+Copyright 2025 Zohar Babin
+
+This product includes software developed under the Apache License 2.0.
+
+Third-party notices:
+
+- claude-agent-sdk: MIT License, Copyright Anthropic
+- pydantic: MIT License, Copyright Samuel Colvin
+- openpyxl: MIT License, Copyright Eric Gazoni, Charlie Clark
+- networkx: BSD 3-Clause License, Copyright NetworkX Developers
+- rapidfuzz: MIT License, Copyright Max Bachmann
+- markitdown: MIT License, Copyright Microsoft Corporation
+- scikit-learn: BSD 3-Clause License, Copyright scikit-learn developers
+- click: BSD 3-Clause License, Copyright Pallets Projects
+- rich: MIT License, Copyright Will McGugan
+
+Optional dependency with copyleft license:
+- pymupdf (fitz): AGPL-3.0 or Artifex Commercial License.
+  Not included in core installation. Install separately via `pip install dd-agents[pdf]`.

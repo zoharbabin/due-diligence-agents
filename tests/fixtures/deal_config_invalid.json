@@ -1,0 +1,74 @@
+{
+  "_test_description": "Invalid config for negative testing. Contains multiple schema violations.",
+
+  "config_version": "0.5.0",
+
+  "buyer": {
+    "name": ""
+  },
+
+  "target": 42,
+
+  "deal": {
+    "type": "hostile_takeover",
+    "focus_areas": []
+  },
+
+  "judge": {
+    "enabled": "yes",
+    "max_iteration_rounds": 99,
+    "score_threshold": 200,
+    "sampling_rates": {
+      "p0": 2.5,
+      "p1": -0.1,
+      "p2": "high",
+      "p3": 0.0
+    }
+  },
+
+  "execution": {
+    "execution_mode": "turbo",
+    "staleness_threshold": 0,
+    "force_full_on_config_change": "maybe"
+  },
+
+  "reporting": {
+    "include_diff_sheet": 1,
+    "include_metadata_sheet": 0
+  },
+
+  "key_executives": [
+    {
+      "title": "CEO"
+    }
+  ],
+
+  "entity_aliases": {
+    "canonical_to_variants": "not_a_dict",
+    "short_name_guard": 123,
+    "exclusions": "should_be_a_list"
+  },
+
+  "source_of_truth": {
+    "customer_database": {
+      "file": "",
+      "columns": {
+        "customer_name": 0
+      }
+    }
+  },
+
+  "forensic_dd": {
+    "enabled": true,
+    "domains": {
+      "custom": [
+        {
+          "id": "HAS SPACES AND CAPS",
+          "name": "Bad Domain",
+          "agent_assignment": "nonexistent_agent",
+          "weight": 10
+        }
+      ]
+    }
+  }
+}
