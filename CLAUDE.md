@@ -40,7 +40,7 @@ dd-agents run path/to/deal-config.json
 - **Persistence**: Three tiers — PERMANENT (never wiped), VERSIONED (archived per run), FRESH (rebuilt each run).
 - **Hooks** (`hooks/`): Flat return format `{"decision": "block"|"allow", "reason": "..."}` for ALL hook types. Never nest under `hookSpecificOutput`.
 - **Models** (`models/`): Pydantic v2 for all schemas. `model_json_schema()` for structured outputs.
-- **Validation** (`validation/`): 6-layer numerical audit, 30 substantive DoD checks (content-validated, not file-existence). Fail-closed — validation failures block the pipeline.
+- **Validation** (`validation/`): 6-layer numerical audit, 31 substantive DoD checks (content-validated, not file-existence). Fail-closed — validation failures block the pipeline.
 
 ## Code Style
 
@@ -152,7 +152,7 @@ All core dependencies are permissively licensed (Apache 2.0, MIT, BSD). pymupdf 
 ```
 claude-agent-sdk>=0.1.39   # Agent spawning, hooks, tools
 pydantic>=2.0              # Data models, schema validation
-openpyxl>=3.1              # Excel report generation
+openpyxl>=3.1.3            # Excel report generation
 networkx>=3.0              # Governance graph (cycle detection, topological sort)
 rapidfuzz>=3.0             # Entity resolution fuzzy matching
 markitdown>=0.1            # PDF/Office document extraction

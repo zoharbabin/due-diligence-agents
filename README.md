@@ -4,15 +4,11 @@
 
 ## The Problem
 
-M&A due diligence requires lawyers and analysts to manually review hundreds of contracts across dozens of counterparties, hunting for change-of-control clauses, liability caps, IP risk, revenue recognition issues, and termination rights. A typical data room review takes 4-12 weeks and costs 1-3% of deal value in professional fees. Critical risks get buried in volume.
+M&A due diligence requires lawyers and analysts to manually review hundreds of contracts across dozens of counterparties. A typical data room review takes 4-12 weeks and costs 1-3% of deal value in professional fees. Critical risks get buried in volume.
 
-**The market is massive and accelerating.** Global M&A deal value reached approximately $4.9 trillion in 2025 — up roughly 36-40% year-over-year — with megadeals (>$5B) surging over 70% (sources: Bain, PwC). Over 70% of M&A advisors expect deal flow to increase further in 2026 (Capstone/IMAP). Yet traditional due diligence hasn't scaled: manual review remains the bottleneck between signing and closing.
+Existing AI contract review tools focus on single-domain clause extraction (typically legal only) without cross-domain synthesis. No existing tool provides multi-domain forensic analysis with adversarial cross-validation across Legal, Finance, Commercial, and Product/Tech — the full scope of what acquirers actually need.
 
-**AI adoption in M&A is doubling annually.** Nearly half of M&A practitioners now use AI in their deal processes, roughly double the prior year (Bain). Over half use GenAI specifically for due diligence and deal validation. 73% of lawyers rely on AI for document review (Thomson Reuters). AI-assisted contract review reduces review time by 70-90% according to vendor case studies (Luminance, LegalOn, Axiom).
-
-**But existing tools are fragmented.** Virtual data rooms (Datasite, Intralinks, Ansarada) have added AI-assisted indexing and classification but don't perform deep analytical review. AI contract review tools (Luminance, Kira/Litera, LegalOn, Harvey) are legal-centric — single-domain clause extraction without cross-domain synthesis. CLM platforms (Ironclad, Robin AI) target post-signature lifecycle management. M&A workflow tools (Midaxo, DealRoom) handle project management and deal tracking, not content analysis. Financial-services AI platforms (Blueflame AI) and general-purpose GenAI frameworks (ZBrain) require extensive custom build-out. No existing solution provides multi-domain forensic analysis with adversarial cross-validation across Legal, Finance, Commercial, and Product/Tech — the full scope of what acquirers actually need.
-
-This project fills that gap: an open-source, multi-agent pipeline that analyzes an entire data room across all four domains, cross-validates findings adversarially, and produces a board-ready report with precise citations — at a fraction of the cost and time of manual review or stitching together single-domain SaaS tools ($3K-30K+/month each).
+This project fills that gap: an open-source, multi-agent pipeline that analyzes an entire data room across all four domains, cross-validates findings adversarially, and produces a board-ready report with precise citations.
 
 ## What You Get
 
@@ -21,13 +17,15 @@ Run `dd-agents` against a data room folder and receive:
 - **Board-ready HTML report** — interactive, navigable, with Go/No-Go recommendation, risk heatmaps, severity filtering, and drill-down to exact contract clauses
 - **14-sheet Excel companion** — structured findings, cross-references, entity resolution log, and audit trail for downstream analysis
 - **Precise citations** — every finding links back to file, page, section, and exact quote
-- **Quality-validated results** — 5 blocking gates, 6-layer numerical audit, 30 definition-of-done checks. Fail-closed: bad data halts the pipeline instead of producing bad reports
+- **Quality-validated results** — 5 blocking gates, 6-layer numerical audit, 31 definition-of-done checks. Fail-closed: bad data halts the pipeline instead of producing bad reports
 
 ## Quick Start
 
 ```bash
-# 1. Install
-pip install -e "."
+# 1. Clone and install (requires Python 3.12+)
+git clone https://github.com/zoharbabin/due-diligence-agents.git
+cd due-diligence-agents
+pip install -e ".[pdf]"
 
 # 2. Set your API key
 export ANTHROPIC_API_KEY="sk-ant-..."
@@ -41,11 +39,15 @@ dd-agents run deal-config.json
 
 Open `_dd/forensic-dd/runs/latest/report/dd_report.html` in your browser. Done.
 
-For a 5-minute red-flag triage instead of full analysis:
+For a quick red-flag triage instead of full analysis:
 
 ```bash
 dd-agents run deal-config.json --quick-scan --model-profile economy
 ```
+
+**Cost and time:** A full run on a 50-document data room typically costs $10-50 in Claude API usage and takes 10-30 minutes depending on document count and complexity. Quick-scan with `--model-profile economy` uses cheaper models and completes faster. Use `--dry-run` to preview pipeline steps before committing. If a run is interrupted, resume from any step with `--resume-from <step>`.
+
+**No API key yet?** Use `dd-agents init --data-room ./data_room` to generate a config interactively without making any API calls.
 
 See the [Getting Started guide](docs/user-guide/getting-started.md) for a full walkthrough with the included sample data room.
 
@@ -127,7 +129,7 @@ A **35-step deterministic pipeline** orchestrated by Python, with AI agents as w
 2. **Resolve** — 6-pass cascading entity resolution matches counterparty names across documents, with document precedence scoring (version chains, folder trust tiers, recency)
 3. **Analyze** — 4 domain-specialist agents (Legal, Finance, Commercial, ProductTech) analyze every customer's contracts in parallel with provision-specific prompts and 18 canonical clause types
 4. **Validate** — Judge agent reviews findings adversarially; Executive Synthesis calibrates Go/No-Go; Red Flag Scanner provides quick triage; Acquirer Intelligence augments with market context
-5. **Merge & Audit** — Deduplicate findings across agents, run 6-layer numerical audit and 30 definition-of-done checks with citation verification for P0-P2 findings
+5. **Merge & Audit** — Deduplicate findings across agents, run 6-layer numerical audit and 31 definition-of-done checks with citation verification for P0-P2 findings
 6. **Report** — Generate board-ready HTML report + 14-sheet Excel report with full audit trail
 
 **5 blocking gates** halt the pipeline on quality failures rather than producing unreliable reports. Checkpoint/resume from any step.
@@ -188,13 +190,16 @@ pip install -e ".[ocr]"       # + pytesseract OCR fallback (English only)
 pip install -e ".[glm-ocr]"   # + GLM-OCR vision-language model (100+ languages, Apple Silicon / Ollama)
 ```
 
-All core dependencies are open-source under permissive licenses (Apache 2.0, MIT, BSD). pymupdf (optional `[pdf]` extra) is AGPL-3.0 licensed.
+All core dependencies are open-source under permissive licenses (Apache 2.0, MIT, BSD). pymupdf (optional `[pdf]` extra) is AGPL-3.0 licensed — if you redistribute software that includes pymupdf, AGPL copyleft terms apply to the distribution.
 
 ## Docker
 
 ```bash
 docker build -t dd-agents .
-docker run -e ANTHROPIC_API_KEY="sk-ant-..." -v ./data_room:/workspace/data_room dd-agents run deal-config.json
+docker run -e ANTHROPIC_API_KEY="sk-ant-..." \
+  -v ./data_room:/workspace/data_room \
+  -v ./deal-config.json:/workspace/deal-config.json \
+  dd-agents run deal-config.json
 ```
 
 ## Documentation

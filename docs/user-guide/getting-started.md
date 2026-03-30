@@ -60,15 +60,14 @@ export AWS_REGION=us-east-1
 Optional environment variables:
 
 ```bash
-# Override the default Claude model
-export DD_MODEL="claude-sonnet-4-20250514"
-
 # ChromaDB: persist vector search index to disk (default: memory-only)
 export CHROMA_PERSIST_DIR="./chroma_data"
 
 # Logging level (default: INFO)
 export LOG_LEVEL="DEBUG"
 ```
+
+To override the default model, use the `--model-profile` or `--model-override` CLI flags (see [Running the Pipeline](running-pipeline.md)).
 
 See `.env.example` for the full list.
 
