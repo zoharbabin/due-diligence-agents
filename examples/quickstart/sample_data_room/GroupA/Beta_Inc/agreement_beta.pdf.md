@@ -9,7 +9,7 @@
 
 ## 1. Background
 
-This Software License and Services Agreement ("Agreement") is entered into between Beta Incorporated, a Delaware corporation with principal offices at 750 Market Street, San Francisco, CA 94103, and BridgePoint Software, Inc. (now doing business as NovaBridge Solutions, Inc.), a Delaware corporation with principal offices at 1200 Innovation Drive, Suite 400, Austin, TX 78701.
+This Software License and Services Agreement ("Agreement") is entered into between Beta Incorporated, a Delaware corporation with principal offices at 900 Bayshore Avenue, San Francisco, CA 94100, and BridgePoint Software, Inc. (now doing business as NovaBridge Solutions, Inc.), a Delaware corporation with principal offices at 4500 Commerce Boulevard, Suite 400, Maplewood, TX 73000.
 
 ## 2. License Grant and Term
 
