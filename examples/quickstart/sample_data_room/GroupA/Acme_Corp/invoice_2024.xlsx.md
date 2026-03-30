@@ -30,8 +30,8 @@
 ---
 
 **Payment Terms:** Net 30
-**Remit To:** NovaBridge Solutions, Inc., 1200 Innovation Drive, Suite 400, Austin, TX 78701
-**Wire Instructions:** Silicon Valley Bank, Routing 000000000, Account 0000000000
+**Remit To:** NovaBridge Solutions, Inc., 4500 Commerce Boulevard, Suite 400, Maplewood, TX 73000
+**Wire Instructions:** Pacific Commerce Bank, Routing 000000000, Account 0000000000
 
 ---
 

@@ -23,6 +23,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from dd_agents.net_safety import validate_url
+
 logger = logging.getLogger(__name__)
 
 
@@ -57,6 +59,7 @@ class EmailConfig(BaseModel):
 def send_webhook(url: str, payload: WebhookPayload, secret: str = "") -> bool:
     """Send an HTTP POST webhook with optional HMAC signing."""
     try:
+        validate_url(url)
         body = json.dumps(payload.model_dump(), default=str).encode("utf-8")
         headers: dict[str, str] = {"Content-Type": "application/json"}
 
@@ -89,6 +92,7 @@ def send_slack_notification(webhook_url: str, event: str, run_id: str, data: dic
 
     msg = SlackMessage(text=text)
     try:
+        validate_url(webhook_url)
         body = json.dumps(msg.model_dump(), default=str).encode("utf-8")
         req = urllib.request.Request(
             webhook_url,
@@ -153,7 +157,12 @@ class WebhookDispatcher:
         self._email_configs: list[EmailConfig] = []
 
     def register_webhook(self, url: str, events: list[str] | None = None, secret: str = "") -> None:
-        """Register an HTTP webhook."""
+        """Register an HTTP webhook.
+
+        Raises :class:`~dd_agents.net_safety.UnsafeURLError` if *url*
+        targets a private network or uses an unsafe scheme.
+        """
+        validate_url(url)
         self._webhooks.append(
             {
                 "url": url,
@@ -163,7 +172,12 @@ class WebhookDispatcher:
         )
 
     def register_slack(self, webhook_url: str) -> None:
-        """Register a Slack incoming webhook."""
+        """Register a Slack incoming webhook.
+
+        Raises :class:`~dd_agents.net_safety.UnsafeURLError` if *webhook_url*
+        targets a private network or uses an unsafe scheme.
+        """
+        validate_url(webhook_url)
         self._slack_urls.append(webhook_url)
 
     def register_email(self, config: EmailConfig) -> None:

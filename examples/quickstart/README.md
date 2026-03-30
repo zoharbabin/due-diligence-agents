@@ -1,6 +1,6 @@
 # Quickstart: Run DD-Agents on a Sample Data Room
 
-This guide walks you through running the due-diligence agent pipeline on a minimal sample data room. By the end, you will have a `_dd/` output directory containing extracted findings, entity graphs, and a 14-sheet Excel report.
+This guide walks you through running the due-diligence agent pipeline on a minimal sample data room. By the end, you will have a `_dd/` output directory containing extracted findings, entity graphs, a board-ready HTML report, and a 14-sheet Excel companion report.
 
 ## What You'll Build
 
@@ -10,7 +10,7 @@ You will run `dd-agents` against a small data room with four contracts spread ac
 2. Extract clauses, financials, and governance structures.
 3. Resolve entity names across documents.
 4. Run specialist agents (Legal, Finance, Commercial, ProductTech).
-5. Produce a consolidated Excel report.
+5. Produce a board-ready HTML report and a 14-sheet Excel companion report.
 
 ## Prerequisites
 
@@ -150,7 +150,8 @@ _dd/
             │   ├── producttech/     # ProductTech specialist findings per customer
             │   └── merged/          # Deduplicated findings across all agents
             ├── report/
-            │   └── dd_report.xlsx   # 14-sheet Excel report
+            │   ├── dd_report.html   # Board-ready interactive HTML report
+            │   └── dd_report.xlsx   # 14-sheet Excel companion report
             ├── audit/               # Validation logs per agent
             ├── audit.json           # QA audit results
             ├── numerical_manifest.json
@@ -160,7 +161,8 @@ _dd/
 
 Key outputs:
 
-- **`runs/latest/report/dd_report.xlsx`** -- The 14-sheet Excel report with findings, risk matrix, entity map, financial summaries, and more.
+- **`runs/latest/report/dd_report.html`** -- The board-ready interactive HTML report with Go/No-Go recommendation, risk heatmaps, and drill-down to exact contract clauses.
+- **`runs/latest/report/dd_report.xlsx`** -- The 14-sheet Excel companion report with findings, risk matrix, entity map, financial summaries, and more.
 - **`runs/latest/findings/`** -- Per-customer JSON findings from each specialist agent (legal, finance, commercial, producttech) plus merged results.
 - **`inventory/`** -- File discovery, customer registry, and entity resolution matches.
 - **`runs/latest/audit.json`** -- QA audit trail and Definition of Done checks.

@@ -337,7 +337,12 @@ def _fetch_url(url: str, timeout: int, max_bytes: int) -> bytes:
     """Fetch URL content via urllib (stdlib, no new dependencies).
 
     Raises on network errors, timeouts, and oversized responses.
+    Validates the URL against private/reserved IP ranges before fetching.
     """
+    from dd_agents.net_safety import validate_url
+
+    validate_url(url, allow_http=True)
+
     req = urllib.request.Request(
         url,
         headers={

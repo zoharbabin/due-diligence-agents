@@ -92,7 +92,7 @@ def path_guard(
     resolved = Path(os.path.realpath(file_path))
     dd_resolved = Path(os.path.realpath(dd_dir))
 
-    if str(resolved).startswith(str(dd_resolved)):
+    if resolved == dd_resolved or str(resolved).startswith(str(dd_resolved) + os.sep):
         return True, ""
 
     return False, (

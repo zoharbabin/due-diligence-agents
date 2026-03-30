@@ -1,5 +1,7 @@
 # Implementation Plan — Due Diligence Agent SDK
 
+> **STATUS: COMPLETE** — All 7 phases implemented and verified. This document is kept as development history. See [CHANGELOG.md](CHANGELOG.md) for version-by-version changes.
+
 > Execute ONE phase at a time. Write tests first, then implement. Run quality gates after every module.
 > Update status as you complete each item. Do NOT proceed to the next phase until the current phase is fully complete.
 
@@ -151,7 +153,7 @@ pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/ && ruff
 - [x] Implement `src/dd_agents/agents/prompt_builder.py` — prompt assembly + batching
 - [x] Implement `src/dd_agents/agents/specialists.py` — Legal, Finance, Commercial, ProductTech
 - [x] Implement `src/dd_agents/agents/judge.py` — JudgeAgent with scoring + iteration
-- [x] Implement `src/dd_agents/agents/reporting_lead.py` — ReportingLeadAgent
+- [x] ~~Implement `src/dd_agents/agents/reporting_lead.py`~~ — removed in v0.4.0, replaced by deterministic pre-merge validation in step 23
 - [x] Write `tests/unit/test_agents.py` — 77 tests
 
 ### Phase 4 Acceptance
@@ -240,7 +242,7 @@ pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/ && ruff
 
 ### 6.5 Quality Hardening
 **Status**: Complete
-- [x] `mypy src/ --strict` — 0 errors in 93 files
+- [x] `mypy src/ --strict` — 0 errors in 172 files
 - [x] `ruff check src/ tests/` — all checks passed
 - [x] `ruff format --check src/ tests/` — all files formatted
 - [x] All 188 mypy strict errors fixed across 25 files
@@ -295,8 +297,8 @@ pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/ && ruff
 - [x] Add `[api]` optional dependency to pyproject.toml
 
 ### Phase 7 Acceptance
-- [x] `pytest tests/unit/ -x -q` — 2957 tests pass
-- [x] `mypy src/ --strict` — clean (171 source files)
+- [x] `pytest tests/unit/ -x -q` — 2958 tests pass
+- [x] `mypy src/ --strict` — clean (172 source files)
 - [x] `ruff check src/ tests/` — clean
 - [x] PR #162 created linking Issues #118, #122, #123, #133, #152
 
@@ -306,22 +308,22 @@ pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/ && ruff
 
 The project is complete when ALL of the following are true:
 - [x] All 7 phases have status "Complete"
-- [x] `pytest tests/ -x` passes — 2957 unit tests, 17 integration, 9 E2E (3 skipped without API key)
-- [x] `mypy src/ --strict` passes — 0 errors across 171 source files
+- [x] `pytest tests/ -x` passes — 2958 unit tests, 17 integration, 9 E2E (3 skipped without API key)
+- [x] `mypy src/ --strict` passes — 0 errors across 172 source files
 - [x] `ruff check src/ tests/` is clean
 - [x] `ruff format --check src/ tests/` is clean
 
-> **Status: COMPLETE** — All 7 phases implemented and verified. Production hardening (v0.3.0) added 253 additional unit tests. v0.3.1 adds security, documentation, and config cleanup. v0.4.0 adds board-ready executive HTML report (Issue #113), sidebar navigation, CSS variables, business analysis renderers (CoC, privacy, health tiers, recommendations, methodology), alert boxes, RAG indicators, and expanded category normalization. v0.5.0 (Wave 4) adds portfolio management, collaborative review, report templates, REST API with webhooks, and contract ontology reasoning (Issues #118, #122, #123, #133, #152). v0.5.1 adds `read_office` MCP tool (Issue #167), document precedence engine (Issue #163), and silent-exception fixes. See `PRODUCTION_HARDENING_PLAN.md` for post-implementation hardening work.
+> **Status: COMPLETE** — All 7 phases implemented and verified. See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
 
 ## Test Summary
 
 | Category | Count |
 |----------|-------|
-| Unit tests (models, utils, entity resolution, extraction, config, hooks, tools, orchestrator, agents, reporting, validation, search, glm_ocr, type safety, visual grounding, entity dedup, OCR registry, layout PDF, HTML report, HTML renderers, report rendering, extraction backend, turn limits, severity recalibration, executive synthesis, data quality classification, follow-up verification, assessment, red flag scanner, cost tracker, batch scheduler, financial impact, project registry, review, report templates, API, ontology, precedence, read_office) | 2957 |
+| Unit tests (models, utils, entity resolution, extraction, config, hooks, tools, orchestrator, agents, reporting, validation, search, glm_ocr, type safety, visual grounding, entity dedup, OCR registry, layout PDF, HTML report, HTML renderers, report rendering, extraction backend, turn limits, severity recalibration, executive synthesis, data quality classification, follow-up verification, assessment, red flag scanner, cost tracker, batch scheduler, financial impact, project registry, review, report templates, API, ontology, precedence, read_office, net_safety) | 2958 |
 | Integration tests (pipeline steps 1-11) | 17 |
 | E2E tests (pre-agent: config, tiers, discovery, registry, run manager, cache) | 6 |
 | E2E tests (API-dependent: dry run, full pipeline, incremental — skipped without key) | 3 |
-| **Total** | **2957 passed, 3 skipped** |
+| **Total** | **2958 passed, 3 skipped** |
 
 ## Git History
 

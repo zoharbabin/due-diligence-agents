@@ -1,11 +1,12 @@
 # Production Hardening Plan
 
-> Comprehensive plan to bring the pipeline from functional prototype to
+> **ARCHIVED** — All issues in this plan are RESOLVED as of v0.4.1 (2026-03-05). This document is kept for historical reference. See [CHANGELOG.md](CHANGELOG.md) for the current state.
+
+> Original plan to bring the pipeline from functional prototype to
 > production-grade quality: resilient, complete, stable, and accurate.
 
-**Branch**: `feat/production-hardening-plan`
 **Epic**: [#32](https://github.com/zoharbabin/due-diligence-agents/issues/32)
-**Baseline**: 1635 unit tests passing, mypy strict clean, ruff clean (v0.3.1)
+**Baseline at plan creation**: 1635 unit tests passing, mypy strict clean, ruff clean (v0.3.1)
 
 > **Status (v0.4.1, 2026-03-05)**: ALL ISSUES RESOLVED. All P0/P1/P2/P3/P4 issues across 40+ tracked issues complete. Production hardening (#68-#80), post-production fixes (#81-#86), feature issues (#49, #65, #51, #11, #9, #6, #3, #2, #7), 100% coverage roadmap (#87-#94, #95), runaway agent defense (#96), Reporting Lead replacement (#97), board-ready report redesign (#113), severity calibration (#114), and data quality separation all implemented. 2149 unit tests, 17 integration, mypy strict, ruff clean. Pipeline production-tested: 73 merged customers, 498 findings, audit PASSED.
 

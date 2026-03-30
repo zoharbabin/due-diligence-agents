@@ -127,12 +127,23 @@ if HAS_FASTAPI:
     # Path validation (prevent directory traversal)
     # ---------------------------------------------------------------------------
 
+    def _get_runs_base_dir() -> Path:
+        """Return the base directory that run_dir paths must reside under."""
+        return Path(os.environ.get("DD_RUNS_DIR", os.getcwd())).resolve()
+
     def _validate_path(user_path: str) -> Path:
-        """Resolve a user-provided path and reject traversal attempts."""
+        """Resolve a user-provided path and reject traversal attempts.
+
+        The resolved path must fall under the configured runs base
+        directory (``DD_RUNS_DIR`` env var, defaults to cwd).
+        """
         resolved = Path(user_path).resolve()
-        # Reject paths containing ".." components (even if resolved)
-        if ".." in Path(user_path).parts:
-            raise HTTPException(status_code=400, detail="Path traversal not allowed")
+        base = _get_runs_base_dir()
+        if not resolved.is_relative_to(base):
+            raise HTTPException(
+                status_code=400,
+                detail="Path traversal not allowed: path must be under the runs directory",
+            )
         return resolved
 
     # ---------------------------------------------------------------------------

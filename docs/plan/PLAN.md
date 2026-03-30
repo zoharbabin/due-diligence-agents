@@ -1,15 +1,14 @@
 # Due Diligence Agent SDK -- Executive Plan
 
-> Status: Implemented -- pipeline and search command operational
+> Status: Implemented — pipeline and search command operational
 > Package: `dd_agents` under `src/dd_agents/`
 > SDK: `claude-agent-sdk` v0.1.39+ (Python 3.12+)
-> Source: 3,102 lines across 9 skill files (forensic-dd)
 
 ---
 
 ## What We Are Building
 
-A Python application that performs forensic M&A due diligence on contract data rooms. It spawns 7 AI agents (Legal, Finance, Commercial, ProductTech, optional Judge, Executive Synthesis, Red Flag Scanner), enforces a 35-step pipeline with 5 blocking gates (step 1 config validation is a precondition, not counted as a gate), validates outputs against Pydantic schemas, and produces a board-ready HTML report + 14-sheet Excel report. The orchestrator is Python code. Agents are workers, not decision-makers.
+A Python application that performs forensic M&A due diligence on contract data rooms. It spawns 8 AI agents (Legal, Finance, Commercial, ProductTech, optional Judge, Executive Synthesis, Red Flag Scanner, Acquirer Intelligence), enforces a 35-step pipeline with 5 blocking gates (step 1 config validation is a precondition, not counted as a gate), validates outputs against Pydantic schemas, and produces a board-ready HTML report + 14-sheet Excel report. The orchestrator is Python code. Agents are workers, not decision-makers.
 
 ## Core Principles
 
@@ -72,6 +71,7 @@ All 3,102 lines of domain knowledge -- extraction rules, severity taxonomy (P0-P
           +-----v-----------+                        |
           | Exec Synthesis  |                        |
           | + Red Flag Scan |                        |
+          | + Acquirer Intel |                        |
           | (merge, QA,     |                        |
           |  HTML + Excel)  |                        |
           +-----+-----------+                        |
@@ -117,7 +117,7 @@ Detailed content is distributed across 22 numbered files. Each file is self-cont
 | 03 | Project structure (`src/dd_agents/` package layout) |
 | 04 | Pydantic v2 data models (20+ schemas) |
 | 05 | 35-step orchestrator, blocking gates, state machine |
-| 06 | 6 agent definitions, prompt construction, model selection |
+| 06 | 8 agent definitions, prompt construction, model selection |
 | 07 | Tools and hooks (Stop flat format, PreToolUse guards, custom MCP tools) |
 | 08 | Extraction (file discovery, markitdown fallback chain, checksum cache) |
 | 09 | Entity resolution (6-pass matcher, cache, rapidfuzz) |
