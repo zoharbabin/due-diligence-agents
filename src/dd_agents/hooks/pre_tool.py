@@ -7,6 +7,7 @@ for the simplified function-level API, or flat dicts for the SDK hook API.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -50,13 +51,45 @@ BASH_BLOCKLIST: list[str] = [
     "exec ",
     "nohup ",
     "xargs ",
+    "truncate ",
+    "shred ",
+    "pip install",
+    "pip3 install",
+    "nc ",
+    "ncat ",
+    "netcat ",
+]
+
+# Patterns that catch shell invocation via absolute/relative paths or env dispatch.
+# Checked via regex after whitespace normalization.
+_SHELL_INVOKE_PATTERNS: list[re.Pattern[str]] = [
+    # Absolute / relative path to any shell: /bin/bash, /usr/bin/env sh, ./sh, etc.
+    re.compile(r"(?:^|&&|\|\||;)\s*(?:/\S*/)?(?:ba)?sh\s+-c\b"),
+    # /usr/bin/env dispatch to shell or interpreter
+    re.compile(r"(?:^|&&|\|\||;)\s*(?:/\S*/)?env\s+(?:ba)?sh\b"),
+    # Versioned python invocation: python3.12 -c, python3.11 -c, etc.
+    re.compile(r"\bpython\d[\d.]*\s+-c\b"),
+    # Heredoc into shell: bash<<, sh<<
+    re.compile(r"\b(?:ba)?sh\s*<<"),
+    # $SHELL or ${SHELL} invocation
+    re.compile(r"\$\{?shell\}?\s"),
 ]
 
 SCOPE_CHECKED_PREFIXES: list[str] = ["mv ", "cp ", "ln ", "mkdir "]
 
 
+def _normalize_whitespace(cmd: str) -> str:
+    """Collapse runs of whitespace to single spaces for consistent matching."""
+    return re.sub(r"\s+", " ", cmd)
+
+
 def bash_guard(tool_name: str, tool_input: dict[str, Any]) -> tuple[bool, str]:
     """Block destructive bash commands.
+
+    Applies whitespace normalization before checking the blocklist to prevent
+    evasion via extra spaces or tabs. Also applies regex patterns to catch
+    shell/interpreter invocation via absolute paths, env dispatch, heredocs,
+    and versioned interpreters.
 
     Returns:
         (allowed, reason) -- ``True`` if allowed, ``False`` with explanation if blocked.
@@ -65,11 +98,25 @@ def bash_guard(tool_name: str, tool_input: dict[str, Any]) -> tuple[bool, str]:
         return True, ""
 
     command = tool_input.get("command", "")
-    cmd_lower = command.lower().strip()
+    cmd_lower = _normalize_whitespace(command.lower().strip())
 
     for dangerous in BASH_BLOCKLIST:
         if dangerous in cmd_lower:
             return False, (f"Blocked dangerous command pattern: '{dangerous}' in: {command[:100]}")
+
+    # Scope-check prefixes: block if path is outside current working directory
+    for prefix in SCOPE_CHECKED_PREFIXES:
+        if cmd_lower.startswith(prefix):
+            # Block if any argument starts with / and isn't under cwd
+            parts = cmd_lower.split()
+            for part in parts[1:]:
+                if part.startswith("/") or part.startswith(".."):
+                    return False, (f"Blocked: '{prefix.strip()}' with absolute/parent path in: {command[:100]}")
+
+    # Regex patterns for shell invocation bypasses
+    for pattern in _SHELL_INVOKE_PATTERNS:
+        if pattern.search(cmd_lower):
+            return False, (f"Blocked shell/interpreter invocation pattern in: {command[:100]}")
 
     return True, ""
 

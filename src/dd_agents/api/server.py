@@ -242,7 +242,7 @@ if HAS_FASTAPI:
 
         merged_dir = _validate_path(run_dir) / "findings" / "merged"
         if not merged_dir.is_dir():
-            raise HTTPException(status_code=404, detail=f"Findings not found at {merged_dir}")
+            raise HTTPException(status_code=404, detail="Findings directory not found for this run")
 
         findings: list[dict[str, Any]] = []
         by_severity: dict[str, int] = {}

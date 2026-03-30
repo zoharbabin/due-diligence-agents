@@ -150,6 +150,76 @@ class TestBashGuard:
         allowed, reason = bash_guard("Bash", {"command": "RM -RF /important"})
         assert allowed is False
 
+    def test_blocks_absolute_path_to_bash(self) -> None:
+        allowed, reason = bash_guard("Bash", {"command": '/bin/bash -c "rm -rf /"'})
+        assert allowed is False
+        assert "shell/interpreter" in reason.lower() or "rm -rf" in reason.lower()
+
+    def test_blocks_usr_bin_env_sh(self) -> None:
+        allowed, reason = bash_guard("Bash", {"command": "/usr/bin/env sh -c 'dangerous'"})
+        assert allowed is False
+
+    def test_blocks_sh_c(self) -> None:
+        allowed, reason = bash_guard("Bash", {"command": "sh -c 'rm -rf /'"})
+        assert allowed is False
+
+    def test_blocks_bash_heredoc(self) -> None:
+        allowed, reason = bash_guard("Bash", {"command": "bash<<EOF\nrm -rf /\nEOF"})
+        assert allowed is False
+
+    def test_blocks_double_space_evasion(self) -> None:
+        allowed, reason = bash_guard("Bash", {"command": "rm  -rf /"})
+        assert allowed is False
+
+    def test_blocks_tab_evasion(self) -> None:
+        allowed, reason = bash_guard("Bash", {"command": "rm\t-rf /"})
+        assert allowed is False
+
+    def test_blocks_versioned_python(self) -> None:
+        allowed, reason = bash_guard("Bash", {"command": "python3.12 -c 'import os'"})
+        assert allowed is False
+
+    def test_blocks_shell_var_invocation(self) -> None:
+        allowed, reason = bash_guard("Bash", {"command": "$SHELL -c 'dangerous'"})
+        assert allowed is False
+
+    def test_blocks_truncate(self) -> None:
+        allowed, reason = bash_guard("Bash", {"command": "truncate -s 0 /etc/passwd"})
+        assert allowed is False
+
+    def test_blocks_shred(self) -> None:
+        allowed, reason = bash_guard("Bash", {"command": "shred /important/file"})
+        assert allowed is False
+
+    def test_blocks_pip_install(self) -> None:
+        allowed, reason = bash_guard("Bash", {"command": "pip install evil-package"})
+        assert allowed is False
+
+    def test_blocks_netcat(self) -> None:
+        allowed, reason = bash_guard("Bash", {"command": "nc -l 4444"})
+        assert allowed is False
+
+    def test_blocks_mv_absolute_path(self) -> None:
+        allowed, reason = bash_guard("Bash", {"command": "mv /important/file /dev/null"})
+        assert allowed is False
+
+    def test_blocks_cp_parent_traversal(self) -> None:
+        allowed, reason = bash_guard("Bash", {"command": "cp ../../etc/passwd ./stolen"})
+        assert allowed is False
+
+    def test_allows_mv_relative(self) -> None:
+        allowed, reason = bash_guard("Bash", {"command": "mv old_name.txt new_name.txt"})
+        assert allowed is True
+
+    def test_allows_safe_python_script(self) -> None:
+        """Running a python script (without -c) should still be allowed."""
+        allowed, reason = bash_guard("Bash", {"command": "python3 build_report.py"})
+        assert allowed is True
+
+    def test_blocks_chained_sh_c(self) -> None:
+        allowed, reason = bash_guard("Bash", {"command": "echo hello && sh -c 'dangerous'"})
+        assert allowed is False
+
 
 # ===================================================================
 # PreToolUse: file_size_guard
