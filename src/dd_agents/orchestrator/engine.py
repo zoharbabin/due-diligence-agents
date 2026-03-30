@@ -2057,9 +2057,11 @@ class PipelineEngine:
                 elif isinstance(data, list):
                     findings = data
 
-                # Filter to P0/P1 only.
+                # Filter to P0/P1/P2 for citation verification.
                 critical = [
-                    f for f in findings if isinstance(f, dict) and str(f.get("severity", "")).upper() in ("P0", "P1")
+                    f
+                    for f in findings
+                    if isinstance(f, dict) and str(f.get("severity", "")).upper() in ("P0", "P1", "P2")
                 ]
                 if not critical:
                     continue
@@ -2102,12 +2104,13 @@ class PipelineEngine:
         agent_name: str,
         customer_name: str,
     ) -> int:
-        """Verify P0/P1 findings deterministically without LLM calls.
+        """Verify P0-P2 findings deterministically without LLM calls.
 
         Checks that can be performed without an LLM:
         1. Citation source_path points to a file that exists in the data room.
         2. exact_quote is non-empty for P0/P1 findings.
         3. Finding has at least one citation.
+        4. P2 findings have at least one citation with exact_quote.
 
         Returns the number of findings whose severity was adjusted.
         """
@@ -2116,7 +2119,7 @@ class PipelineEngine:
             severity = str(finding.get("severity", "")).upper()
             citations = finding.get("citations", [])
 
-            # Check 1: P0/P1 must have at least one citation.
+            # Check 1: P0/P1/P2 must have at least one citation.
             if not citations or not isinstance(citations, list):
                 if severity == "P0":
                     finding["severity"] = "P1"
@@ -2138,6 +2141,16 @@ class PipelineEngine:
                         customer_name,
                         finding.get("title", "?"),
                     )
+                elif severity == "P2":
+                    finding["severity"] = "P3"
+                    finding["verification_note"] = "Downgraded: no citations provided"
+                    adjusted += 1
+                    logger.warning(
+                        "Downgraded P2→P3 for %s/%s: %s (no citations)",
+                        agent_name,
+                        customer_name,
+                        finding.get("title", "?"),
+                    )
                 continue
 
             # Check 2: P0/P1 must have exact_quote in at least one citation.
@@ -2148,6 +2161,17 @@ class PipelineEngine:
                 adjusted += 1
                 logger.warning(
                     "Downgraded P0→P1 for %s/%s: %s (no exact_quote)",
+                    agent_name,
+                    customer_name,
+                    finding.get("title", "?"),
+                )
+            elif not has_quote and severity == "P2":
+                # P2 findings without any exact_quote get downgraded to P3.
+                finding["severity"] = "P3"
+                finding["verification_note"] = "Downgraded: no exact_quote on any citation"
+                adjusted += 1
+                logger.warning(
+                    "Downgraded P2→P3 for %s/%s: %s (no exact_quote)",
                     agent_name,
                     customer_name,
                     finding.get("title", "?"),

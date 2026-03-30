@@ -2623,7 +2623,7 @@ class TestDoDCheck30ReportDiff:
         check = checker.check_13_merge_dedup_complete()
         assert check.passed is True
         assert check.details["merged_count"] == 3
-        assert check.details["total_json_files"] == 6  # 3 customer + 3 stale
+        assert check.details["expected_count"] == 3
 
     def test_check_13_fails_when_customer_missing(self, tmp_path: Path) -> None:
         """check_13 fails when a customer file is missing."""
@@ -2696,7 +2696,9 @@ class TestDoDCheck30ReportDiff:
         # Write to index/text/ (sibling of inventory's parent)
         alt_dir = tmp_path / "data" / "index" / "text"
         alt_dir.mkdir(parents=True)
-        (alt_dir / "extraction_quality.json").write_text("[]")
+        (alt_dir / "extraction_quality.json").write_text(
+            json.dumps([{"file": "test.pdf", "confidence": 0.9, "quality_score": 85}])
+        )
 
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,

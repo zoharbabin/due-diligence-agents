@@ -1134,20 +1134,35 @@ class FindingMerger:
                         reason,
                     )
 
-            # P2 findings with no real citation get downgraded to P3.
+            # P2 findings: require exact_quote on at least one citation.
+            # Downgrade to P3 if all citations are synthetic OR missing quotes.
             elif severity == Severity.P2:
-                if has_synthetic or all(
+                all_synthetic = has_synthetic or all(
                     not cit.source_path or cit.source_path.startswith("[synthetic:") for cit in citations
-                ):
+                )
+                all_missing_quote = all(not cit.exact_quote for cit in citations)
+                if all_synthetic:
                     severity = Severity.P3
                     logger.warning(
                         "Downgraded finding '%s' from P2 to P3: no real citation provided",
+                        title,
+                    )
+                elif all_missing_quote:
+                    severity = Severity.P3
+                    logger.warning(
+                        "Downgraded finding '%s' from P2 to P3: all citations lack exact_quote",
                         title,
                     )
 
             # Normalise confidence to enum values.
             raw_conf = str(f.get("confidence", "medium")).strip().lower()
             confidence = Confidence(raw_conf) if raw_conf in ("high", "medium", "low") else Confidence.MEDIUM
+
+            # Degrade confidence when citations are weak — synthetic or missing
+            # exact_quote on any citation caps confidence at medium.
+            has_weak_citation = has_synthetic or any(not cit.exact_quote for cit in citations)
+            if has_weak_citation and confidence == Confidence.HIGH:
+                confidence = Confidence.MEDIUM
 
             # Ensure description is non-empty -- agents occasionally omit it.
             # Fall back to title (always present by this point) rather than
