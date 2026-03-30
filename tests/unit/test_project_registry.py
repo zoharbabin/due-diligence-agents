@@ -2,16 +2,13 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path  # noqa: TC003
 
 import pytest
 
 from dd_agents.models.project import PortfolioComparison, ProjectEntry, ProjectRegistry
 from dd_agents.persistence.project_registry import (
-    ProjectLock,
     ProjectRegistryManager,
-    _process_alive,
     _safe_slug,
 )
 
@@ -229,49 +226,3 @@ class TestPortfolioComparison:
         comp = mgr.compare_projects()
         assert comp.projects == []
         assert comp.avg_risk_score == 0.0
-
-
-class TestProjectLock:
-    """Test file-based project locking."""
-
-    def test_acquire_and_release(self, tmp_path: Path) -> None:
-        lock = ProjectLock(tmp_path)
-        assert lock.acquire() is True
-        assert lock.lock_file.exists()
-        lock.release()
-        assert not lock.lock_file.exists()
-
-    def test_double_acquire_self(self, tmp_path: Path) -> None:
-        lock = ProjectLock(tmp_path)
-        assert lock.acquire() is True
-        # Same PID — should detect as self and re-acquire
-        assert lock.acquire() is False  # Same PID is alive, so locked
-
-    def test_context_manager(self, tmp_path: Path) -> None:
-        with ProjectLock(tmp_path) as lock:
-            assert lock.lock_file.exists()
-        assert not lock.lock_file.exists()
-
-    def test_stale_lock_cleanup(self, tmp_path: Path) -> None:
-        lock_file = tmp_path / "_dd" / ".lock"
-        lock_file.parent.mkdir(parents=True, exist_ok=True)
-        lock_file.write_text("999999999", encoding="utf-8")  # Non-existent PID
-        lock = ProjectLock(tmp_path)
-        assert lock.acquire() is True
-
-    def test_corrupt_lock_file(self, tmp_path: Path) -> None:
-        lock_file = tmp_path / "_dd" / ".lock"
-        lock_file.parent.mkdir(parents=True, exist_ok=True)
-        lock_file.write_text("not_a_pid", encoding="utf-8")
-        lock = ProjectLock(tmp_path)
-        assert lock.acquire() is True
-
-
-class TestProcessAlive:
-    """Test process liveness check."""
-
-    def test_current_process_alive(self) -> None:
-        assert _process_alive(os.getpid()) is True
-
-    def test_nonexistent_process(self) -> None:
-        assert _process_alive(999999999) is False

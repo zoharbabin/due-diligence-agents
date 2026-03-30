@@ -263,38 +263,24 @@ pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/ && ruff
 ### 7.1 Multi-Project Portfolio View (#118)
 **Status**: Complete — 27 tests
 - [x] Implement `src/dd_agents/models/project.py` — ProjectEntry, ProjectRegistry, PortfolioComparison
-- [x] Implement `src/dd_agents/persistence/project_registry.py` — ProjectRegistryManager, ProjectLock, _safe_slug
+- [x] Implement `src/dd_agents/persistence/project_registry.py` — ProjectRegistryManager, _safe_slug
 - [x] Write `tests/unit/test_project_registry.py` — 27 tests
 
-### 7.2 Collaborative Review & Annotation Layer (#122)
-**Status**: Complete — 22 tests
-- [x] Implement `src/dd_agents/models/review.py` — Annotation, ReviewAssignment, ReviewProgress, ReviewState
-- [x] Implement `src/dd_agents/review/manager.py` — ReviewManager with CRUD, progress, export
-- [x] Write `tests/unit/test_review.py` — 22 tests
-
-### 7.3 Configurable Report Templates (#123)
+### 7.2 Configurable Report Templates (#123)
 **Status**: Complete — 23 tests
 - [x] Implement `src/dd_agents/reporting/templates.py` — ReportBranding, ReportSections, TemplateLibrary, BUILTIN_TEMPLATES
 - [x] Write `tests/unit/test_report_templates.py` — 23 tests
 
-### 7.4 REST API & Webhook Notifications (#133)
-**Status**: Complete — 16 tests
-- [x] Implement `src/dd_agents/api/server.py` — FastAPI REST API (optional dep)
-- [x] Implement `src/dd_agents/api/webhooks.py` — WebhookDispatcher, Slack/email notifications
-- [x] Write `tests/unit/test_api.py` — 16 tests
-
-### 7.5 Contract Ontology & Relationship Reasoning (#152)
+### 7.3 Contract Ontology & Relationship Reasoning (#152)
 **Status**: Complete — 27 tests (after fixes)
 - [x] Implement `src/dd_agents/models/ontology.py` — DocumentType, ClauseType, RelationshipType, ClauseNode, OntologyGraph
 - [x] Implement `src/dd_agents/reasoning/contract_graph.py` — ContractKnowledgeGraph with NetworkX
 - [x] Write `tests/unit/test_ontology.py` — 27 tests
 
-### 7.6 CLI Commands
+### 7.4 CLI Commands
 **Status**: Complete
 - [x] Add `dd-agents portfolio` command group (add/list/compare/remove)
-- [x] Add `dd-agents review` command group (annotate/assign/progress/export)
 - [x] Add `dd-agents templates` command group (list/show)
-- [x] Add `[api]` optional dependency to pyproject.toml
 
 ### Phase 7 Acceptance
 - [x] `pytest tests/unit/ -x -q` — 2958 tests pass

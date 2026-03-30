@@ -29,13 +29,12 @@ Install extras for additional capabilities:
 pip install -e ".[vector]"     # ChromaDB for semantic cross-document search
 pip install -e ".[ocr]"        # pytesseract OCR fallback (English only)
 pip install -e ".[glm-ocr]"    # GLM-OCR vision-language model (100+ languages, Apple Silicon / Ollama)
-pip install -e ".[api]"        # FastAPI + uvicorn for REST API server
 ```
 
 To install everything:
 
 ```bash
-pip install -e ".[dev,pdf,vector,ocr,glm-ocr,api]"
+pip install -e ".[dev,pdf,vector,ocr,glm-ocr]"
 ```
 
 ### System Dependencies (optional)
@@ -63,9 +62,6 @@ Optional environment variables:
 ```bash
 # Override the default Claude model
 export DD_MODEL="claude-sonnet-4-20250514"
-
-# REST API authentication key (required for API server)
-export DD_API_KEY="your-secret-api-key"
 
 # ChromaDB: persist vector search index to disk (default: memory-only)
 export CHROMA_PERSIST_DIR="./chroma_data"
@@ -194,20 +190,6 @@ dd-agents portfolio list
 dd-agents portfolio compare
 ```
 
-### Collaborative Review
-
-Annotate findings, assign reviewers, and track sign-off progress:
-
-```bash
-dd-agents review annotate --run-dir _dd/forensic-dd/runs/latest \
-  --finding "Liability cap" --reviewer alice --status reviewed
-
-dd-agents review assign --run-dir _dd/forensic-dd/runs/latest \
-  --reviewer alice --section legal
-
-dd-agents review progress --run-dir _dd/forensic-dd/runs/latest
-```
-
 ### Report Templates
 
 Apply pre-built templates for different audiences (Board Summary, Legal Deep Dive, etc.):
@@ -215,14 +197,6 @@ Apply pre-built templates for different audiences (Board Summary, Legal Deep Div
 ```bash
 dd-agents templates list
 dd-agents templates show board_summary
-```
-
-### REST API (Optional)
-
-Start a REST API server for programmatic access (requires `pip install -e ".[api]"`):
-
-```bash
-DD_API_KEY="your-secret-key" uvicorn dd_agents.api.server:app --port 8000
 ```
 
 See the [CLI Reference](cli-reference.md) for full documentation of all commands.

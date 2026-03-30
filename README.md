@@ -110,15 +110,6 @@ dd-agents portfolio list
 dd-agents portfolio compare
 ```
 
-### Collaborative Review
-
-Annotate findings, assign reviewers, and track sign-off progress:
-
-```bash
-dd-agents review annotate FINDING_ID --reviewer alice --status reviewed --comment "Verified"
-dd-agents review progress --run-dir _dd/forensic-dd/runs/latest --total 200
-```
-
 ### Report Templates
 
 Apply pre-built templates for different audiences: **Full Report**, **Board Summary**, **Legal Deep Dive**, **Financial Analysis**, **Technical Assessment**.
@@ -127,16 +118,6 @@ Apply pre-built templates for different audiences: **Full Report**, **Board Summ
 dd-agents templates list
 dd-agents templates show board_summary
 ```
-
-### REST API (Optional)
-
-Programmatic access via FastAPI (requires `pip install -e ".[api]"`):
-
-```bash
-DD_API_KEY="your-secret-key" uvicorn dd_agents.api.server:app --port 8000
-```
-
-Webhook notifications (HTTP, Slack, email) via `/api/v1/webhooks`.
 
 ## How It Works
 
@@ -205,7 +186,6 @@ pip install -e ".[dev]"       # + dev tools (pytest, mypy, ruff)
 pip install -e ".[vector]"    # + ChromaDB for semantic cross-document search
 pip install -e ".[ocr]"       # + pytesseract OCR fallback (English only)
 pip install -e ".[glm-ocr]"   # + GLM-OCR vision-language model (100+ languages, Apple Silicon / Ollama)
-pip install -e ".[api]"       # + FastAPI for REST API server
 ```
 
 All core dependencies are open-source under permissive licenses (Apache 2.0, MIT, BSD). pymupdf (optional `[pdf]` extra) is AGPL-3.0 licensed.
