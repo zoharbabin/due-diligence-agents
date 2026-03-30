@@ -35,7 +35,7 @@ make test-unit         # Unit tests only (fast, no API calls)
 pytest tests/e2e/ -x   # End-to-end tests (requires API key, slow)
 ```
 
-The project has 2,960+ unit tests, 17 integration tests, and 9 E2E tests (3 skipped without API key). Unit and integration tests require no API key.
+The project has ~2,900 unit tests, 17 integration tests, and 9 E2E tests (3 skipped without API key). Unit and integration tests require no API key.
 
 ## Quality Gates
 

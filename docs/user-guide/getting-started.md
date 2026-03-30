@@ -1,5 +1,7 @@
 # Getting Started
 
+Traditional M&A due diligence takes 4-12 weeks and costs 1-3% of deal value in professional fees. This pipeline automates multi-domain contract analysis across Legal, Finance, Commercial, and Product/Tech — producing a board-ready report with precise citations in minutes instead of weeks.
+
 ## Prerequisites
 
 - Python 3.12 or later
@@ -23,8 +25,8 @@ Install extras for additional capabilities:
 
 ```bash
 pip install -e ".[vector]"     # ChromaDB for semantic cross-document search
-pip install -e ".[ocr]"        # pytesseract + Pillow + pdf2image for OCR fallback on scanned PDFs
-pip install -e ".[glm-ocr]"    # GLM-OCR vision-language model (Apple Silicon)
+pip install -e ".[ocr]"        # pytesseract OCR fallback (English only)
+pip install -e ".[glm-ocr]"    # GLM-OCR vision-language model (100+ languages, Apple Silicon / Ollama)
 pip install -e ".[api]"        # FastAPI + uvicorn for REST API server
 ```
 
@@ -39,7 +41,7 @@ pip install -e ".[dev,vector,ocr,glm-ocr,api]"
 | Dependency | Install | Purpose |
 |-----------|---------|---------|
 | `poppler` | `brew install poppler` (macOS) / `apt install poppler-utils` (Linux) | Fallback PDF extraction via `pdftotext` |
-| `tesseract-ocr` | `brew install tesseract` (macOS) / `apt install tesseract-ocr` (Linux) | OCR for scanned PDFs |
+| `tesseract-ocr` | `brew install tesseract` (macOS) / `apt install tesseract-ocr` (Linux) | OCR for scanned PDFs (English only; use GLM-OCR for multilingual) |
 
 ## API Key Setup
 

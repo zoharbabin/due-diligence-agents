@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Python application for forensic M&A due diligence. 8 AI agents (4 specialists + optional Judge + Executive Synthesis + Red Flag Scanner + Acquirer Intelligence) analyze contract data rooms under a 35-step pipeline with 5 blocking gates, producing a board-ready HTML report + 14-sheet Excel report. Python orchestrates; agents are workers.
+Python application for forensic M&A due diligence. 8 AI agents (4 domain specialists + Judge + Executive Synthesis + Red Flag Scanner + Acquirer Intelligence) analyze contract data rooms under a 35-step pipeline with 5 blocking gates, producing a board-ready HTML report + 14-sheet Excel report. The 4 specialists (Legal, Finance, Commercial, ProductTech) share a base runner but are differentiated by substantive domain-specific prompts and 18 canonical clause types. Python orchestrates; agents are workers.
 
 **Package**: `dd_agents` under `src/dd_agents/`
 **SDK**: `claude-agent-sdk` v0.1.39+ (Python 3.12+)
@@ -40,7 +40,7 @@ dd-agents run path/to/deal-config.json
 - **Persistence**: Three tiers — PERMANENT (never wiped), VERSIONED (archived per run), FRESH (rebuilt each run).
 - **Hooks** (`hooks/`): Flat return format `{"decision": "block"|"allow", "reason": "..."}` for ALL hook types. Never nest under `hookSpecificOutput`.
 - **Models** (`models/`): Pydantic v2 for all schemas. `model_json_schema()` for structured outputs.
-- **Validation** (`validation/`): 6-layer numerical audit, 30 DoD checks. Fail-closed — validation failures block the pipeline.
+- **Validation** (`validation/`): 6-layer numerical audit, 30 substantive DoD checks (content-validated, not file-existence). Fail-closed — validation failures block the pipeline.
 
 ## Code Style
 

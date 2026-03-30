@@ -1,10 +1,18 @@
 # Due Diligence Agent SDK
 
-**Automate M&A due diligence in minutes, not weeks.** Point 8 AI agents at a contract data room and get a board-ready risk report with precise citations — no manual review of hundreds of PDFs.
+**Automate M&A due diligence in minutes, not weeks.** Point **4 domain-specialist AI agents** (Legal, Finance, Commercial, Product/Tech) plus **4 synthesis and validation agents** at a contract data room and get a board-ready risk report with precise citations — no manual review of hundreds of PDFs.
 
 ## The Problem
 
-M&A due diligence requires lawyers and analysts to manually review hundreds of contracts across dozens of counterparties, hunting for change-of-control clauses, liability caps, IP risk, revenue recognition issues, and termination rights. A typical data room review takes 2-4 weeks and costs $50K-$200K in professional fees. Critical risks get buried in volume.
+M&A due diligence requires lawyers and analysts to manually review hundreds of contracts across dozens of counterparties, hunting for change-of-control clauses, liability caps, IP risk, revenue recognition issues, and termination rights. A typical data room review takes 4-12 weeks and costs 1-3% of deal value in professional fees. Critical risks get buried in volume.
+
+**The market is massive and accelerating.** Global M&A deal value reached approximately $4.9 trillion in 2025 — up roughly 36-40% year-over-year — with megadeals (>$5B) surging over 70% (sources: Bain, PwC). Over 70% of M&A advisors expect deal flow to increase further in 2026 (Capstone/IMAP). Yet traditional due diligence hasn't scaled: manual review remains the bottleneck between signing and closing.
+
+**AI adoption in M&A is doubling annually.** Nearly half of M&A practitioners now use AI in their deal processes, roughly double the prior year (Bain). Over half use GenAI specifically for due diligence and deal validation. 73% of lawyers rely on AI for document review (Thomson Reuters). AI-assisted contract review reduces review time by 70-90% according to vendor case studies (Luminance, LegalOn, Axiom).
+
+**But existing tools are fragmented.** Virtual data rooms (Datasite, Intralinks, Ansarada) have added AI-assisted indexing and classification but don't perform deep analytical review. AI contract review tools (Luminance, Kira/Litera, LegalOn, Harvey) are legal-centric — single-domain clause extraction without cross-domain synthesis. CLM platforms (Ironclad, Robin AI) target post-signature lifecycle management. M&A workflow tools (Midaxo, DealRoom) handle project management and deal tracking, not content analysis. Financial-services AI platforms (Blueflame AI) and general-purpose GenAI frameworks (ZBrain) require extensive custom build-out. No existing solution provides multi-domain forensic analysis with adversarial cross-validation across Legal, Finance, Commercial, and Product/Tech — the full scope of what acquirers actually need.
+
+This project fills that gap: an open-source, multi-agent pipeline that analyzes an entire data room across all four domains, cross-validates findings adversarially, and produces a board-ready report with precise citations — at a fraction of the cost and time of manual review or stitching together single-domain SaaS tools ($3K-30K+/month each).
 
 ## What You Get
 
@@ -136,9 +144,9 @@ A **35-step deterministic pipeline** orchestrated by Python, with AI agents as w
 
 1. **Extract** — Discover and extract text from PDFs, Office docs, and images using pymupdf with fallback to markitdown, OCR, and Claude vision
 2. **Resolve** — 6-pass cascading entity resolution matches counterparty names across documents, with document precedence scoring (version chains, folder trust tiers, recency)
-3. **Analyze** — 4 specialist agents (Legal, Finance, Commercial, ProductTech) analyze every customer's contracts in parallel
-4. **Validate** — Optional Judge agent reviews findings adversarially; Executive Synthesis calibrates Go/No-Go; Red Flag Scanner provides quick triage
-5. **Merge & Audit** — Deduplicate findings across agents, run 6-layer numerical audit and 30 definition-of-done checks
+3. **Analyze** — 4 domain-specialist agents (Legal, Finance, Commercial, ProductTech) analyze every customer's contracts in parallel with provision-specific prompts and 18 canonical clause types
+4. **Validate** — Judge agent reviews findings adversarially; Executive Synthesis calibrates Go/No-Go; Red Flag Scanner provides quick triage; Acquirer Intelligence augments with market context
+5. **Merge & Audit** — Deduplicate findings across agents, run 6-layer numerical audit and 30 definition-of-done checks with citation verification for P0-P2 findings
 6. **Report** — Generate board-ready HTML report + 14-sheet Excel report with full audit trail
 
 **5 blocking gates** halt the pipeline on quality failures rather than producing unreliable reports. Checkpoint/resume from any step.
@@ -154,6 +162,8 @@ _dd/forensic-dd/
 │       ├── findings/
 │       │   ├── legal/              # Per-agent raw findings
 │       │   ├── finance/
+│       │   ├── commercial/
+│       │   ├── product_tech/
 │       │   └── merged/             # Deduplicated merged findings
 │       ├── report/
 │       │   ├── dd_report.html      # Board-ready interactive HTML report
@@ -184,7 +194,7 @@ export AWS_REGION=us-east-1
 | Dependency | Install | Purpose |
 |-----------|---------|---------|
 | `poppler` | `brew install poppler` (macOS) / `apt install poppler-utils` (Linux) | Fallback PDF extraction |
-| `tesseract-ocr` | `brew install tesseract` (macOS) / `apt install tesseract-ocr` (Linux) | OCR for scanned PDFs |
+| `tesseract-ocr` | `brew install tesseract` (macOS) / `apt install tesseract-ocr` (Linux) | OCR for scanned PDFs (English only; use GLM-OCR for multilingual) |
 
 ## Installation
 
@@ -192,8 +202,8 @@ export AWS_REGION=us-east-1
 pip install -e "."            # Core only
 pip install -e ".[dev]"       # + dev tools (pytest, mypy, ruff)
 pip install -e ".[vector]"    # + ChromaDB for semantic cross-document search
-pip install -e ".[ocr]"       # + pytesseract for OCR fallback on scanned PDFs
-pip install -e ".[glm-ocr]"   # + GLM-OCR vision-language model (Apple Silicon)
+pip install -e ".[ocr]"       # + pytesseract OCR fallback (English only)
+pip install -e ".[glm-ocr]"   # + GLM-OCR vision-language model (100+ languages, Apple Silicon / Ollama)
 pip install -e ".[api]"       # + FastAPI for REST API server
 ```
 

@@ -1,5 +1,7 @@
 # Running the Pipeline
 
+The 35-step pipeline replaces what traditionally takes teams of lawyers and analysts 4-12 weeks of manual contract review. Eight AI agents analyze every document across four domains (Legal, Finance, Commercial, Product/Tech), cross-validate findings adversarially, and produce quality-gated reports with precise citations.
+
 ## Basic Execution
 
 ```bash
@@ -127,18 +129,20 @@ resuming after the issue is fixed.
 
 ## Agents
 
-The pipeline uses up to 8 AI agents:
+The pipeline uses up to **8 AI agents** — 4 domain specialists that analyze contracts in parallel, plus 4 synthesis/validation agents:
 
-| Agent | Phase | Description |
-|-------|-------|-------------|
-| Legal | 4 | Contract clause analysis (CoC, TfC, IP, privacy, liability) |
-| Finance | 4 | Revenue recognition, SaaS metrics, financial risk |
-| Commercial | 4 | Customer concentration, pricing, renewal risk |
-| ProductTech | 4 | Technology dependencies, integration complexity |
-| Judge | 5 | Adversarial review of specialist findings (optional) |
-| Executive Synthesis | 6 | Go/No-Go calibration, severity recalibration |
-| Acquirer Intelligence | 6 | Buyer thesis alignment, synergy validation (when `buyer_strategy` configured) |
-| Red Flag Scanner | 6 | Quick stoplight triage (when `--quick-scan` used) |
+| Agent | Type | Phase | Description |
+|-------|------|-------|-------------|
+| Legal | Specialist | 4 | Contract clause analysis (CoC, TfC, IP, privacy, liability) with 18 canonical clause types |
+| Finance | Specialist | 4 | Revenue recognition, SaaS metrics, financial risk |
+| Commercial | Specialist | 4 | Customer concentration, pricing, renewal risk |
+| ProductTech | Specialist | 4 | Technology dependencies, integration complexity |
+| Judge | Validation | 5 | Adversarial review of specialist findings (optional) |
+| Executive Synthesis | Synthesis | 6 | Go/No-Go calibration, severity recalibration |
+| Acquirer Intelligence | Synthesis | 6 | Buyer thesis alignment, synergy validation (when `buyer_strategy` configured) |
+| Red Flag Scanner | Triage | 6 | Quick stoplight triage (when `--quick-scan` used) |
+
+All 4 specialists share a base execution engine (`BaseAgentRunner`) but are differentiated by substantive domain-specific prompts containing M&A-specific legal definitions, targeted extraction instructions, and relevant keyword sets.
 
 ## Output Directory Structure
 

@@ -2,6 +2,10 @@
 
 Seven ADRs defining the foundational technical choices for the Due Diligence Agent SDK.
 
+## Market Context
+
+M&A deal activity reached approximately $4.9 trillion in 2025, up 36-40% year-over-year (Bain, PwC), with AI cited as a strategic rationale in roughly a third of the 100 largest deals (PwC). Nearly half of M&A practitioners now use AI in their workflows — roughly double the prior year — and over half use GenAI specifically for due diligence (Bain). Despite this demand, existing tools are single-domain and legal-centric (Luminance, Kira/Litera, LegalOn, Harvey), single-function (VDRs, CLM platforms, deal workflow tools), or require extensive custom build-out (general-purpose GenAI frameworks). No available solution performs multi-domain forensic analysis with adversarial cross-validation across Legal, Finance, Commercial, and Product/Tech domains. This project was designed to fill that gap as an open-source, self-hosted alternative to fragmented SaaS tooling.
+
 ---
 
 ## ADR-01: Claude Agent SDK Over Claude Code Skills
@@ -228,7 +232,7 @@ async def run_pipeline(project_dir: Path, resume: bool = False):
             raise
 ```
 
-**Six blocking gates** (pipeline halts if any fails):
+**Five blocking gates** plus config validation (pipeline halts if any fails):
 
 | Gate | Step | Condition |
 |------|------|-----------|

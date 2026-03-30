@@ -1,7 +1,6 @@
 # Reading the Report
 
-The pipeline produces two report formats: an interactive HTML report for navigation
-and drill-down, and a 14-sheet Excel report for detailed data analysis.
+The pipeline produces two report formats designed for different audiences: an interactive HTML report for board-level navigation and drill-down, and a 14-sheet Excel report for detailed data analysis by deal teams. Together they replace the static memo-style deliverables typical of manual due diligence, with the addition of precise citations, severity filtering, and cross-domain correlation that manual reviews rarely achieve.
 
 ## HTML Report
 
@@ -116,8 +115,8 @@ Findings that span multiple specialist domains, showing how risks in one area
 compound or contradict risks in another.
 
 **Contract Clause Library**
-Searchable catalog of key contract clauses extracted across the portfolio, organized
-by clause type (CoC, TfC, liability, IP, privacy, etc.).
+Searchable catalog of key contract clauses identified by AI analysis across the portfolio,
+organized by clause type (CoC, TfC, liability, IP, privacy, etc.) with exact quotes and source citations.
 
 **Key Employee & Organizational Risk**
 Key-person dependencies, non-compete/non-solicit provisions, and organizational

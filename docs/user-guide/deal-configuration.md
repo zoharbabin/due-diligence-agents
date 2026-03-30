@@ -1,7 +1,10 @@
 # Deal Configuration
 
 The pipeline is driven by a `deal-config.json` file that describes the buyer, target,
-deal parameters, and execution settings. There are three ways to create one.
+deal parameters, and execution settings. A well-configured deal file ensures the
+8 AI agents focus on the right risks, entities, and contract provisions — the
+difference between a generic scan and forensic-grade analysis tuned to the specific
+deal. There are three ways to create one.
 
 ## Auto-Generation with AI
 
@@ -267,6 +270,8 @@ Controls the optional Judge agent that reviews specialist findings:
 
 - `ocr_backend`: OCR engine preference — `auto` (default), `pytesseract`, `glm_ocr`, or `none`
   - `auto`: tries pymupdf → markitdown → pytesseract → glm_ocr
+  - `pytesseract`: English-only OCR (hardcoded `lang="eng"`)
+  - `glm_ocr`: multilingual OCR via GLM vision-language model (100+ languages, recommended for non-English data rooms)
   - `none`: skip OCR entirely (text-only extraction)
 
 ### reporting
@@ -279,9 +284,18 @@ Controls the optional Judge agent that reviews specialist findings:
 
 Controls which Claude models are used:
 
-- `profile`: `economy` (Haiku), `standard` (Sonnet), `premium` (Opus)
+- `profile`: preset model tier — see table below
 - `overrides`: per-agent model IDs, e.g. `{"legal": "claude-opus-4-6"}`
 - `budget_limit_usd`: optional hard spending cap per run
+
+Model assignments per profile:
+
+| Agent Role | `economy` | `standard` | `premium` |
+|-----------|-----------|------------|-----------|
+| Specialists (Legal, Finance, Commercial, ProductTech) | Haiku | Sonnet | Sonnet |
+| Judge | Haiku | Sonnet | Sonnet |
+| Executive Synthesis | Sonnet | Sonnet | Opus |
+| Red Flag Scanner | Haiku | Haiku | Sonnet |
 
 ### data_room
 
