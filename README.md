@@ -1,22 +1,22 @@
 # Due Diligence Agents
 
-**Give your deal team and advisors a head start.** AI agents pre-analyze your data room across Legal, Finance, Commercial, and Product/Tech — so your lawyers, accountants, and analysts can focus on what matters instead of reading every page.
+**Accelerate M&A due diligence.** AI agents analyze your data room across Legal, Finance, Commercial, and Product/Tech — helping your deal team search, correlate, and track findings across hundreds of documents in parallel.
 
 ## Why This Exists
 
-M&A due diligence requires teams to manually review hundreds of contracts across dozens of counterparties. A typical data room review takes 4-12 weeks. Critical risks get buried in volume, and advisors spend most of their time on initial document review rather than high-value analysis.
+M&A due diligence requires reviewing hundreds of contracts across dozens of counterparties. Searching for specific clauses, correlating findings across domains, and tracking risks across a large data room is time-consuming manual work — even with experienced teams.
 
-This tool doesn't replace your advisors — it makes them faster and more thorough. AI agents pre-scan every document, flag potential risks, cross-reference findings across domains, and produce a structured report with citations. Your legal, finance, and technical advisors then start from an organized risk map instead of a stack of unstructured PDFs — catching issues that might otherwise be buried in volume.
+This tool accelerates that work. AI agents scan every document, flag potential risks with citations, cross-reference findings across domains, and produce structured reports your team can search, filter, and drill into. Use it alongside your advisors to move faster, stay organized, and make sure nothing falls through the cracks.
 
 ## How It Helps
 
-- **Nothing overlooked** — every document is analyzed across all four domains, even in large data rooms where manual review might prioritize selectively
-- **Faster advisor workflows** — advisors start with a structured, searchable risk report instead of raw documents, cutting weeks of initial review
-- **Easy to correlate** — cross-domain findings are linked automatically (e.g., a legal termination clause that creates financial revenue risk)
-- **Clear prioritization** — findings are severity-ranked so your team focuses on what matters first
-- **Full traceability** — every finding links back to the exact file, page, section, and quote, so advisors can verify quickly
+- **Comprehensive coverage** — every document is analyzed across all four domains, even in large data rooms
+- **Fast search and correlation** — search for specific clauses across all contracts, with cross-domain findings linked automatically (e.g., a legal termination clause flagged alongside its financial revenue impact)
+- **Organized tracking** — findings are severity-ranked, categorized by domain, and traceable to exact file, page, section, and quote
+- **Parallel workflow** — run AI analysis alongside your advisory workstreams to accelerate the overall process
+- **Useful copilot for advisors** — advisors can query findings, drill into specific contracts, and use the structured output as a starting point for their own analysis
 
-**This tool is designed to work alongside your professional advisors, not replace them.** Legal, financial, and regulatory conclusions should always be validated by qualified professionals.
+**This tool does not replace professional advisors.** Legal, financial, and regulatory conclusions should always be made by qualified professionals. This tool helps your team and advisors work more efficiently.
 
 ## What You Get
 

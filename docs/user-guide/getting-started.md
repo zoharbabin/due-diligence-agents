@@ -1,8 +1,8 @@
 # Getting Started
 
-This tool helps your deal team and advisors work faster. AI agents pre-analyze your data room across Legal, Finance, Commercial, and Product/Tech — producing a structured risk report with citations so your advisors can focus on high-value analysis instead of initial document review.
+This tool accelerates M&A due diligence. AI agents analyze your data room across Legal, Finance, Commercial, and Product/Tech — helping your deal team search, correlate, and track findings across hundreds of documents in parallel.
 
-**This tool is designed to work alongside your professional advisors, not replace them.** Legal, financial, and regulatory conclusions should always be validated by qualified professionals.
+**This tool does not replace professional advisors.** Legal, financial, and regulatory conclusions should always be made by qualified professionals. This tool helps your team and advisors work more efficiently.
 
 ## Prerequisites
 
@@ -176,7 +176,7 @@ After the pipeline completes, find the outputs in `_dd/forensic-dd/runs/latest/r
 
 Open `dd_report.html` in a browser. See [Reading the Report](reading-report.md) for a walkthrough of each section.
 
-**Share this report with your advisors.** The AI identifies potential risks and provides citations — your legal, finance, and technical advisors verify accuracy and provide professional judgment on next steps.
+**Use this report alongside your advisory process.** The structured findings, citations, and cross-references help your team and advisors stay organized and move faster.
 
 ## Post-Run Tools
 

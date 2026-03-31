@@ -2,7 +2,7 @@
 
 The pipeline produces two report formats: an interactive HTML report for navigation and drill-down, and a 14-sheet Excel report for detailed analysis by deal teams. Both include sourced citations, severity filtering, and cross-domain correlation.
 
-**This report is designed to accelerate your advisors' work, not replace it.** Share findings with your legal, financial, and technical advisors for verification before presenting to a board or making business decisions.
+**This tool does not replace professional advisors.** Use the structured findings alongside your advisory process to search, correlate, and track risks more efficiently.
 
 ## HTML Report
 
