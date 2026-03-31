@@ -2,7 +2,7 @@
 
 The pipeline produces two report formats: an interactive HTML report for navigation and drill-down, and a 14-sheet Excel report for detailed analysis by deal teams. Both include sourced citations, severity filtering, and cross-domain correlation.
 
-**Important:** All findings are AI-generated and require verification by your legal and financial teams before being presented to a board or used for business decisions. The report accelerates analysis by highlighting risks and providing citations — your experts confirm accuracy.
+**This report is designed to accelerate your advisors' work, not replace it.** Share findings with your legal, financial, and technical advisors for verification before presenting to a board or making business decisions.
 
 ## HTML Report
 

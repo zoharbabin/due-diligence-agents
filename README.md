@@ -1,23 +1,22 @@
 # Due Diligence Agents
 
-**Cut weeks of contract review down to hours.** Point AI agents at your data room and get a risk report with findings traced back to exact contract clauses — across Legal, Finance, Commercial, and Product/Tech.
+**Give your deal team and advisors a head start.** AI agents pre-analyze your data room across Legal, Finance, Commercial, and Product/Tech — so your lawyers, accountants, and analysts can focus on what matters instead of reading every page.
 
 ## Why This Exists
 
-M&A due diligence requires teams to manually review hundreds of contracts across dozens of counterparties. A typical data room review takes 4-12 weeks and costs hundreds of thousands in professional fees. Critical risks get buried in volume.
+M&A due diligence requires teams to manually review hundreds of contracts across dozens of counterparties. A typical data room review takes 4-12 weeks. Critical risks get buried in volume, and advisors spend most of their time on initial document review rather than high-value analysis.
 
-This tool automates the first pass: 4 domain-specialist AI agents analyze every document, cross-validate findings, and produce a structured report. Your team then reviews AI-identified risks instead of reading every page — dramatically reducing time and cost while improving coverage.
+This tool doesn't replace your advisors — it makes them faster and more thorough. AI agents pre-scan every document, flag potential risks, cross-reference findings across domains, and produce a structured report with citations. Your legal, finance, and technical advisors then start from an organized risk map instead of a stack of unstructured PDFs — catching issues that might otherwise be buried in volume.
 
-**Important:** AI-generated findings require human review before any business decisions. This tool accelerates analysis; it does not replace professional judgment.
+## How It Helps
 
-## What It Costs
+- **Nothing overlooked** — every document is analyzed across all four domains, even in large data rooms where manual review might prioritize selectively
+- **Faster advisor workflows** — advisors start with a structured, searchable risk report instead of raw documents, cutting weeks of initial review
+- **Easy to correlate** — cross-domain findings are linked automatically (e.g., a legal termination clause that creates financial revenue risk)
+- **Clear prioritization** — findings are severity-ranked so your team focuses on what matters first
+- **Full traceability** — every finding links back to the exact file, page, section, and quote, so advisors can verify quickly
 
-| Scenario | Traditional Approach | With This Tool |
-|----------|---------------------|----------------|
-| 50-document data room | 2-4 weeks, $50K-$150K in legal fees | 15-30 min AI analysis + 4-8 hours expert review, $10-$50 in API costs |
-| 200-document data room | 6-12 weeks, $150K-$500K+ | 1-3 hours AI analysis + 1-2 days expert review, $50-$200 in API costs |
-
-Your legal and finance teams still review the output — but they start from a structured risk report instead of a stack of PDFs.
+**This tool is designed to work alongside your professional advisors, not replace them.** Legal, financial, and regulatory conclusions should always be validated by qualified professionals.
 
 ## What You Get
 

@@ -1,8 +1,8 @@
 # Getting Started
 
-This tool automates multi-domain contract analysis across Legal, Finance, Commercial, and Product/Tech — producing a structured risk report with citations in minutes instead of weeks of manual review.
+This tool helps your deal team and advisors work faster. AI agents pre-analyze your data room across Legal, Finance, Commercial, and Product/Tech — producing a structured risk report with citations so your advisors can focus on high-value analysis instead of initial document review.
 
-**Important:** AI-generated findings require human review before any business decisions. This tool accelerates the first pass; your legal and finance teams verify the results.
+**This tool is designed to work alongside your professional advisors, not replace them.** Legal, financial, and regulatory conclusions should always be validated by qualified professionals.
 
 ## Prerequisites
 
@@ -176,7 +176,7 @@ After the pipeline completes, find the outputs in `_dd/forensic-dd/runs/latest/r
 
 Open `dd_report.html` in a browser. See [Reading the Report](reading-report.md) for a walkthrough of each section.
 
-**Remember:** Review all high-severity findings with your domain experts before acting on them. The AI identifies risks and provides citations — your team verifies accuracy.
+**Share this report with your advisors.** The AI identifies potential risks and provides citations — your legal, finance, and technical advisors verify accuracy and provide professional judgment on next steps.
 
 ## Post-Run Tools
 

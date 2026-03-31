@@ -2,7 +2,7 @@
 
 The pipeline automates what traditionally takes teams of lawyers and analysts 4-12 weeks of manual contract review. Eight AI agents analyze every document across four domains (Legal, Finance, Commercial, Product/Tech), cross-validate findings, and produce quality-gated reports with sourced citations.
 
-**Important:** AI-generated findings require human review before any business decisions. This tool accelerates the first pass of analysis; your domain experts verify the results.
+**This tool is designed to work alongside your professional advisors, not replace them.** Share the output with your legal, finance, and technical advisors for verification and professional judgment.
 
 ## Basic Execution
 
