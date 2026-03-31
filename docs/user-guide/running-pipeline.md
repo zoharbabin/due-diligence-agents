@@ -1,6 +1,8 @@
 # Running the Pipeline
 
-The 35-step pipeline replaces what traditionally takes teams of lawyers and analysts 4-12 weeks of manual contract review. Eight AI agents analyze every document across four domains (Legal, Finance, Commercial, Product/Tech), cross-validate findings adversarially, and produce quality-gated reports with precise citations.
+The pipeline automates what traditionally takes teams of lawyers and analysts 4-12 weeks of manual contract review. Eight AI agents analyze every document across four domains (Legal, Finance, Commercial, Product/Tech), cross-validate findings, and produce quality-gated reports with sourced citations.
+
+**Important:** AI-generated findings require human review before any business decisions. This tool accelerates the first pass of analysis; your domain experts verify the results.
 
 ## Basic Execution
 
@@ -83,16 +85,16 @@ pymupdf with fallback to markitdown, OCR, or Claude vision. Step 5 is a **blocki
 extraction must succeed for at least a minimum threshold of files.
 
 **Phase 3: Inventory and Resolution (Steps 6-12)**
-Build customer inventory with document precedence scoring (version chains, folder
-trust tiers, recency), run entity resolution (6-pass cascading fuzzy matcher),
-build reference registry, count customer mentions, and verify inventory integrity.
-Steps 11-12 are conditional (database reconciliation and incremental classification).
+Build customer inventory with document ranking (which version of a file to trust when
+duplicates exist), match company names across documents (handling aliases, abbreviations,
+and legal suffixes automatically), build reference registry, count customer mentions,
+and verify inventory integrity. Steps 11-12 are conditional (database reconciliation
+and incremental classification).
 
 **Phase 4: Agent Execution (Steps 13-17)**
-Create the specialist team (Legal, Finance, Commercial, ProductTech), prepare prompts
-with document precedence context, route references, and spawn agents in parallel
-batches. Step 17 is a **blocking gate** -- coverage must meet minimum thresholds
-across all domains.
+Create the specialist team (Legal, Finance, Commercial, ProductTech), prepare analysis
+instructions with document ranking context, route references, and run agents in parallel.
+Step 17 is a **blocking gate** -- coverage must meet minimum thresholds across all domains.
 
 **Phase 5: Quality Review (Steps 18-22)**
 Merge incremental results (if applicable). Optionally spawn the Judge agent for
@@ -121,11 +123,20 @@ Five steps are blocking gates that halt the pipeline on failure:
 | 5 | Bulk Extraction | Minimum extraction success rate |
 | 17 | Coverage Gate | Agent coverage across all domains |
 | 27 | Numerical Audit | Financial figure consistency across 6 validation layers |
-| 28 | Full QA Audit | 30 definition-of-done checks |
+| 28 | Full QA Audit | 31 definition-of-done checks |
 | 31 | Post-Generation Validation | Report completeness and integrity |
 
-When a gate fails, the pipeline stops with exit code 2 and prints instructions for
-resuming after the issue is fixed.
+When a gate fails, the pipeline stops with exit code 2 and prints the reason for failure.
+
+**How to recover from each gate failure:**
+
+| Gate | Common Cause | How to Fix |
+|------|-------------|------------|
+| Bulk Extraction (step 5) | Corrupted or password-protected PDFs | Remove or replace problem files, then `--resume-from 4` |
+| Coverage Gate (step 17) | Too few documents per customer for meaningful analysis | Add missing documents to the data room, then `--resume-from 6` |
+| Numerical Audit (step 27) | Contradictory financial figures across documents | Review flagged findings in `audit.json`, then `--resume-from 27` |
+| Full QA Audit (step 28) | Quality checks failed (missing citations, low confidence) | Review `dod_results.json` for specifics, then `--resume-from 28` |
+| Post-Generation (step 31) | Report generation produced incomplete output | Check disk space, then `--resume-from 30` |
 
 ## Agents
 

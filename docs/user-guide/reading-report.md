@@ -1,6 +1,8 @@
 # Reading the Report
 
-The pipeline produces two report formats designed for different audiences: an interactive HTML report for board-level navigation and drill-down, and a 14-sheet Excel report for detailed data analysis by deal teams. Together they replace the static memo-style deliverables typical of manual due diligence, with the addition of precise citations, severity filtering, and cross-domain correlation that manual reviews rarely achieve.
+The pipeline produces two report formats: an interactive HTML report for navigation and drill-down, and a 14-sheet Excel report for detailed analysis by deal teams. Both include sourced citations, severity filtering, and cross-domain correlation.
+
+**Important:** All findings are AI-generated and require verification by your legal and financial teams before being presented to a board or used for business decisions. The report accelerates analysis by highlighting risks and providing citations — your experts confirm accuracy.
 
 ## HTML Report
 

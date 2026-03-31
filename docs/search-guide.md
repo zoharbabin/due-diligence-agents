@@ -2,7 +2,7 @@
 
 The `dd-agents search` command lets you run targeted questions against every
 customer's contracts in a data room and get an Excel report with answers
-and precise citations.
+and sourced citations.
 
 ## Quick Start
 
@@ -67,8 +67,8 @@ these practices improve accuracy:
   get consistent results
 - **Ask for section references**: "Provide the section reference and page
   number" improves citation quality
-- **Don't be too granular**: Asking too many sub-questions in one prompt
-  can reduce accuracy. Split into separate columns instead.
+- **Avoid overly specific questions**: Asking too many sub-questions in
+  one prompt can reduce accuracy. Split into separate columns instead.
 - **One concept per question**: Each column should focus on one specific
   provision or clause type
 

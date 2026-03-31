@@ -200,15 +200,17 @@ The **buyer** section supports:
 
 ### entity_aliases (optional)
 
-Fine-grained entity resolution configuration for the 6-pass cascading matcher:
+Helps the tool match company names correctly across documents. Companies often appear
+under different names (abbreviations, legal suffixes, trade names), and this section
+tells the tool which names refer to the same entity.
 
-- `canonical_to_variants`: maps canonical customer names → list of known variants
-- `short_name_guard`: abbreviations that should NOT be fuzzy-matched (too ambiguous)
-- `exclusions`: strings to always reject during entity matching (e.g. "N/A", "TBD")
-- `parent_child`: maps parent entities → list of subsidiaries for hierarchical matching
+- `canonical_to_variants`: maps the official company name to alternate names used in contracts (e.g. "Target Inc" → ["Target", "Target Incorporated"])
+- `short_name_guard`: abbreviations that are too ambiguous to match automatically (e.g. "TI" could be many companies)
+- `exclusions`: strings to always ignore during matching (e.g. "N/A", "TBD", "Various")
+- `parent_child`: maps parent companies to their subsidiaries for hierarchical matching
 
-When provided, these dramatically improve entity resolution accuracy by pre-seeding the
-alias database and preventing false positive matches.
+When provided, these dramatically improve name-matching accuracy and prevent
+false matches.
 
 ### source_of_truth (optional)
 

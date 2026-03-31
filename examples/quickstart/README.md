@@ -161,7 +161,7 @@ _dd/
 
 Key outputs:
 
-- **`runs/latest/report/dd_report.html`** -- The board-ready interactive HTML report with Go/No-Go recommendation, risk heatmaps, and drill-down to exact contract clauses.
+- **`runs/latest/report/dd_report.html`** -- The interactive HTML report with Go/No-Go recommendation, risk heatmaps, and drill-down to exact contract clauses. **Review all high-severity findings with your domain experts before acting on them.**
 - **`runs/latest/report/dd_report.xlsx`** -- The 14-sheet Excel companion report with findings, risk matrix, entity map, financial summaries, and more.
 - **`runs/latest/findings/`** -- Per-customer JSON findings from each specialist agent (legal, finance, commercial, producttech) plus merged results.
 - **`inventory/`** -- File discovery, customer registry, and entity resolution matches.

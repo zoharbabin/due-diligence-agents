@@ -8,12 +8,12 @@ dd-agents [COMMAND] [OPTIONS]
 
 ## Exit Codes
 
-| Code | Meaning |
-|------|---------|
-| 0 | Success |
-| 1 | Error (config invalid, pipeline failure, missing input) |
-| 2 | Blocking gate failed (pipeline halted at a validation gate) |
-| 130 | Interrupted by user (Ctrl+C) |
+| Code | Meaning | What to Do |
+|------|---------|------------|
+| 0 | Success | Nothing — the pipeline completed normally |
+| 1 | Error (invalid config, missing input, unexpected failure) | Check the error message and fix the issue |
+| 2 | Quality gate failed (pipeline halted because a quality check did not pass) | See [blocking gate recovery](running-pipeline.md#blocking-gates) for specific guidance |
+| 130 | Interrupted by user (Ctrl+C) | Resume with `--resume-from <step>` |
 
 ---
 
@@ -36,7 +36,7 @@ dd-agents run CONFIG_PATH [OPTIONS]
 | `--resume-from` | int (1-35) | 0 (beginning) | Resume from a specific step |
 | `--dry-run` | flag | off | Print step plan without executing |
 | `--quick-scan` | flag | off | Run steps 1-13 + Red Flag Scanner only |
-| `--model-profile` | `economy\|standard\|premium` | from config | Override model tier |
+| `--model-profile` | `economy\|standard\|premium` | from config | Model quality: `economy` (fastest, cheapest), `standard` (balanced), `premium` (most accurate, most expensive) |
 | `--model-override` | `AGENT=MODEL` | none | Per-agent model override (repeatable) |
 | `--verbose / -v` | flag | off | Enable debug logging |
 
