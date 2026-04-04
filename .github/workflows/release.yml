@@ -70,9 +70,6 @@ jobs:
     name: "Publish to PyPI"
     runs-on: ubuntu-latest
     needs: [build]
-    environment:
-      name: pypi
-      url: https://pypi.org/project/dd-agents/
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -114,7 +111,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Log in to Docker Hub
-        if: secrets.DOCKERHUB_USERNAME != ''
+        if: ${{ secrets.DOCKERHUB_USERNAME != '' }}
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
