@@ -94,10 +94,8 @@ dd-agents export-pdf report.html                            # Export to PDF
 **Prerequisites:** Python 3.12+ and an [Anthropic API key](https://console.anthropic.com/).
 
 ```bash
-# 1. Clone and install
-git clone https://github.com/zoharbabin/due-diligence-agents.git
-cd due-diligence-agents
-pip install -e ".[pdf]"
+# 1. Install
+pip install dd-agents[pdf]
 
 # 2. Set your API key
 export ANTHROPIC_API_KEY="sk-ant-..."
@@ -108,6 +106,16 @@ dd-agents auto-config "Buyer Corp" "Target Inc" --data-room ./data_room
 # 4. Run the analysis
 dd-agents run deal-config.json
 ```
+
+<details>
+<summary><strong>Install from source (development)</strong></summary>
+
+```bash
+git clone https://github.com/zoharbabin/due-diligence-agents.git
+cd due-diligence-agents
+pip install -e ".[dev,pdf]"
+```
+</details>
 
 Open `_dd/forensic-dd/runs/latest/report/dd_report.html` in your browser.
 
@@ -239,12 +247,11 @@ _dd/forensic-dd/
 ## Installation
 
 ```bash
-pip install -e "."            # Core (no PDF extraction)
-pip install -e ".[pdf]"       # + PDF extraction via pymupdf (recommended)
-pip install -e ".[dev]"       # + development tools (pytest, mypy, ruff)
-pip install -e ".[vector]"    # + semantic search via ChromaDB
-pip install -e ".[ocr]"       # + OCR for scanned documents (English)
-pip install -e ".[glm-ocr]"   # + multilingual OCR (100+ languages, Apple Silicon)
+pip install dd-agents           # Core (no PDF extraction)
+pip install dd-agents[pdf]      # + PDF extraction via pymupdf (recommended)
+pip install dd-agents[vector]   # + semantic search via ChromaDB
+pip install dd-agents[ocr]      # + OCR for scanned documents (English)
+pip install dd-agents[glm-ocr]  # + multilingual OCR (100+ languages, Apple Silicon)
 ```
 
 <details>
@@ -262,6 +269,14 @@ These are optional — the tool works without them but may produce lower-quality
 <summary><strong>Docker</strong></summary>
 
 ```bash
+# Pre-built image (recommended)
+docker pull ghcr.io/zoharbabin/due-diligence-agents:latest
+docker run -e ANTHROPIC_API_KEY="sk-ant-..." \
+  -v ./data_room:/workspace/data_room \
+  -v ./deal-config.json:/workspace/deal-config.json \
+  ghcr.io/zoharbabin/due-diligence-agents run deal-config.json
+
+# Or build from source
 docker build -t dd-agents .
 docker run -e ANTHROPIC_API_KEY="sk-ant-..." \
   -v ./data_room:/workspace/data_room \

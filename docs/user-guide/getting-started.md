@@ -15,27 +15,29 @@ This tool accelerates M&A due diligence by analyzing your entire data room acros
 ## Installation
 
 ```bash
-git clone https://github.com/zoharbabin/due-diligence-agents.git
-cd due-diligence-agents
-pip install -e ".[pdf]"
+pip install dd-agents[pdf]
 ```
 
 This installs the tool and all required dependencies, including PDF extraction support.
 
-For developers who also want testing and linting tools:
+<details>
+<summary><strong>Install from source (for development)</strong></summary>
 
 ```bash
+git clone https://github.com/zoharbabin/due-diligence-agents.git
+cd due-diligence-agents
 pip install -e ".[dev,pdf]"
 ```
+</details>
 
 ### Optional Extras
 
 Install these for additional capabilities:
 
 ```bash
-pip install -e ".[vector]"     # Semantic search across documents (ChromaDB)
-pip install -e ".[ocr]"        # OCR for scanned PDFs (English)
-pip install -e ".[glm-ocr]"    # Multilingual OCR (100+ languages, Apple Silicon)
+pip install dd-agents[vector]     # Semantic search across documents (ChromaDB)
+pip install dd-agents[ocr]        # OCR for scanned PDFs (English)
+pip install dd-agents[glm-ocr]    # Multilingual OCR (100+ languages, Apple Silicon)
 ```
 
 ### Optional System Dependencies

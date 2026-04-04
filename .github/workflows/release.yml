@@ -1,0 +1,180 @@
+name: Release
+
+# Triggered by pushing a version tag: git tag v0.4.0 && git push --tags
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write      # GitHub Releases
+  id-token: write      # PyPI trusted publishing (OIDC)
+  packages: write      # GitHub Container Registry
+
+jobs:
+  # ──────────────────────────────────────────────
+  # Gate: run full test suite before releasing
+  # ──────────────────────────────────────────────
+
+  quality-gate:
+    name: "Quality Gate"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -e ".[dev]" types-openpyxl types-networkx
+      - name: Lint
+        run: ruff check src/ tests/ && ruff format --check src/ tests/
+      - name: Type check
+        run: mypy src/ --strict
+      - name: Unit tests
+        run: pytest tests/unit/ -x -q
+      - name: Integration tests
+        run: pytest tests/integration/ -x -q -k "not test_agent_spawning"
+
+  # ──────────────────────────────────────────────
+  # Build Python package
+  # ──────────────────────────────────────────────
+
+  build:
+    name: "Build Package"
+    runs-on: ubuntu-latest
+    needs: [quality-gate]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install build tools
+        run: pip install build
+      - name: Build sdist and wheel
+        run: python -m build
+      - name: Verify CLI entry point
+        run: |
+          pip install dist/*.whl
+          dd-agents version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  # ──────────────────────────────────────────────
+  # Publish to PyPI (trusted publishing via OIDC)
+  # ──────────────────────────────────────────────
+
+  publish-pypi:
+    name: "Publish to PyPI"
+    runs-on: ubuntu-latest
+    needs: [build]
+    environment:
+      name: pypi
+      url: https://pypi.org/project/dd-agents/
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # Uses OIDC trusted publishing — no API token needed.
+        # Configure at: https://pypi.org/manage/project/dd-agents/settings/publishing/
+
+  # ──────────────────────────────────────────────
+  # Publish Docker image to GHCR + Docker Hub
+  # ──────────────────────────────────────────────
+
+  publish-docker:
+    name: "Publish Docker Image"
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ghcr.io/${{ github.repository }}
+            ${{ secrets.DOCKERHUB_USERNAME && format('docker.io/{0}/dd-agents', secrets.DOCKERHUB_USERNAME) || '' }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        if: secrets.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  # ──────────────────────────────────────────────
+  # Create GitHub Release with changelog
+  # ──────────────────────────────────────────────
+
+  github-release:
+    name: "GitHub Release"
+    runs-on: ubuntu-latest
+    needs: [publish-pypi, publish-docker]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          PREV_TAG=$(git tag --sort=-v:refname | grep '^v' | sed -n '2p')
+          if [ -n "$PREV_TAG" ]; then
+            echo "## Changes since $PREV_TAG" > notes.md
+            echo "" >> notes.md
+            git log "$PREV_TAG".."$TAG" --pretty=format:"- %s" --no-merges >> notes.md
+          else
+            echo "## Initial release" > notes.md
+          fi
+          echo "" >> notes.md
+          echo "---" >> notes.md
+          echo "" >> notes.md
+          echo "### Install" >> notes.md
+          echo '```bash' >> notes.md
+          echo "pip install dd-agents==${TAG#v}" >> notes.md
+          echo '```' >> notes.md
+          echo "" >> notes.md
+          echo "### Docker" >> notes.md
+          echo '```bash' >> notes.md
+          echo "docker pull ghcr.io/${{ github.repository }}:${TAG#v}" >> notes.md
+          echo '```' >> notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: notes.md
+          files: dist/*
+          generate_release_notes: true
