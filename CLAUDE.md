@@ -2,20 +2,24 @@
 
 ## Project Overview
 
-Python application for forensic M&A due diligence. 8 AI agents (4 domain specialists + Judge + Executive Synthesis + Red Flag Scanner + Acquirer Intelligence) analyze contract data rooms under a 35-step pipeline with 5 blocking gates, producing a detailed cross-domain HTML report + 14-sheet Excel report. The 4 specialists (Legal, Finance, Commercial, ProductTech) share a base runner but are differentiated by substantive domain-specific prompts and 18 canonical clause types. Python orchestrates; agents are workers.
+Python application for forensic M&A due diligence. Analyzes contract data rooms across 4 domains (Legal, Finance, Commercial, ProductTech) using 8 AI agents under a 35-step pipeline with 5 blocking gates. Produces a detailed cross-domain HTML report + 14-sheet Excel report with structured findings, citations, and audit trail. The reports provide granular analysis that deal teams use as the basis for their own deliverables — IC memos, advisor reports, negotiation checklists, or integration plans.
 
-**Package**: `dd_agents` under `src/dd_agents/`
-**SDK**: `claude-agent-sdk` v0.1.39+ (Python 3.12+)
+**Package**: `dd-agents` on [PyPI](https://pypi.org/project/dd-agents/) / `dd_agents` under `src/dd_agents/`
+**Version**: see `pyproject.toml` (bump version there before tagging a release)
+**SDK**: `claude-agent-sdk` v0.1.39+ (Python 3.12+, tested on 3.12 and 3.13)
 **Spec**: 24 plan docs in `docs/plan/`. Start with `docs/plan/PLAN.md`.
 
 ## Commands
 
 ```bash
-# Install
-pip install -e ".[dev]"
+# Install (end users)
+pip install dd-agents[pdf]
+
+# Install (development)
+pip install -e ".[dev,pdf]"
 
 # Test (run after EVERY change)
-pytest tests/unit/ -x -q                    # Unit tests (fast, no API)
+pytest tests/unit/ -x -q                    # Unit tests (~2,900+, fast, no API)
 pytest tests/integration/ -x -q             # Integration tests (mock agents)
 pytest tests/e2e/ -x -q                     # E2E tests (requires API, expensive)
 
@@ -28,6 +32,9 @@ ruff format src/ tests/ --check
 
 # All quality gates at once
 pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/
+
+# Build package locally
+python -m build && twine check dist/*
 
 # Run the pipeline
 dd-agents run path/to/deal-config.json
@@ -52,6 +59,42 @@ dd-agents run path/to/deal-config.json
 - `customer_safe_name`: lowercase, strip legal suffixes (Inc/Corp/LLC/Ltd), replace special chars with `_`, collapse underscores. Example: "Smith & Partners, Inc." → `smith_partners`
 - Reporting terminology: internal code uses "customer"; HTML/Excel report outputs use "Entity" for external-facing content
 - Batch naming is 1-based: `batch_1`, `batch_2` (never `batch_0`)
+
+## CI/CD
+
+Two GitHub Actions workflows in `.github/workflows/`:
+
+### CI (`ci.yml`) — runs on every push/PR to `main`
+
+```
+Stage 1 (parallel):   Lint & Format, Type Check (mypy --strict)
+Stage 2 (parallel):   Unit Tests (Python 3.12 + 3.13 matrix)
+Stage 3 (after 1+2):  Integration Tests
+Stage 4 (after 1+2):  Build Package (sdist + wheel + twine check + CLI verify), Build Docker Image
+Stage 5 (after 3+4):  E2E Tests (main branch only, requires ANTHROPIC_API_KEY secret)
+```
+
+### Release (`release.yml`) — triggered by version tag or manual dispatch
+
+```
+Quality Gate → Build Package → Publish to PyPI (OIDC) + Publish Docker to GHCR → GitHub Release
+```
+
+**To release a new version:**
+1. Bump `version` in `pyproject.toml`
+2. Commit and push to `main`
+3. `git tag v<version> && git push origin v<version>`
+
+PyPI uses OIDC trusted publishing (no API token needed). Docker images go to `ghcr.io/zoharbabin/due-diligence-agents`. GitHub Release includes wheel + sdist + auto-generated changelog.
+
+## Distribution
+
+| Channel | Install | Automated |
+|---------|---------|-----------|
+| **PyPI** | `pip install dd-agents[pdf]` | Yes, on version tag |
+| **Docker (GHCR)** | `docker pull ghcr.io/zoharbabin/due-diligence-agents:latest` | Yes, on version tag |
+| **GitHub Releases** | Download wheel/sdist from Releases page | Yes, on version tag |
+| **Source** | `git clone` + `pip install -e ".[dev,pdf]"` | N/A |
 
 ## Implementation Process
 
@@ -110,6 +153,8 @@ Update the phase status in IMPLEMENTATION_PLAN.md after completing each phase.
 - Don't skip type annotations — `mypy --strict` must pass
 - Don't add unnecessary dependencies — check `pyproject.toml` for approved deps
 - Don't disable or skip tests — fix them instead
+- Don't say "board-ready" about the reports — they produce granular cross-domain analysis used as the basis for deliverables
+- Don't frame the tool as replacing advisors — it accelerates their work
 
 ## LLM Call Policy
 
@@ -162,3 +207,20 @@ rich>=13.0                 # Terminal output formatting
 ```
 
 Optional: `pymupdf>=1.23` (PDF extraction, AGPL-3.0), `chromadb>=0.4` (vector search), `pytesseract>=0.3` (OCR), `mlx-vlm>=0.1` (GLM-OCR)
+
+## Repo Structure (non-code files)
+
+| File | Purpose |
+|------|---------|
+| `README.md` | Public-facing project overview and quick start |
+| `CLAUDE.md` | This file — Claude Code instructions |
+| `CONTRIBUTING.md` | Development setup, code style, PR process |
+| `CODE_OF_CONDUCT.md` | Contributor Covenant v2.0 |
+| `SECURITY.md` | Vulnerability reporting policy |
+| `CHANGELOG.md` | Version history |
+| `IMPLEMENTATION_PLAN.md` | Phased build plan with status tracking |
+| `.github/workflows/ci.yml` | CI pipeline (lint, types, tests, build) |
+| `.github/workflows/release.yml` | Release pipeline (PyPI, Docker, GitHub Release) |
+| `.github/FUNDING.yml` | GitHub Sponsors configuration |
+| `Dockerfile` | Multi-stage Docker build |
+| `pyproject.toml` | Package metadata, dependencies, tool config |
