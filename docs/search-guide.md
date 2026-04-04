@@ -2,7 +2,7 @@
 
 The `dd-agents search` command lets you run targeted questions against every
 customer's contracts in a data room and get an Excel report with answers
-and sourced citations.
+and sourced citations — without running the full pipeline.
 
 ## Quick Start
 
@@ -58,8 +58,11 @@ below, or the file at [`examples/search/change_of_control.json`](../examples/sea
 
 ### Tips for Writing Good Prompts
 
-Based on research from the [Addleshaw Goddard RAG Report](https://www.addleshawgoddard.com/globalassets/insights/technology/llm/rag-report.pdf),
-these practices improve accuracy:
+Based on research from the [Addleshaw Goddard RAG Report](https://www.addleshawgoddard.com/globalassets/insights/technology/llm/rag-report.pdf)
+(510 CUAD contracts, 9 provision types), clause-aware prompting improves
+AI contract analysis from 74% baseline accuracy to 95% — a 21-point gain
+achieved entirely through prompt engineering and chunking strategy, not
+model changes. These practices improve accuracy:
 
 - **Be specific**: "Does this agreement require consent upon a change of
   control?" is better than "What are the consent requirements?"

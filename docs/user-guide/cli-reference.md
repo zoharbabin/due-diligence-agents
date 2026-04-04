@@ -427,7 +427,7 @@ Built-in templates:
 | Template ID | Name | Audience |
 |-------------|------|----------|
 | `full_report` | Full DD Report | Complete analysis with all sections |
-| `board_summary` | Board Summary | Executive summary for board presentation |
+| `board_summary` | Board Summary | Condensed executive summary — KPIs, Go/No-Go, top findings only |
 | `legal_deep_dive` | Legal Deep Dive | Detailed legal analysis (CoC, TfC, privacy, IP) |
 | `financial_analysis` | Financial Analysis | Revenue, SaaS metrics, valuation |
 | `technical_assessment` | Technical Assessment | Product and technology focused |

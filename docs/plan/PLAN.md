@@ -8,11 +8,15 @@
 
 ## What We Are Building
 
-A Python application that performs forensic M&A due diligence on contract data rooms. It spawns 8 AI agents (Legal, Finance, Commercial, ProductTech, optional Judge, Executive Synthesis, Red Flag Scanner, Acquirer Intelligence), enforces a 35-step pipeline with 5 blocking gates (step 1 config validation is a precondition, not counted as a gate), validates outputs against Pydantic schemas, and produces a board-ready HTML report + 14-sheet Excel report. The orchestrator is Python code. Agents are workers, not decision-makers.
+A Python application that performs forensic M&A due diligence on contract data rooms. It spawns 8 AI agents (Legal, Finance, Commercial, ProductTech, optional Judge, Executive Synthesis, Red Flag Scanner, Acquirer Intelligence), enforces a 35-step pipeline with 5 blocking gates (step 1 config validation is a precondition, not counted as a gate), validates outputs against Pydantic schemas, and produces a detailed cross-domain HTML report + 14-sheet Excel report with structured findings, citations, and audit trail. The reports provide granular analysis that deal teams can use as a basis for their own deliverables — board presentations, advisor memos, negotiation checklists, or integration plans. The orchestrator is Python code. Agents are workers, not decision-makers.
 
 ## Core Principles
 
 - **Open-source only**: All tools and dependencies must be freely available under OSI-approved permissive licenses (Apache 2.0, MIT, BSD, PostgreSQL License). No commercial, closed-source, or subscription tools. The only exception is LLM API access via AWS Bedrock, which is pre-configured in Claude Code.
+
+## Why: The Industry Problem
+
+M&A due diligence runs in silos — legal, financial, and commercial advisors each produce independent reports with no cross-referencing. [31% of M&A failures trace back to DD shortcomings](https://acquisitionstars.com/ma-failure-rate/). [DD timelines keep compressing](https://www.spellbook.legal/briefs/m-a-due-diligence) while scope stays constant. [Corp dev teams screen hundreds of companies per year](https://www.corpdev.ai/wiki/fundamentals/corpdev-metrics) with DD costs sunk on every deal that doesn't close. The [Addleshaw Goddard RAG Report](https://www.addleshawgoddard.com/globalassets/insights/technology/llm/rag-report.pdf) demonstrated that AI contract analysis can reach 95% accuracy with clause-aware prompting (up from 74% baseline) — but no open-source tool applies this at scale across multiple DD workstreams.
 
 ## Why: The Enforcement Paradox
 

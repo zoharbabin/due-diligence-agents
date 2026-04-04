@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Python application for forensic M&A due diligence. 8 AI agents (4 domain specialists + Judge + Executive Synthesis + Red Flag Scanner + Acquirer Intelligence) analyze contract data rooms under a 35-step pipeline with 5 blocking gates, producing a board-ready HTML report + 14-sheet Excel report. The 4 specialists (Legal, Finance, Commercial, ProductTech) share a base runner but are differentiated by substantive domain-specific prompts and 18 canonical clause types. Python orchestrates; agents are workers.
+Python application for forensic M&A due diligence. 8 AI agents (4 domain specialists + Judge + Executive Synthesis + Red Flag Scanner + Acquirer Intelligence) analyze contract data rooms under a 35-step pipeline with 5 blocking gates, producing a detailed cross-domain HTML report + 14-sheet Excel report. The 4 specialists (Legal, Finance, Commercial, ProductTech) share a base runner but are differentiated by substantive domain-specific prompts and 18 canonical clause types. Python orchestrates; agents are workers.
 
 **Package**: `dd_agents` under `src/dd_agents/`
 **SDK**: `claude-agent-sdk` v0.1.39+ (Python 3.12+)
@@ -50,7 +50,7 @@ dd-agents run path/to/deal-config.json
 - Async functions for pipeline steps
 - All JSON schemas validated via Pydantic `model_validate()`
 - `customer_safe_name`: lowercase, strip legal suffixes (Inc/Corp/LLC/Ltd), replace special chars with `_`, collapse underscores. Example: "Smith & Partners, Inc." → `smith_partners`
-- Reporting terminology: internal code uses "customer"; HTML/Excel report outputs use "Entity" for board-facing content
+- Reporting terminology: internal code uses "customer"; HTML/Excel report outputs use "Entity" for external-facing content
 - Batch naming is 1-based: `batch_1`, `batch_2` (never `batch_0`)
 
 ## Implementation Process

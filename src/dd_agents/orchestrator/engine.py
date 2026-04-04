@@ -2621,7 +2621,7 @@ class PipelineEngine:
 
         Produces:
         - ``dd_report.xlsx`` — schema-driven Excel workbook
-        - ``dd_report.html`` — board-ready interactive HTML report
+        - ``dd_report.html`` — interactive cross-domain HTML report
 
         Excel schema resolution order (Issue #35):
         1. ``{run_dir}/report_schema.json`` -- written by earlier pipeline steps

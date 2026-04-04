@@ -1,37 +1,97 @@
-# Due Diligence Agents
+<p align="center">
+  <h1 align="center">Due Diligence Agents</h1>
+  <p align="center">
+    Find what gets buried in the data room. Open-source integrated M&A due diligence — legal, financial, commercial, and technical analysis across every contract, cross-referenced with exact citations.
+  </p>
+  <p align="center">
+    <a href="https://github.com/zoharbabin/due-diligence-agents/actions"><img src="https://github.com/zoharbabin/due-diligence-agents/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+    <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.12+-blue.svg" alt="Python 3.12+"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green.svg" alt="License"></a>
+    <img src="https://img.shields.io/badge/tests-2,900+-brightgreen.svg" alt="Tests">
+    <img src="https://img.shields.io/badge/mypy-strict-blue.svg" alt="mypy strict">
+    <a href="https://github.com/zoharbabin/due-diligence-agents/stargazers"><img src="https://img.shields.io/github/stars/zoharbabin/due-diligence-agents?style=social" alt="GitHub Stars"></a>
+  </p>
+</p>
 
-**Accelerate M&A due diligence.** AI agents analyze your data room across Legal, Finance, Commercial, and Product/Tech — helping your deal team search, correlate, and track findings across hundreds of documents in parallel.
+---
+
+Finds what gets buried across hundreds of contracts — cross-references it across legal, financial, commercial, and technical domains — and traces every finding to an exact page, section, and quote. Use the structured output alongside your advisors to build IC memos, advisor reports, negotiation checklists, or integration plans.
+
+> **This tool does not replace professional advisors.** Legal, financial, and regulatory conclusions should always be made by qualified professionals. This tool helps your team and advisors work faster.
 
 ## Why This Exists
 
-M&A due diligence requires reviewing hundreds of contracts across dozens of counterparties. Searching for specific clauses, correlating findings across domains, and tracking risks across a large data room is time-consuming manual work — even with experienced teams.
+I built this to solve my own problem. As a corp dev lead, I'd spend weeks assembling the cross-domain picture from siloed advisor reports — legal, financial, and commercial teams all flagging the same customer independently, with nobody connecting the dots. A termination clause in one contract and a revenue concentration risk in the same customer would be flagged in separate workstreams, if at all.
 
-This tool accelerates that work. AI agents scan every document, flag potential risks with citations, cross-reference findings across domains, and produce structured reports your team can search, filter, and drill into. Use it alongside your advisors to move faster, stay organized, and make sure nothing falls through the cracks.
+The numbers tell the story:
 
-## How It Helps
+- **31% of M&A failures trace back to due diligence shortcomings** — [Acquisition Stars](https://acquisitionstars.com/ma-failure-rate/), citing HBR, McKinsey, and KPMG research
+- **DD timelines keep compressing** — what used to be a six-week process becomes three weeks, with no reduction in scope — [Spellbook](https://www.spellbook.legal/briefs/m-a-due-diligence)
+- **Corp dev teams screen 200-1,000+ companies/year** but close only 1-10 — a 1-3% conversion rate, with DD costs sunk on every deal that doesn't close — [CorpDev.AI](https://www.corpdev.ai/wiki/fundamentals/corpdev-metrics)
+- **AI contract analysis reaches 95% accuracy** with clause-aware prompting (up from 74% baseline) — [Addleshaw Goddard RAG Report](https://www.addleshawgoddard.com/globalassets/insights/technology/llm/rag-report.pdf), 510 contracts tested
+- **86% of M&A organizations have integrated GenAI** into deal workflows — [Deloitte 2025 M&A Trends](https://www.deloitte.com/us/en/what-we-do/capabilities/mergers-acquisitions-restructuring/articles/m-a-trends-report.html)
 
-- **Comprehensive coverage** — every document is analyzed across all four domains, even in large data rooms
-- **Fast search and correlation** — search for specific clauses across all contracts, with cross-domain findings linked automatically (e.g., a legal termination clause flagged alongside its financial revenue impact)
-- **Organized tracking** — findings are severity-ranked, categorized by domain, and traceable to exact file, page, section, and quote
-- **Parallel workflow** — run AI analysis alongside your advisory workstreams to accelerate the overall process
-- **Useful copilot for advisors** — advisors can query findings, drill into specific contracts, and use the structured output as a starting point for their own analysis
+This tool runs all four workstreams in parallel across every document, cross-references findings automatically, and produces structured analysis your team can search, filter, and drill into — the kind of cross-domain picture that used to take weeks to assemble manually.
 
-**This tool does not replace professional advisors.** Legal, financial, and regulatory conclusions should always be made by qualified professionals. This tool helps your team and advisors work more efficiently.
+**Who uses this:** Corp dev teams screening targets, PE firms running portfolio DD, legal teams doing contract review, advisors accelerating workstreams. Anyone who needs to search hundreds of contracts and connect findings across domains.
 
-## What You Get
+## What You Can Do
 
-Run `dd-agents` against a data room folder and receive:
+### Full Pipeline — Integrated Due Diligence
 
-- **Interactive HTML report** with Go/No-Go recommendation, risk heatmaps, severity filtering, and drill-down to exact contract clauses
-- **14-sheet Excel companion** with structured findings, cross-references, and audit trail for downstream analysis
-- **Sourced citations** linking every finding back to file, page, section, and exact quote
-- **Quality-validated results** with 5 blocking gates and 31 automated checks. The pipeline halts on quality failures rather than producing unreliable output
+```bash
+dd-agents run deal-config.json
+```
+
+Analyzes every document through 4 domain lenses, cross-references findings, and validates quality through 5 blocking gates. Produces:
+
+- **Interactive HTML report** — cross-domain findings, risk heatmaps, severity filtering, drill-down to exact clauses
+- **14-sheet Excel report** — structured findings, cross-references, audit trail for downstream modeling
+- **Per-customer JSON findings** — every finding with severity, citations, cross-references, and governance graph edges
+
+### Quick Scan — Red Flag Triage in Minutes
+
+```bash
+dd-agents run deal-config.json --quick-scan --model-profile economy
+```
+
+GREEN / YELLOW / RED signal across 8 deal-killer categories. Get a first read before committing to full analysis.
+
+### Contract Search — Targeted Questions, No Full Pipeline
+
+```bash
+dd-agents search prompts.json --data-room ./data_room
+```
+
+Ask specific questions across every contract and get an Excel report with answers, citations, and verification scores. The prompts file is plain JSON any legal professional can write:
+
+```json
+{
+  "name": "Change of Control Analysis",
+  "columns": [
+    {
+      "name": "Consent Required",
+      "prompt": "Does this agreement require consent upon a change of control? Answer YES, NO, or NOT_ADDRESSED."
+    }
+  ]
+}
+```
+
+See [`examples/search/`](examples/search/) for ready-to-use templates.
+
+### Post-Run Tools
+
+```bash
+dd-agents query --report _dd/forensic-dd/runs/latest       # Ask questions about findings
+dd-agents assess ./data_room                                # Check data room quality
+dd-agents portfolio add "Deal A" --data-room ./data_room_a  # Track multiple deals
+dd-agents portfolio compare                                 # Compare risk across deals
+dd-agents export-pdf report.html                            # Export to PDF
+```
 
 ## Quick Start
 
-**Prerequisites:** Python 3.12+ and an Anthropic API key ([get one here](https://console.anthropic.com/)).
-
-Check your Python version: `python3 --version`. If you need Python 3.12+, download it from [python.org](https://www.python.org/downloads/).
+**Prerequisites:** Python 3.12+ and an [Anthropic API key](https://console.anthropic.com/).
 
 ```bash
 # 1. Clone and install
@@ -39,10 +99,10 @@ git clone https://github.com/zoharbabin/due-diligence-agents.git
 cd due-diligence-agents
 pip install -e ".[pdf]"
 
-# 2. Set your API key (or add to a .env file — see below)
+# 2. Set your API key
 export ANTHROPIC_API_KEY="sk-ant-..."
 
-# 3. Scan the data room and generate a deal config
+# 3. Generate a deal config (AI scans the data room and infers entity aliases, focus areas)
 dd-agents auto-config "Buyer Corp" "Target Inc" --data-room ./data_room
 
 # 4. Run the analysis
@@ -51,47 +111,33 @@ dd-agents run deal-config.json
 
 Open `_dd/forensic-dd/runs/latest/report/dd_report.html` in your browser.
 
-**Quick triage mode** — for a fast red-flag scan instead of full analysis:
-
-```bash
-dd-agents run deal-config.json --quick-scan --model-profile economy
-```
-
-**Useful flags:**
-- `--dry-run` — preview what the pipeline will do without making API calls
-- `--resume-from <step>` — resume an interrupted run from any step
-- `--model-profile economy` — use cheaper, faster models
-
-**No API key yet?** Generate a config without any API calls:
-
-```bash
-dd-agents init --data-room ./data_room
-```
+**No API key yet?** Generate a config without any API calls: `dd-agents init --data-room ./data_room`
 
 See the [Getting Started guide](docs/user-guide/getting-started.md) for a complete walkthrough with the included sample data room.
 
-### Setting Your API Key
+<details>
+<summary><strong>API Key Options</strong></summary>
 
-Choose one method:
-
-**Option A — Environment variable** (temporary, lasts until you close the terminal):
+**Environment variable** (temporary):
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
-**Option B — `.env` file** (persistent, recommended):
+**`.env` file** (persistent, recommended):
 ```bash
 cp .env.example .env
 # Edit .env and add your key
 ```
 
-**Option C — AWS Bedrock** (if you use AWS):
+**AWS Bedrock** (if you use AWS):
 ```bash
 export AWS_PROFILE=default
 export AWS_REGION=us-east-1
 ```
+</details>
 
-### Preparing Your Data Room
+<details>
+<summary><strong>Preparing Your Data Room</strong></summary>
 
 Organize contracts into folders by customer or counterparty:
 
@@ -106,94 +152,66 @@ data_room/
   CustomerGroup_B/
     Gamma_LLC/
       services_contract.docx
-  _reference/                    # Optional: reference docs (buyer overview, etc.)
+  _reference/                    # Optional: buyer overview, customer database, etc.
     buyer_overview.pdf
 ```
 
-The tool discovers and processes PDFs, Word documents, Excel files, and images. Scanned PDFs are handled via OCR.
-
-## Key Features
-
-### Contract Search
-
-Run targeted questions across every customer's contracts and get an Excel report with answers and citations — without running the full pipeline.
-
-```bash
-dd-agents search prompts.json --data-room ./data_room
-```
-
-The prompts file is plain JSON that any legal professional can write:
-
-```json
-{
-  "name": "Change of Control Analysis",
-  "columns": [
-    {
-      "name": "Consent Required",
-      "prompt": "Does this agreement require consent upon a change of control? Answer YES, NO, or NOT_ADDRESSED."
-    }
-  ]
-}
-```
-
-See the [Search Guide](docs/search-guide.md) and [`examples/search/`](examples/search/) for ready-to-use templates.
-
-### Data Room Assessment
-
-Check data room quality before running the full pipeline:
-
-```bash
-dd-agents assess ./data_room
-```
-
-Reports file type distribution, extraction readiness, and overall completeness score.
-
-### Natural Language Query
-
-Ask questions about findings after a run:
-
-```bash
-dd-agents query --report _dd/forensic-dd/runs/latest -q "How many high-severity findings?"
-dd-agents query --report _dd/forensic-dd/runs/latest   # interactive mode
-```
-
-### PDF Export
-
-```bash
-dd-agents export-pdf _dd/forensic-dd/runs/latest/report/dd_report.html
-```
-
-### Portfolio Management
-
-Track multiple due diligence projects and compare risk profiles across deals:
-
-```bash
-dd-agents portfolio add "Alpha Acquisition" --data-room ./alpha_data_room
-dd-agents portfolio list
-dd-agents portfolio compare
-```
-
-### Report Templates
-
-Apply templates for different audiences: **Full Report**, **Board Summary**, **Legal Deep Dive**, **Financial Analysis**, **Technical Assessment**.
-
-```bash
-dd-agents templates list
-dd-agents templates show board_summary
-```
+Supports PDFs, Word, Excel, PowerPoint, and images. Scanned PDFs are handled via OCR.
+</details>
 
 ## How It Works
 
-A **35-step automated pipeline** orchestrated by Python, with AI agents as workers:
+```
+  Data Room (PDFs, Word, Excel, Images)
+       │
+       ▼
+  ┌─────────────────────────────────────┐
+  │        Python Orchestrator          │
+  │         35-step pipeline            │
+  │       5 blocking quality gates      │
+  └──────────────┬──────────────────────┘
+                 │
+    ┌────────────┼────────────┐
+    │            │            │
+    ▼            ▼            ▼
+ ┌──────┐  ┌────────┐  ┌──────────┐  ┌──────────┐
+ │Legal │  │Finance │  │Commercial│  │ProductTech│
+ │Agent │  │ Agent  │  │  Agent   │  │  Agent   │
+ └──┬───┘  └───┬────┘  └────┬─────┘  └────┬─────┘
+    │          │             │             │
+    └──────────┴──────┬──────┴─────────────┘
+                      │
+              ┌───────▼────────┐
+              │  Judge Agent   │  ← Validates findings
+              │  (optional)    │
+              └───────┬────────┘
+                      │
+              ┌───────▼────────┐
+              │  Merge & Audit │  ← Dedup, numerical checks,
+              │  31 QA checks  │    citation verification
+              └───────┬────────┘
+                      │
+              ┌───────▼────────┐
+              │   Executive    │  ← Severity calibration,
+              │   Synthesis    │    Go/No-Go signal
+              └───────┬────────┘
+                      │
+                      ▼
+            HTML + Excel + JSON
+```
 
-1. **Extract** — Discover and extract text from PDFs, Word/Excel documents, and images (with OCR fallback for scanned documents)
-2. **Match** — Identify and match company names across documents, handling aliases, abbreviations, and legal suffixes automatically
-3. **Analyze** — 4 domain-specialist AI agents (Legal, Finance, Commercial, Product/Tech) analyze every customer's contracts in parallel
-4. **Validate** — A Judge agent reviews findings for accuracy; an Executive Synthesis agent calibrates the Go/No-Go recommendation; a Red Flag Scanner provides quick triage
-5. **Merge & Audit** — Deduplicate findings across agents, run automated numerical checks and 31 quality checks with citation verification
-6. **Report** — Generate the HTML report and 14-sheet Excel report with full audit trail
+**4 domain specialists** analyze every document in parallel. A **Judge** spot-checks findings. **Executive Synthesis** calibrates severity and the Go/No-Go signal. **Red Flag Scanner** provides quick triage. **Acquirer Intelligence** maps findings to the buyer's thesis (when configured).
 
-**5 blocking quality gates** halt the pipeline on quality failures rather than producing unreliable reports. Runs can be resumed from any step.
+The pipeline **halts on quality failures** rather than producing unreliable output. Runs can be resumed from any step.
+
+## What Gets Analyzed
+
+| Domain | Focus Areas |
+|-------|-------------|
+| **Legal** | Change of control (5 subtypes), anti-assignment, termination clauses, IP ownership, data privacy, indemnification, liability caps, warranty, dispute resolution, governance graph construction |
+| **Finance** | Revenue cross-referencing (flags >5% ARR mismatch), revenue decomposition, unit economics (CAC/LTV/NRR/GRR), pricing compliance, cost structure, financial projections |
+| **Commercial** | Renewal mechanics, churn risk, SLA commitments, volume commitments, customer segmentation (flags >30% concentration), pricing models, MFN clauses, competitive positioning |
+| **ProductTech** | DPA analysis, security certifications (SOC2/ISO27001), technical SLAs, integration requirements, data portability, migration complexity, technical debt, vendor lock-in |
 
 ## Pipeline Output
 
@@ -204,17 +222,18 @@ _dd/forensic-dd/
   runs/
     latest/                       # Always points to the most recent run
       findings/
-        legal/                    # Findings from each specialist agent
+        legal/                    # Per-customer findings from each agent
         finance/
         commercial/
         product_tech/
-        merged/                   # Deduplicated findings across all agents
+        merged/                   # Deduplicated cross-domain findings
       report/
         dd_report.html            # Interactive HTML report
-        dd_report.xlsx            # 14-sheet Excel companion report
-      audit.json                  # Quality validation results
+        dd_report.xlsx            # 14-sheet Excel report
+      audit.json                  # 31 quality validation checks
+      numerical_manifest.json     # Every financial figure traced to source
       metadata.json               # Run metadata and API costs
-  entity_resolution_cache.json    # Company name matching cache (reused across runs)
+  entity_resolution_cache.json    # Company name matching (reused across runs)
 ```
 
 ## Installation
@@ -228,18 +247,19 @@ pip install -e ".[ocr]"       # + OCR for scanned documents (English)
 pip install -e ".[glm-ocr]"   # + multilingual OCR (100+ languages, Apple Silicon)
 ```
 
-### Optional System Dependencies
+<details>
+<summary><strong>Optional System Dependencies</strong></summary>
 
 | Dependency | macOS | Linux | Purpose |
 |-----------|-------|-------|---------|
 | `poppler` | `brew install poppler` | `apt install poppler-utils` | Fallback PDF extraction |
 | `tesseract` | `brew install tesseract` | `apt install tesseract-ocr` | OCR for scanned PDFs |
 
-### Licensing
+These are optional — the tool works without them but may produce lower-quality text from some scanned documents.
+</details>
 
-All core dependencies use permissive open-source licenses (Apache 2.0, MIT, BSD). The optional `[pdf]` extra installs pymupdf, which is AGPL-3.0 licensed — if you redistribute software that bundles pymupdf, AGPL copyleft terms apply to your distribution. Using it internally or as a tool does not trigger copyleft.
-
-## Docker
+<details>
+<summary><strong>Docker</strong></summary>
 
 ```bash
 docker build -t dd-agents .
@@ -248,6 +268,11 @@ docker run -e ANTHROPIC_API_KEY="sk-ant-..." \
   -v ./deal-config.json:/workspace/deal-config.json \
   dd-agents run deal-config.json
 ```
+</details>
+
+### Licensing
+
+All core dependencies use permissive open-source licenses (Apache 2.0, MIT, BSD). The optional `[pdf]` extra installs pymupdf, which is AGPL-3.0 licensed — if you redistribute software that bundles pymupdf, AGPL copyleft terms apply to your distribution. Using it internally or as a tool does not trigger copyleft.
 
 ## Documentation
 
@@ -264,6 +289,12 @@ docker run -e ANTHROPIC_API_KEY="sk-ant-..." \
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, code style, and PR process.
+
+## Star History
+
+If this project is useful to you, consider giving it a star — it helps others discover it.
+
+[![Star History Chart](https://api.star-history.com/svg?repos=zoharbabin/due-diligence-agents&type=Date)](https://star-history.com/#zoharbabin/due-diligence-agents&Date)
 
 ## License
 

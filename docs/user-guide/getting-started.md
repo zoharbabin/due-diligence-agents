@@ -1,6 +1,8 @@
 # Getting Started
 
-This tool accelerates M&A due diligence. AI agents analyze your data room across Legal, Finance, Commercial, and Product/Tech — helping your deal team search, correlate, and track findings across hundreds of documents in parallel.
+This tool accelerates M&A due diligence by analyzing your entire data room across Legal, Finance, Commercial, and Product/Tech — helping your deal team find what gets buried, cross-reference it across domains, and trace every finding to an exact page and quote.
+
+[31% of M&A failures trace back to due diligence shortcomings](https://acquisitionstars.com/ma-failure-rate/), often because legal, financial, and commercial workstreams run in silos with no cross-referencing. This tool runs all four workstreams simultaneously, cross-references findings across domains, and produces structured analysis your team can use as the foundation for IC memos, advisor reports, or negotiation checklists.
 
 **This tool does not replace professional advisors.** Legal, financial, and regulatory conclusions should always be made by qualified professionals. This tool helps your team and advisors work more efficiently.
 
@@ -171,12 +173,12 @@ See [Running the Pipeline](running-pipeline.md) for all options including resume
 
 After the pipeline completes, find the outputs in `_dd/forensic-dd/runs/latest/report/`:
 
-- `dd_report.html` -- Interactive HTML report with sidebar navigation, severity filtering, and Go/No-Go recommendation
+- `dd_report.html` -- Interactive HTML report with cross-domain findings, severity filtering, and drill-down to exact clauses
 - `dd_report.xlsx` -- 14-sheet Excel report for detailed analysis and downstream work
 
 Open `dd_report.html` in a browser. See [Reading the Report](reading-report.md) for a walkthrough of each section.
 
-**Use this report alongside your advisory process.** The structured findings, citations, and cross-references help your team and advisors stay organized and move faster.
+**Use these reports alongside your advisory process.** The structured findings, citations, and cross-references serve as the foundation for your team's own deliverables — board presentations, advisor memos, negotiation checklists, or integration plans.
 
 ## Post-Run Tools
 

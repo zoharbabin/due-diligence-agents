@@ -2,8 +2,8 @@
 
 The pipeline is driven by a `deal-config.json` file that describes the buyer, target,
 deal parameters, and execution settings. A well-configured deal file ensures the
-8 AI agents focus on the right risks, entities, and contract provisions — the
-difference between a generic scan and forensic-grade analysis tuned to the specific
+analysis focuses on the right risks, entities, and contract provisions — the
+difference between a generic scan and forensic-grade analysis tuned to your specific
 deal. There are three ways to create one.
 
 ## Auto-Generation with AI

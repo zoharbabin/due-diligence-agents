@@ -1,6 +1,6 @@
 # Running the Pipeline
 
-The pipeline automates what traditionally takes teams of lawyers and analysts 4-12 weeks of manual contract review. Eight AI agents analyze every document across four domains (Legal, Finance, Commercial, Product/Tech), cross-validate findings, and produce quality-gated reports with sourced citations.
+The pipeline accelerates what traditionally takes teams of lawyers and analysts weeks of manual contract review. [DD timelines keep compressing](https://www.spellbook.legal/briefs/m-a-due-diligence) — what used to be a six-week process becomes three weeks, with no reduction in scope. The pipeline analyzes every document across four domains (Legal, Finance, Commercial, Product/Tech), cross-validates findings, and produces quality-gated structured analysis with sourced citations.
 
 **This tool does not replace professional advisors.** Use the output alongside your advisory workstreams to accelerate search, correlation, and tracking across the data room.
 
@@ -140,7 +140,7 @@ When a gate fails, the pipeline stops with exit code 2 and prints the reason for
 
 ## Agents
 
-The pipeline uses up to **8 AI agents** — 4 domain specialists that analyze contracts in parallel, plus 4 synthesis/validation agents:
+The pipeline uses 8 specialized analyzers — 4 domain specialists that process contracts in parallel, plus 4 synthesis/validation components:
 
 | Agent | Type | Phase | Description |
 |-------|------|-------|-------------|

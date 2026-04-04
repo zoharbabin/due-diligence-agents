@@ -1,6 +1,6 @@
 # Reading the Report
 
-The pipeline produces two report formats: an interactive HTML report for navigation and drill-down, and a 14-sheet Excel report for detailed analysis by deal teams. Both include sourced citations, severity filtering, and cross-domain correlation.
+The pipeline produces two report formats: an interactive HTML report for navigation and drill-down, and a 14-sheet Excel report for detailed analysis. Both include sourced citations, severity filtering, and cross-domain correlation. These reports provide deep, granular analysis across legal, financial, commercial, and product/tech domains — structured output your team uses as the basis for their own deliverables (board presentations, advisor memos, negotiation checklists, integration plans).
 
 **This tool does not replace professional advisors.** Use the structured findings alongside your advisory process to search, correlate, and track risks more efficiently.
 
@@ -41,8 +41,8 @@ Stoplight signal (red/yellow/green) with critical flags from the Red Flag Scanne
 Only present when `--quick-scan` was used.
 
 **Executive Summary**
-Go/No-Go recommendation, risk heatmap, deal breakers, and key metrics. This is the
-board-level view -- start here.
+Go/No-Go recommendation, risk heatmap, deal breakers, and key metrics. Start here
+for the high-level picture.
 
 **Dashboard**
 Deal header with buyer/target names, deal type, and metric cards showing material
