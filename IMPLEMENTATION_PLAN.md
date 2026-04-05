@@ -294,8 +294,8 @@ pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/ && ruff
 
 The project is complete when ALL of the following are true:
 - [x] All 7 phases have status "Complete"
-- [x] `pytest tests/ -x` passes — 2946 unit tests, 17 integration, 9 E2E (3 skipped without API key)
-- [x] `mypy src/ --strict` passes — 0 errors across 166 source files
+- [x] `pytest tests/ -x` passes — 3006 unit tests, 17 integration, 9 E2E (3 skipped without API key)
+- [x] `mypy src/ --strict` passes — 0 errors across 168 source files
 - [x] `ruff check src/ tests/` is clean
 - [x] `ruff format --check src/ tests/` is clean
 
@@ -305,11 +305,11 @@ The project is complete when ALL of the following are true:
 
 | Category | Count |
 |----------|-------|
-| Unit tests (models, utils, entity resolution, extraction, config, hooks, tools, orchestrator, agents, reporting, validation, search, glm_ocr, type safety, visual grounding, entity dedup, OCR registry, layout PDF, HTML report, HTML renderers, report rendering, extraction backend, turn limits, severity recalibration, executive synthesis, data quality classification, follow-up verification, assessment, red flag scanner, cost tracker, batch scheduler, financial impact, project registry, report templates, ontology, precedence, read_office, net_safety) | 2946 |
+| Unit tests (models, utils, entity resolution, extraction, config, hooks, tools, orchestrator, agents, reporting, validation, search, glm_ocr, type safety, visual grounding, entity dedup, OCR registry, layout PDF, HTML report, HTML renderers, report rendering, extraction backend, turn limits, severity recalibration, executive synthesis, data quality classification, follow-up verification, assessment, red flag scanner, cost tracker, batch scheduler, financial impact, project registry, report templates, ontology, precedence, read_office, net_safety, team, vector_store, search_runner, MCP server) | 3006 |
 | Integration tests (pipeline steps 1-11) | 17 |
 | E2E tests (pre-agent: config, tiers, discovery, registry, run manager, cache) | 6 |
 | E2E tests (API-dependent: dry run, full pipeline, incremental — skipped without key) | 3 |
-| **Total** | **2946 passed, 3 skipped** |
+| **Total** | **3006 passed, 3 skipped** |
 
 ## Git History
 
