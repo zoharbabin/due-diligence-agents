@@ -317,7 +317,10 @@ table.sortable th::after { content: ' \2195'; color: #aaa; font-size: 0.8em; }
                            background: var(--bg-light, #f8f9fa); border-radius: 4px; }
 .waterfall-bar { height: 100%; border-radius: 4px; display: flex; align-items: center;
                  padding: 0 8px; font-size: 0.8em; color: #fff; white-space: nowrap;
-                 overflow: hidden; position: absolute; top: 0; }
+                 overflow: visible; position: absolute; top: 0; }
+.waterfall-bar--risk span { color: #fff; text-shadow: none; }
+.waterfall-bar--risk[data-narrow] span { color: var(--severity-p1, #d63384);
+                 position: relative; left: calc(100% + 8px); }
 .waterfall-bar--total { background: var(--navy, #1a365d); }
 .waterfall-bar--risk { background: var(--severity-p1, #d63384); }
 .waterfall-bar--adjusted { background: var(--severity-p3, #198754); }
@@ -501,10 +504,10 @@ table.sortable th::after { content: ' \2195'; color: #aaa; font-size: 0.8em; }
 <div class='waterfall-bar-container'>
 <div class='waterfall-bar waterfall-bar--total' style='width:100%'><span>$5.0M</span></div>
 </div></div>
-<div class='waterfall-row'><span class='waterfall-label'>Change of Control Exposure</span><div class='waterfall-bar-container'><div class='waterfall-bar waterfall-bar--risk' style='width:83.2%;margin-left:16.8%'><span>-$4.2M (2 entities)</span></div></div></div>
-<div class='waterfall-row'><span class='waterfall-label'>Termination for Convenience</span><div class='waterfall-bar-container'><div class='waterfall-bar waterfall-bar--risk' style='width:10.1%;margin-left:6.7%'><span>-$510K (1 entities)</span></div></div></div>
-<div class='waterfall-row'><span class='waterfall-label'>Customer Concentration Risk</span><div class='waterfall-bar-container'><div class='waterfall-bar waterfall-bar--risk' style='width:6.7%;margin-left:0.0%'><span>-$340K (1 entities)</span></div></div></div>
-<div class='waterfall-row'><span class='waterfall-label'>Pricing &amp; Discount Risk</span><div class='waterfall-bar-container'><div class='waterfall-bar waterfall-bar--risk' style='width:45.7%;margin-left:-45.7%'><span>-$2.3M (2 entities)</span></div></div></div>
+<div class='waterfall-row'><span class='waterfall-label'>Change of Control Exposure</span><div class='waterfall-bar-container'><div class='waterfall-bar waterfall-bar--risk'  style='width:83.2%;margin-left:16.8%'><span>-$4.2M (2 entities)</span></div></div></div>
+<div class='waterfall-row'><span class='waterfall-label'>Termination for Convenience</span><div class='waterfall-bar-container'><div class='waterfall-bar waterfall-bar--risk' data-narrow style='width:10.1%;margin-left:6.7%'><span>-$510K (1 entities)</span></div></div></div>
+<div class='waterfall-row'><span class='waterfall-label'>Customer Concentration Risk</span><div class='waterfall-bar-container'><div class='waterfall-bar waterfall-bar--risk' data-narrow style='width:6.7%;margin-left:0.0%'><span>-$340K (1 entities)</span></div></div></div>
+<div class='waterfall-row'><span class='waterfall-label'>Pricing &amp; Discount Risk</span><div class='waterfall-bar-container'><div class='waterfall-bar waterfall-bar--risk'  style='width:45.7%;margin-left:0.0%'><span>-$2.3M (2 entities)</span></div></div></div>
 <div class='waterfall-row'><span class='waterfall-label'><strong>Risk-Adjusted ARR</strong></span><div class='waterfall-bar-container'><div class='waterfall-bar waterfall-bar--adjusted' style='width:0.0%'><span>$0</span></div></div></div>
 </div>
 <h3>Customer Revenue Concentration</h3>

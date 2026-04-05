@@ -112,12 +112,15 @@ class FinancialImpactRenderer(SectionRenderer):
             cumulative += amount
             label = category_labels.get(cat_key, cat_key.replace("_", " ").title())
 
+            # Clamp so bar stays within container (0 <= margin-left, margin-left + width <= 100%)
+            capped_offset = max(0.0, min(offset_pct, 100.0 - pct))
+            narrow = "data-narrow" if pct < 25 else ""
             parts.append(
                 "<div class='waterfall-row'>"
                 f"<span class='waterfall-label'>{self.escape(label)}</span>"
                 "<div class='waterfall-bar-container'>"
-                f"<div class='waterfall-bar waterfall-bar--risk' "
-                f"style='width:{pct:.1f}%;margin-left:{offset_pct:.1f}%'>"
+                f"<div class='waterfall-bar waterfall-bar--risk' {narrow} "
+                f"style='width:{pct:.1f}%;margin-left:{capped_offset:.1f}%'>"
                 f"<span>-{_fmt_currency(amount)} ({contracts} entities)</span>"
                 "</div></div></div>"
             )

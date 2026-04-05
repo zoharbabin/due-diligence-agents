@@ -692,7 +692,10 @@ table.sortable th::after { content: ' \\2195'; color: #aaa; font-size: 0.8em; }
                            background: var(--bg-light, #f8f9fa); border-radius: 4px; }
 .waterfall-bar { height: 100%; border-radius: 4px; display: flex; align-items: center;
                  padding: 0 8px; font-size: 0.8em; color: #fff; white-space: nowrap;
-                 overflow: hidden; position: absolute; top: 0; }
+                 overflow: visible; position: absolute; top: 0; }
+.waterfall-bar--risk span { color: #fff; text-shadow: none; }
+.waterfall-bar--risk[data-narrow] span { color: var(--severity-p1, #d63384);
+                 position: relative; left: calc(100% + 8px); }
 .waterfall-bar--total { background: var(--navy, #1a365d); }
 .waterfall-bar--risk { background: var(--severity-p1, #d63384); }
 .waterfall-bar--adjusted { background: var(--severity-p3, #198754); }
