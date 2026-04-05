@@ -1,0 +1,22 @@
+{
+  "name": "Data Privacy & Protection Analysis",
+  "description": "Assess data privacy obligations, DPA presence, regulatory compliance clauses, and data handling requirements across customer agreements. Essential for M&A due diligence to identify privacy-related liabilities and compliance gaps that could affect deal valuation or post-close integration.",
+  "columns": [
+    {
+      "name": "DPA Present",
+      "prompt": "Does this agreement include or reference a Data Processing Agreement (DPA), Data Processing Addendum, or equivalent data protection terms? If yes, state \"Yes\" and provide the document name, section reference, and page number. If no DPA exists but the agreement handles personal data, state \"No DPA found\" and note the compliance gap."
+    },
+    {
+      "name": "GDPR Compliance",
+      "prompt": "Does this agreement include provisions addressing GDPR compliance, EU data protection requirements, or references to the General Data Protection Regulation? If yes, summarize the key obligations (e.g., data subject rights, cross-border transfer mechanisms, breach notification timelines, processor vs controller designation) and provide section references. If no GDPR provisions exist, state \"No GDPR provisions found\"."
+    },
+    {
+      "name": "Data Breach Notification",
+      "prompt": "What are the data breach notification obligations under this agreement? Specify: (1) the notification timeline (e.g., 24 hours, 72 hours, \"without undue delay\"), (2) who must be notified (customer, regulators, affected individuals), (3) what information must be included in the notification, and (4) any penalties for late notification. Provide the section reference and page number. If no breach notification clause exists, state \"No breach notification clause found\"."
+    },
+    {
+      "name": "Data Handling on Termination",
+      "prompt": "What happens to customer data upon termination or expiration of this agreement? Does the agreement require data return, deletion, or certification of destruction? What is the timeline for data handling after termination? Are there any data retention rights or obligations that survive termination? Provide the section reference and page number."
+    }
+  ]
+}

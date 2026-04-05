@@ -113,13 +113,24 @@ def run(
     try:
         deal_config = load_deal_config(config_path)
     except ConfigFileNotFoundError as exc:
-        _print_error("Config Error", str(exc))
+        _print_error(
+            "Config Error",
+            f"{exc}\n"
+            "  To generate a config: dd-agents init --data-room ./your_data_room\n"
+            "  Or with AI assistance: dd-agents auto-config buyer target --data-room ./your_data_room",
+        )
         raise SystemExit(1) from exc
     except ConfigParseError as exc:
-        _print_error("JSON Error", str(exc))
+        _print_error(
+            "JSON Error",
+            f"{exc}\n  Verify the file is valid JSON (try: python -m json.tool your-config.json)",
+        )
         raise SystemExit(1) from exc
     except ConfigValidationError as exc:
-        _print_error("Validation Error", str(exc))
+        _print_error(
+            "Validation Error",
+            f"{exc}\n  To generate a valid config: dd-agents init --data-room ./your_data_room",
+        )
         err_console.print()
         _print_validation_errors(exc)
         raise SystemExit(1) from exc
@@ -134,15 +145,35 @@ def run(
     if model_profile is not None:
         deal_config.agent_models.profile = model_profile
     if model_overrides:
+        valid_agents = (
+            "legal",
+            "finance",
+            "commercial",
+            "product_tech",
+            "judge",
+            "executive_synthesis",
+            "red_flag_scanner",
+            "acquirer_intelligence",
+        )
         for override in model_overrides:
             if "=" not in override:
-                _print_error("Invalid Option", f"--model-override must be agent=model format, got: {override}")
+                _print_error(
+                    "Invalid Option",
+                    f"--model-override must be agent=model format, got: '{override}'\n"
+                    f"  Example: --model-override legal=claude-haiku-4-5-20251001\n"
+                    f"  Valid agents: {', '.join(valid_agents)}",
+                )
                 raise SystemExit(1)
             agent_name, model_id = override.split("=", 1)
             agent_name = agent_name.strip()
             model_id = model_id.strip()
             if not agent_name or not model_id:
-                _print_error("Invalid Option", f"--model-override requires non-empty agent and model, got: {override}")
+                _print_error(
+                    "Invalid Option",
+                    f"--model-override requires both agent and model, got: '{override}'\n"
+                    f"  Example: --model-override legal=claude-haiku-4-5-20251001\n"
+                    f"  Valid agents: {', '.join(valid_agents)}",
+                )
                 raise SystemExit(1)
             deal_config.agent_models.overrides[agent_name] = model_id
 
@@ -150,7 +181,11 @@ def run(
 
     # --- Validate resume-from ---
     if resume_from < 0 or resume_from > 35:
-        _print_error("Invalid Option", f"--resume-from must be 0-35, got {resume_from}")
+        _print_error(
+            "Invalid Option",
+            f"--resume-from must be 0-35, got {resume_from}\n"
+            "  Key steps: 0=start, 6=inventory, 14=prompts, 16=agents, 24=merge, 28=QA, 35=end",
+        )
         raise SystemExit(1)
 
     # --- Dry run ---
@@ -165,9 +200,13 @@ def run(
     project_dir = Path(data_room_path_str).resolve() if data_room_path_str else config_path.resolve().parent
 
     if not project_dir.is_dir():
+        source = "data_room.path in config" if data_room_path_str else "config file parent directory"
         _print_error(
             "Data Room Error",
-            f"Data room directory does not exist: {project_dir}",
+            f"Data room directory does not exist: {project_dir}\n"
+            f"  Source: {source}\n"
+            "  Check that the path in your deal-config.json is correct, or run from the data room directory.\n"
+            "  To check data room quality first: dd-agents assess ./your_data_room",
         )
         raise SystemExit(1)
 
@@ -472,11 +511,22 @@ def init(
     # --- Collect data room path ---
     if data_room is None:
         if non_interactive:
-            _print_error("Missing Option", "--data-room is required in non-interactive mode")
+            _print_error(
+                "Missing Option",
+                "--data-room is required in non-interactive mode\n"
+                "  Example: dd-agents init --non-interactive --data-room ./data_room "
+                '--buyer "Buyer Co" --target "Target Co"',
+            )
             raise SystemExit(1)
         raw_path = input("Where is your data room? ").strip()
         if not raw_path:
-            _print_error("Missing Input", "Data room path is required.")
+            _print_error(
+                "Missing Input",
+                "Data room path is required.\n"
+                "  Point to a folder containing contracts organized by customer:\n"
+                "    ./data_room/Customer_A/contract.pdf\n"
+                "    ./data_room/Customer_B/agreement.docx",
+            )
             raise SystemExit(1)
         data_room = Path(raw_path)
 

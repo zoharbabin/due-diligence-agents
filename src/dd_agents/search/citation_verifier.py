@@ -18,6 +18,7 @@ This module runs locally — no API calls, no LLM usage.
 from __future__ import annotations
 
 import logging
+import os
 import re
 from typing import TYPE_CHECKING
 
@@ -35,7 +36,8 @@ logger = logging.getLogger(__name__)
 
 # Minimum fuzzy match score (0-100) to consider a quote verified.
 # 80 % tolerates OCR character errors while still catching hallucinations.
-QUOTE_MATCH_THRESHOLD = 80
+# Override via DD_QUOTE_MATCH_THRESHOLD env var.
+QUOTE_MATCH_THRESHOLD = int(os.getenv("DD_QUOTE_MATCH_THRESHOLD", "80"))
 
 # Regex to collapse whitespace for normalization.
 _WHITESPACE_RE = re.compile(r"\s+")

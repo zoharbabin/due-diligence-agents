@@ -68,7 +68,8 @@ def read_office(
         return {
             "status": "error",
             "reason": f"Unsupported file type '{suffix}'. "
-            f"read_office handles: {', '.join(sorted(_ALL_OFFICE_EXTENSIONS))}",
+            f"read_office handles: {', '.join(sorted(_ALL_OFFICE_EXTENSIONS))}. "
+            "For PDFs, use the read_file tool instead.",
         }
 
     # Primary read attempt
@@ -103,7 +104,8 @@ def read_office(
 
     return {
         "status": "error",
-        "reason": f"Could not read '{path.name}'. The file may be corrupted or password-protected.",
+        "reason": f"Could not read '{path.name}'. The file may be corrupted, password-protected, or in an "
+        "unsupported format variant. Try opening the file in its native application to verify it is readable.",
     }
 
 

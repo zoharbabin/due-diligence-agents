@@ -1,0 +1,22 @@
+{
+  "name": "Payment Terms & Pricing Analysis",
+  "description": "Analyze payment terms, pricing structures, discount provisions, and financial obligations across customer agreements. Understanding payment mechanics is critical for M&A revenue modeling, working capital analysis, and identifying pricing risks that could affect post-acquisition economics.",
+  "columns": [
+    {
+      "name": "Payment Terms",
+      "prompt": "What are the payment terms in this agreement? Specify: (1) payment frequency (monthly, quarterly, annually), (2) payment timing (in advance, in arrears, upon invoice), (3) net payment period (Net-30, Net-60, etc.), and (4) any late payment penalties or interest charges. Provide the section reference and page number."
+    },
+    {
+      "name": "Pricing Structure",
+      "prompt": "How is the service priced under this agreement? Describe the pricing model: (1) fixed fee, per-seat, usage-based, tiered, or hybrid, (2) the specific rates or fee schedule, (3) whether pricing is locked for the term or subject to adjustment, and (4) any minimum commitments or volume guarantees. Provide the section reference and page number."
+    },
+    {
+      "name": "Price Escalation",
+      "prompt": "Does this agreement include a price escalation or price increase mechanism? If yes, describe: (1) the allowed increase (e.g., CPI-based, fixed percentage, at provider's discretion), (2) the frequency of increases (annual, at renewal), (3) any cap on increases, and (4) whether the customer can terminate if prices increase. Provide the section reference and page number. If no price escalation clause exists, state \"No price escalation clause found\"."
+    },
+    {
+      "name": "MFN or Discount Clause",
+      "prompt": "Does this agreement include a most-favored-nation (MFN) clause, guaranteed discount, or pricing parity provision that constrains future pricing? If yes, describe the obligation and its scope (e.g., \"pricing no less favorable than any similarly situated customer\"). Also note any volume discount tiers or promotional pricing that may be below standard rates. Provide the section reference and page number."
+    }
+  ]
+}

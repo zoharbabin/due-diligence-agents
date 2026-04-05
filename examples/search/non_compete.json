@@ -1,0 +1,22 @@
+{
+  "name": "Non-Compete & Restrictive Covenant Analysis",
+  "description": "Identify non-compete, non-solicitation, exclusivity, and other restrictive covenants in customer agreements. These provisions can limit the combined entity's ability to serve certain markets or customers post-acquisition, affecting deal synergies and integration planning.",
+  "columns": [
+    {
+      "name": "Non-Compete Clause",
+      "prompt": "Does this agreement include a non-compete or non-competition clause that restricts either party from competing in certain markets or offering competing products or services? If yes, describe: (1) who is restricted (provider, customer, or mutual), (2) the scope of the restriction (what activities are prohibited), (3) the geographic scope, (4) the duration, and (5) whether the restriction survives termination. Provide the section reference and page number. If no non-compete clause exists, state \"No non-compete clause found\"."
+    },
+    {
+      "name": "Non-Solicitation Clause",
+      "prompt": "Does this agreement include a non-solicitation clause restricting either party from soliciting or hiring the other party's employees, contractors, or customers? If yes, describe: (1) who is restricted, (2) who cannot be solicited (employees, customers, or both), (3) the duration of the restriction, and (4) whether the restriction survives termination. Provide the section reference and page number. If no non-solicitation clause exists, state \"No non-solicitation clause found\"."
+    },
+    {
+      "name": "Exclusivity Provision",
+      "prompt": "Does this agreement include an exclusivity provision that restricts either party from working with competitors or alternative providers? If yes, describe: (1) who is bound by the exclusivity, (2) the scope (product, service, geographic, or customer-segment exclusivity), (3) the duration, and (4) any exceptions or carve-outs. Provide the section reference and page number. If no exclusivity provision exists, state \"No exclusivity provision found\"."
+    },
+    {
+      "name": "Restrictive Covenant Enforceability Risk",
+      "prompt": "Are there any factors in this agreement that might affect the enforceability of restrictive covenants (non-compete, non-solicitation, exclusivity)? Consider: (1) whether the restrictions are overly broad in scope, duration, or geography, (2) whether adequate consideration is provided, (3) whether the governing law jurisdiction is known to limit enforcement of such covenants, and (4) whether the agreement includes a severability clause allowing a court to modify overbroad restrictions. Provide relevant section references."
+    }
+  ]
+}

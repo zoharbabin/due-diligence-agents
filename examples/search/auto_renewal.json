@@ -1,0 +1,22 @@
+{
+  "name": "Auto-Renewal & Term Analysis",
+  "description": "Analyze contract renewal mechanics, notice periods, and term structures. Understanding renewal terms is essential for M&A revenue forecasting — contracts with short notice periods or upcoming renewal windows create risk that customers may not renew post-acquisition.",
+  "columns": [
+    {
+      "name": "Auto-Renewal",
+      "prompt": "Does this agreement auto-renew at the end of its initial term? If yes, state \"Yes\" and specify: (1) the renewal term length (e.g., successive 1-year periods), (2) the notice period required to prevent renewal (e.g., 90 days written notice), and (3) who can elect not to renew (mutual or one-sided). Provide the section reference and page number. If the agreement does not auto-renew, state \"No\" and describe how the term ends."
+    },
+    {
+      "name": "Initial Term & Expiration",
+      "prompt": "What is the initial term of this agreement and when does it expire? State the start date (or effective date), the initial term length, and the calculated expiration date if determinable. Provide the section reference and page number where the term is defined."
+    },
+    {
+      "name": "Non-Renewal Notice Period",
+      "prompt": "How much advance notice is required to prevent automatic renewal of this agreement? State the exact number of days and whether the notice must be written. If the notice period is asymmetric (different for each party), specify both. If there is no auto-renewal, state \"Not applicable\". Provide the section reference and page number."
+    },
+    {
+      "name": "Early Termination Rights",
+      "prompt": "Beyond termination for cause, does either party have the right to terminate this agreement before the end of the current term? If yes, describe the conditions, notice period, and any penalties or fees for early termination. If early termination requires payment of remaining fees, specify the amount or formula. Provide the section reference and page number."
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "name": "SLA & Service Level Analysis",
+  "description": "Analyze service level commitments, uptime guarantees, performance metrics, and penalty clauses across customer agreements. SLA obligations create ongoing operational requirements and financial exposure that acquirers must account for in post-close operations planning.",
+  "columns": [
+    {
+      "name": "Uptime Guarantee",
+      "prompt": "Does this agreement include an uptime or availability guarantee (e.g., 99.9% monthly uptime)? If yes, state the exact percentage, the measurement period (monthly, quarterly, annual), and any exclusions (e.g., scheduled maintenance, force majeure). Provide the section reference and page number. If no uptime guarantee exists, state \"No uptime guarantee found\"."
+    },
+    {
+      "name": "Service Credits",
+      "prompt": "Does this agreement provide for service credits, refunds, or financial penalties if service levels are not met? If yes, describe the credit structure: (1) what triggers credits, (2) the credit amounts or percentages at each threshold, (3) any cap on total credits (e.g., not to exceed 30% of monthly fees), and (4) whether credits are the sole remedy. Provide the section reference and page number."
+    },
+    {
+      "name": "Response Time SLAs",
+      "prompt": "Does this agreement specify response time or resolution time commitments for support requests or incidents? If yes, describe the SLA tiers (e.g., P1/Critical: 1 hour response, P2/High: 4 hours) and any penalties for missing them. Provide the section reference and page number. If no response time SLAs exist, state \"No response time SLAs found\"."
+    },
+    {
+      "name": "SLA Termination Trigger",
+      "prompt": "Can the customer terminate this agreement or receive additional remedies based on repeated SLA failures? If yes, describe the trigger conditions (e.g., \"3 consecutive months below 99.5%\") and the remedies available (termination without penalty, fee reduction, etc.). Provide the section reference and page number. If no SLA-based termination right exists, state \"No SLA termination trigger found\"."
+    }
+  ]
+}

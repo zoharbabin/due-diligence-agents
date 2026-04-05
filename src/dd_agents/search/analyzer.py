@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os  # noqa: TCH003 - used at module level for env var reads
 from typing import TYPE_CHECKING, Any
 
 from dd_agents.models.enums import Confidence
@@ -72,9 +73,10 @@ _DOC_TYPE_KEYWORDS: dict[str, str] = {
 
 
 # Synthesis quote budget constants (Issue #20).
-_SYNTHESIS_BUDGET_CHARS = 80_000
-_MIN_QUOTE_CHARS = 200
-_MAX_QUOTE_CHARS = 1000
+# Override via DD_SYNTHESIS_BUDGET_CHARS, DD_MIN_QUOTE_CHARS, DD_MAX_QUOTE_CHARS env vars.
+_SYNTHESIS_BUDGET_CHARS = int(os.getenv("DD_SYNTHESIS_BUDGET_CHARS", "80000"))
+_MIN_QUOTE_CHARS = int(os.getenv("DD_MIN_QUOTE_CHARS", "200"))
+_MAX_QUOTE_CHARS = int(os.getenv("DD_MAX_QUOTE_CHARS", "1000"))
 
 # Confidence ranking for _max_confidence (higher = stronger).
 # Uses lowercase values to match the Confidence enum in dd_agents.models.enums.

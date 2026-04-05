@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os  # noqa: TCH003 - used at module level for env var reads
+
 from dd_agents.extraction._constants import IMAGE_EXTENSIONS
 
 # ---------------------------------------------------------------------------
@@ -109,7 +111,9 @@ BATCH_START_INDEX = 1
 # Entity resolution thresholds
 # ---------------------------------------------------------------------------
 
-FUZZY_THRESHOLD_LONG = 88  # Names > 8 chars after preprocessing
-FUZZY_THRESHOLD_MEDIUM = 95  # Names 5-8 chars after preprocessing
-SHORT_NAME_MAX_LEN = 5  # Names <= 5 chars: never fuzzy-matched
-TFIDF_THRESHOLD = 0.80  # Cosine similarity threshold for TF-IDF
+# Override via DD_FUZZY_THRESHOLD_LONG, DD_FUZZY_THRESHOLD_MEDIUM,
+# DD_SHORT_NAME_MAX_LEN, DD_TFIDF_THRESHOLD env vars.
+FUZZY_THRESHOLD_LONG = int(os.getenv("DD_FUZZY_THRESHOLD_LONG", "88"))  # Names > 8 chars
+FUZZY_THRESHOLD_MEDIUM = int(os.getenv("DD_FUZZY_THRESHOLD_MEDIUM", "95"))  # Names 5-8 chars
+SHORT_NAME_MAX_LEN = int(os.getenv("DD_SHORT_NAME_MAX_LEN", "5"))  # Never fuzzy-matched
+TFIDF_THRESHOLD = float(os.getenv("DD_TFIDF_THRESHOLD", "0.80"))  # Cosine similarity for TF-IDF

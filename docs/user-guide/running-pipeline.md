@@ -203,6 +203,31 @@ documents to the data room) and resume from that step.
 When resuming from steps 3-5, the FRESH persistence tier is automatically wiped to
 prevent stale inventory data from a prior interrupted run.
 
+## Advanced: Environment Variable Overrides
+
+For advanced tuning (e.g., non-English documents, OCR-heavy data rooms), several algorithm thresholds can be overridden via environment variables. All use the `DD_` prefix.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DD_QUOTE_MATCH_THRESHOLD` | 80 | Fuzzy match score (0-100) for citation verification. Lower values tolerate more OCR noise. |
+| `DD_MIN_QUOTE_CHARS` | 200 | Minimum characters for an extracted quote to be considered valid. |
+| `DD_MAX_QUOTE_CHARS` | 1000 | Maximum characters for a single quote extraction. |
+| `DD_SYNTHESIS_BUDGET_CHARS` | 80000 | Character budget for the synthesis phase quote aggregation. |
+| `DD_FUZZY_THRESHOLD_LONG` | 88 | Entity resolution fuzzy match threshold for names > 8 characters. |
+| `DD_FUZZY_THRESHOLD_MEDIUM` | 95 | Entity resolution fuzzy match threshold for names 5-8 characters. |
+| `DD_SHORT_NAME_MAX_LEN` | 5 | Names at or below this length are never fuzzy-matched (exact only). |
+| `DD_TFIDF_THRESHOLD` | 0.80 | Cosine similarity threshold for TF-IDF entity matching. |
+
+Example:
+
+```bash
+# Loosen citation matching for OCR-heavy data rooms
+DD_QUOTE_MATCH_THRESHOLD=65 dd-agents run deal-config.json
+
+# Tighten entity resolution for data rooms with similar company names
+DD_FUZZY_THRESHOLD_LONG=92 DD_FUZZY_THRESHOLD_MEDIUM=98 dd-agents run deal-config.json
+```
+
 ## Next Steps
 
 - [Reading the Report](reading-report.md) -- Navigate the generated reports

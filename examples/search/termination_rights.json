@@ -1,0 +1,22 @@
+{
+  "name": "Termination Rights Analysis",
+  "description": "Comprehensive analysis of all termination provisions across customer agreements. Understanding termination rights is critical for M&A because they determine revenue durability — contracts with broad termination rights or short notice periods create higher revenue risk for acquirers.",
+  "columns": [
+    {
+      "name": "Termination for Cause",
+      "prompt": "What are the termination-for-cause provisions in this agreement? For each party, describe: (1) what constitutes cause (material breach, insolvency, regulatory violation, etc.), (2) whether there is a cure period and how long it is, (3) any notice requirements, and (4) any consequences of termination for cause (e.g., fee acceleration, indemnification). Provide the section reference and page number."
+    },
+    {
+      "name": "Termination for Convenience",
+      "prompt": "Does this agreement grant either party a right to terminate without cause (termination for convenience)? If yes, specify: (1) who holds the right (customer only, provider only, or mutual), (2) the required notice period, (3) whether any termination fee or penalty applies, and (4) whether any fees already paid are refundable. Provide the section reference and page number. If no such right exists, state \"No termination for convenience right found\"."
+    },
+    {
+      "name": "Termination for Insolvency",
+      "prompt": "Does this agreement include termination rights triggered by insolvency, bankruptcy, or financial distress of either party? If yes, describe the specific triggers (e.g., voluntary bankruptcy filing, involuntary petition, assignment for benefit of creditors, appointment of receiver) and whether the termination is automatic or requires notice. Provide the section reference and page number."
+    },
+    {
+      "name": "Post-Termination Obligations",
+      "prompt": "What obligations survive termination of this agreement? Summarize: (1) any transition or wind-down period and its length, (2) data return or destruction requirements, (3) surviving payment obligations (e.g., fees for services already rendered), (4) surviving confidentiality or non-compete periods, and (5) any continuing license rights. Provide the section reference and page number."
+    }
+  ]
+}

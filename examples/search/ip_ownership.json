@@ -1,0 +1,22 @@
+{
+  "name": "IP Ownership Analysis",
+  "description": "Identify intellectual property ownership, assignment clauses, work-for-hire provisions, and IP-related risks in customer agreements. Critical for M&A due diligence to confirm the target company owns or has proper rights to all IP created during customer engagements.",
+  "columns": [
+    {
+      "name": "IP Assignment Clause",
+      "prompt": "Does this agreement include a clause assigning intellectual property rights? Specifically, does it address who owns IP, inventions, or work product created during the engagement? If yes, state who the IP is assigned to (provider or customer), whether the assignment covers all IP or only specific deliverables, and quote the relevant clause with section reference and page number. If no IP assignment clause exists, state \"No IP assignment clause found\"."
+    },
+    {
+      "name": "Work-for-Hire Provision",
+      "prompt": "Does this agreement contain a work-for-hire or work-made-for-hire provision that would cause IP created under the agreement to be owned by the customer rather than the provider? If yes, state \"Yes\" and quote the relevant clause with section reference and page number. If no, state \"No\". Note any exceptions or carve-outs for pre-existing IP or general-purpose tools."
+    },
+    {
+      "name": "Pre-Existing IP Protection",
+      "prompt": "Does this agreement include provisions protecting the provider's pre-existing intellectual property, background IP, or proprietary tools from being transferred to the customer? If yes, summarize the protection mechanism (e.g., license-back, exclusion from assignment, retained rights) and provide the section reference and page number. If no such protection exists, state \"No pre-existing IP protection found\" and note the risk."
+    },
+    {
+      "name": "License Grant Scope",
+      "prompt": "What license rights does the customer receive under this agreement? Summarize: (1) whether the license is exclusive or non-exclusive, (2) whether it is perpetual or term-limited, (3) whether it includes sublicensing rights, (4) any geographic or field-of-use restrictions, and (5) whether the license survives termination. Provide the section reference and page number."
+    }
+  ]
+}
