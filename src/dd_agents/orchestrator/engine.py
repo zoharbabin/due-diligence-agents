@@ -2453,7 +2453,14 @@ class PipelineEngine:
         return state
 
     async def _step_28_full_qa_audit(self, state: PipelineState) -> PipelineState:
-        """Full QA audit (Definition of Done checks).  BLOCKING GATE."""
+        """Full QA audit — 17 structural checks.  BLOCKING GATE.
+
+        Tier 1 of the two-tier validation design.  Runs ``QAAuditor`` which
+        checks structural integrity (manifests, file coverage, citations,
+        report sheets, etc.).  Failures halt the pipeline before report
+        generation.  See ``validation/dod.py`` docstring for the full
+        two-tier design rationale.
+        """
         from dd_agents.validation.qa_audit import QAAuditor
 
         inv_dir = self._inventory_dir(state)
@@ -3051,7 +3058,16 @@ class PipelineEngine:
     CRITICAL_DOD_CHECKS: frozenset[int] = frozenset({1, 2, 3, 11, 13, 14, 15, 17, 19})
 
     async def _step_35_shutdown(self, state: PipelineState) -> PipelineState:
-        """Shutdown all agents, run DoD checks, set exit status.
+        """Shutdown all agents, run 30 DoD checks, set exit status.
+
+        Tier 2 of the two-tier validation design.  Runs
+        ``DefinitionOfDoneChecker`` which evaluates analysis completeness
+        and quality (all agents ran, gaps tracked, Judge scores met, etc.).
+        Unlike step 28's blocking QA audit, DoD failures are **non-blocking**
+        — reports are already generated.  Critical failures (defined by
+        ``CRITICAL_DOD_CHECKS``) set the pipeline exit status so callers
+        can detect quality gaps.  See ``validation/dod.py`` docstring for
+        the full two-tier design rationale.
 
         Issue #56: DoD results are stored in ``state.validation_results["dod"]``
         and the pipeline exit status reflects critical DoD failures.

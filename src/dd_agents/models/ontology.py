@@ -81,16 +81,16 @@ class ClauseNode(BaseModel):
 
     id: str = Field(description="Unique clause ID (file_path:section:clause_type)")
     document_path: str = Field(description="Source document path")
-    customer_safe_name: str = Field(default="")
-    clause_type: ClauseType = Field(default=ClauseType.UNKNOWN)
+    customer_safe_name: str = Field(default="", description="Customer this clause belongs to")
+    clause_type: ClauseType = Field(default=ClauseType.UNKNOWN, description="Semantic type of the clause")
     section_ref: str = Field(default="", description="Section reference in the document")
     summary: str = Field(default="", description="Brief clause summary")
     exact_quote: str = Field(default="", description="Exact text from document")
     effective_date: str = Field(default="", description="When clause takes effect (YYYY-MM-DD)")
     expiry_date: str = Field(default="", description="When clause expires (YYYY-MM-DD)")
     notice_period_days: int | None = Field(default=None, description="Notice period in days")
-    parties: list[PartyInfo] = Field(default_factory=list)
-    metadata: dict[str, str] = Field(default_factory=dict)
+    parties: list[PartyInfo] = Field(default_factory=list, description="Parties involved in this clause")
+    metadata: dict[str, str] = Field(default_factory=dict, description="Additional key-value metadata")
 
 
 class PartyInfo(BaseModel):
@@ -111,7 +111,7 @@ class DocumentRelationship(BaseModel):
     target_id: str = Field(description="Target node ID")
     relationship: RelationshipType = Field(description="Type of relationship")
     description: str = Field(default="", description="Description of the relationship")
-    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0, description="Confidence in this relationship (0.0-1.0)")
 
 
 class Obligation(BaseModel):
@@ -119,7 +119,7 @@ class Obligation(BaseModel):
 
     id: str = Field(description="Unique obligation ID")
     clause_id: str = Field(description="Source clause ID")
-    customer_safe_name: str = Field(default="")
+    customer_safe_name: str = Field(default="", description="Customer this obligation belongs to")
     obligor: str = Field(description="Who owes the obligation")
     obligee: str = Field(description="Who is owed")
     description: str = Field(description="What is required")
@@ -131,9 +131,11 @@ class Obligation(BaseModel):
 class OntologyGraph(BaseModel):
     """Serializable representation of the contract knowledge graph."""
 
-    clauses: list[ClauseNode] = Field(default_factory=list)
-    relationships: list[DocumentRelationship] = Field(default_factory=list)
-    obligations: list[Obligation] = Field(default_factory=list)
-    total_documents: int = Field(default=0)
-    total_clauses: int = Field(default=0)
-    total_relationships: int = Field(default=0)
+    clauses: list[ClauseNode] = Field(default_factory=list, description="All clause nodes in the graph")
+    relationships: list[DocumentRelationship] = Field(
+        default_factory=list, description="All relationship edges in the graph"
+    )
+    obligations: list[Obligation] = Field(default_factory=list, description="All tracked obligations")
+    total_documents: int = Field(default=0, description="Number of distinct documents processed")
+    total_clauses: int = Field(default=0, description="Total clause nodes in the graph")
+    total_relationships: int = Field(default=0, description="Total relationship edges in the graph")

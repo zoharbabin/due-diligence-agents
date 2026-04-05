@@ -335,7 +335,7 @@ class BaseAgentRunner(ABC):
 
         # Build hooks and MCP server for the agent
         from dd_agents.hooks.factory import build_hooks_for_agent
-        from dd_agents.tools.mcp_server import build_mcp_server
+        from dd_agents.tools.mcp_server import _build_runtime_context, build_mcp_server
 
         hooks = build_hooks_for_agent(
             agent_name=self.get_agent_name(),
@@ -344,7 +344,11 @@ class BaseAgentRunner(ABC):
             expected_customers=expected_customers,
         )
 
-        mcp_server = build_mcp_server(agent_type=self.get_agent_type())
+        runtime_ctx = _build_runtime_context(
+            project_dir=self.project_dir,
+            run_dir=self.run_dir,
+        )
+        mcp_server = build_mcp_server(agent_type=self.get_agent_type(), **runtime_ctx)
 
         # Build options dict — only include hooks/mcp_servers when available
         options_kwargs: dict[str, Any] = {

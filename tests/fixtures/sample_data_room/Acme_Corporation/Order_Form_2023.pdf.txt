@@ -1,0 +1,16 @@
+--- Page 1 ---
+
+ORDER FORM #001
+
+Customer: Acme Corporation
+Date: March 15, 2023
+Reference: MSA dated January 1, 2023
+
+Product: Enterprise Platform License
+Term: 12 months (March 15, 2023 - March 14, 2024)
+Annual Fee: $250,000
+Payment: Quarterly in advance
+
+Auto-Renewal: This Order Form shall automatically renew for successive 12-month
+periods unless either party provides written notice of non-renewal at least 60 days
+prior to the end of the then-current term.

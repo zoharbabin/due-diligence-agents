@@ -26,18 +26,20 @@ class SearchPrompts(BaseModel, extra="forbid"):
     ``extra="forbid"`` catches typos in the JSON keys.
     """
 
-    name: str = Field(..., min_length=1, max_length=200)
-    description: str = ""
-    columns: list[SearchColumn] = Field(..., min_length=1, max_length=20)
+    name: str = Field(..., min_length=1, max_length=200, description="Name of the search prompts configuration")
+    description: str = Field(default="", description="Human-readable description of the search purpose")
+    columns: list[SearchColumn] = Field(
+        ..., min_length=1, max_length=20, description="Question columns (1-20) to evaluate per customer"
+    )
 
 
 class SearchCitation(BaseModel):
     """A single citation backing an answer."""
 
-    file_path: str = ""
-    page: str = ""
-    section_ref: str = ""
-    exact_quote: str = ""
+    file_path: str = Field(default="", description="Source file path for this citation")
+    page: str = Field(default="", description="Page number or range where the citation appears")
+    section_ref: str = Field(default="", description="Section reference within the document")
+    exact_quote: str = Field(default="", description="Exact quoted text from the source")
     # Citation verification fields (Issue #5).
     quote_verified: bool | None = Field(default=None, description="Whether exact_quote was found in source text")
     quote_match_score: float = Field(default=0.0, description="Fuzzy match score 0-100 from rapidfuzz")
@@ -55,9 +57,9 @@ class SearchCitation(BaseModel):
 class SearchColumnResult(BaseModel):
     """Result for one column (question) for one customer."""
 
-    answer: str = ""
-    citations: list[SearchCitation] = Field(default_factory=list)
-    confidence: str = ""
+    answer: str = Field(default="", description="Answer text (YES/NO/NOT_ADDRESSED or free-form)")
+    citations: list[SearchCitation] = Field(default_factory=list, description="Citations backing this answer")
+    confidence: str = Field(default="", description="Confidence level: high, medium, or low")
 
     @field_validator("confidence", mode="before")
     @classmethod
@@ -77,15 +79,17 @@ class SearchColumnResult(BaseModel):
 class SearchCustomerResult(BaseModel):
     """Aggregated search results for one customer."""
 
-    customer_name: str
-    group: str = ""
-    files_analyzed: int = 0
-    total_files: int = 0
-    skipped_files: list[str] = Field(default_factory=list)
-    columns: dict[str, SearchColumnResult] = Field(default_factory=dict)
-    incomplete_columns: list[str] = Field(default_factory=list)
-    error: str | None = None
-    chunks_analyzed: int = 0
+    customer_name: str = Field(description="Customer display name")
+    group: str = Field(default="", description="Group folder this customer belongs to")
+    files_analyzed: int = Field(default=0, description="Number of files analyzed for this customer")
+    total_files: int = Field(default=0, description="Total files available for this customer")
+    skipped_files: list[str] = Field(default_factory=list, description="File paths that were skipped")
+    columns: dict[str, SearchColumnResult] = Field(default_factory=dict, description="Results keyed by column name")
+    incomplete_columns: list[str] = Field(
+        default_factory=list, description="Column names where analysis was incomplete"
+    )
+    error: str | None = Field(default=None, description="Error message if analysis failed for this customer")
+    chunks_analyzed: int = Field(default=0, description="Number of text chunks processed")
 
 
 # ---------------------------------------------------------------------------

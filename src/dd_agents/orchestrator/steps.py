@@ -49,6 +49,7 @@ class PipelineStep(StrEnum):
     SPAWN_REPORTING_LEAD = (
         "23_spawn_reporting_lead"  # Pre-merge validation (was: Reporting Lead agent, removed as redundant)
     )
+    PRE_MERGE_VALIDATION = "23_spawn_reporting_lead"  # Backward-compatible alias for SPAWN_REPORTING_LEAD
     MERGE_DEDUP = "24_merge_dedup"
     MERGE_GAPS = "25_merge_gaps"
     BUILD_NUMERICAL_MANIFEST = "26_build_numerical_manifest"

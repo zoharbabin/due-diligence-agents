@@ -8,9 +8,9 @@ from pydantic import BaseModel, Field
 class GovernanceCitation(BaseModel):
     """Citation proving a governance relationship."""
 
-    source_path: str = ""
-    location: str = ""
-    exact_quote: str = ""
+    source_path: str = Field(default="", description="File path where the governance reference was found")
+    location: str = Field(default="", description="Section or page location within the source file")
+    exact_quote: str = Field(default="", description="Exact quote proving the governance relationship")
 
 
 class GovernanceEdge(BaseModel):
@@ -21,9 +21,11 @@ class GovernanceEdge(BaseModel):
 
     from_file: str = Field(description="Source file path (the governed document)")
     to_file: str = Field(description="Target file path (the governing document)")
-    link_reason: str = ""  # "explicit reference", etc.
-    relationship: str = ""  # governs, amends, supersedes, references
-    citation: GovernanceCitation = Field(default_factory=GovernanceCitation)
+    link_reason: str = Field(default="", description="Reason for the link (e.g. 'explicit reference')")
+    relationship: str = Field(default="", description="Relationship type: governs, amends, supersedes, references")
+    citation: GovernanceCitation = Field(
+        default_factory=GovernanceCitation, description="Citation proving this governance edge"
+    )
 
 
 class GovernanceGraph(BaseModel):
@@ -36,7 +38,9 @@ class GovernanceGraph(BaseModel):
     the pipeline.
     """
 
-    edges: list[GovernanceEdge] = Field(default_factory=list)
+    edges: list[GovernanceEdge] = Field(
+        default_factory=list, description="Directed edges representing governance relationships"
+    )
 
     def get_governing_doc(self, file_path: str) -> str | None:
         """Return the governing document for a given file, or None."""

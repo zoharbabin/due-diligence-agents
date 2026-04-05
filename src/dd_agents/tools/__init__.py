@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dd_agents.tools.get_customer_files import get_customer_files
+from dd_agents.tools.mcp_server import build_mcp_server
 from dd_agents.tools.read_office import read_office
 from dd_agents.tools.report_progress import report_progress
 from dd_agents.tools.resolve_entity import resolve_entity
@@ -19,6 +20,7 @@ from dd_agents.tools.verify_citation import verify_citation
 
 __all__ = [
     # Server
+    "build_mcp_server",
     "create_tool_definitions",
     "get_tools_for_agent",
     "SPECIALIST_CUSTOM_TOOLS",

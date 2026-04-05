@@ -1,0 +1,7 @@
+--- Page 1 ---
+
+CUSTOMER LIST - Q1 2024
+
+Customer Name | ARR | Contract End | Status
+Acme Corporation | $250,000 | 2024-03-14 | Active
+Global Analytics Group | $180,000 | 2024-05-31 | Active

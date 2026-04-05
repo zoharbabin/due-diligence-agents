@@ -19,22 +19,26 @@ class RunMetadata(BaseModel):
     From SKILL.md step 3 (initialization) and step 32 (finalization).
     """
 
-    run_id: str
-    timestamp: str  # ISO-8601
-    skill: str = "forensic-dd"
-    execution_mode: ExecutionMode  # "full" or "incremental"
-    config_hash: str  # SHA-256 of deal-config.json
-    framework_version: str = "unknown"
+    run_id: str = Field(description="Unique run identifier")
+    timestamp: str = Field(description="ISO-8601 timestamp of run start")
+    skill: str = Field(default="forensic-dd", description="Skill identifier")
+    execution_mode: ExecutionMode = Field(description="Execution mode: 'full' or 'incremental'")
+    config_hash: str = Field(description="SHA-256 hash of deal-config.json")
+    framework_version: str = Field(default="unknown", description="Version of the dd-agents framework")
     cross_skill_run_ids: dict[str, str] = Field(
         default_factory=dict, description="Map of skill name to run_id for cross-skill data"
     )
     # Finalization fields (added at step 32):
     file_checksums: dict[str, str] = Field(default_factory=dict, description="Per-customer SHA-256 map")
-    customer_assignments: dict[str, list[str]] = Field(default_factory=dict)
-    finding_counts: dict[str, int] = Field(default_factory=dict)
-    gap_counts: dict[str, int] = Field(default_factory=dict)
-    agent_scores: dict[str, int] = Field(default_factory=dict)
-    completion_status: CompletionStatus = CompletionStatus.IN_PROGRESS
+    customer_assignments: dict[str, list[str]] = Field(
+        default_factory=dict, description="Agent name to list of assigned customer safe names"
+    )
+    finding_counts: dict[str, int] = Field(default_factory=dict, description="Finding counts keyed by severity level")
+    gap_counts: dict[str, int] = Field(default_factory=dict, description="Gap counts keyed by priority level")
+    agent_scores: dict[str, int] = Field(default_factory=dict, description="Quality scores keyed by agent name")
+    completion_status: CompletionStatus = Field(
+        default=CompletionStatus.IN_PROGRESS, description="Run completion status"
+    )
     batch_counts: dict[str, int] = Field(
         default_factory=dict, description="Number of batch instances spawned per agent type"
     )
@@ -62,26 +66,28 @@ class CustomerClassEntry(BaseModel):
     From SKILL.md section 0e.
     """
 
-    customer: str
-    customer_safe_name: str
-    classification: CustomerClassificationStatus
-    reason: str
-    files_added: list[str] = Field(default_factory=list)
-    files_removed: list[str] = Field(default_factory=list)
-    files_modified: list[str] = Field(default_factory=list)
-    prior_checksum: str | None = None  # Required for all non-NEW
-    current_checksum: str | None = None  # Required for all non-NEW
-    consecutive_unchanged_runs: int = 0
+    customer: str = Field(description="Customer display name")
+    customer_safe_name: str = Field(description="Normalized customer_safe_name")
+    classification: CustomerClassificationStatus = Field(description="Classification status for this customer")
+    reason: str = Field(description="Human-readable reason for the classification")
+    files_added: list[str] = Field(default_factory=list, description="New files since the prior run")
+    files_removed: list[str] = Field(default_factory=list, description="Files removed since the prior run")
+    files_modified: list[str] = Field(default_factory=list, description="Files modified since the prior run")
+    prior_checksum: str | None = Field(default=None, description="SHA-256 of prior run output (required for non-NEW)")
+    current_checksum: str | None = Field(default=None, description="SHA-256 of current file set (required for non-NEW)")
+    consecutive_unchanged_runs: int = Field(
+        default=0, description="Number of consecutive runs with no changes (triggers stale_refresh)"
+    )
 
 
 class ClassificationSummary(BaseModel):
     """Summary counts by classification status."""
 
-    new: int = 0
-    changed: int = 0
-    stale_refresh: int = 0
-    unchanged: int = 0
-    deleted: int = 0
+    new: int = Field(default=0, description="Customers classified as new")
+    changed: int = Field(default=0, description="Customers with changed files")
+    stale_refresh: int = Field(default=0, description="Unchanged customers due for stale refresh")
+    unchanged: int = Field(default=0, description="Customers with no changes (carried forward)")
+    deleted: int = Field(default=0, description="Customers removed from the data room")
 
 
 class Classification(BaseModel):
@@ -91,11 +97,13 @@ class Classification(BaseModel):
     From SKILL.md section 0e.
     """
 
-    run_id: str
-    execution_mode: ExecutionMode  # "incremental"
-    prior_run_id: str | None = None
-    classification_summary: ClassificationSummary = Field(default_factory=ClassificationSummary)
-    customers: list[CustomerClassEntry] = Field(default_factory=list)
+    run_id: str = Field(description="Unique run identifier")
+    execution_mode: ExecutionMode = Field(description="Execution mode (always 'incremental' for this document)")
+    prior_run_id: str | None = Field(default=None, description="Run ID of the prior run used for diffing")
+    classification_summary: ClassificationSummary = Field(
+        default_factory=ClassificationSummary, description="Aggregate counts by status"
+    )
+    customers: list[CustomerClassEntry] = Field(default_factory=list, description="Per-customer classification entries")
 
     @field_validator("execution_mode", mode="before")
     @classmethod
@@ -109,23 +117,23 @@ class Classification(BaseModel):
 class AnalysisUnitCounts(BaseModel):
     """Analysis unit counts for run history."""
 
-    total: int = 0
-    analyzed: int = 0
-    carried_forward: int = 0
-    new: int = 0
-    changed: int = 0
-    stale_refresh: int = 0
-    deleted: int = 0
+    total: int = Field(default=0, description="Total analysis units (customers)")
+    analyzed: int = Field(default=0, description="Units analyzed in this run")
+    carried_forward: int = Field(default=0, description="Units carried from prior run (unchanged)")
+    new: int = Field(default=0, description="New units added in this run")
+    changed: int = Field(default=0, description="Units with changed files")
+    stale_refresh: int = Field(default=0, description="Unchanged units refreshed due to staleness")
+    deleted: int = Field(default=0, description="Units removed from the data room")
 
 
 class FindingCounts(BaseModel):
     """Finding counts for run history."""
 
-    p0: int = 0
-    p1: int = 0
-    p2: int = 0
-    p3: int = 0
-    total: int = 0
+    p0: int = Field(default=0, description="Number of P0 (deal-stopper) findings")
+    p1: int = Field(default=0, description="Number of P1 (high-risk) findings")
+    p2: int = Field(default=0, description="Number of P2 (medium-risk) findings")
+    p3: int = Field(default=0, description="Number of P3 (low-risk / informational) findings")
+    total: int = Field(default=0, description="Total findings (must equal p0+p1+p2+p3)")
 
     @field_validator("total", mode="after")
     @classmethod
@@ -159,15 +167,17 @@ class RunHistoryEntry(BaseModel):
     From SKILL.md step 33.
     """
 
-    run_id: str
-    skill: str = "forensic-dd"
-    timestamp: str  # ISO-8601
-    execution_mode: ExecutionMode  # "full" or "incremental"
-    analysis_unit_counts: AnalysisUnitCounts = Field(default_factory=AnalysisUnitCounts)
-    finding_counts: FindingCounts = Field(default_factory=FindingCounts)
-    agent_scores: dict[str, int] = Field(default_factory=dict)
-    judge_enabled: bool = False
-    iteration_rounds: int = 0
+    run_id: str = Field(description="Unique run identifier")
+    skill: str = Field(default="forensic-dd", description="Skill identifier")
+    timestamp: str = Field(description="ISO-8601 timestamp of run completion")
+    execution_mode: ExecutionMode = Field(description="Execution mode: 'full' or 'incremental'")
+    analysis_unit_counts: AnalysisUnitCounts = Field(
+        default_factory=AnalysisUnitCounts, description="Customer-level analysis counts"
+    )
+    finding_counts: FindingCounts = Field(default_factory=FindingCounts, description="Finding counts by severity")
+    agent_scores: dict[str, int] = Field(default_factory=dict, description="Quality scores keyed by agent name")
+    judge_enabled: bool = Field(default=False, description="Whether the Judge agent was enabled for this run")
+    iteration_rounds: int = Field(default=0, description="Number of Judge iteration rounds completed")
 
     @field_validator("execution_mode", mode="before")
     @classmethod

@@ -16,15 +16,15 @@ class ProjectEntry(BaseModel):
     last_run_at: str | None = Field(default=None, description="ISO-8601 of most recent run")
     last_run_id: str | None = Field(default=None, description="Most recent run ID")
     status: str = Field(default="created", description="created | running | completed | failed | archived")
-    total_runs: int = Field(default=0, ge=0)
-    total_customers: int = Field(default=0, ge=0)
-    total_findings: int = Field(default=0, ge=0)
+    total_runs: int = Field(default=0, ge=0, description="Total pipeline runs completed")
+    total_customers: int = Field(default=0, ge=0, description="Total customers in the data room")
+    total_findings: int = Field(default=0, ge=0, description="Total findings across all runs")
     finding_counts: dict[str, int] = Field(default_factory=dict, description="Finding counts by severity")
     deal_type: str = Field(default="", description="acquisition, merger, etc.")
     buyer: str = Field(default="", description="Buyer company name")
     target: str = Field(default="", description="Target company name")
     risk_score: float = Field(default=0.0, ge=0.0, le=100.0, description="Overall risk score 0-100")
-    notes: str = Field(default="")
+    notes: str = Field(default="", description="Free-form notes about this deal")
     locked_by: int | None = Field(default=None, description="PID if currently running")
 
 
@@ -33,16 +33,18 @@ class ProjectRegistry(BaseModel):
 
     version: int = Field(default=1, description="Registry format version")
     base_dir: str = Field(description="Base directory for the registry file")
-    projects: list[ProjectEntry] = Field(default_factory=list)
-    last_updated: str = Field(default="")
+    projects: list[ProjectEntry] = Field(default_factory=list, description="All registered deal projects")
+    last_updated: str = Field(default="", description="ISO-8601 timestamp of last registry update")
 
 
 class PortfolioComparison(BaseModel):
     """Cross-deal comparison data for portfolio view."""
 
-    projects: list[ProjectEntry] = Field(default_factory=list)
+    projects: list[ProjectEntry] = Field(default_factory=list, description="Projects included in comparison")
     total_arr: float = Field(default=0.0, description="Sum of ARR across all deals")
     avg_risk_score: float = Field(default=0.0, description="Average risk score")
-    total_findings: int = Field(default=0)
-    severity_distribution: dict[str, int] = Field(default_factory=dict)
+    total_findings: int = Field(default=0, description="Total findings across all projects")
+    severity_distribution: dict[str, int] = Field(
+        default_factory=dict, description="Finding counts keyed by severity across all projects"
+    )
     risk_benchmarks: dict[str, float] = Field(default_factory=dict, description="Risk score percentiles")

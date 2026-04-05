@@ -147,3 +147,94 @@ def report_schema() -> dict[str, Any]:
     if schema_path.exists():
         return json.loads(schema_path.read_text())
     return {}
+
+
+# ---------------------------------------------------------------------------
+# SDK mock fixtures (T5 — shared mock pattern for agent tests)
+# ---------------------------------------------------------------------------
+
+
+class _MockTextBlock:
+    """Mock for claude_agent_sdk TextBlock."""
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+
+class _MockAssistantMessage:
+    """Mock for claude_agent_sdk AssistantMessage."""
+
+    def __init__(self, text: str) -> None:
+        self.content = [_MockTextBlock(text)]
+
+
+class _MockResultMessage:
+    """Mock for claude_agent_sdk ResultMessage."""
+
+    is_error = False
+    result = ""
+
+
+class _MockClaudeAgentOptions:
+    """Mock for claude_agent_sdk ClaudeAgentOptions."""
+
+    def __init__(self, **kwargs: object) -> None:
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+class SdkMocks:
+    """Container for SDK mock types.
+
+    Provides the mock classes and a ``patch()`` helper that patches them
+    into ``dd_agents.agents.base`` so ``_spawn_agent`` can run without a
+    real SDK install.  All tests share the *same* class objects, which is
+    required because ``_spawn_agent`` uses ``isinstance`` checks.
+
+    Usage in tests::
+
+        def test_something(sdk_mocks, monkeypatch):
+            sdk_mocks.patch(monkeypatch)
+            # Now _spawn_agent will use mock classes
+    """
+
+    TextBlock = _MockTextBlock
+    AssistantMessage = _MockAssistantMessage
+    ResultMessage = _MockResultMessage
+    ClaudeAgentOptions = _MockClaudeAgentOptions
+
+    def patch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Patch all SDK symbols into ``dd_agents.agents.base``."""
+        import dd_agents.agents.base as base_mod
+
+        monkeypatch.setattr(base_mod, "_HAS_SDK", True)
+        monkeypatch.setattr(base_mod, "_AssistantMessage", self.AssistantMessage)
+        monkeypatch.setattr(base_mod, "_TextBlock", self.TextBlock)
+        monkeypatch.setattr(base_mod, "_ResultMessage", self.ResultMessage)
+        monkeypatch.setattr(base_mod, "_ClaudeAgentOptions", self.ClaudeAgentOptions)
+
+    def make_query(self, *messages: str):  # type: ignore[no-untyped-def]
+        """Create an async generator that yields AssistantMessages.
+
+        Usage::
+
+            monkeypatch.setattr(base_mod, "_query", sdk_mocks.make_query("response text"))
+        """
+        mocks = self
+
+        async def _query(prompt: str, options: object) -> object:  # type: ignore[misc]
+            for text in messages:
+                yield mocks.AssistantMessage(text)
+
+        return _query
+
+
+@pytest.fixture
+def sdk_mocks() -> SdkMocks:
+    """Shared SDK mock fixture for agent tests.
+
+    Provides mock classes for TextBlock, AssistantMessage, ResultMessage,
+    and ClaudeAgentOptions, plus helpers to patch them into base_mod and
+    create mock query generators.
+    """
+    return SdkMocks()

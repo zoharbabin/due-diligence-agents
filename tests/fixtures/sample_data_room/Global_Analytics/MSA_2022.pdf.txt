@@ -1,0 +1,25 @@
+--- Page 1 ---
+
+MASTER SERVICE AGREEMENT
+
+This Master Service Agreement ("Agreement") is entered into as of June 1, 2022
+by and between Target Company, Inc. ("Provider") and Global Analytics Group
+("Customer").
+
+1. TERM
+This Agreement shall commence on the Effective Date and continue for a period of
+two (2) years unless earlier terminated.
+
+--- Page 2 ---
+
+2. FEES
+Customer shall pay an annual license fee of $180,000.
+
+3. LIMITATION OF LIABILITY
+In no event shall either party's aggregate liability exceed the total fees paid
+by Customer during the twelve (12) month period preceding the claim.
+
+4. CHANGE OF CONTROL
+Upon a Change of Control of Provider, this Agreement shall continue in full force
+and effect; provided that Customer may request a review of pricing terms within
+ninety (90) days of the Change of Control event.

@@ -11,14 +11,14 @@ class ManifestEntry(BaseModel):
     From numerical-validation.md section 1.
     """
 
-    id: str  # N001, N002, ...
-    label: str  # total_customers, total_files, etc.
-    value: int | float
-    source_file: str  # Path to source data
-    derivation: str  # How the number was computed
-    used_in: list[str] = Field(default_factory=list)  # Where it appears in outputs
-    cross_check: str = ""  # Cross-source validation expression
-    verified: bool = False  # Set to True after validation passes
+    id: str = Field(description="Manifest entry identifier (e.g. N001, N002)")
+    label: str = Field(description="Human-readable label (e.g. total_customers, total_files)")
+    value: int | float = Field(description="The numeric value being tracked")
+    source_file: str = Field(description="Path to the source data file")
+    derivation: str = Field(description="How the number was computed (formula or method)")
+    used_in: list[str] = Field(default_factory=list, description="Output files where this number appears")
+    cross_check: str = Field(default="", description="Cross-source validation expression")
+    verified: bool = Field(default=False, description="Set to True after validation passes")
 
 
 class NumericalManifest(BaseModel):
@@ -28,8 +28,8 @@ class NumericalManifest(BaseModel):
     Must contain at minimum entries N001-N010.
     """
 
-    manifest_version: str = "1.0"
-    generated_at: str  # ISO-8601
+    manifest_version: str = Field(default="1.0", description="Schema version of the manifest format")
+    generated_at: str = Field(description="ISO-8601 timestamp of manifest generation")
     numbers: list[ManifestEntry] = Field(
         default_factory=list, min_length=10, description="Must contain at minimum N001-N010"
     )

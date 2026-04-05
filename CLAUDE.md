@@ -46,7 +46,7 @@ dd-agents run path/to/deal-config.json
 - **Agents** (`agents/`): 4 specialists (Legal, Finance, Commercial, ProductTech) + Judge + Executive Synthesis + Red Flag Scanner + Acquirer Intelligence. Spawned via `claude-agent-sdk`.
 - **Persistence**: Three tiers — PERMANENT (never wiped), VERSIONED (archived per run), FRESH (rebuilt each run).
 - **Hooks** (`hooks/`): Flat return format `{"decision": "block"|"allow", "reason": "..."}` for ALL hook types. Never nest under `hookSpecificOutput`.
-- **Models** (`models/`): Pydantic v2 for all schemas. `model_json_schema()` for structured outputs.
+- **Models** (`models/`): Pydantic v2 for all schemas. `model_json_schema()` for structured outputs. Note: some BaseModel subclasses live outside `models/` by design — agent output schemas (`agents/*.py`), report templates (`reporting/templates.py`), query models (`query/*.py`), and internal helpers (`orchestrator/batch_scheduler.py`, `validation/pre_merge.py`, `extraction/coordinates.py`) are co-located with their consumers for cohesion.
 - **Validation** (`validation/`): 6-layer numerical audit, 31 substantive DoD checks (content-validated, not file-existence). Fail-closed — validation failures block the pipeline.
 
 ## Code Style

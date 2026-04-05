@@ -8,11 +8,11 @@ from pydantic import BaseModel, Field
 class FileEntry(BaseModel):
     """Individual file in the data room."""
 
-    path: str
-    text_path: str | None = None  # Path to extracted text, or None
-    mime_type: str = ""
-    size: int = 0
-    checksum: str = ""  # SHA-256
+    path: str = Field(description="File path relative to data room root")
+    text_path: str | None = Field(default=None, description="Path to extracted text, or None if not yet extracted")
+    mime_type: str = Field(default="", description="MIME type of the file")
+    size: int = Field(default=0, description="File size in bytes")
+    checksum: str = Field(default="", description="SHA-256 checksum of the file")
     # Precedence metadata (Issue #163)
     mtime: float = Field(default=0.0, description="File modification timestamp (epoch seconds)")
     mtime_iso: str = Field(default="", description="Human-readable ISO-8601 modification time")
@@ -29,12 +29,12 @@ class FileEntry(BaseModel):
 class CustomerEntry(BaseModel):
     """One customer in the customer registry (customers.csv row)."""
 
-    group: str  # Group folder name
-    name: str  # Customer display name
-    safe_name: str  # customer_safe_name convention
-    path: str  # Customer directory path
-    file_count: int = 0
-    files: list[str] = Field(default_factory=list)  # List of file paths
+    group: str = Field(description="Group folder name containing this customer")
+    name: str = Field(description="Customer display name")
+    safe_name: str = Field(description="Normalized customer_safe_name for file naming")
+    path: str = Field(description="Customer directory path relative to data room root")
+    file_count: int = Field(default=0, description="Number of files belonging to this customer")
+    files: list[str] = Field(default_factory=list, description="List of file paths for this customer")
 
 
 class ReferenceFile(BaseModel):
@@ -43,14 +43,18 @@ class ReferenceFile(BaseModel):
     From SKILL.md section 2b.
     """
 
-    file_path: str  # Original file path (REQUIRED)
-    text_path: str | None = None  # Extracted text path, or None
-    category: str  # Financial, Pricing, Corporate/Legal, etc.
-    subcategory: str  # Finer classification
-    description: str  # 1-2 sentence description
-    customers_mentioned: list[str] = Field(default_factory=list)
-    customers_mentioned_count: int = 0
-    data_points_extractable: list[str] = Field(default_factory=list)
+    file_path: str = Field(description="Original file path relative to data room root")
+    text_path: str | None = Field(default=None, description="Extracted text path, or None if not available")
+    category: str = Field(description="High-level category (Financial, Pricing, Corporate/Legal, etc.)")
+    subcategory: str = Field(description="Finer classification within the category")
+    description: str = Field(description="1-2 sentence description of the file contents")
+    customers_mentioned: list[str] = Field(
+        default_factory=list, description="Customer names mentioned in this reference file"
+    )
+    customers_mentioned_count: int = Field(default=0, description="Number of distinct customers mentioned")
+    data_points_extractable: list[str] = Field(
+        default_factory=list, description="Types of data points that can be extracted from this file"
+    )
     assigned_to_agents: list[str] = Field(
         min_length=1, description="Every reference file must be assigned to at least one agent"
     )
@@ -59,12 +63,16 @@ class ReferenceFile(BaseModel):
 class CountsJson(BaseModel):
     """Aggregate inventory counts. From SKILL.md section 2a."""
 
-    total_files: int = 0
-    total_customers: int = 0
-    total_reference_files: int = 0
-    files_by_extension: dict[str, int] = Field(default_factory=dict)
-    files_by_group: dict[str, int] = Field(default_factory=dict)
-    customers_by_group: dict[str, int] = Field(default_factory=dict)
+    total_files: int = Field(default=0, description="Total number of files in the data room")
+    total_customers: int = Field(default=0, description="Total number of distinct customers")
+    total_reference_files: int = Field(default=0, description="Number of global reference files")
+    files_by_extension: dict[str, int] = Field(
+        default_factory=dict, description="File counts keyed by extension (e.g. '.pdf': 42)"
+    )
+    files_by_group: dict[str, int] = Field(default_factory=dict, description="File counts keyed by group folder name")
+    customers_by_group: dict[str, int] = Field(
+        default_factory=dict, description="Customer counts keyed by group folder name"
+    )
 
 
 class CustomerMention(BaseModel):
@@ -73,16 +81,18 @@ class CustomerMention(BaseModel):
     Records which customers are mentioned in which reference files.
     """
 
-    customer_name: str
-    customer_safe_name: str
-    reference_files: list[str] = Field(default_factory=list)
-    mention_count: int = 0
+    customer_name: str = Field(description="Customer display name")
+    customer_safe_name: str = Field(description="Normalized customer_safe_name")
+    reference_files: list[str] = Field(
+        default_factory=list, description="Reference file paths that mention this customer"
+    )
+    mention_count: int = Field(default=0, description="Total number of mentions across reference files")
 
 
 class CustomerMentionIndex(BaseModel):
     """Complete customer-mention index. Written to customer_mentions.json."""
 
-    matches: list[CustomerMention] = Field(default_factory=list)
+    matches: list[CustomerMention] = Field(default_factory=list, description="Customers with reference file mentions")
     unmatched_in_reference: list[str] = Field(
         default_factory=list, description="Names in reference files not matching any customer folder (ghost customers)"
     )
@@ -94,10 +104,10 @@ class CustomerMentionIndex(BaseModel):
 class ExtractionQualityEntry(BaseModel):
     """Extraction quality record for a single file. From SKILL.md section 1b."""
 
-    file_path: str
-    method: str  # ExtractionQualityMethod value
-    bytes_extracted: int = 0
-    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    file_path: str = Field(description="File path relative to data room root")
+    method: str = Field(description="ExtractionQualityMethod value (e.g. primary, ocr, fallback)")
+    bytes_extracted: int = Field(default=0, description="Number of bytes of text extracted")
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="Extraction confidence score (0.0-1.0)")
     fallback_chain: list[str] = Field(default_factory=list, description="Methods attempted in order")
     failure_reasons: list[str] = Field(default_factory=list, description="Diagnostic strings for each gate failure")
     source_language: str = Field(

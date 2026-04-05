@@ -1,0 +1,38 @@
+--- Page 1 ---
+
+MASTER SERVICE AGREEMENT
+
+This Master Service Agreement ("Agreement") is entered into as of January 1, 2023
+by and between Target Company, Inc. ("Provider") and Acme Corporation ("Customer").
+
+1. TERM
+This Agreement shall commence on the Effective Date and continue for a period of
+three (3) years unless earlier terminated in accordance with Section 12.
+
+2. SERVICES
+Provider shall provide the services described in each Order Form executed by the
+parties from time to time.
+
+--- Page 2 ---
+
+3. FEES AND PAYMENT
+Customer shall pay Provider the fees set forth in the applicable Order Form.
+Payment terms are net thirty (30) days from date of invoice.
+
+4. CONFIDENTIALITY
+Each party agrees to maintain the confidentiality of the other party's Confidential
+Information and not to disclose such information to any third party.
+
+--- Page 3 ---
+
+12. TERMINATION
+12.1 Either party may terminate this Agreement upon ninety (90) days written notice.
+12.2 Either party may terminate this Agreement immediately upon written notice if
+the other party materially breaches this Agreement and fails to cure such breach
+within thirty (30) days after receiving written notice thereof.
+12.3 Change of Control. In the event of a Change of Control of Provider, Customer
+may terminate this Agreement immediately upon written notice.
+
+13. GOVERNING LAW
+This Agreement shall be governed by and construed in accordance with the laws of
+the State of Delaware.

@@ -118,9 +118,9 @@ class Citation(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    source_type: SourceType
-    source_path: str
-    location: str = ""  # "Section X.Y" or page number
+    source_type: SourceType = Field(description="Source type: file, database, or web_research")
+    source_path: str = Field(description="Path to the source document or URL")
+    location: str = Field(default="", description="Location within the source (e.g. 'Section X.Y' or page number)")
     exact_quote: str | None = Field(
         default=None,
         description="Verbatim text from the document. OMIT (do not set to null) "
@@ -130,7 +130,7 @@ class Citation(BaseModel):
     # special characters (newlines, quotes), they are escaped using standard
     # JSON string escaping. No custom serializer needed -- Pydantic v2 handles
     # this natively via model_dump_json().
-    access_date: str | None = None  # Required when source_type == web_research
+    access_date: str | None = Field(default=None, description="Access date (required when source_type is web_research)")
     source_language: str | None = Field(
         default=None,
         description="ISO 639-1 language code of the source document (Issue #144).",
@@ -160,18 +160,18 @@ class Finding(BaseModel):
         pattern=r"^[a-z][a-z0-9-]*_[a-z][a-z0-9_-]*_\d{4,}$",
         description="Format: {skill}_{agent}_{sequential_number} e.g. forensic-dd_legal_0001",
     )
-    severity: Severity
-    category: str
-    title: str = Field(max_length=120)
-    description: str
-    citations: list[Citation] = Field(min_length=1)
-    confidence: Confidence
-    agent: AgentName
-    skill: str = "forensic-dd"
-    run_id: str
-    timestamp: str  # ISO-8601
-    analysis_unit: str  # customer name
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    severity: Severity = Field(description="Finding severity: P0 (deal-stopper) through P3 (informational)")
+    category: str = Field(description="Finding category (e.g. change_of_control, termination)")
+    title: str = Field(max_length=120, description="Brief finding title (max 120 chars)")
+    description: str = Field(description="Detailed description of the finding")
+    citations: list[Citation] = Field(min_length=1, description="Supporting citations (at least one required)")
+    confidence: Confidence = Field(description="Confidence level: high, medium, or low")
+    agent: AgentName = Field(description="Agent that produced this finding")
+    skill: str = Field(default="forensic-dd", description="Skill identifier")
+    run_id: str = Field(description="Unique run identifier")
+    timestamp: str = Field(description="ISO-8601 timestamp of finding creation")
+    analysis_unit: str = Field(description="Customer name this finding pertains to")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Additional key-value metadata")
 
     @field_validator("severity", mode="before")
     @classmethod
@@ -207,12 +207,12 @@ class AgentFinding(BaseModel):
     From agent-prompts.md section 4c.
     """
 
-    severity: Severity
-    category: str
-    title: str = Field(max_length=120)
-    description: str
-    citations: list[Citation] = Field(min_length=1)
-    confidence: Confidence
+    severity: Severity = Field(description="Finding severity: P0 through P3")
+    category: str = Field(description="Finding category")
+    title: str = Field(max_length=120, description="Brief finding title (max 120 chars)")
+    description: str = Field(description="Detailed description of the finding")
+    citations: list[Citation] = Field(min_length=1, description="Supporting citations (at least one required)")
+    confidence: Confidence = Field(description="Confidence level: high, medium, or low")
     verified: bool | None = Field(
         default=None,
         description="Set by P0/P1 self-verification loop (Issue #140). "
@@ -240,18 +240,18 @@ class Gap(BaseModel):
     Every gap MUST have all required fields -- missing fields cause QA failure.
     """
 
-    customer: str
-    priority: Severity
-    gap_type: GapType
-    missing_item: str = Field(max_length=200)
-    why_needed: str
-    risk_if_missing: str
-    request_to_company: str
-    evidence: str
-    detection_method: DetectionMethod
-    source_file: str | None = None  # Recommended
-    agent: AgentName | None = None  # Recommended
-    run_id: str | None = None  # Recommended
+    customer: str = Field(description="Customer name this gap pertains to")
+    priority: Severity = Field(description="Gap priority: P0 through P3")
+    gap_type: GapType = Field(description="Type of gap: Missing_Doc, Incomplete_Doc, etc.")
+    missing_item: str = Field(max_length=200, description="What is missing (max 200 chars)")
+    why_needed: str = Field(description="Why this item is needed for due diligence")
+    risk_if_missing: str = Field(description="Risk to the deal if this gap is not resolved")
+    request_to_company: str = Field(description="Specific request to send to the target company")
+    evidence: str = Field(description="Evidence supporting the gap identification")
+    detection_method: DetectionMethod = Field(description="How the gap was detected")
+    source_file: str | None = Field(default=None, description="Source file where gap was identified")
+    agent: AgentName | None = Field(default=None, description="Agent that identified this gap")
+    run_id: str | None = Field(default=None, description="Run ID when gap was identified")
 
     @field_validator("priority", mode="before")
     @classmethod
@@ -286,11 +286,13 @@ class Gap(BaseModel):
 class CrossReferenceData(BaseModel):
     """Per-file cross-reference data extracted from document. From domain-definitions.md section 1."""
 
-    contract_value: str | None = None
-    pricing_terms: str | None = None
-    term_dates: dict[str, str] | None = None  # {"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"}
-    payment_terms: str | None = None
-    discount_pct: str | None = None
+    contract_value: str | None = Field(default=None, description="Total contract value extracted from document")
+    pricing_terms: str | None = Field(default=None, description="Pricing terms extracted from document")
+    term_dates: dict[str, str] | None = Field(
+        default=None, description="Contract term dates: {'start': 'YYYY-MM-DD', 'end': 'YYYY-MM-DD'}"
+    )
+    payment_terms: str | None = Field(default=None, description="Payment terms (e.g. 'Net 30')")
+    discount_pct: str | None = Field(default=None, description="Discount percentage if applicable")
 
 
 class FileHeader(BaseModel):
@@ -299,16 +301,18 @@ class FileHeader(BaseModel):
     Recorded in the customer JSON for every file processed.
     """
 
-    file_path: str
-    text_path: str | None = None
-    doc_type_guess: str  # MSA, Order Form, SOW, Amendment, etc.
-    effective_date_guess: str | None = None  # YYYY-MM-DD or None
-    expiry_date_guess: str | None = None  # YYYY-MM-DD or None
-    parties: list[str] = Field(default_factory=list)
-    governed_by: str  # File path, "SELF", or "UNRESOLVED"
-    references_found: list[str] = Field(default_factory=list)
-    content_summary: str = ""
-    cross_reference_data: CrossReferenceData = Field(default_factory=CrossReferenceData)
+    file_path: str = Field(description="File path relative to data room root")
+    text_path: str | None = Field(default=None, description="Path to extracted text file")
+    doc_type_guess: str = Field(description="Guessed document type: MSA, Order Form, SOW, Amendment, etc.")
+    effective_date_guess: str | None = Field(default=None, description="Guessed effective date (YYYY-MM-DD)")
+    expiry_date_guess: str | None = Field(default=None, description="Guessed expiry date (YYYY-MM-DD)")
+    parties: list[str] = Field(default_factory=list, description="Party names identified in the document")
+    governed_by: str = Field(description="Governing document: file path, 'SELF', or 'UNRESOLVED'")
+    references_found: list[str] = Field(default_factory=list, description="File paths referenced by this document")
+    content_summary: str = Field(default="", description="Brief summary of document contents")
+    cross_reference_data: CrossReferenceData = Field(
+        default_factory=CrossReferenceData, description="Extracted cross-reference data points"
+    )
 
     @field_validator("governed_by")
     @classmethod
@@ -327,11 +331,11 @@ class FileHeader(BaseModel):
 class CrossReferenceSource(BaseModel):
     """Source location for a cross-reference data point."""
 
-    file: str = ""
-    page: int | str | None = None
-    quote: str = ""
-    tab: str | None = None
-    row: str | None = None
+    file: str = Field(default="", description="Source file path")
+    page: int | str | None = Field(default=None, description="Page number or reference")
+    quote: str = Field(default="", description="Exact quote from the source")
+    tab: str | None = Field(default=None, description="Excel sheet/tab name if applicable")
+    row: str | None = Field(default=None, description="Row reference if from a spreadsheet")
 
 
 class CrossReference(BaseModel):
@@ -340,16 +344,20 @@ class CrossReference(BaseModel):
     From domain-definitions.md section 7a.
     """
 
-    data_type: str = ""  # financial, pricing, entity, operational
-    data_point: str  # "ARR", "Payment Terms", etc.
-    contract_value: str = ""
-    contract_source: CrossReferenceSource = Field(default_factory=CrossReferenceSource)
-    reference_value: str = ""
-    reference_source: CrossReferenceSource = Field(default_factory=CrossReferenceSource)
+    data_type: str = Field(default="", description="Data category: financial, pricing, entity, or operational")
+    data_point: str = Field(description="Data point name (e.g. 'ARR', 'Payment Terms')")
+    contract_value: str = Field(default="", description="Value found in the contract")
+    contract_source: CrossReferenceSource = Field(
+        default_factory=CrossReferenceSource, description="Location of the contract value"
+    )
+    reference_value: str = Field(default="", description="Value found in the reference data")
+    reference_source: CrossReferenceSource = Field(
+        default_factory=CrossReferenceSource, description="Location of the reference value"
+    )
     match_status: str = Field(default="unverified", description="match, mismatch, not_available, or unverified")
-    variance: str = ""  # e.g., "-20.8%"
-    severity: Severity | None = None
-    interpretation: str = ""
+    variance: str = Field(default="", description="Calculated variance (e.g. '-20.8%')")
+    severity: Severity | None = Field(default=None, description="Severity if mismatch generates a finding")
+    interpretation: str = Field(default="", description="Analyst interpretation of the comparison")
 
     @field_validator("match_status", mode="before")
     @classmethod
@@ -373,13 +381,15 @@ class CrossReference(BaseModel):
 class CrossReferenceSummary(BaseModel):
     """Per-customer cross-reference summary. From domain-definitions.md section 7f."""
 
-    reference_files_checked: list[str] = Field(default_factory=list)
-    data_points_compared: int = 0
-    matches: int = 0
-    mismatches: int = 0
-    not_available: int = 0
-    findings_generated: int = 0
-    gaps_generated: int = 0
+    reference_files_checked: list[str] = Field(
+        default_factory=list, description="Reference files used for cross-referencing"
+    )
+    data_points_compared: int = Field(default=0, description="Total data points compared")
+    matches: int = Field(default=0, description="Number of matching data points")
+    mismatches: int = Field(default=0, description="Number of mismatched data points")
+    not_available: int = Field(default=0, description="Data points where comparison was not possible")
+    findings_generated: int = Field(default=0, description="Findings generated from mismatches")
+    gaps_generated: int = Field(default=0, description="Gaps generated from missing data")
 
 
 class CustomerAnalysis(BaseModel):
@@ -389,20 +399,24 @@ class CustomerAnalysis(BaseModel):
     Written to {RUN_DIR}/findings/{agent}/{customer_safe_name}.json
     """
 
-    customer: str  # Canonical customer name
-    customer_safe_name: str  # Safe name per SKILL.md 1b convention
-    agent: AgentName
-    run_id: str
-    timestamp: str  # ISO-8601 completion timestamp
-    files_analyzed: int  # Count of files processed
-    file_headers: list[FileHeader] = Field(default_factory=list)
-    governance_graph: GovernanceGraph = Field(default_factory=GovernanceGraph)
-    findings: list[AgentFinding] = Field(default_factory=list)
-    gaps: list[Gap] = Field(default_factory=list)
-    cross_references: list[CrossReference] = Field(default_factory=list)
-    cross_reference_summary: CrossReferenceSummary | None = None
-    diagrams: list[dict[str, Any]] = Field(default_factory=list)
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    customer: str = Field(description="Canonical customer name")
+    customer_safe_name: str = Field(description="Normalized safe name per SKILL.md 1b convention")
+    agent: AgentName = Field(description="Agent that produced this analysis")
+    run_id: str = Field(description="Unique run identifier")
+    timestamp: str = Field(description="ISO-8601 completion timestamp")
+    files_analyzed: int = Field(description="Count of files processed for this customer")
+    file_headers: list[FileHeader] = Field(default_factory=list, description="Per-file extraction headers")
+    governance_graph: GovernanceGraph = Field(
+        default_factory=GovernanceGraph, description="Contract governance graph for this customer"
+    )
+    findings: list[AgentFinding] = Field(default_factory=list, description="Findings produced by the agent")
+    gaps: list[Gap] = Field(default_factory=list, description="Gaps identified by the agent")
+    cross_references: list[CrossReference] = Field(default_factory=list, description="Cross-reference comparisons")
+    cross_reference_summary: CrossReferenceSummary | None = Field(
+        default=None, description="Aggregate cross-reference statistics"
+    )
+    diagrams: list[dict[str, Any]] = Field(default_factory=list, description="Generated diagrams (e.g. mermaid)")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Additional key-value metadata")
     # Incremental mode fields in metadata:
     # _carried_forward: bool
     # _original_run_id: str
@@ -415,17 +429,23 @@ class MergedCustomerOutput(BaseModel):
     From reporting-protocol.md section 1.
     """
 
-    customer: str
-    customer_safe_name: str
+    customer: str = Field(description="Canonical customer name")
+    customer_safe_name: str = Field(description="Normalized safe name for file naming")
     findings: list[Finding] = Field(
         default_factory=list, description="Fully transformed findings conforming to finding.schema.json"
     )
     gaps: list[Gap] = Field(
         default_factory=list, description="Collected gaps from all specialist agents (step 6 of merge protocol)"
     )
-    cross_references: list[CrossReference] = Field(default_factory=list)
-    cross_reference_summary: CrossReferenceSummary | None = None
-    governance_graph: GovernanceGraph = Field(default_factory=GovernanceGraph)
+    cross_references: list[CrossReference] = Field(
+        default_factory=list, description="Merged cross-reference comparisons from all agents"
+    )
+    cross_reference_summary: CrossReferenceSummary | None = Field(
+        default=None, description="Aggregate cross-reference statistics"
+    )
+    governance_graph: GovernanceGraph = Field(
+        default_factory=GovernanceGraph, description="Merged governance graph from all agents"
+    )
     governance_resolved_pct: float = Field(
         default=0.0, ge=0.0, le=1.0, description="(files with governed_by in [file_path, SELF]) / total_customer_files"
     )
