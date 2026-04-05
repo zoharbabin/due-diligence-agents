@@ -178,7 +178,8 @@ def run(
     log_path = setup_pipeline_logging(log_dir=log_dir, verbose=verbose)
 
     # --- Run pipeline ---
-    from dd_agents.orchestrator.engine import BlockingGateError, PipelineEngine
+    from dd_agents.errors import BlockingGateError
+    from dd_agents.orchestrator.engine import PipelineEngine
 
     engine = PipelineEngine(
         project_dir=project_dir,

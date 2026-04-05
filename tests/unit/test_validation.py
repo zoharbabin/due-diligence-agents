@@ -1311,7 +1311,7 @@ class TestDefinitionOfDoneChecker:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             customer_safe_names=CUSTOMERS,
-            deal_config={"execution": {"mode": "incremental"}},
+            deal_config={"execution": {"execution_mode": "incremental"}},
         )
         results = checker.check_all()
         assert len(results) == 27  # 23 + 4 incremental
@@ -1328,7 +1328,7 @@ class TestDefinitionOfDoneChecker:
             customer_safe_names=CUSTOMERS,
             deal_config={
                 "judge": {"enabled": True, "threshold": 70},
-                "execution": {"mode": "incremental"},
+                "execution": {"execution_mode": "incremental"},
             },
         )
         results = checker.check_all()
@@ -1885,7 +1885,7 @@ class TestDoDHardcodedPassesRemoved:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             customer_safe_names=CUSTOMERS,
-            deal_config={"execution": {"mode": "incremental"}},
+            deal_config={"execution": {"execution_mode": "incremental"}},
         )
         check = checker.check_25_carried_forward_metadata()
         assert check.passed is True

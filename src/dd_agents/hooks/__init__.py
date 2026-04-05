@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dd_agents.hooks.factory import build_hooks_for_agent
 from dd_agents.hooks.post_tool import (
     validate_audit_entry,
     validate_customer_json,
@@ -24,6 +25,8 @@ from dd_agents.hooks.stop import (
 )
 
 __all__ = [
+    # Factory
+    "build_hooks_for_agent",
     # PreToolUse
     "bash_guard",
     "path_guard",

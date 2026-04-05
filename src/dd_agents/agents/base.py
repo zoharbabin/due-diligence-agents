@@ -200,8 +200,12 @@ class BaseAgentRunner(ABC):
             # Fall back to build_prompt() for tests / standalone invocations.
             prompt = state.get("prompt") or self.build_prompt(state)
 
-            # Placeholder: actual SDK integration would call ``query()`` here.
-            raw_output = await self._spawn_agent(prompt, on_turn=on_turn)
+            customers = state.get("customers", [])
+            raw_output = await self._spawn_agent(
+                prompt,
+                on_turn=on_turn,
+                expected_customers=len(customers),
+            )
 
             # Persist raw output for diagnostics (always, not just on failure).
             raw_output_path = self._raw_output_path()
@@ -261,11 +265,20 @@ class BaseAgentRunner(ABC):
     # Agent spawn -- SDK integration
     # ------------------------------------------------------------------
 
+    def get_agent_type(self) -> str:
+        """Return the agent type for tool/hook configuration.
+
+        Override in subclasses that need different tool sets (e.g. ``"judge"``).
+        Default is ``"specialist"`` which gives access to all custom DD tools.
+        """
+        return "specialist"
+
     async def _spawn_agent(
         self,
         prompt: str,
         *,
         on_turn: Any | None = None,
+        expected_customers: int = 0,
     ) -> str:
         """Spawn the agent via ``claude_agent_sdk.query()`` and return raw text.
 
@@ -282,6 +295,9 @@ class BaseAgentRunner(ABC):
             Optional callback ``(agent_name: str, turn: int) -> None`` invoked
             every 5 SDK messages.  Used by the orchestrator to track per-batch
             progress for the live monitor.
+        expected_customers:
+            Number of customer JSONs the agent should produce.  Used to
+            configure stop hooks.
 
         Returns
         -------
@@ -317,16 +333,36 @@ class BaseAgentRunner(ABC):
             "before or after the JSON. Output ONLY the JSON object."
         )
 
-        options = _ClaudeAgentOptions(
-            system_prompt=system_prompt,
-            model=self.get_model_id(),
-            max_turns=self.max_turns,
-            max_budget_usd=self.max_budget_usd,
-            permission_mode="bypassPermissions",
-            cwd=str(self.project_dir),
-            allowed_tools=self.get_tools(),
-            max_buffer_size=self._compute_buffer_size(),
+        # Build hooks and MCP server for the agent
+        from dd_agents.hooks.factory import build_hooks_for_agent
+        from dd_agents.tools.mcp_server import build_mcp_server
+
+        hooks = build_hooks_for_agent(
+            agent_name=self.get_agent_name(),
+            run_dir=self.run_dir,
+            project_dir=self.project_dir,
+            expected_customers=expected_customers,
         )
+
+        mcp_server = build_mcp_server(agent_type=self.get_agent_type())
+
+        # Build options dict — only include hooks/mcp_servers when available
+        options_kwargs: dict[str, Any] = {
+            "system_prompt": system_prompt,
+            "model": self.get_model_id(),
+            "max_turns": self.max_turns,
+            "max_budget_usd": self.max_budget_usd,
+            "permission_mode": "bypassPermissions",
+            "cwd": str(self.project_dir),
+            "allowed_tools": self.get_tools(),
+            "max_buffer_size": self._compute_buffer_size(),
+        }
+        if hooks is not None:
+            options_kwargs["hooks"] = hooks
+        if mcp_server is not None:
+            options_kwargs["mcp_servers"] = {"dd_tools": mcp_server}
+
+        options = _ClaudeAgentOptions(**options_kwargs)
 
         agent_name = self.batch_label or self.get_agent_name()
         hard_limit = self.max_turns * self.HARD_LIMIT_MULTIPLIER

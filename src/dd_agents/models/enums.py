@@ -33,12 +33,16 @@ class SourceType(StrEnum):
 
 
 class AgentName(StrEnum):
-    """The four specialist agent identifiers."""
+    """All agent identifiers (4 specialists + 4 synthesis/validation)."""
 
     LEGAL = "legal"
     FINANCE = "finance"
     COMMERCIAL = "commercial"
     PRODUCTTECH = "producttech"
+    JUDGE = "judge"
+    EXECUTIVE_SYNTHESIS = "executive_synthesis"
+    RED_FLAG_SCANNER = "red_flag_scanner"
+    ACQUIRER_INTELLIGENCE = "acquirer_intelligence"
 
 
 class GapType(StrEnum):

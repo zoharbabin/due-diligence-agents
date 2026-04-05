@@ -51,5 +51,5 @@ This Agreement shall be governed by the laws of the State of California. Any dis
 
 | Party | Name | Title | Date |
 |---|---|---|---|
-| Beta Incorporated | Alicia Moreno | General Counsel | Jul 28, 2022 |
-| BridgePoint Software, Inc. | Sarah Chen | CEO | Jul 30, 2022 |
+| Beta Incorporated | Signatory A | General Counsel | Jul 28, 2022 |
+| BridgePoint Software, Inc. | Signatory B | CEO | Jul 30, 2022 |

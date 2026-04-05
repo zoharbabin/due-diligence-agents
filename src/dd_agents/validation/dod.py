@@ -104,7 +104,7 @@ class DefinitionOfDoneChecker:
             results.append(self.check_23_contradictions_resolved())
 
         # Incremental (24-27) -- conditional on execution_mode
-        exec_mode = self.deal_config.get("execution", {}).get("mode", "full")
+        exec_mode = self.deal_config.get("execution", {}).get("execution_mode", "full")
         if exec_mode == "incremental":
             results.append(self.check_24_classification_exists())
             results.append(self.check_25_carried_forward_metadata())

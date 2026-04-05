@@ -111,25 +111,25 @@
   },
   "key_executives": [
     {
-      "name": "Sarah Chen",
+      "name": "Executive A",
       "title": "CEO",
       "company": "NovaBridge Software",
       "notes": "Co-founder, former VP Engineering at CloudPlatform Co"
     },
     {
-      "name": "Marcus Reeves",
+      "name": "Executive B",
       "title": "CFO",
       "company": "NovaBridge Software",
-      "notes": "Joined 2021 from CommStack Inc"
+      "notes": "Joined 2021 from prior role"
     },
     {
-      "name": "Elena Vasquez",
+      "name": "Executive C",
       "title": "CTO",
       "company": "NovaBridge Software",
       "notes": "Co-founder, leads product and engineering"
     },
     {
-      "name": "James Thornton",
+      "name": "Executive D",
       "title": "VP Sales",
       "company": "NovaBridge Software",
       "notes": "Manages enterprise sales team of 35"
