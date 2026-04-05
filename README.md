@@ -4,14 +4,20 @@
     Find what gets buried in the data room. Open-source integrated M&A due diligence — legal, financial, commercial, and technical analysis across every contract, cross-referenced with exact citations.
   </p>
   <p align="center">
+    <a href="https://pypi.org/project/dd-agents/"><img src="https://img.shields.io/pypi/v/dd-agents.svg" alt="PyPI version"></a>
+    <a href="https://pypi.org/project/dd-agents/"><img src="https://img.shields.io/pypi/dm/dd-agents.svg" alt="PyPI downloads"></a>
     <a href="https://github.com/zoharbabin/due-diligence-agents/actions"><img src="https://github.com/zoharbabin/due-diligence-agents/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
     <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.12+-blue.svg" alt="Python 3.12+"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green.svg" alt="License"></a>
-    <img src="https://img.shields.io/badge/tests-2,900+-brightgreen.svg" alt="Tests">
+    <img src="https://img.shields.io/badge/tests-3,000+-brightgreen.svg" alt="Tests">
     <img src="https://img.shields.io/badge/mypy-strict-blue.svg" alt="mypy strict">
     <a href="https://github.com/zoharbabin/due-diligence-agents/stargazers"><img src="https://img.shields.io/github/stars/zoharbabin/due-diligence-agents?style=social" alt="GitHub Stars"></a>
   </p>
 </p>
+
+---
+
+**[See a sample report](https://zoharbabin.github.io/due-diligence-agents/)** — interactive HTML output from a synthetic 4-customer deal, no install required.
 
 ---
 

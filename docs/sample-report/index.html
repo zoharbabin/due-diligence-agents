@@ -1,0 +1,1426 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<title>CloudSync Technologies — M&amp;A Due Diligence Report</title>
+<meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<style>
+/* CSS Custom Properties (E1) */
+:root {
+    --navy: #1a1a2e;
+    --navy-light: #16213e;
+    --red: #dc3545;
+    --orange: #fd7e14;
+    --yellow: #ffc107;
+    --green: #28a745;
+    --blue: #4a90d9;
+    --purple: #7c3aed;
+    --amber: #d97706;
+    --gray: #6c757d;
+    --gray-light: #a8b2d1;
+    --gray-dark: #333;
+    --bg-primary: #f4f5f7;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #e9ecef;
+    --bg-hover: #f8f9fa;
+    --text-primary: #1a1a2e;
+    --text-secondary: #666;
+    --text-muted: #999;
+    --border-light: #e0e0e0;
+    --border-medium: #dee2e6;
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.12);
+    --sidebar-width: 240px;
+    --header-height: 0px;
+    /* Severity */
+    --sev-p0: #dc3545;
+    --sev-p1: #fd7e14;
+    --sev-p2: #ffc107;
+    --sev-p3: #6c757d;
+    --sev-p0-bg: #fff5f5;
+    --sev-p1-bg: #fff8f0;
+    --sev-p2-bg: #fffdf0;
+    --sev-p3-bg: #f8f9fa;
+    /* Domain */
+    --dom-legal: #4a90d9;
+    --dom-finance: #2d8a4e;
+    --dom-commercial: #7c3aed;
+    --dom-producttech: #d97706;
+    /* Alert */
+    --alert-critical-bg: #fff5f5;
+    --alert-critical-border: #dc3545;
+    --alert-high-bg: #fff8f0;
+    --alert-high-border: #fd7e14;
+    --alert-info-bg: #e8f4fd;
+    --alert-info-border: #4a90d9;
+    --alert-good-bg: #f0fff4;
+    --alert-good-border: #28a745;
+}
+
+/* Reset & base */
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+       margin: 0; padding: 0; background: var(--bg-primary); color: var(--text-primary); line-height: 1.5; }
+
+/* Sidebar Navigation (A1) */
+.sidebar { position: fixed; top: 0; left: 0; width: var(--sidebar-width); height: 100vh;
+           background: var(--navy); color: white; overflow-y: auto; z-index: 1000;
+           padding: 0; display: flex; flex-direction: column; }
+.sidebar-brand { padding: 20px 16px 12px; font-weight: 700; font-size: 0.95em;
+                 color: white; border-bottom: 1px solid rgba(255,255,255,0.1);
+                 display: flex; align-items: center; gap: 8px; }
+.sidebar-brand .confidential { background: var(--red); color: white; font-size: 0.6em;
+                                padding: 2px 6px; border-radius: 3px; font-weight: 600;
+                                letter-spacing: 1px; text-transform: uppercase; }
+.toc-group { padding: 8px 0; }
+.toc-group-label { padding: 4px 16px; font-size: 0.7em; font-weight: 600;
+                   text-transform: uppercase; letter-spacing: 0.8px; color: var(--gray-light);
+                   opacity: 0.7; }
+.sidebar a { display: flex; align-items: center; gap: 8px; color: var(--gray-light);
+             text-decoration: none; padding: 6px 16px; font-size: 0.82em;
+             transition: color 0.2s, background 0.2s; white-space: nowrap;
+             overflow: hidden; text-overflow: ellipsis; }
+.sidebar a:hover, .sidebar a.active { color: white; background: rgba(255,255,255,0.08); }
+.sidebar a .rag-dot { flex-shrink: 0; }
+
+/* RAG dots */
+.rag-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+           flex-shrink: 0; }
+
+/* Content area (shifted right for sidebar) */
+.main-wrapper { margin-left: var(--sidebar-width); }
+
+/* Content wrapper */
+.content { max-width: 1200px; margin: 0 auto; padding: 24px; }
+
+/* Report sections */
+.report-section { margin-bottom: 32px; }
+.report-section > h2 { color: var(--text-primary); font-size: 1.3em;
+                        border-bottom: 2px solid var(--text-primary);
+                        padding-bottom: 8px; margin-bottom: 16px; }
+
+/* Deal header */
+.deal-header { background: linear-gradient(135deg, var(--navy), var(--navy-light)); color: white;
+               padding: 32px; border-radius: 12px; margin-bottom: 24px; }
+.deal-header h1 { margin: 0 0 8px; font-size: 1.8em; }
+.deal-header .deal-meta { color: var(--gray-light); font-size: 0.95em; }
+.deal-header .risk-badge { display: inline-block; padding: 6px 20px; border-radius: 20px;
+                           font-weight: 700; font-size: 1.1em; margin-top: 12px; }
+.deal-header .run-id { color: #6c7a96; font-size: 0.8em; margin-top: 8px; }
+.deal-header .timestamp { color: #6c7a96; font-size: 0.75em; margin-top: 4px; }
+
+/* Key metrics strip */
+.metrics-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+                 gap: 12px; margin-bottom: 24px; }
+.metric-card { background: var(--bg-secondary); border-radius: 8px; padding: 16px;
+               text-align: center; box-shadow: var(--shadow-sm); }
+.metric-card .value { font-size: 1.8em; font-weight: 700; }
+.metric-card .label { color: var(--text-secondary); font-size: 0.8em; text-transform: uppercase;
+                      letter-spacing: 0.5px; }
+
+/* Alert boxes (C1) */
+.alert { border-radius: 8px; padding: 16px 20px; margin: 16px 0;
+         border-left: 5px solid; }
+.alert-title { font-weight: 700; font-size: 1em; margin-bottom: 4px; }
+.alert-body { font-size: 0.9em; line-height: 1.5; }
+.alert-critical { background: var(--alert-critical-bg); border-left-color: var(--alert-critical-border);
+                  color: #721c24; }
+.alert-critical .alert-title { color: var(--red); }
+.alert-high { background: var(--alert-high-bg); border-left-color: var(--alert-high-border);
+              color: #856404; }
+.alert-high .alert-title { color: var(--orange); }
+.alert-info { background: var(--alert-info-bg); border-left-color: var(--alert-info-border);
+              color: #0c5460; }
+.alert-info .alert-title { color: var(--blue); }
+.alert-good { background: var(--alert-good-bg); border-left-color: var(--alert-good-border);
+              color: #155724; }
+.alert-good .alert-title { color: var(--green); }
+
+/* Two-column layout (A3) */
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin: 16px 0; }
+
+/* Wolf pack */
+.wolf-pack { margin-bottom: 24px; }
+.wolf-pack h2 { color: var(--red); }
+.wolf-card { background: var(--bg-secondary); border-left: 5px solid; border-radius: 4px 8px 8px 4px;
+             padding: 16px 20px; margin-bottom: 12px;
+             box-shadow: var(--shadow-sm); }
+.wolf-card .wolf-title { font-weight: 700; font-size: 1.05em; margin-bottom: 4px; }
+.wolf-card .wolf-meta { color: var(--text-secondary); font-size: 0.85em; }
+.wolf-card .wolf-quote { background: var(--bg-hover); padding: 8px 12px; margin-top: 8px;
+                          border-radius: 4px; font-style: italic; color: #555; font-size: 0.9em; }
+
+/* Heatmap */
+.heatmap { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+.heatmap-cell { background: var(--bg-secondary); border-radius: 8px; padding: 20px;
+                text-align: center; box-shadow: var(--shadow-sm); cursor: pointer;
+                transition: transform 0.15s, box-shadow 0.15s; border-top: 4px solid; }
+.heatmap-cell:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.heatmap-cell .domain-name { font-weight: 700; font-size: 1.1em; }
+.heatmap-cell .domain-risk { font-size: 0.9em; margin: 6px 0; font-weight: 600; }
+.heatmap-cell .domain-counts { font-size: 0.8em; color: var(--text-secondary); }
+
+/* Severity cards (E2) */
+.severity-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; }
+.severity-card { border-radius: 8px; padding: 16px; text-align: center;
+                 box-shadow: var(--shadow-sm); }
+.severity-card .sev-count { font-size: 2em; font-weight: 700; }
+.severity-card .sev-label { font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* Domain sections */
+.domain-section { background: var(--bg-secondary); border-radius: 8px; margin-bottom: 20px;
+                  box-shadow: var(--shadow-sm); overflow: hidden; }
+.domain-header { padding: 16px 24px; cursor: pointer; display: flex;
+                 justify-content: space-between; align-items: center;
+                 border-left: 5px solid; transition: background 0.15s; }
+.domain-header:hover { background: var(--bg-hover); }
+.domain-header h2 { margin: 0; font-size: 1.15em; }
+.domain-body { padding: 0 24px 20px; display: none; }
+.domain-body.open { display: block; }
+
+/* Severity distribution bar */
+.sev-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 8px 0; }
+.sev-bar span { display: block; }
+
+/* Category groups */
+.category-group { border: 1px solid var(--bg-tertiary); border-radius: 6px; margin: 10px 0;
+                  overflow: hidden; }
+.category-header { padding: 10px 16px; cursor: pointer; display: flex;
+                   justify-content: space-between; align-items: center; background: var(--bg-hover); }
+.category-header:hover { background: #f0f1f3; }
+.category-body { padding: 12px 16px; display: none; }
+.category-body.open { display: block; }
+
+/* Customer sections */
+.customer-section { background: var(--bg-secondary); border-radius: 8px; margin: 12px 0;
+                    box-shadow: var(--shadow-sm); overflow: hidden; }
+.customer-header { padding: 12px 20px; cursor: pointer; display: flex;
+                   justify-content: space-between; align-items: center;
+                   background: var(--bg-tertiary); transition: background 0.15s; }
+.customer-header:hover { background: var(--border-medium); }
+.customer-body { padding: 16px 20px; display: none; }
+.customer-body.open { display: block; }
+
+/* Finding cards */
+.finding-card { border-left: 4px solid #ccc; padding: 10px 14px; margin: 8px 0;
+                background: #fafafa; border-radius: 0 6px 6px 0; cursor: pointer;
+                transition: background 0.15s; }
+.finding-card:hover { background: #f0f0f0; }
+.finding-card .fc-title { font-weight: 600; }
+.finding-card .fc-meta { color: var(--text-secondary); font-size: 0.85em; margin-top: 2px; }
+.conf-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-left: 4px;
+  vertical-align: middle; }
+.conf-high { background: #198754; }
+.conf-medium { background: #fd7e14; }
+.conf-low { background: #dc3545; }
+.finding-detail { display: none; padding: 12px 14px; background: var(--bg-hover);
+                  border-left: 4px solid #ccc; margin: 0 0 8px; border-radius: 0 0 6px 0; }
+.finding-detail.open { display: block; }
+.finding-detail .fd-description { margin-bottom: 8px; }
+.finding-detail .fd-badges { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+
+/* Generic badge */
+.badge { display: inline-block; padding: 2px 10px; border-radius: 12px;
+         font-size: 0.85em; font-weight: 600; }
+
+/* Severity badge */
+.severity-badge { display: inline-block; padding: 2px 10px; border-radius: 12px;
+                  color: white; font-weight: 600; font-size: 0.8em; }
+.severity-badge.sev-p1 { color: #333; }  /* Dark text on orange — WCAG AA contrast (4.9:1) */
+.severity-badge.sev-p2 { color: #333; }  /* Dark text on yellow — WCAG AA contrast (12.6:1) */
+
+/* Verification badge */
+.verification-badge { display: inline-block; padding: 2px 10px; border-radius: 12px;
+                      font-size: 0.75em; font-weight: 600; }
+.vb-verified { background: #d4edda; color: #155724; }
+.vb-failed { background: #f8d7da; color: #721c24; }
+.vb-unchecked { background: var(--bg-tertiary); color: #495057; }
+
+/* Recommendation cards (B6) */
+.rec-card { background: var(--bg-secondary); border-radius: 8px; padding: 16px 20px;
+            margin: 12px 0; box-shadow: var(--shadow-sm); border-left: 5px solid; }
+.rec-timeline { font-size: 0.75em; font-weight: 600; text-transform: uppercase;
+                letter-spacing: 0.5px; padding: 2px 8px; border-radius: 10px;
+                display: inline-block; margin-bottom: 4px; }
+.rec-title { font-weight: 700; font-size: 1em; margin: 4px 0; }
+.rec-desc { font-size: 0.9em; color: var(--text-secondary); line-height: 1.5; }
+
+/* Customer summary table */
+.customer-table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 0.9em; }
+.customer-table th, .customer-table td { padding: 10px 14px; border-bottom: 1px solid var(--border-medium);
+                                          text-align: left; }
+.customer-table th { background: var(--bg-tertiary); font-weight: 600; font-size: 0.85em;
+                     text-transform: uppercase; letter-spacing: 0.3px; }
+.customer-table tr:hover { background: var(--bg-hover); }
+
+/* Health tier badges */
+.tier-badge { display: inline-block; padding: 2px 10px; border-radius: 12px;
+              font-size: 0.75em; font-weight: 600; }
+.tier-1 { background: var(--sev-p0-bg); color: var(--red); border: 1px solid var(--red); }
+.tier-2 { background: var(--sev-p1-bg); color: var(--orange); border: 1px solid var(--orange); }
+.tier-3 { background: var(--sev-p3-bg); color: var(--gray); border: 1px solid var(--gray); }
+
+/* Citations */
+.citation { background: #f0f0f0; padding: 10px 14px; margin: 6px 0; border-radius: 6px;
+            font-size: 0.9em; border-left: 3px solid var(--gray-light); }
+.citation .source { font-weight: 600; color: var(--text-primary); }
+.citation .location { color: var(--text-secondary); font-size: 0.85em; }
+.citation .quote { font-style: italic; color: #555; margin-top: 4px; padding: 6px 10px;
+                   background: #e8e8e8; border-radius: 4px; display: block; }
+
+/* Cross-reference */
+.xref-mismatch { background: var(--sev-p0-bg); border-left: 3px solid var(--red); }
+.xref-match { background: #f0fff0; }
+.xref-unverified { background: var(--bg-hover); }
+
+/* Gap analysis */
+.gap-summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+
+/* Governance bars */
+.gov-bar-container { display: flex; align-items: center; gap: 10px; margin: 4px 0; }
+.gov-bar { height: 20px; border-radius: 4px; transition: width 0.3s; }
+.gov-label { min-width: 150px; font-size: 0.9em; }
+.gov-pct { font-size: 0.85em; font-weight: 600; min-width: 50px; }
+
+/* Tables */
+table.sortable { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 0.9em; }
+table.sortable th, table.sortable td { padding: 8px 12px; border: 1px solid var(--border-medium);
+                                        text-align: left; }
+table.sortable th { background: var(--bg-tertiary); cursor: pointer; user-select: none;
+                    white-space: nowrap; }
+table.sortable th:hover { background: var(--border-medium); }
+table.sortable th::after { content: ' \2195'; color: #aaa; font-size: 0.8em; }
+
+/* Arrow toggle */
+.arrow { font-size: 0.8em; transition: transform 0.2s; display: inline-block; }
+.arrow.open { transform: rotate(90deg); }
+
+/* Responsive */
+@media (max-width: 900px) {
+    .heatmap, .severity-cards { grid-template-columns: repeat(2, 1fr); }
+    .metrics-strip { grid-template-columns: repeat(2, 1fr); }
+    .gap-summary-grid, .two-col { grid-template-columns: 1fr; }
+    .sidebar { display: none; }
+    .main-wrapper { margin-left: 0; }
+}
+@media (max-width: 600px) {
+    .heatmap, .severity-cards { grid-template-columns: 1fr; }
+    .content { padding: 12px; }
+}
+
+/* Waterfall chart (Issue #102) */
+.waterfall { margin: 16px 0; }
+.waterfall-row { display: flex; align-items: center; margin-bottom: 6px; }
+.waterfall-label { width: 220px; flex-shrink: 0; font-size: 0.85em; padding-right: 12px;
+                   text-align: right; }
+.waterfall-bar-container { flex: 1; height: 32px; position: relative;
+                           background: var(--bg-light, #f8f9fa); border-radius: 4px; }
+.waterfall-bar { height: 100%; border-radius: 4px; display: flex; align-items: center;
+                 padding: 0 8px; font-size: 0.8em; color: #fff; white-space: nowrap;
+                 overflow: hidden; position: absolute; top: 0; }
+.waterfall-bar--total { background: var(--navy, #1a365d); }
+.waterfall-bar--risk { background: var(--severity-p1, #d63384); }
+.waterfall-bar--adjusted { background: var(--severity-p3, #198754); }
+.data-note { font-size: 0.8em; color: #6c757d; margin-top: 16px; font-style: italic; }
+
+/* Print mode (E5) */
+@page { margin: 2cm 1.5cm; }
+@media print {
+    .sidebar, .skip-link { display: none !important; }
+    .main-wrapper { margin-left: 0 !important; }
+    .domain-body, .customer-body, .category-body, .finding-detail { display: block !important; }
+    body { background: white; font-size: 11pt; orphans: 3; widows: 3; }
+    .deal-header { background: var(--navy) !important; -webkit-print-color-adjust: exact;
+                   print-color-adjust: exact; }
+    .severity-badge { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .sev-bar span { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .rag-dot { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .alert { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .content { max-width: 100%; padding: 0; }
+    .heatmap-cell, .metric-card, .finding-card, .wolf-card, .customer-section,
+    .domain-section, .category-group, .citation, table.sortable,
+    .alert, .rec-card { break-inside: avoid; }
+    .report-section > h2 { break-after: avoid; }
+    h3, h4 { break-after: avoid; }
+    a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 0.8em; color: var(--text-secondary);
+                             word-break: break-all; }
+    .sidebar a::after { content: none !important; }
+    .arrow { display: none !important; }
+}
+
+/* Accessibility: skip link */
+.skip-link { position: absolute; top: -40px; left: 0; background: var(--navy); color: white;
+             padding: 8px 16px; z-index: 10000; font-size: 0.9em; text-decoration: none;
+             transition: top 0.15s; }
+.skip-link:focus { top: 0; }
+
+/* Accessibility: focus styles (E8) */
+*:focus { outline: 2px solid var(--blue); outline-offset: 2px; }
+*:focus:not(:focus-visible) { outline: none; }
+*:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.finding-card:focus-visible, .category-header:focus-visible,
+.domain-header:focus-visible, .customer-header:focus-visible {
+    outline: 2px solid var(--blue); outline-offset: -2px;
+    box-shadow: 0 0 0 3px rgba(74,144,217,0.3); }
+
+/* Utility */
+.hidden { display: none !important; }
+.text-muted { color: var(--text-secondary); }
+.text-small { font-size: 0.85em; }
+.mt-8 { margin-top: 8px; }
+.mb-8 { margin-bottom: 8px; }
+.mb-16 { margin-bottom: 16px; }
+.flex-between { display: flex; justify-content: space-between; align-items: center; }
+
+/* --- Issue #108: Presentation Mode --- */
+.presentation-btn {
+    display: block; margin: 8px auto; padding: 4px 12px;
+    background: var(--blue); color: #fff; border: none; border-radius: 4px;
+    cursor: pointer; font-size: 0.75em; }
+.presentation-btn:hover { background: #357abd; }
+
+.presentation-mode .sidebar { display: none; }
+.presentation-mode .main-wrapper { margin-left: 0; }
+.presentation-mode .content { max-width: 100%; padding: 40px 60px; font-size: 18px; }
+.presentation-mode .report-section { page-break-before: always; }
+.presentation-mode .category-body,
+.presentation-mode .domain-body,
+.presentation-mode .customer-body { display: block !important; max-height: none !important; }
+.presentation-mode .arrow { display: none; }
+.presentation-mode h2 { font-size: 2em; }
+.presentation-mode .metric-card .value { font-size: 2.5em; }
+
+/* --- Issue #108: Print Styles --- */
+@media print {
+    .sidebar, .skip-link, .presentation-btn, #btn-presentation { display: none !important; }
+    .main-wrapper { margin-left: 0 !important; }
+    .content { max-width: 100% !important; padding: 20px !important; }
+    .report-section { page-break-before: always; page-break-inside: avoid; }
+    .category-body, .domain-body, .customer-body { display: block !important; max-height: none !important; }
+    .finding-detail { display: block !important; }
+    table { page-break-inside: avoid; }
+    @page { margin: 2cm; size: A4; }
+    @page :first { margin-top: 4cm; }
+    a[href]::after { content: none !important; }
+}
+</style>
+</head>
+<body>
+<a href='#main-content' class='skip-link'>Skip to main content</a><nav class='sidebar' role='navigation' aria-label='Report sections'><div class='sidebar-brand'><span>DD Report</span><span class='confidential'>Confidential</span><button id='btn-presentation' class='presentation-btn' title='Toggle Presentation Mode' aria-label='Toggle Presentation Mode'>&#9654; Present</button></div><div class='toc-group'><div class='toc-group-label'>Deal Assessment</div><a href='#sec-red-flags'>Red Flag Assessment</a><a href='#sec-executive'><span class='rag-dot' style='background:#dc3545' title='Red' aria-label='Status: Red'></span> Executive Summary</a><a href='#sec-wolf-pack'><span class='rag-dot' style='background:#dc3545' title='Red' aria-label='Status: Red'></span> Deal Breakers</a><a href='#sec-key-risks'>Key Risks</a></div><div class='toc-group'><div class='toc-group-label'>Risk Analysis</div><a href='#sec-financial'>Financial Impact</a><a href='#sec-saas'>SaaS Health Metrics</a><a href='#sec-valuation'><span class='rag-dot' style='background:#dc3545' title='Red' aria-label='Status: Red'></span> Valuation Bridge</a><a href='#sec-p0-table'>P0 Critical Issues</a><a href='#sec-p1-table'>P1 High Issues</a><a href='#sec-heatmap'>Risk Heatmap</a></div><div class='toc-group'><div class='toc-group-label'>Workstream Detail</div><a href='#sec-coc'><span class='rag-dot' style='background:#dc3545' title='Red' aria-label='Status: Red'></span> Change of Control</a><a href='#sec-tfc'><span class='rag-dot' style='background:#fd7e14' title='Amber' aria-label='Status: Amber'></span> TfC Revenue</a><a href='#sec-privacy'><span class='rag-dot' style='background:#28a745' title='Green' aria-label='Status: Green'></span> Data Privacy</a><a href='#sec-domain-legal'><span class='rag-dot' style='background:#fd7e14' title='Amber' aria-label='Status: Amber'></span> Legal</a><a href='#sec-domain-finance'><span class='rag-dot' style='background:#fd7e14' title='Amber' aria-label='Status: Amber'></span> Finance</a><a href='#sec-domain-commercial'><span class='rag-dot' style='background:#fd7e14' title='Amber' aria-label='Status: Amber'></span> Commercial</a><a href='#sec-domain-producttech'><span class='rag-dot' style='background:#28a745' title='Green' aria-label='Status: Green'></span> Product&amp;Tech</a><a href='#sec-discount'><span class='rag-dot' style='background:#fd7e14' title='Amber' aria-label='Status: Amber'></span> Discount &amp; Pricing</a><a href='#sec-renewal'><span class='rag-dot' style='background:#fd7e14' title='Amber' aria-label='Status: Amber'></span> Renewal Analysis</a><a href='#sec-compliance'><span class='rag-dot' style='background:#fd7e14' title='Amber' aria-label='Status: Amber'></span> Compliance Risk</a><a href='#sec-entity'><span class='rag-dot' style='background:#28a745' title='Green' aria-label='Status: Green'></span> Entity Distribution</a><a href='#sec-timeline'><span class='rag-dot' style='background:#fd7e14' title='Amber' aria-label='Status: Amber'></span> Contract Timeline</a><a href='#sec-clause-library'>Clause Analysis</a><a href='#sec-key-employee'>Key Employee Risk</a><a href='#sec-tech-stack'>Tech Stack</a><a href='#sec-product-adoption'>Product Adoption</a></div><div class='toc-group'><div class='toc-group-label'>Portfolio</div><a href='#sec-health'>Entity Health</a><a href='#sec-liability'><span class='rag-dot' style='background:#dc3545' title='Red' aria-label='Status: Red'></span> Liability</a><a href='#sec-ip-risk'><span class='rag-dot' style='background:#fd7e14' title='Amber' aria-label='Status: Amber'></span> IP Risk</a><a href='#sec-cross-domain'><span class='rag-dot' style='background:#dc3545' title='Red' aria-label='Status: Red'></span> Cross-Domain</a><a href='#sec-xref'><span class='rag-dot' style='background:#fd7e14' title='Amber' aria-label='Status: Amber'></span> Data Reconciliation</a></div><div class='toc-group'><div class='toc-group-label'>Actions</div><a href='#sec-recommendations'>Recommendations</a><a href='#sec-integration'>Integration Playbook</a><a href='#sec-gov-graph'>Governance Graph</a></div><div class='toc-group'><div class='toc-group-label'>Appendix</div><a href='#sec-gaps'><span class='rag-dot' style='background:#28a745' title='Green' aria-label='Status: Green'></span> Incomplete Data</a><a href='#sec-customers'>Entity Detail</a><a href='#sec-methodology'>Methodology</a><a href='#sec-governance'><span class='rag-dot' style='background:#fd7e14' title='Amber' aria-label='Status: Amber'></span> Data Quality</a><a href='#sec-quality'>Quality Audit</a><a href='#sec-audit-checks'>QA Checks</a></div></nav><div class='main-wrapper'><div class='content' role='main' id='main-content'>
+<section class='report-section' id='sec-executive'>
+<h2>Executive Summary</h2>
+<div class='metric-card' style='border-left:5px solid #dc3545;text-align:left;padding:20px'><div style='font-size:1.4em;font-weight:700;color:#dc3545'>No-Go</div><div style='color:#666;margin:4px 0'>Risk Score: 55/100 &mdash; Critical</div><div class='text-small text-muted'>Critical risks identified. Significant deal breakers require resolution before proceeding.</div></div>
+<div class='metric-card' style='text-align:left;padding:16px;margin-bottom:12px'><h3 style='margin-top:0'>Executive Assessment</h3><div style='line-height:1.6'>CloudSync Technologies presents a compelling acquisition opportunity with strong recurring revenue ($4.9M ARR) and solid customer relationships across 4 enterprise accounts. However, two critical risks require pre-close resolution: (1) the NovaBridge change-of-control termination right exposes $2.4M ARR (49% of total), and (2) customer concentration in Pinnacle Analytics (36.7% of ARR) creates single-point-of-failure risk. The IP assignment gap in NovaBridge SOW-2024-003 should be remedied before close. Recommend proceeding with targeted reps &amp; warranties covering CoC consent and IP ownership.</div></div>
+<h3>Risk by Domain</h3>
+<table class='sortable'><thead><tr>
+<th scope='col'>Domain</th>
+<th scope='col' style='color:#dc3545'>P0</th>
+<th scope='col' style='color:#fd7e14'>P1</th>
+<th scope='col' style='color:#ffc107'>P2</th>
+<th scope='col' style='color:#6c757d'>P3</th>
+<th scope='col'>Risk</th></tr></thead><tbody>
+<tr><td style='color:#4a90d9;font-weight:600'>Legal</td>
+<td style='background:#dc354522'>2</td>
+<td style='background:#fd7e1422'>2</td>
+<td style='background:#ffc10722'>1</td>
+<td style='background:#6c757d22'>1</td>
+<td><span style='color:#fd7e14;font-weight:600'>High</span></td></tr>
+<tr><td style='color:#2d8a4e;font-weight:600'>Finance</td>
+<td style='background:#dc354522'>1</td>
+<td style='background:#fd7e1422'>1</td>
+<td style='background:#ffc10722'>1</td>
+<td style=''>0</td>
+<td><span style='color:#fd7e14;font-weight:600'>High</span></td></tr>
+<tr><td style='color:#7c3aed;font-weight:600'>Commercial</td>
+<td style=''>0</td>
+<td style='background:#fd7e1422'>2</td>
+<td style=''>0</td>
+<td style=''>0</td>
+<td><span style='color:#ffc107;font-weight:600'>Medium</span></td></tr>
+<tr><td style='color:#d97706;font-weight:600'>Product &amp; Tech</td>
+<td style=''>0</td>
+<td style=''>0</td>
+<td style='background:#ffc10722'>3</td>
+<td style=''>0</td>
+<td><span style='color:#6c757d;font-weight:600'>Low</span></td></tr>
+</tbody></table>
+<h3>Top Deal Breakers</h3>
+<ol>
+<li><strong>Change of control triggers immediate termination</strong> <span class='text-small text-muted'>(Novabridge Software)</span>
+<br><span class='text-small'>Section 14.2 of the MSA grants NovaBridge the right to terminate the agreement immediately upon any change of control of the Provider, with no cure period. This affects $2.4M in annual recurring revenue and could result in complete revenue loss from this customer post-close.</span>
+</li>
+<li><strong>Customer concentration risk exceeds 35% of total ARR</strong> <span class='text-small text-muted'>(Pinnacle Analytics)</span>
+<br><span class='text-small'>Pinnacle Analytics represents $1.8M of $4.9M total ARR (36.7%). Loss of this single customer would materially impact the business. Combined with the CoC termination right, this creates compounding risk.</span>
+</li>
+<li><strong>IP assignment clause missing for custom integrations</strong> <span class='text-small text-muted'>(Novabridge Software)</span>
+<br><span class='text-small'>Three custom integration modules were developed for NovaBridge under SOW-2024-003 but the SOW lacks an IP assignment clause. Work product ownership defaults to the developer under applicable law, creating ambiguity about who owns the integration code post-acquisition.</span>
+</li>
+</ol>
+<div class='metrics-strip'><div class='metric-card'><div class='value'>14</div><div class='label'>Material Findings</div></div><div class='metric-card'><div class='value' style='color:#dc3545'>3</div><div class='label'>P0 Critical</div></div><div class='metric-card'><div class='value'>80%</div><div class='label'>Match Rate</div></div><div class='metric-card'><div class='value'>88%</div><div class='label'>Avg Governance</div></div></div>
+<div class='metric-card' style='text-align:left'><div class='text-small text-muted'>Concentration Risk (HHI)</div><div style='font-size:1.2em;font-weight:600;color:#dc3545'>2755 &mdash; High</div></div>
+</section>
+<div class='deal-header' id='sec-header'>
+<h1>CloudSync Technologies — M&amp;A Due Diligence Report</h1>
+<div class='deal-meta'>Meridian Capital Partners acquiring CloudSync Technologies | Deal type: acquisition</div>
+<div class='risk-badge' style='background:#dc3545;color:white'>Overall Risk: Critical</div>
+<div class='run-id'>Run ID: sample_demo_001</div>
+</div>
+<div class='metrics-strip'><div class='metric-card'><div class='value' style='color:#1a1a2e'>4</div><div class='label'>Entities</div></div><div class='metric-card'><div class='value' style='color:#1a1a2e'>14</div><div class='label'>Findings</div></div><div class='metric-card'><div class='value' style='color:#1a1a2e'>4</div><div class='label'>Gaps</div></div><div class='metric-card'><div class='value' style='color:#dc3545'>3</div><div class='label'>P0</div></div><div class='metric-card'><div class='value' style='color:#fd7e14'>5</div><div class='label'>P1</div></div><div class='metric-card'><div class='value' style='color:#ffc107'>5</div><div class='label'>P2</div></div><div class='metric-card'><div class='value' style='color:#6c757d'>1</div><div class='label'>P3</div></div><div class='metric-card'><div class='value' style='color:#d97706'>88%</div><div class='label'>Avg Governance</div></div></div>
+<section class='wolf-pack report-section' id='sec-wolf-pack'>
+<h2>Deal Breakers (3)</h2>
+<div class='wolf-card' style='border-left-color:#dc3545' data-severity='P0'><div class='wolf-title'><span class='severity-badge' style='background:#dc3545'>P0</span> Change of control triggers immediate termination</div><div class='wolf-meta'>Source: Novabridge Software | Agent: legal</div>
+<div class='text-small mt-8'>Section 14.2 of the MSA grants NovaBridge the right to terminate the agreement immediately upon any change of control of the Provider, with no cure period. This affects $2.4M in annual recurring revenue and could result in complete revenue loss from this customer post-close.</div>
+<div class='wolf-quote'>&ldquo;Upon any Change of Control of Provider, Customer may terminate this Agreement immediately upon written notice without penalty.&rdquo;</div>
+</div>
+<div class='wolf-card' style='border-left-color:#dc3545' data-severity='P0'><div class='wolf-title'><span class='severity-badge' style='background:#dc3545'>P0</span> Customer concentration risk exceeds 35% of total ARR</div><div class='wolf-meta'>Source: Pinnacle Analytics | Agent: finance</div>
+<div class='text-small mt-8'>Pinnacle Analytics represents $1.8M of $4.9M total ARR (36.7%). Loss of this single customer would materially impact the business. Combined with the CoC termination right, this creates compounding risk.</div>
+<div class='wolf-quote'>&ldquo;Pinnacle Analytics Group | ARR: $1,800,000 | Status: Active&rdquo;</div>
+</div>
+<div class='wolf-card' style='border-left-color:#dc3545' data-severity='P0'><div class='wolf-title'><span class='severity-badge' style='background:#dc3545'>P0</span> IP assignment clause missing for custom integrations</div><div class='wolf-meta'>Source: Novabridge Software | Agent: legal</div>
+<div class='text-small mt-8'>Three custom integration modules were developed for NovaBridge under SOW-2024-003 but the SOW lacks an IP assignment clause. Work product ownership defaults to the developer under applicable law, creating ambiguity about who owns the integration code post-acquisition.</div>
+<div class='wolf-quote'>&ldquo;Provider shall deliver the Custom Integration Modules described in Exhibit A within 90 days of the Effective Date.&rdquo;</div>
+</div>
+</section>
+<section class='report-section' id='sec-key-risks'>
+<h2>Key Risks (5)</h2>
+<table class='sortable key-risks-table'><thead><tr><th scope='col'>Domain</th><th scope='col'>Category</th><th scope='col'>Count</th><th scope='col'>Top Finding</th><th scope='col'>Severity</th></tr></thead><tbody>
+<tr><td>Commercial</td><td>renewal_terms</td><td>1</td><td>Auto-renewal with 120-day notice period</td><td><span class='severity-badge sev-p1' style='background:#fd7e14'>P1</span></td></tr>
+<tr><td>Commercial</td><td>pricing_risk</td><td>1</td><td>MFN pricing clause limits future price increases</td><td><span class='severity-badge sev-p1' style='background:#fd7e14'>P1</span></td></tr>
+<tr><td>Finance</td><td>revenue_recognition</td><td>1</td><td>Revenue recognition timing mismatch</td><td><span class='severity-badge sev-p1' style='background:#fd7e14'>P1</span></td></tr>
+<tr><td>Legal</td><td>assignment_consent</td><td>1</td><td>Assignment requires prior written consent</td><td><span class='severity-badge sev-p1' style='background:#fd7e14'>P1</span></td></tr>
+<tr><td>Legal</td><td>data_privacy</td><td>1</td><td>HIPAA BAA with strict breach notification requirements</td><td><span class='severity-badge sev-p1' style='background:#fd7e14'>P1</span></td></tr>
+</tbody></table>
+</section>
+<section id='sec-financial' class='report-section'>
+<h2>Revenue-at-Risk & Financial Impact</h2>
+<div class='metrics-strip'><div class='metric-card'><div class='value'>$5.0M</div><div class='label'>Total Contracted ARR</div></div><div class='metric-card'><div class='value' style='color: var(--severity-p1, #d63384)'>$5.0M</div><div class='label'>Revenue at Risk (100%)</div></div><div class='metric-card'><div class='value' style='color: var(--severity-p3, #198754)'>$0</div><div class='label'>Risk-Adjusted ARR</div></div></div>
+<h3>Revenue-at-Risk Waterfall</h3>
+<div class='waterfall'>
+<div class='waterfall-row'>
+<span class='waterfall-label'>Total Contracted ARR</span>
+<div class='waterfall-bar-container'>
+<div class='waterfall-bar waterfall-bar--total' style='width:100%'><span>$5.0M</span></div>
+</div></div>
+<div class='waterfall-row'><span class='waterfall-label'>Change of Control Exposure</span><div class='waterfall-bar-container'><div class='waterfall-bar waterfall-bar--risk' style='width:83.2%;margin-left:16.8%'><span>-$4.2M (2 entities)</span></div></div></div>
+<div class='waterfall-row'><span class='waterfall-label'>Termination for Convenience</span><div class='waterfall-bar-container'><div class='waterfall-bar waterfall-bar--risk' style='width:10.1%;margin-left:6.7%'><span>-$510K (1 entities)</span></div></div></div>
+<div class='waterfall-row'><span class='waterfall-label'>Customer Concentration Risk</span><div class='waterfall-bar-container'><div class='waterfall-bar waterfall-bar--risk' style='width:6.7%;margin-left:0.0%'><span>-$340K (1 entities)</span></div></div></div>
+<div class='waterfall-row'><span class='waterfall-label'>Pricing &amp; Discount Risk</span><div class='waterfall-bar-container'><div class='waterfall-bar waterfall-bar--risk' style='width:45.7%;margin-left:-45.7%'><span>-$2.3M (2 entities)</span></div></div></div>
+<div class='waterfall-row'><span class='waterfall-label'><strong>Risk-Adjusted ARR</strong></span><div class='waterfall-bar-container'><div class='waterfall-bar waterfall-bar--adjusted' style='width:0.0%'><span>$0</span></div></div></div>
+</div>
+<h3>Customer Revenue Concentration</h3>
+<div style='display:flex;flex-wrap:wrap;gap:2px;min-height:120px'>
+<div style='flex-basis:47.5%;background:var(--severity-p0, #dc3545);padding:8px;color:#fff;border-radius:4px;min-width:60px' title='Novabridge Software: $2.4M (48%)'><strong>Novabridge Software</strong><br>$2.4M (48%)</div>
+<div style='flex-basis:35.6%;background:var(--severity-p0, #dc3545);padding:8px;color:#fff;border-radius:4px;min-width:60px' title='Pinnacle Analytics: $1.8M (36%)'><strong>Pinnacle Analytics</strong><br>$1.8M (36%)</div>
+<div style='flex-basis:10.1%;background:var(--severity-p2, #fd7e14);padding:8px;color:#fff;border-radius:4px;min-width:60px' title='Horizon Logistics: $510K (10%)'><strong>Horizon Logistics</strong><br>$510K (10%)</div>
+<div style='flex-basis:6.7%;background:var(--severity-p1, #d63384);padding:8px;color:#fff;border-radius:4px;min-width:60px' title='Meridian Health: $340K (7%)'><strong>Meridian Health</strong><br>$340K (7%)</div>
+</div>
+<p class='data-note'>Revenue data available for 4 of 4 entities (100%). Entities without revenue data are excluded from financial impact calculations.</p>
+</section>
+<section class='report-section' id='sec-saas'>
+<h2>SaaS Health Metrics</h2>
+<div class='metrics-strip'>
+<div class='metric-card'><div class='value'>$5.0M</div><div class='label'>Total ARR</div></div>
+<div class='metric-card'><div class='value'>4</div><div class='label'>Customers</div></div>
+<div class='metric-card'><div class='value'>4/4</div><div class='label'>With Revenue Data</div></div>
+<div class='metric-card'><div class='value'>$1.3M</div><div class='label'>Avg Contract Value</div></div>
+<div class='metric-card'><div class='value'>48% of ARR</div><div class='label'>Top Customer</div></div>
+</div>
+<h3>Customer Tier Distribution</h3>
+<table class='customer-table sortable'><thead><tr><th scope='col'>Tier</th><th scope='col'>Customers</th><th scope='col'>%</th></tr></thead><tbody>
+<tr><td>Enterprise</td><td>4</td><td>100%</td></tr>
+<tr><td>Mid-Market</td><td>0</td><td>0%</td></tr>
+<tr><td>SMB</td><td>0</td><td>0%</td></tr>
+</tbody></table>
+<h3>Net &amp; Gross Revenue Retention</h3>
+<div class='metrics-strip'>
+<div class='metric-card'><div class='value' style='color:var(--amber)'>100%</div><div class='label'>NRR Estimate</div></div>
+<div class='metric-card'><div class='value' style='color:var(--green)'>100%</div><div class='label'>GRR Estimate</div></div>
+<div class='metric-card'><div class='value'>0</div><div class='label'>Expansion Signals</div></div>
+<div class='metric-card'><div class='value'>0</div><div class='label'>Contraction Signals</div></div>
+</div>
+<div class='alert alert-info'><div class='alert-title'>Benchmark Comparison</div><div class='alert-body'>NRR 100% vs. best-in-class SaaS benchmark of 120%+. GRR 100% vs. median SaaS benchmark of 90%.</div></div>
+<h3>Unit Economics &amp; Growth</h3>
+<div class='metrics-strip'>
+<div class='metric-card'><div class='value'>100%</div><div class='label'>Logo Retention (Est.)</div></div>
+<div class='metric-card'><div class='value'>$25.2M</div><div class='label'>CLV Estimate</div></div>
+<div class='metric-card'><div class='value' style='color:var(--red)'>0</div><div class='label'>Rule of 40 (Est.)</div></div>
+</div>
+<div class='alert alert-high'><div class='alert-title'>Rule of 40 score is 0 (below threshold)</div><div class='alert-body'>Rule of 40 = Revenue Growth % + EBITDA Margin %. Score below 20 signals concern. Note: margin data unavailable, score reflects growth only.</div></div>
+<div class='alert alert-high'><div class='alert-title'>Top customer represents 48% of total ARR</div><div class='alert-body'>Moderate concentration risk. Consider earn-out or escrow protections.</div></div>
+</section>
+<section id='sec-valuation' class='report-section'>
+<h2>Valuation Impact Bridge</h2>
+<div class='metrics-strip'>
+<div class='metric-card'><div class='value'>$5.0M</div><div class='label'>Total ARR</div></div>
+<div class='metric-card'><div class='value'>$0</div><div class='label'>Risk-Adjusted ARR</div></div>
+<div class='metric-card'><div class='value'>$5.0M</div><div class='label'>Total Exposure</div></div>
+<div class='metric-card'><div class='value'>100.0%</div><div class='label'>Exposure %</div></div>
+</div>
+<div class='alert alert-critical'><div class='alert-title'>Revenue exposure at 100.0%</div><div class='alert-body'>Total risk exposure of $5.0M represents 100.0% of ARR. Significant valuation adjustment required.</div></div>
+<h3>Valuation Impact at Multiples</h3>
+<table class='customer-table sortable'><thead><tr><th scope='col'>Multiple</th><th scope='col'>Gross Valuation</th><th scope='col'>Risk Adjustment</th><th scope='col'>Net Valuation</th></tr></thead><tbody>
+<tr><td>5x</td><td>$25.2M</td><td>$25.2M</td><td>$0</td></tr>
+<tr><td>8x</td><td>$40.4M</td><td>$40.4M</td><td>$0</td></tr>
+<tr><td>12x</td><td>$60.6M</td><td>$60.6M</td><td>$0</td></tr>
+</tbody></table>
+<h3>Risk Category Breakdown</h3>
+<table class='customer-table sortable'><thead><tr><th scope='col'>Category</th><th scope='col'>Exposure</th><th scope='col'>% of Total</th></tr></thead><tbody>
+<tr><td>Change Of Control</td><td>$4.2M</td><td>83.2%</td></tr>
+<tr><td>Pricing Risk</td><td>$2.3M</td><td>45.7%</td></tr>
+<tr><td>Termination For Convenience</td><td>$510K</td><td>10.1%</td></tr>
+<tr><td>Customer Concentration</td><td>$340K</td><td>6.7%</td></tr>
+</tbody></table>
+</section>
+<section class='report-section' id='sec-p0-table'>
+<h2>P0 Deal Stoppers</h2>
+<div class='alert alert-critical'><div class='alert-title'>3 P0 Deal Stoppers across 2 entities</div><div class='alert-body'>2 entities have findings at this severity level. Review each entity&#x27;s primary issue and total finding count below.</div></div>
+<table class='customer-table sortable'><thead><tr><th scope='col'>Entity</th><th scope='col'>P0 COUNT</th><th scope='col'>Total Findings</th><th scope='col'>Primary Issue</th></tr></thead><tbody>
+<tr><td><strong>Novabridge Software</strong></td><td>2</td><td>5</td><td>Change of control triggers immediate termination</td></tr>
+<tr><td><strong>Pinnacle Analytics</strong></td><td>1</td><td>4</td><td>Customer concentration risk exceeds 35% of total ARR</td></tr>
+</tbody></table>
+</section>
+<section class='report-section' id='sec-p1-table'>
+<h2>P1 Critical Issues</h2>
+<div class='alert alert-high'><div class='alert-title'>5 P1 Critical Issues across 3 entities</div><div class='alert-body'>3 entities have findings at this severity level. Review each entity&#x27;s primary issue and total finding count below.</div></div>
+<table class='customer-table sortable'><thead><tr><th scope='col'>Entity</th><th scope='col'>P1 COUNT</th><th scope='col'>Total Findings</th><th scope='col'>Primary Issue</th></tr></thead><tbody>
+<tr><td><strong>Novabridge Software</strong></td><td>2</td><td>5</td><td>Revenue recognition timing mismatch</td></tr>
+<tr><td><strong>Pinnacle Analytics</strong></td><td>2</td><td>4</td><td>Assignment requires prior written consent</td></tr>
+<tr><td><strong>Meridian Health</strong></td><td>1</td><td>2</td><td>HIPAA BAA with strict breach notification requirements</td></tr>
+</tbody></table>
+</section>
+<section class='report-section' id='sec-coc'>
+<h2>Change of Control Analysis</h2>
+<div class='alert alert-info'><div class='alert-title'>2 entities with change-of-control provisions</div><div class='alert-body'>3 change-of-control findings identified across 2 entities (1 Consent-Required, 2 Termination-Right). 1 entities may require assignment consent. Review consent requirements and assess impact on deal timeline.</div></div>
+<table class='customer-table sortable'><thead><tr><th scope='col'>Entity</th><th scope='col'>Type</th><th scope='col'>Findings</th><th scope='col'>Severity</th><th scope='col'>Primary Issue</th></tr></thead><tbody>
+<tr><td><strong>Pinnacle Analytics</strong></td><td>Termination-Right</td><td>2</td><td><span class='severity-badge' style='background:#dc3545'>P0</span></td><td>Customer concentration risk exceeds 35% of total ARR</td></tr>
+<tr><td><strong>Novabridge Software</strong></td><td>Termination-Right</td><td>1</td><td><span class='severity-badge' style='background:#dc3545'>P0</span></td><td>Change of control triggers immediate termination</td></tr>
+</tbody></table>
+</section>
+<section class='report-section' id='sec-tfc'>
+<h2>Termination for Convenience &mdash; Revenue Quality</h2>
+<div class='alert alert-info'><div class='alert-title'>1 entities with TfC clauses (valuation input)</div><div class='alert-body'>1 termination-for-convenience findings across 1 entities. TfC revenue is non-committed (at-risk ARR). Model as a valuation/RPO input — this is not a deal-blocker.</div></div>
+<table class='customer-table sortable'><thead><tr><th scope='col'>Entity</th><th scope='col'>Notice Period</th><th scope='col'>Revenue Impact</th><th scope='col'>Finding Detail</th></tr></thead><tbody>
+<tr><td><strong>Horizon Logistics</strong></td><td>Either party may terminate for convenience with only 30 days written notice. Thi</td><td>See valuation model</td><td>Termination for convenience with 30-day notice</td></tr>
+</tbody></table>
+</section>
+<section class='report-section' id='sec-heatmap'>
+<h2>Domain Risk Heatmap</h2>
+<div class='heatmap'>
+<a href='#sec-domain-legal' style='text-decoration:none;color:inherit'><div class='heatmap-cell' style='border-top-color:#4a90d9'><div class='domain-name'>Legal</div><div class='domain-risk' style='color:#fd7e14'>High</div><div class='domain-counts'>6 findings (P0:2 | P1:2 | P2:1 | P3:1)</div></div></a>
+<a href='#sec-domain-finance' style='text-decoration:none;color:inherit'><div class='heatmap-cell' style='border-top-color:#2d8a4e'><div class='domain-name'>Finance</div><div class='domain-risk' style='color:#fd7e14'>High</div><div class='domain-counts'>3 findings (P0:1 | P1:1 | P2:1)</div></div></a>
+<a href='#sec-domain-commercial' style='text-decoration:none;color:inherit'><div class='heatmap-cell' style='border-top-color:#7c3aed'><div class='domain-name'>Commercial</div><div class='domain-risk' style='color:#ffc107'>Medium</div><div class='domain-counts'>2 findings (P1:2)</div></div></a>
+<a href='#sec-domain-producttech' style='text-decoration:none;color:inherit'><div class='heatmap-cell' style='border-top-color:#d97706'><div class='domain-name'>Product &amp; Tech</div><div class='domain-risk' style='color:#6c757d'>Low</div><div class='domain-counts'>3 findings (P2:3)</div></div></a>
+</div>
+</section>
+<section class='report-section' id='sec-domain-legal'>
+<div class='domain-section' data-domain='legal'>
+<div class='domain-header' style='border-left-color:#4a90d9' tabindex='0' role='button' aria-expanded='false'>
+<h2>Legal (6 findings)</h2>
+<span><span class='severity-badge' style='background:#fd7e14'>High</span> <span class='arrow'>&#9654;</span></span>
+</div>
+<div class='domain-body'>
+<div class='sev-bar' role='img' aria-label='Severity distribution: P0: 2, P1: 2, P2: 1, P3: 1'><span style='width:33.3%;background:#dc3545'></span><span style='width:33.3%;background:#fd7e14'></span><span style='width:16.7%;background:#ffc107'></span><span style='width:16.7%;background:#6c757d'></span></div>
+<table class='sortable'><thead><tr><th scope='col'>Category</th><th scope='col'>Findings</th><th scope='col'>Severity Mix</th><th scope='col'>Top Entity</th></tr></thead><tbody>
+<tr><td>Change of Control</td><td>1</td><td>P0:1</td><td>Novabridge Software</td></tr>
+<tr><td>IP &amp; Ownership</td><td>1</td><td>P0:1</td><td>Novabridge Software</td></tr>
+<tr><td>assignment_consent</td><td>1</td><td>P1:1</td><td>Pinnacle Analytics</td></tr>
+<tr><td>Termination &amp; Exit</td><td>1</td><td>P2:1</td><td>Horizon Logistics</td></tr>
+<tr><td>Liability &amp; Indemnification</td><td>1</td><td>P3:1</td><td>Horizon Logistics</td></tr>
+<tr><td>Data Privacy &amp; Security</td><td>1</td><td>P1:1</td><td>Meridian Health</td></tr>
+</tbody></table>
+<div class='category-group'>
+<div class='category-header' tabindex='0' role='button' aria-expanded='false'><span><strong>Change of Control</strong> (1 findings, P0:1)</span><span class='arrow'>&#9654;</span></div>
+<div class='category-body'>
+<h3>Novabridge Software</h3>
+<div class='finding-card' style='border-left-color:#dc3545' data-severity='P0' data-domain='legal' tabindex='0' role='button' aria-expanded='false'><div class='fc-title'><span class='severity-badge' style='background:#dc3545'>P0</span> Change of control triggers immediate termination <span class='conf-dot conf-high' title='Confidence: high'></span> <span class='arrow'>&#9654;</span></div><div class='fc-meta'>Source: Novabridge Software | Agent: legal</div></div>
+<div class='finding-detail' style='border-left-color:#dc3545'>
+<div class='fd-description'>Section 14.2 of the MSA grants NovaBridge the right to terminate the agreement immediately upon any change of control of the Provider, with no cure period. This affects $2.4M in annual recurring revenue and could result in complete revenue loss from this customer post-close.</div>
+<div class='fd-badges'><span class='text-small'>Confidence: <strong>high</strong></span></div>
+<div class='citation'><span class='source'>NovaBridge/MSA_2023.pdf</span> <span class='location'>(Section 14.2, page 8)</span><span class='quote'>&ldquo;Upon any Change of Control of Provider, Customer may terminate this Agreement immediately upon written notice without penalty.&rdquo;</span></div>
+</div>
+</div>
+</div>
+<div class='category-group'>
+<div class='category-header' tabindex='0' role='button' aria-expanded='false'><span><strong>IP &amp; Ownership</strong> (1 findings, P0:1)</span><span class='arrow'>&#9654;</span></div>
+<div class='category-body'>
+<h3>Novabridge Software</h3>
+<div class='finding-card' style='border-left-color:#dc3545' data-severity='P0' data-domain='legal' tabindex='0' role='button' aria-expanded='false'><div class='fc-title'><span class='severity-badge' style='background:#dc3545'>P0</span> IP assignment clause missing for custom integrations <span class='conf-dot conf-high' title='Confidence: high'></span> <span class='arrow'>&#9654;</span></div><div class='fc-meta'>Source: Novabridge Software | Agent: legal</div></div>
+<div class='finding-detail' style='border-left-color:#dc3545'>
+<div class='fd-description'>Three custom integration modules were developed for NovaBridge under SOW-2024-003 but the SOW lacks an IP assignment clause. Work product ownership defaults to the developer under applicable law, creating ambiguity about who owns the integration code post-acquisition.</div>
+<div class='fd-badges'><span class='text-small'>Confidence: <strong>high</strong></span></div>
+<div class='citation'><span class='source'>NovaBridge/SOW_2024_003.pdf</span> <span class='location'>(Section 4, page 2)</span><span class='quote'>&ldquo;Provider shall deliver the Custom Integration Modules described in Exhibit A within 90 days of the Effective Date.&rdquo;</span></div>
+</div>
+</div>
+</div>
+<div class='category-group'>
+<div class='category-header' tabindex='0' role='button' aria-expanded='false'><span><strong>assignment_consent</strong> (1 findings, P1:1)</span><span class='arrow'>&#9654;</span></div>
+<div class='category-body'>
+<h3>Pinnacle Analytics</h3>
+<div class='finding-card' style='border-left-color:#fd7e14' data-severity='P1' data-domain='legal' tabindex='0' role='button' aria-expanded='false'><div class='fc-title'><span class='severity-badge sev-p1' style='background:#fd7e14'>P1</span> Assignment requires prior written consent <span class='conf-dot conf-high' title='Confidence: high'></span> <span class='arrow'>&#9654;</span></div><div class='fc-meta'>Source: Pinnacle Analytics | Agent: legal</div></div>
+<div class='finding-detail' style='border-left-color:#fd7e14'>
+<div class='fd-description'>Section 15.1 requires Pinnacle&#x27;s prior written consent for any assignment of the agreement, including by operation of law or merger. Consent is not to be unreasonably withheld but adds friction to close.</div>
+<div class='fd-badges'><span class='text-small'>Confidence: <strong>high</strong></span></div>
+<div class='citation'><span class='source'>Pinnacle_Analytics/MSA_2022.pdf</span> <span class='location'>(Section 15.1, page 9)</span><span class='quote'>&ldquo;Neither party may assign this Agreement without the prior written consent of the other party, which consent shall not be unreasonably withheld. Any attempted assignment without such consent shall be void.&rdquo;</span></div>
+</div>
+</div>
+</div>
+<div class='category-group'>
+<div class='category-header' tabindex='0' role='button' aria-expanded='false'><span><strong>Termination &amp; Exit</strong> (1 findings, P2:1)</span><span class='arrow'>&#9654;</span></div>
+<div class='category-body'>
+<h3>Horizon Logistics</h3>
+<div class='finding-card' style='border-left-color:#ffc107' data-severity='P2' data-domain='legal' tabindex='0' role='button' aria-expanded='false'><div class='fc-title'><span class='severity-badge sev-p2' style='background:#ffc107'>P2</span> Termination for convenience with 30-day notice <span class='conf-dot conf-high' title='Confidence: high'></span> <span class='arrow'>&#9654;</span></div><div class='fc-meta'>Source: Horizon Logistics | Agent: legal</div></div>
+<div class='finding-detail' style='border-left-color:#ffc107'>
+<div class='fd-description'>Either party may terminate for convenience with only 30 days written notice. This is unusually short for an enterprise agreement and provides minimal runway to find replacement revenue.</div>
+<div class='fd-badges'><span class='text-small'>Confidence: <strong>high</strong></span></div>
+<div class='citation'><span class='source'>Horizon_Logistics/Services_Agreement.pdf</span> <span class='location'>(Section 8.1, page 5)</span><span class='quote'>&ldquo;Either party may terminate this Agreement for any reason upon thirty (30) days prior written notice to the other party.&rdquo;</span></div>
+</div>
+</div>
+</div>
+<div class='category-group'>
+<div class='category-header' tabindex='0' role='button' aria-expanded='false'><span><strong>Liability &amp; Indemnification</strong> (1 findings, P3:1)</span><span class='arrow'>&#9654;</span></div>
+<div class='category-body'>
+<h3>Horizon Logistics</h3>
+<div class='finding-card' style='border-left-color:#6c757d' data-severity='P3' data-domain='legal' tabindex='0' role='button' aria-expanded='false'><div class='fc-title'><span class='severity-badge' style='background:#6c757d'>P3</span> Standard limitation of liability at 12 months fees <span class='conf-dot conf-high' title='Confidence: high'></span> <span class='arrow'>&#9654;</span></div><div class='fc-meta'>Source: Horizon Logistics | Agent: legal</div></div>
+<div class='finding-detail' style='border-left-color:#6c757d'>
+<div class='fd-description'>Liability is capped at total fees paid in the 12 months preceding the claim. This is market-standard and does not present unusual risk.</div>
+<div class='fd-badges'><span class='text-small'>Confidence: <strong>high</strong></span></div>
+<div class='citation'><span class='source'>Horizon_Logistics/Services_Agreement.pdf</span> <span class='location'>(Section 10.2, page 6)</span><span class='quote'>&ldquo;In no event shall either party&#x27;s aggregate liability exceed the total fees paid by Customer during the twelve (12) month period preceding the claim giving rise to liability.&rdquo;</span></div>
+</div>
+</div>
+</div>
+<div class='category-group'>
+<div class='category-header' tabindex='0' role='button' aria-expanded='false'><span><strong>Data Privacy &amp; Security</strong> (1 findings, P1:1)</span><span class='arrow'>&#9654;</span></div>
+<div class='category-body'>
+<h3>Meridian Health</h3>
+<div class='finding-card' style='border-left-color:#fd7e14' data-severity='P1' data-domain='legal' tabindex='0' role='button' aria-expanded='false'><div class='fc-title'><span class='severity-badge sev-p1' style='background:#fd7e14'>P1</span> HIPAA BAA with strict breach notification requirements <span class='conf-dot conf-high' title='Confidence: high'></span> <span class='arrow'>&#9654;</span></div><div class='fc-meta'>Source: Meridian Health | Agent: legal</div></div>
+<div class='finding-detail' style='border-left-color:#fd7e14'>
+<div class='fd-description'>The Business Associate Agreement requires breach notification within 24 hours (stricter than the HIPAA 60-day requirement). Non-compliance penalties are uncapped and survive termination.</div>
+<div class='fd-badges'><span class='text-small'>Confidence: <strong>high</strong></span></div>
+<div class='citation'><span class='source'>Meridian_Health/BAA_2023.pdf</span> <span class='location'>(Section 4.1, page 2)</span><span class='quote'>&ldquo;Business Associate shall notify Covered Entity of any Breach of Unsecured PHI within twenty-four (24) hours of discovery.&rdquo;</span></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<section class='report-section' id='sec-domain-finance'>
+<div class='domain-section' data-domain='finance'>
+<div class='domain-header' style='border-left-color:#2d8a4e' tabindex='0' role='button' aria-expanded='false'>
+<h2>Finance (3 findings)</h2>
+<span><span class='severity-badge' style='background:#fd7e14'>High</span> <span class='arrow'>&#9654;</span></span>
+</div>
+<div class='domain-body'>
+<div class='sev-bar' role='img' aria-label='Severity distribution: P0: 1, P1: 1, P2: 1'><span style='width:33.3%;background:#dc3545'></span><span style='width:33.3%;background:#fd7e14'></span><span style='width:33.3%;background:#ffc107'></span></div>
+<table class='sortable'><thead><tr><th scope='col'>Category</th><th scope='col'>Findings</th><th scope='col'>Severity Mix</th><th scope='col'>Top Entity</th></tr></thead><tbody>
+<tr><td>Revenue Recognition</td><td>1</td><td>P1:1</td><td>Novabridge Software</td></tr>
+<tr><td>Concentration Risk</td><td>1</td><td>P0:1</td><td>Pinnacle Analytics</td></tr>
+<tr><td>Pricing &amp; Discounts</td><td>1</td><td>P2:1</td><td>Horizon Logistics</td></tr>
+</tbody></table>
+<div class='category-group'>
+<div class='category-header' tabindex='0' role='button' aria-expanded='false'><span><strong>Revenue Recognition</strong> (1 findings, P1:1)</span><span class='arrow'>&#9654;</span></div>
+<div class='category-body'>
+<h3>Novabridge Software</h3>
+<div class='finding-card' style='border-left-color:#fd7e14' data-severity='P1' data-domain='finance' tabindex='0' role='button' aria-expanded='false'><div class='fc-title'><span class='severity-badge sev-p1' style='background:#fd7e14'>P1</span> Revenue recognition timing mismatch <span class='conf-dot conf-high' title='Confidence: high'></span> <span class='arrow'>&#9654;</span></div><div class='fc-meta'>Source: Novabridge Software | Agent: finance</div></div>
+<div class='finding-detail' style='border-left-color:#fd7e14'>
+<div class='fd-description'>Contract specifies quarterly billing in advance, but financial records show monthly revenue recognition. The $600K quarterly prepayment is recognized as $200K/month, which is appropriate under ASC 606, but the deferred revenue balance of $400K at any given time represents a liability that must be carried through the acquisition.</div>
+<div class='fd-badges'><span class='text-small'>Confidence: <strong>high</strong></span></div>
+<div class='citation'><span class='source'>NovaBridge/Order_Form_2024.pdf</span> <span class='location'>(Section 3, page 1)</span><span class='quote'>&ldquo;Annual License Fee: $2,400,000, payable quarterly in advance.&rdquo;</span></div>
+</div>
+</div>
+</div>
+<div class='category-group'>
+<div class='category-header' tabindex='0' role='button' aria-expanded='false'><span><strong>Concentration Risk</strong> (1 findings, P0:1)</span><span class='arrow'>&#9654;</span></div>
+<div class='category-body'>
+<h3>Pinnacle Analytics</h3>
+<div class='finding-card' style='border-left-color:#dc3545' data-severity='P0' data-domain='finance' tabindex='0' role='button' aria-expanded='false'><div class='fc-title'><span class='severity-badge' style='background:#dc3545'>P0</span> Customer concentration risk exceeds 35% of total ARR <span class='conf-dot conf-high' title='Confidence: high'></span> <span class='arrow'>&#9654;</span></div><div class='fc-meta'>Source: Pinnacle Analytics | Agent: finance</div></div>
+<div class='finding-detail' style='border-left-color:#dc3545'>
+<div class='fd-description'>Pinnacle Analytics represents $1.8M of $4.9M total ARR (36.7%). Loss of this single customer would materially impact the business. Combined with the CoC termination right, this creates compounding risk.</div>
+<div class='fd-badges'><span class='text-small'>Confidence: <strong>high</strong></span></div>
+<div class='citation'><span class='source'>_reference/Customer_Revenue_2024.xlsx</span> <span class='location'>(Sheet 1, Row 3)</span><span class='quote'>&ldquo;Pinnacle Analytics Group | ARR: $1,800,000 | Status: Active&rdquo;</span></div>
+</div>
+</div>
+</div>
+<div class='category-group'>
+<div class='category-header' tabindex='0' role='button' aria-expanded='false'><span><strong>Pricing &amp; Discounts</strong> (1 findings, P2:1)</span><span class='arrow'>&#9654;</span></div>
+<div class='category-body'>
+<h3>Horizon Logistics</h3>
+<div class='finding-card' style='border-left-color:#ffc107' data-severity='P2' data-domain='finance' tabindex='0' role='button' aria-expanded='false'><div class='fc-title'><span class='severity-badge sev-p2' style='background:#ffc107'>P2</span> Below-market pricing with no escalation clause <span class='conf-dot conf-medium' title='Confidence: medium'></span> <span class='arrow'>&#9654;</span></div><div class='fc-meta'>Source: Horizon Logistics | Agent: finance</div></div>
+<div class='finding-detail' style='border-left-color:#ffc107'>
+<div class='fd-description'>Horizon&#x27;s per-seat pricing of $85/month is 32% below the standard rate card of $125/month, with no annual escalation clause. The agreement locks in this rate for the full 3-year term.</div>
+<div class='fd-badges'><span class='text-small'>Confidence: <strong>medium</strong></span></div>
+<div class='citation'><span class='source'>Horizon_Logistics/Order_Form_2024.pdf</span> <span class='location'>(Section 2, page 1)</span><span class='quote'>&ldquo;Per-seat license fee: $85.00/month per named user.&rdquo;</span></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<section class='report-section' id='sec-domain-commercial'>
+<div class='domain-section' data-domain='commercial'>
+<div class='domain-header' style='border-left-color:#7c3aed' tabindex='0' role='button' aria-expanded='false'>
+<h2>Commercial (2 findings)</h2>
+<span><span class='severity-badge' style='background:#ffc107'>Medium</span> <span class='arrow'>&#9654;</span></span>
+</div>
+<div class='domain-body'>
+<div class='sev-bar' role='img' aria-label='Severity distribution: P1: 2'><span style='width:100.0%;background:#fd7e14'></span></div>
+<table class='sortable'><thead><tr><th scope='col'>Category</th><th scope='col'>Findings</th><th scope='col'>Severity Mix</th><th scope='col'>Top Entity</th></tr></thead><tbody>
+<tr><td>Customer Satisfaction</td><td>1</td><td>P1:1</td><td>Novabridge Software</td></tr>
+<tr><td>Pricing &amp; Packaging</td><td>1</td><td>P1:1</td><td>Pinnacle Analytics</td></tr>
+</tbody></table>
+<div class='category-group'>
+<div class='category-header' tabindex='0' role='button' aria-expanded='false'><span><strong>Customer Satisfaction</strong> (1 findings, P1:1)</span><span class='arrow'>&#9654;</span></div>
+<div class='category-body'>
+<h3>Novabridge Software</h3>
+<div class='finding-card' style='border-left-color:#fd7e14' data-severity='P1' data-domain='commercial' tabindex='0' role='button' aria-expanded='false'><div class='fc-title'><span class='severity-badge sev-p1' style='background:#fd7e14'>P1</span> Auto-renewal with 120-day notice period <span class='conf-dot conf-high' title='Confidence: high'></span> <span class='arrow'>&#9654;</span></div><div class='fc-meta'>Source: Novabridge Software | Agent: commercial</div></div>
+<div class='finding-detail' style='border-left-color:#fd7e14'>
+<div class='fd-description'>Agreement auto-renews for successive 1-year terms unless either party provides 120 days written notice. The next renewal window closes on August 1, 2026, creating a narrow window for renegotiation post-close.</div>
+<div class='fd-badges'><span class='text-small'>Confidence: <strong>high</strong></span></div>
+<div class='citation'><span class='source'>NovaBridge/MSA_2023.pdf</span> <span class='location'>(Section 2.2, page 1)</span><span class='quote'>&ldquo;This Agreement shall automatically renew for additional one (1) year periods unless either party provides written notice of non-renewal at least one hundred twenty (120) days prior to the end of the then-current term.&rdquo;</span></div>
+</div>
+</div>
+</div>
+<div class='category-group'>
+<div class='category-header' tabindex='0' role='button' aria-expanded='false'><span><strong>Pricing &amp; Packaging</strong> (1 findings, P1:1)</span><span class='arrow'>&#9654;</span></div>
+<div class='category-body'>
+<h3>Pinnacle Analytics</h3>
+<div class='finding-card' style='border-left-color:#fd7e14' data-severity='P1' data-domain='commercial' tabindex='0' role='button' aria-expanded='false'><div class='fc-title'><span class='severity-badge sev-p1' style='background:#fd7e14'>P1</span> MFN pricing clause limits future price increases <span class='conf-dot conf-high' title='Confidence: high'></span> <span class='arrow'>&#9654;</span></div><div class='fc-meta'>Source: Pinnacle Analytics | Agent: commercial</div></div>
+<div class='finding-detail' style='border-left-color:#fd7e14'>
+<div class='fd-description'>Section 7.3 contains a most-favored-nation clause requiring that Pinnacle receives pricing no less favorable than any similarly situated customer. This constrains post-acquisition pricing optimization.</div>
+<div class='fd-badges'><span class='text-small'>Confidence: <strong>high</strong></span></div>
+<div class='citation'><span class='source'>Pinnacle_Analytics/MSA_2022.pdf</span> <span class='location'>(Section 7.3, page 4)</span><span class='quote'>&ldquo;Provider represents that the fees charged to Customer are no less favorable than those charged to any other customer of comparable size and usage volume.&rdquo;</span></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<section class='report-section' id='sec-domain-producttech'>
+<div class='domain-section' data-domain='producttech'>
+<div class='domain-header' style='border-left-color:#d97706' tabindex='0' role='button' aria-expanded='false'>
+<h2>Product &amp; Tech (3 findings)</h2>
+<span><span class='severity-badge' style='background:#6c757d'>Low</span> <span class='arrow'>&#9654;</span></span>
+</div>
+<div class='domain-body'>
+<div class='sev-bar' role='img' aria-label='Severity distribution: P2: 3'><span style='width:100.0%;background:#ffc107'></span></div>
+<table class='sortable'><thead><tr><th scope='col'>Category</th><th scope='col'>Findings</th><th scope='col'>Severity Mix</th><th scope='col'>Top Entity</th></tr></thead><tbody>
+<tr><td>technical_sla</td><td>1</td><td>P2:1</td><td>Novabridge Software</td></tr>
+<tr><td>Security</td><td>1</td><td>P2:1</td><td>Pinnacle Analytics</td></tr>
+<tr><td>Technical Debt</td><td>1</td><td>P2:1</td><td>Meridian Health</td></tr>
+</tbody></table>
+<div class='category-group'>
+<div class='category-header' tabindex='0' role='button' aria-expanded='false'><span><strong>technical_sla</strong> (1 findings, P2:1)</span><span class='arrow'>&#9654;</span></div>
+<div class='category-body'>
+<h3>Novabridge Software</h3>
+<div class='finding-card' style='border-left-color:#ffc107' data-severity='P2' data-domain='producttech' tabindex='0' role='button' aria-expanded='false'><div class='fc-title'><span class='severity-badge sev-p2' style='background:#ffc107'>P2</span> SLA uptime guarantee at 99.95% with service credits <span class='conf-dot conf-medium' title='Confidence: medium'></span> <span class='arrow'>&#9654;</span></div><div class='fc-meta'>Source: Novabridge Software | Agent: product_tech</div></div>
+<div class='finding-detail' style='border-left-color:#ffc107'>
+<div class='fd-description'>SLA requires 99.95% monthly uptime with graduated service credits: 10% credit for 99.9-99.95%, 25% for 99.0-99.9%, and 50% for below 99.0%. Historical uptime has been 99.97% over the past 12 months.</div>
+<div class='fd-badges'><span class='text-small'>Confidence: <strong>medium</strong></span></div>
+<div class='citation'><span class='source'>NovaBridge/SLA_Addendum.pdf</span> <span class='location'>(Exhibit B, page 1)</span><span class='quote'>&ldquo;Provider guarantees 99.95% monthly uptime for the Platform.&rdquo;</span></div>
+</div>
+</div>
+</div>
+<div class='category-group'>
+<div class='category-header' tabindex='0' role='button' aria-expanded='false'><span><strong>Security</strong> (1 findings, P2:1)</span><span class='arrow'>&#9654;</span></div>
+<div class='category-body'>
+<h3>Pinnacle Analytics</h3>
+<div class='finding-card' style='border-left-color:#ffc107' data-severity='P2' data-domain='producttech' tabindex='0' role='button' aria-expanded='false'><div class='fc-title'><span class='severity-badge sev-p2' style='background:#ffc107'>P2</span> No SOC 2 Type II certification requirement <span class='conf-dot conf-medium' title='Confidence: medium'></span> <span class='arrow'>&#9654;</span></div><div class='fc-meta'>Source: Pinnacle Analytics | Agent: product_tech</div></div>
+<div class='finding-detail' style='border-left-color:#ffc107'>
+<div class='fd-description'>Despite handling sensitive financial data, the agreement does not require SOC 2 Type II certification from the Provider. Pinnacle may request this as a condition of consent to assignment.</div>
+<div class='fd-badges'><span class='text-small'>Confidence: <strong>medium</strong></span></div>
+</div>
+</div>
+</div>
+<div class='category-group'>
+<div class='category-header' tabindex='0' role='button' aria-expanded='false'><span><strong>Technical Debt</strong> (1 findings, P2:1)</span><span class='arrow'>&#9654;</span></div>
+<div class='category-body'>
+<h3>Meridian Health</h3>
+<div class='finding-card' style='border-left-color:#ffc107' data-severity='P2' data-domain='producttech' tabindex='0' role='button' aria-expanded='false'><div class='fc-title'><span class='severity-badge sev-p2' style='background:#ffc107'>P2</span> Technical integration dependency on legacy API <span class='conf-dot conf-medium' title='Confidence: medium'></span> <span class='arrow'>&#9654;</span></div><div class='fc-meta'>Source: Meridian Health | Agent: product_tech</div></div>
+<div class='finding-detail' style='border-left-color:#ffc107'>
+<div class='fd-description'>Meridian&#x27;s integration relies on the v1 REST API which is scheduled for deprecation in Q3 2026. Migration to v2 requires Meridian&#x27;s development team involvement and has not been scheduled.</div>
+<div class='fd-badges'><span class='text-small'>Confidence: <strong>medium</strong></span></div>
+<div class='citation'><span class='source'>Meridian_Health/Integration_Spec.pdf</span> <span class='location'>(Section 2.1, page 3)</span><span class='quote'>&ldquo;All API calls shall use the Provider REST API v1 endpoint.&rdquo;</span></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<section id='sec-discount' class='report-section'>
+<h2>Discount &amp; Pricing Analysis</h2>
+<div class='alert alert-info'><div class='alert-title'>1 entities with identified discounts</div><div class='alert-body'>2 pricing-related findings across 1 entities. Review discount concentration for revenue quality risk.</div></div>
+<div class='metrics-strip'>
+<div class='metric-card'><div class='value'>32.0%</div><div class='label'>Avg Discount</div></div>
+<div class='metric-card'><div class='value'>32.0%</div><div class='label'>Max Discount</div></div>
+</div>
+<h3>Discount Distribution</h3>
+<table class='customer-table sortable'><thead><tr><th scope='col'>Bucket</th><th scope='col'>Count</th></tr></thead><tbody>
+<tr><td>0-10%</td><td>0</td></tr>
+<tr><td>10-25%</td><td>0</td></tr>
+<tr><td>25-50%</td><td>1</td></tr>
+<tr><td>&gt;50%</td><td>0</td></tr>
+</tbody></table>
+<h3>Top Discounted Entities</h3>
+<table class='customer-table sortable'><thead><tr><th scope='col'>Entity</th><th scope='col'>Discount %</th></tr></thead><tbody>
+<tr><td>Horizon Logistics</td><td>32.0%</td></tr>
+</tbody></table>
+<h3>Pricing Findings</h3>
+<table class='customer-table sortable'><thead><tr><th scope='col'>Severity</th><th scope='col'>Entity</th><th scope='col'>Finding</th></tr></thead><tbody>
+<tr><td><span class='severity-badge sev-p1' style='background:#fd7e14'>P1</span></td><td>Pinnacle Analytics</td><td>MFN pricing clause limits future price increases</td></tr>
+<tr><td><span class='severity-badge sev-p2' style='background:#ffc107'>P2</span></td><td>Horizon Logistics</td><td>Below-market pricing with no escalation clause</td></tr>
+</tbody></table>
+</section>
+<section id='sec-renewal' class='report-section'>
+<h2>Renewal &amp; Contract Expiry Analysis</h2>
+<div class='metrics-strip'>
+<div class='metric-card'><div class='value'>1</div><div class='label'>Renewal Findings</div></div>
+<div class='metric-card'><div class='value'>1</div><div class='label'>Auto-Renew</div></div>
+<div class='metric-card'><div class='value'>0</div><div class='label'>Manual Renew</div></div>
+<div class='metric-card'><div class='value'>0</div><div class='label'>Escalation Caps</div></div>
+<div class='metric-card'><div class='value'>0</div><div class='label'>Evergreen</div></div>
+</div>
+<h3>Expiry Distribution</h3>
+<table class='customer-table sortable'><thead><tr><th scope='col'>Period</th><th scope='col'>Count</th></tr></thead><tbody>
+<tr><td>0-6mo</td><td>0</td></tr>
+<tr><td>6-12mo</td><td>0</td></tr>
+<tr><td>12-24mo</td><td>0</td></tr>
+<tr><td>&gt;24mo</td><td>0</td></tr>
+</tbody></table>
+<h3>Renewal Findings</h3>
+<table class='customer-table sortable'><thead><tr><th scope='col'>Severity</th><th scope='col'>Entity</th><th scope='col'>Finding</th></tr></thead><tbody>
+<tr><td><span class='severity-badge sev-p1' style='background:#fd7e14'>P1</span></td><td>Novabridge Software</td><td>Auto-renewal with 120-day notice period</td></tr>
+</tbody></table>
+</section>
+<section id='sec-compliance' class='report-section'>
+<h2>Regulatory &amp; Compliance Risk Assessment</h2>
+<div class='metrics-strip'>
+<div class='metric-card'><div class='value'>2</div><div class='label'>Compliance Findings</div></div>
+<div class='metric-card'><div class='value'>0</div><div class='label'>DPA Issues</div></div>
+<div class='metric-card'><div class='value'>0%</div><div class='label'>DPA Coverage</div></div>
+<div class='metric-card'><div class='value'>1</div><div class='label'>Jurisdiction</div></div>
+<div class='metric-card'><div class='value'>1</div><div class='label'>Regulatory</div></div>
+</div>
+<div class='metric-card'><div class='value' style='color:var(--red)'>40</div><div class='label'>Risk Score (High)</div></div>
+<h3>Regulatory Filing Checklist</h3>
+<ul>
+<li>HIPAA: Business Associate Agreement (BAA) audit</li>
+</ul>
+<h3>Compliance Findings</h3>
+<table class='customer-table sortable'><thead><tr><th scope='col'>Severity</th><th scope='col'>Entity</th><th scope='col'>Finding</th></tr></thead><tbody>
+<tr><td><span class='severity-badge' style='background:#dc3545'>P0</span></td><td>Novabridge Software</td><td>IP assignment clause missing for custom integrations</td></tr>
+<tr><td><span class='severity-badge sev-p1' style='background:#fd7e14'>P1</span></td><td>Meridian Health</td><td>HIPAA BAA with strict breach notification requirements</td></tr>
+</tbody></table>
+</section>
+<section id='sec-timeline' class='report-section'>
+<h2>Contract Date Timeline &amp; Expiry Calendar</h2>
+<div class='metrics-strip'>
+<div class='metric-card'><div class='value'>1</div><div class='label'>Date-Related Findings</div></div>
+<div class='metric-card'><div class='value'>1</div><div class='label'>Date Mentions</div></div>
+</div>
+<h3>Contract Date Findings</h3>
+<table class='customer-table sortable'><thead><tr><th scope='col'>Severity</th><th scope='col'>Entity</th><th scope='col'>Finding</th></tr></thead><tbody>
+<tr><td><span class='severity-badge sev-p1' style='background:#fd7e14'>P1</span></td><td>Novabridge Software</td><td>Auto-renewal with 120-day notice period</td></tr>
+</tbody></table>
+</section>
+<section id='sec-liability' class='report-section'>
+<h2>Insurance &amp; Liability Analysis</h2>
+<div class='metrics-strip'>
+<div class='metric-card'><div class='value'>3</div><div class='label'>Total Findings</div></div>
+<div class='metric-card'><div class='value'>0</div><div class='label'>Insurance</div></div>
+<div class='metric-card'><div class='value'>1</div><div class='label'>Liability Caps</div></div>
+<div class='metric-card'><div class='value'>1</div><div class='label'>Uncapped</div></div>
+<div class='metric-card'><div class='value'>0</div><div class='label'>Indemnification</div></div>
+</div>
+<div class='alert alert-critical'><div class='alert-title'>Uncapped liability detected in 1 contracts</div><div class='alert-body'>1 contracts have no liability cap. Negotiate caps before close to limit exposure.</div></div>
+<h3>Liability Findings</h3>
+<table class='customer-table sortable'><thead><tr><th scope='col'>Entity</th><th scope='col'>Finding</th><th scope='col'>Severity</th></tr></thead><tbody>
+<tr><td>Novabridge Software</td><td>Revenue recognition timing mismatch</td><td><span class='severity-badge sev-p1' style='background:#fd7e14'>P1</span></td></tr>
+<tr><td>Horizon Logistics</td><td>Standard limitation of liability at 12 months fees</td><td><span class='severity-badge' style='background:#6c757d'>P3</span></td></tr>
+<tr><td>Meridian Health</td><td>HIPAA BAA with strict breach notification requirements</td><td><span class='severity-badge sev-p1' style='background:#fd7e14'>P1</span></td></tr>
+</tbody></table>
+</section>
+<section id='sec-ip-risk' class='report-section'>
+<h2>IP &amp; Technology License Risk</h2>
+<div class='metrics-strip'>
+<div class='metric-card'><div class='value'>1</div><div class='label'>Total IP Findings</div></div>
+<div class='metric-card'><div class='value'>1</div><div class='label'>Ownership Gaps</div></div>
+<div class='metric-card'><div class='value'>0</div><div class='label'>Open Source</div></div>
+<div class='metric-card'><div class='value'>0</div><div class='label'>License Risks</div></div>
+</div>
+<div class='alert alert-high'><div class='alert-title'>1 IP ownership gaps identified</div><div class='alert-body'>1 contracts have unclear IP ownership. Resolve ownership before close to protect core technology assets.</div></div>
+<h3>IP &amp; License Findings</h3>
+<table class='customer-table sortable'><thead><tr><th scope='col'>Entity</th><th scope='col'>Finding</th><th scope='col'>Severity</th></tr></thead><tbody>
+<tr><td>Novabridge Software</td><td>IP assignment clause missing for custom integrations</td><td><span class='severity-badge' style='background:#dc3545'>P0</span></td></tr>
+</tbody></table>
+</section>
+<section id='sec-cross-domain' class='report-section'>
+<h2>Cross-Domain Risk Correlation</h2>
+<div class='alert alert-critical'><div class='alert-title'>P0 finding detected for Novabridge Software</div><div class='alert-body'>Entity Novabridge Software has critical findings spanning 4 domains. Immediate review required.</div></div>
+<div class='alert alert-critical'><div class='alert-title'>P0 finding detected for Pinnacle Analytics</div><div class='alert-body'>Entity Pinnacle Analytics has critical findings spanning 4 domains. Immediate review required.</div></div>
+<h3>Compound Risk Summary</h3>
+<table class='customer-table sortable'><thead><tr><th scope='col'>Entity</th><th scope='col'>Domains</th><th scope='col'>Findings</th><th scope='col'>Risk Score</th></tr></thead><tbody>
+<tr><td>Novabridge Software</td><td>4</td><td>5</td><td>32.0</td></tr>
+<tr><td>Pinnacle Analytics</td><td>4</td><td>4</td><td>22.0</td></tr>
+</tbody></table>
+</section>
+<section class='report-section' id='sec-clause-library'>
+<h2>Clause Analysis</h2>
+<p>Findings classified against standard M&amp;A clause taxonomy with market norm comparisons.</p>
+<div class='metrics-strip'><div class='metric-card'><div class='value'>13</div><div class='label'>Classified Findings</div></div><div class='metric-card'><div class='value'>11</div><div class='label'>Clause Types Found</div></div></div>
+<div class='collapsible-section'><div class='category-header' tabindex='0' role='button' aria-expanded='false'><span class='arrow'>&#9654;</span> Change of Control <span class='badge' style='background:#6c757d;color:#fff;'>2</span></div><div class='category-body'>
+<div style='margin:8px 0;padding:8px 12px;background:#f0f4ff;border-left:3px solid #4a90d9;border-radius:4px;'><strong>Market Norm:</strong> Most enterprise contracts include CoC clauses. Consent-required with 30-60 day cure is standard.</div><div style='margin:8px 0;padding:8px 12px;background:#fff8f0;border-left:3px solid #fd7e14;border-radius:4px;'><strong>Risk Implications:</strong> May trigger consent requirements, termination rights, or automatic termination upon acquisition.</div>
+<table class='customer-table sortable'><thead><tr><th scope='col'>Entity</th><th scope='col'>Severity</th><th scope='col'>Finding</th></tr></thead><tbody>
+<tr><td>Novabridge Software</td><td><span class='severity-badge' style='background:#dc3545'>P0</span></td><td>Change of control triggers immediate termination</td></tr>
+<tr><td>Pinnacle Analytics</td><td><span class='severity-badge' style='background:#dc3545'>P0</span></td><td>Customer concentration risk exceeds 35% of total ARR</td></tr>
+</tbody></table>
+</div></div>
+<div class='collapsible-section'><div class='category-header' tabindex='0' role='button' aria-expanded='false'><span class='arrow'>&#9654;</span> Anti-Assignment <span class='badge' style='background:#6c757d;color:#fff;'>2</span></div><div class='category-body'>
+<div style='margin:8px 0;padding:8px 12px;background:#f0f4ff;border-left:3px solid #4a90d9;border-radius:4px;'><strong>Market Norm:</strong> Most contracts restrict assignment without consent but include carve-outs for affiliates or mergers.</div><div style='margin:8px 0;padding:8px 12px;background:#fff8f0;border-left:3px solid #fd7e14;border-radius:4px;'><strong>Risk Implications:</strong> May block assignment of contracts to acquirer post-close without counterparty consent.</div>
+<table class='customer-table sortable'><thead><tr><th scope='col'>Entity</th><th scope='col'>Severity</th><th scope='col'>Finding</th></tr></thead><tbody>
+<tr><td>Pinnacle Analytics</td><td><span class='severity-badge sev-p1' style='background:#fd7e14'>P1</span></td><td>Assignment requires prior written consent</td></tr>
+<tr><td>Pinnacle Analytics</td><td><span class='severity-badge sev-p2' style='background:#ffc107'>P2</span></td><td>No SOC 2 Type II certification requirement</td></tr>
+</tbody></table>
+</div></div>
+<div class='collapsible-section'><div class='category-header' tabindex='0' role='button' aria-expanded='false'><span class='arrow'>&#9654;</span> IP Ownership <span class='badge' style='background:#6c757d;color:#fff;'>1</span></div><div class='category-body'>
+<div style='margin:8px 0;padding:8px 12px;background:#f0f4ff;border-left:3px solid #4a90d9;border-radius:4px;'><strong>Market Norm:</strong> Clear assignment of all work product to hiring party is standard. Joint ownership is risky.</div><div style='margin:8px 0;padding:8px 12px;background:#fff8f0;border-left:3px solid #fd7e14;border-radius:4px;'><strong>Risk Implications:</strong> Unclear IP ownership can undermine the core asset. Work-for-hire and joint ownership create complexity.</div>
+<table class='customer-table sortable'><thead><tr><th scope='col'>Entity</th><th scope='col'>Severity</th><th scope='col'>Finding</th></tr></thead><tbody>
+<tr><td>Novabridge Software</td><td><span class='severity-badge' style='background:#dc3545'>P0</span></td><td>IP assignment clause missing for custom integrations</td></tr>
+</tbody></table>
+</div></div>
+<div class='collapsible-section'><div class='category-header' tabindex='0' role='button' aria-expanded='false'><span class='arrow'>&#9654;</span> Governing Law &amp; Jurisdiction <span class='badge' style='background:#6c757d;color:#fff;'>1</span></div><div class='category-body'>
+<div style='margin:8px 0;padding:8px 12px;background:#f0f4ff;border-left:3px solid #4a90d9;border-radius:4px;'><strong>Market Norm:</strong> Governing law typically matches vendor&#x27;s primary jurisdiction. Arbitration is common internationally.</div><div style='margin:8px 0;padding:8px 12px;background:#fff8f0;border-left:3px solid #fd7e14;border-radius:4px;'><strong>Risk Implications:</strong> Unfavorable jurisdiction increases litigation cost. Multiple governing laws create complexity.</div>
+<table class='customer-table sortable'><thead><tr><th scope='col'>Entity</th><th scope='col'>Severity</th><th scope='col'>Finding</th></tr></thead><tbody>
+<tr><td>Novabridge Software</td><td><span class='severity-badge sev-p1' style='background:#fd7e14'>P1</span></td><td>Revenue recognition timing mismatch</td></tr>
+</tbody></table>
+</div></div>
+<div class='collapsible-section'><div class='category-header' tabindex='0' role='button' aria-expanded='false'><span class='arrow'>&#9654;</span> Renewal &amp; Auto-Renewal <span class='badge' style='background:#6c757d;color:#fff;'>1</span></div><div class='category-body'>
+<div style='margin:8px 0;padding:8px 12px;background:#f0f4ff;border-left:3px solid #4a90d9;border-radius:4px;'><strong>Market Norm:</strong> Auto-renewal with 30-90 day opt-out is standard in SaaS. 3-5% annual escalation caps are common.</div><div style='margin:8px 0;padding:8px 12px;background:#fff8f0;border-left:3px solid #fd7e14;border-radius:4px;'><strong>Risk Implications:</strong> Auto-renewal provides revenue predictability. Manual renewal with short notice creates churn risk.</div>
+<table class='customer-table sortable'><thead><tr><th scope='col'>Entity</th><th scope='col'>Severity</th><th scope='col'>Finding</th></tr></thead><tbody>
+<tr><td>Novabridge Software</td><td><span class='severity-badge sev-p1' style='background:#fd7e14'>P1</span></td><td>Auto-renewal with 120-day notice period</td></tr>
+</tbody></table>
+</div></div>
+<div class='collapsible-section'><div class='category-header' tabindex='0' role='button' aria-expanded='false'><span class='arrow'>&#9654;</span> Service Level Agreement <span class='badge' style='background:#6c757d;color:#fff;'>1</span></div><div class='category-body'>
+<div style='margin:8px 0;padding:8px 12px;background:#f0f4ff;border-left:3px solid #4a90d9;border-radius:4px;'><strong>Market Norm:</strong> 99.5-99.9% uptime for SaaS. Service credits capped at 10-30% of monthly fees.</div><div style='margin:8px 0;padding:8px 12px;background:#fff8f0;border-left:3px solid #fd7e14;border-radius:4px;'><strong>Risk Implications:</strong> Aggressive SLAs with uncapped service credits create financial exposure.</div>
+<table class='customer-table sortable'><thead><tr><th scope='col'>Entity</th><th scope='col'>Severity</th><th scope='col'>Finding</th></tr></thead><tbody>
+<tr><td>Novabridge Software</td><td><span class='severity-badge sev-p2' style='background:#ffc107'>P2</span></td><td>SLA uptime guarantee at 99.95% with service credits</td></tr>
+</tbody></table>
+</div></div>
+<div class='collapsible-section'><div class='category-header' tabindex='0' role='button' aria-expanded='false'><span class='arrow'>&#9654;</span> Most Favored Nation <span class='badge' style='background:#6c757d;color:#fff;'>1</span></div><div class='category-body'>
+<div style='margin:8px 0;padding:8px 12px;background:#f0f4ff;border-left:3px solid #4a90d9;border-radius:4px;'><strong>Market Norm:</strong> Uncommon in standard SaaS. More frequent in enterprise or government contracts.</div><div style='margin:8px 0;padding:8px 12px;background:#fff8f0;border-left:3px solid #fd7e14;border-radius:4px;'><strong>Risk Implications:</strong> MFN clauses constrain pricing flexibility and may require retroactive price adjustments.</div>
+<table class='customer-table sortable'><thead><tr><th scope='col'>Entity</th><th scope='col'>Severity</th><th scope='col'>Finding</th></tr></thead><tbody>
+<tr><td>Pinnacle Analytics</td><td><span class='severity-badge sev-p1' style='background:#fd7e14'>P1</span></td><td>MFN pricing clause limits future price increases</td></tr>
+</tbody></table>
+</div></div>
+<div class='collapsible-section'><div class='category-header' tabindex='0' role='button' aria-expanded='false'><span class='arrow'>&#9654;</span> Termination for Convenience <span class='badge' style='background:#6c757d;color:#fff;'>1</span></div><div class='category-body'>
+<div style='margin:8px 0;padding:8px 12px;background:#f0f4ff;border-left:3px solid #4a90d9;border-radius:4px;'><strong>Market Norm:</strong> Common in enterprise SaaS. 30-90 day notice period is standard. TfC with &lt;30 day notice is non-standard.</div><div style='margin:8px 0;padding:8px 12px;background:#fff8f0;border-left:3px solid #fd7e14;border-radius:4px;'><strong>Risk Implications:</strong> Allows counterparty to exit without cause. Affects revenue quality and committed ARR calculations.</div>
+<table class='customer-table sortable'><thead><tr><th scope='col'>Entity</th><th scope='col'>Severity</th><th scope='col'>Finding</th></tr></thead><tbody>
+<tr><td>Horizon Logistics</td><td><span class='severity-badge sev-p2' style='background:#ffc107'>P2</span></td><td>Termination for convenience with 30-day notice</td></tr>
+</tbody></table>
+</div></div>
+<div class='collapsible-section'><div class='category-header' tabindex='0' role='button' aria-expanded='false'><span class='arrow'>&#9654;</span> Confidentiality &amp; NDA <span class='badge' style='background:#6c757d;color:#fff;'>1</span></div><div class='category-body'>
+<div style='margin:8px 0;padding:8px 12px;background:#f0f4ff;border-left:3px solid #4a90d9;border-radius:4px;'><strong>Market Norm:</strong> Mutual NDA with 2-5 year term is standard. Carve-outs for independently developed information are expected.</div><div style='margin:8px 0;padding:8px 12px;background:#fff8f0;border-left:3px solid #fd7e14;border-radius:4px;'><strong>Risk Implications:</strong> Missing or expired NDAs create information security risk. Broad carve-outs may expose sensitive data.</div>
+<table class='customer-table sortable'><thead><tr><th scope='col'>Entity</th><th scope='col'>Severity</th><th scope='col'>Finding</th></tr></thead><tbody>
+<tr><td>Horizon Logistics</td><td><span class='severity-badge sev-p2' style='background:#ffc107'>P2</span></td><td>Below-market pricing with no escalation clause</td></tr>
+</tbody></table>
+</div></div>
+<div class='collapsible-section'><div class='category-header' tabindex='0' role='button' aria-expanded='false'><span class='arrow'>&#9654;</span> Liability Cap <span class='badge' style='background:#6c757d;color:#fff;'>1</span></div><div class='category-body'>
+<div style='margin:8px 0;padding:8px 12px;background:#f0f4ff;border-left:3px solid #4a90d9;border-radius:4px;'><strong>Market Norm:</strong> Cap at 12-24 months of fees paid is standard. Mutual caps are preferred.</div><div style='margin:8px 0;padding:8px 12px;background:#fff8f0;border-left:3px solid #fd7e14;border-radius:4px;'><strong>Risk Implications:</strong> Caps limit financial exposure. Asymmetric caps or missing carve-outs for IP breaches increase risk.</div>
+<table class='customer-table sortable'><thead><tr><th scope='col'>Entity</th><th scope='col'>Severity</th><th scope='col'>Finding</th></tr></thead><tbody>
+<tr><td>Horizon Logistics</td><td><span class='severity-badge' style='background:#6c757d'>P3</span></td><td>Standard limitation of liability at 12 months fees</td></tr>
+</tbody></table>
+</div></div>
+<div class='collapsible-section'><div class='category-header' tabindex='0' role='button' aria-expanded='false'><span class='arrow'>&#9654;</span> Data Privacy &amp; DPA <span class='badge' style='background:#6c757d;color:#fff;'>1</span></div><div class='category-body'>
+<div style='margin:8px 0;padding:8px 12px;background:#f0f4ff;border-left:3px solid #4a90d9;border-radius:4px;'><strong>Market Norm:</strong> DPA required for all EU personal data processing. SCCs or adequacy decisions for cross-border transfers.</div><div style='margin:8px 0;padding:8px 12px;background:#fff8f0;border-left:3px solid #fd7e14;border-radius:4px;'><strong>Risk Implications:</strong> Missing or inadequate DPAs create regulatory exposure. Cross-border transfer issues affect operations.</div>
+<table class='customer-table sortable'><thead><tr><th scope='col'>Entity</th><th scope='col'>Severity</th><th scope='col'>Finding</th></tr></thead><tbody>
+<tr><td>Meridian Health</td><td><span class='severity-badge sev-p1' style='background:#fd7e14'>P1</span></td><td>HIPAA BAA with strict breach notification requirements</td></tr>
+</tbody></table>
+</div></div>
+</section>
+<section class='report-section' id='sec-tech-stack'>
+<h2>Technology Stack Assessment</h2>
+<div class='metrics-strip'><div class='metric-card'><div class='value'>1</div><div class='label'>Tech Findings</div></div><div class='metric-card'><div class='value'>1</div><div class='label'>Security Gaps</div></div><div class='metric-card'><div class='value'>0</div><div class='label'>Technical Debt</div></div><div class='metric-card'><div class='value'>0</div><div class='label'>Migration Risks</div></div></div>
+<table class='customer-table sortable'><thead><tr><th scope='col'>Entity</th><th scope='col'>Severity</th><th scope='col'>Finding</th><th scope='col'>Sub-Category</th></tr></thead><tbody>
+<tr><td>Pinnacle Analytics</td><td><span class='severity-badge sev-p2' style='background:#ffc107'>P2</span></td><td>No SOC 2 Type II certification requirement</td><td>Security Posture</td></tr>
+</tbody></table>
+</section>
+<section class='report-section' id='sec-xref'>
+<h2>Data Reconciliation</h2>
+<div class='metrics-strip'><div class='metric-card'><div class='value'>5</div><div class='label'>Data Points</div></div><div class='metric-card'><div class='value' style='color:#28a745'>4</div><div class='label'>Matches</div></div><div class='metric-card'><div class='value' style='color:#dc3545'>1</div><div class='label'>Mismatches</div></div><div class='metric-card'><div class='value'>80%</div><div class='label'>Match Rate</div></div></div>
+<table class='sortable'><thead><tr><th scope='col'>Entity</th><th scope='col'>Field</th><th scope='col'>Contract Value</th><th scope='col'>Reference Value</th><th scope='col'>Match</th></tr></thead><tbody>
+<tr class='xref-match'><td>Horizon Logistics</td><td>Annual Revenue</td><td>$510,000</td><td>$510,000</td><td>Yes</td></tr>
+<tr class='xref-match'><td>Meridian Health</td><td>Annual Revenue</td><td>$340,000</td><td>$340,000</td><td>Yes</td></tr>
+<tr class='xref-match'><td>Novabridge Software</td><td>Annual Revenue</td><td>$2,400,000</td><td>$2,400,000</td><td>Yes</td></tr>
+<tr class='xref-mismatch'><td>Novabridge Software</td><td>Contract End Date</td><td>2026-12-01</td><td>2026-11-30</td><td>No</td></tr>
+<tr class='xref-match'><td>Pinnacle Analytics</td><td>Annual Revenue</td><td>$1,800,000</td><td>$1,800,000</td><td>Yes</td></tr>
+</tbody></table>
+</section>
+<section class='report-section' id='sec-health'>
+<h2>Entity Health Tiers</h2>
+<div class='alert alert-critical'><div class='alert-title'>2 entities require immediate attention</div><div class='alert-body'>Tier 1 (Critical): 2 entities have P0 findings. Tier 2 (High): 1 entities have P1 findings. Tier 3 (Standard): 1 of 4 entities have only lower-severity findings.</div></div>
+<div class='severity-cards'>
+<div class='severity-card' style='background:var(--sev-p0-bg);border:1px solid var(--red)'><div class='sev-count' style='color:var(--red)'>2</div><div class='sev-label'>Tier 1 &mdash; Critical</div></div>
+<div class='severity-card' style='background:var(--sev-p1-bg);border:1px solid var(--orange)'><div class='sev-count' style='color:var(--orange)'>1</div><div class='sev-label'>Tier 2 &mdash; High</div></div>
+<div class='severity-card' style='background:var(--sev-p3-bg);border:1px solid var(--gray)'><div class='sev-count' style='color:var(--gray)'>1</div><div class='sev-label'>Tier 3 &mdash; Standard</div></div>
+<div class='severity-card' style='background:#f0f0ff;border:1px solid var(--blue)'><div class='sev-count' style='color:var(--blue)'>4</div><div class='sev-label'>Total Entities</div></div>
+</div>
+<h3>Tier 1 &mdash; Immediate Attention</h3><ul>
+<li><span class='tier-badge tier-1'>T1</span> Novabridge Software</li>
+<li><span class='tier-badge tier-1'>T1</span> Pinnacle Analytics</li>
+</ul>
+<h3>Tier 2 &mdash; Pre-Close Review</h3><ul>
+<li><span class='tier-badge tier-2'>T2</span> Meridian Health</li>
+</ul>
+</section>
+<section class='report-section' id='sec-recommendations'>
+<h2>Recommendations</h2>
+<div class='rec-card' style='border-left-color:#dc3545'><span class='rec-timeline' style='background:#fff5f5;color:#dc3545'>Immediate</span><div class='rec-title'>Resolve 3 P0 Critical Findings Before Closing</div><div class='rec-desc'>3 critical findings require immediate resolution. These represent potential deal-breakers that must be addressed or mitigated with appropriate deal structure protections.</div></div>
+<div class='rec-card' style='border-left-color:#fd7e14'><span class='rec-timeline' style='background:#fff8f0;color:#fd7e14'>Pre-Close</span><div class='rec-title'>Obtain Assignment Consent from 2 Entities</div><div class='rec-desc'>3 change-of-control findings across 2 entities. 1 require consent — initiate outreach to key customers. Consider escrow holdback for consent-dependent revenue.</div></div>
+<div class='rec-card' style='border-left-color:#fd7e14'><span class='rec-timeline' style='background:#fff8f0;color:#fd7e14'>Pre-Close</span><div class='rec-title'>Negotiate Customer Concentration Protection</div><div class='rec-desc'>HHI concentration index of 2755 indicates high customer concentration. Consider earn-out tied to customer retention (10-30% of consideration) or escrow holdback for 12-24 months.</div></div>
+<div class='rec-card' style='border-left-color:#fd7e14'><span class='rec-timeline' style='background:#fff8f0;color:#fd7e14'>Pre-Close</span><div class='rec-title'>Close 4 Documentation Gaps</div><div class='rec-desc'>4 documentation gaps identified. Request missing documents from the target company. Prioritize gaps affecting P0/P1 findings.</div></div>
+<div class='rec-card' style='border-left-color:#9333ea'><span class='rec-timeline' style='background:#f5f3ff;color:#9333ea'>Valuation</span><div class='rec-title'>Model TfC Revenue Exposure for 1 Entities</div><div class='rec-desc'>Revenue from TfC contracts is non-committed. Model as at-risk ARR in valuation analysis.</div></div>
+<div class='rec-card' style='border-left-color:#28a745'><span class='rec-timeline' style='background:#f0fff4;color:#28a745'>Positive</span><div class='rec-title'>1 Entities Have No Critical/High Findings</div><div class='rec-desc'>1 of 4 entities analyzed have no P0 or P1 findings, indicating a healthy base of low-risk contracts.</div></div>
+</section>
+<section class='report-section' id='sec-integration'>
+<h2>Post-Close Integration Playbook</h2>
+<div class='metrics-strip'><div class='metric-card'><div class='value' style='color:var(--orange)'>74</div><div class='label'>Churn Risk Score</div></div><div class='metric-card'><div class='value' style='color:var(--orange)'>High</div><div class='label'>Churn Risk Level</div></div><div class='metric-card'><div class='value' style='color:var(--orange)'>High</div><div class='label'>Integration Complexity</div></div></div>
+<div class='alert alert-high'><div class='alert-title'>Churn Risk Score: 74/100 (High)</div><div class='alert-body'>Estimated $3.7M ARR at elevated churn risk. Recommend retention-focused integration plan with customer outreach within first 30 days post-close.</div></div>
+<h3>Integration Risk Factors</h3>
+<table class='customer-table sortable'><thead><tr><th scope='col'>Risk Factor</th><th scope='col'>Impact</th><th scope='col'>ARR at Risk</th></tr></thead><tbody>
+<tr><td>Change of Control exposure</td><td>high</td><td>$4.2M</td></tr>
+<tr><td>Termination for Convenience clauses</td><td>high</td><td>$510K</td></tr>
+<tr><td>Customer concentration risk</td><td>medium</td><td>$340K</td></tr>
+</tbody></table>
+<h3>Integration Milestones</h3>
+<h4>Pre-Close</h4>
+<ul>
+<li>Identify 3 contracts requiring consent/notice for CoC</li>
+<li>Assess 1 contracts with TfC risk for retention strategy</li>
+</ul>
+<h4>Day 1</h4>
+<ul>
+<li>Communicate acquisition to key accounts</li>
+<li>Send consent/notice letters for CoC-triggered contracts</li>
+</ul>
+<h4>Day 30-90</h4>
+<ul>
+<li>Complete customer outreach for top revenue accounts</li>
+<li>Implement retention plans for at-risk contracts</li>
+</ul>
+<h4>Day 90-180</h4>
+<ul>
+<li>Monitor churn signals and contract renewals</li>
+<li>Execute pricing/contract harmonization where needed</li>
+</ul>
+</section>
+<section class='report-section' id='sec-gaps'>
+<h2>Missing or Incomplete Data (4 items)</h2>
+<div class='domain-section'><div class='domain-header' tabindex='0' role='button' aria-expanded='true' style='border-left-color: var(--blue)'><h2>Documentation Gaps (4)</h2><span class='arrow open'>&#9654;</span></div><div class='domain-body open'>
+<div class='gap-summary-grid'>
+<div class='metric-card'><div class='label'>By Priority</div>
+<div><span class='severity-badge' style='background:#dc3545'>P0</span> 1</div>
+<div><span class='severity-badge sev-p1' style='background:#fd7e14'>P1</span> 2</div>
+<div><span class='severity-badge sev-p2' style='background:#ffc107'>P2</span> 1</div>
+</div>
+<div class='metric-card'><div class='label'>By Type</div>
+<div><strong>Missing_Doc</strong>: 3</div>
+<div><strong>Stale_Doc</strong>: 1</div>
+</div>
+</div>
+<table class='sortable'><thead><tr><th scope='col'>Entity</th><th scope='col'>Priority</th><th scope='col'>Type</th><th scope='col'>Missing Item</th><th scope='col'>Risk</th><th scope='col'>Why Needed</th><th scope='col'>Request to Company</th><th scope='col'>Agent</th></tr></thead><tbody>
+<tr><td>Novabridge Software</td><td>P0</td><td>Missing_Doc</td><td>SOW IP Assignment Amendment</td><td>IP ownership of custom integrations remains ambiguous</td><td></td><td></td><td></td></tr>
+<tr><td>Novabridge Software</td><td>P1</td><td>Stale_Doc</td><td>Current DPA (last version from 2021)</td><td>Data processing agreement may not comply with current GDPR requirements</td><td></td><td></td><td></td></tr>
+<tr><td>Pinnacle Analytics</td><td>P1</td><td>Missing_Doc</td><td>Data Processing Agreement</td><td>No formal DPA despite processing financial data</td><td></td><td></td><td></td></tr>
+<tr><td>Meridian Health</td><td>P2</td><td>Missing_Doc</td><td>Penetration test report (last available: 2023)</td><td>Security posture unverified for healthcare data handling</td><td></td><td></td><td></td></tr>
+</tbody></table>
+</div></div>
+</section>
+<section id='sec-customers' class='report-section'>
+<h2>Entity Detail</h2>
+<div class='customer-section'>
+<div class='customer-header' tabindex='0' role='button' aria-expanded='false'><span><strong>Horizon Logistics</strong> (3 findings, 0 gaps) <span class='severity-badge' style='background:#ffc107'>P2:2</span> <span class='severity-badge' style='background:#6c757d'>P3:1</span></span><span class='arrow'>&#9654;</span></div>
+<div class='customer-body'>
+<div class='mb-8'>Governance Resolution: <strong style='color:#28a745'>95%</strong></div>
+<h3>Cross-Reference Reconciliation</h3>
+<table class='sortable'><thead><tr><th scope='col'>Field</th><th scope='col'>Source A</th><th scope='col'>Source B</th><th scope='col'>Match</th></tr></thead><tbody>
+<tr class='xref-match'><td>Annual Revenue</td><td>$510,000</td><td>$510,000</td><td>Yes</td></tr>
+</tbody></table>
+<h3>Findings</h3>
+<h4 style='color:#4a90d9'>Legal</h4>
+<div class='finding-card' style='border-left-color:#ffc107' data-severity='P2' data-domain='legal' tabindex='0' role='button' aria-expanded='false'><div class='fc-title'><span class='severity-badge sev-p2' style='background:#ffc107'>P2</span> Termination for convenience with 30-day notice <span class='conf-dot conf-high' title='Confidence: high'></span> <span class='arrow'>&#9654;</span></div><div class='fc-meta'>Source: Horizon Logistics | Agent: legal</div></div>
+<div class='finding-detail' style='border-left-color:#ffc107'>
+<div class='fd-description'>Either party may terminate for convenience with only 30 days written notice. This is unusually short for an enterprise agreement and provides minimal runway to find replacement revenue.</div>
+<div class='fd-badges'><span class='text-small'>Confidence: <strong>high</strong></span></div>
+<div class='citation'><span class='source'>Horizon_Logistics/Services_Agreement.pdf</span> <span class='location'>(Section 8.1, page 5)</span><span class='quote'>&ldquo;Either party may terminate this Agreement for any reason upon thirty (30) days prior written notice to the other party.&rdquo;</span></div>
+</div>
+<div class='finding-card' style='border-left-color:#6c757d' data-severity='P3' data-domain='legal' tabindex='0' role='button' aria-expanded='false'><div class='fc-title'><span class='severity-badge' style='background:#6c757d'>P3</span> Standard limitation of liability at 12 months fees <span class='conf-dot conf-high' title='Confidence: high'></span> <span class='arrow'>&#9654;</span></div><div class='fc-meta'>Source: Horizon Logistics | Agent: legal</div></div>
+<div class='finding-detail' style='border-left-color:#6c757d'>
+<div class='fd-description'>Liability is capped at total fees paid in the 12 months preceding the claim. This is market-standard and does not present unusual risk.</div>
+<div class='fd-badges'><span class='text-small'>Confidence: <strong>high</strong></span></div>
+<div class='citation'><span class='source'>Horizon_Logistics/Services_Agreement.pdf</span> <span class='location'>(Section 10.2, page 6)</span><span class='quote'>&ldquo;In no event shall either party&#x27;s aggregate liability exceed the total fees paid by Customer during the twelve (12) month period preceding the claim giving rise to liability.&rdquo;</span></div>
+</div>
+<h4 style='color:#2d8a4e'>Finance</h4>
+<div class='finding-card' style='border-left-color:#ffc107' data-severity='P2' data-domain='finance' tabindex='0' role='button' aria-expanded='false'><div class='fc-title'><span class='severity-badge sev-p2' style='background:#ffc107'>P2</span> Below-market pricing with no escalation clause <span class='conf-dot conf-medium' title='Confidence: medium'></span> <span class='arrow'>&#9654;</span></div><div class='fc-meta'>Source: Horizon Logistics | Agent: finance</div></div>
+<div class='finding-detail' style='border-left-color:#ffc107'>
+<div class='fd-description'>Horizon&#x27;s per-seat pricing of $85/month is 32% below the standard rate card of $125/month, with no annual escalation clause. The agreement locks in this rate for the full 3-year term.</div>
+<div class='fd-badges'><span class='text-small'>Confidence: <strong>medium</strong></span></div>
+<div class='citation'><span class='source'>Horizon_Logistics/Order_Form_2024.pdf</span> <span class='location'>(Section 2, page 1)</span><span class='quote'>&ldquo;Per-seat license fee: $85.00/month per named user.&rdquo;</span></div>
+</div>
+</div>
+</div>
+<div class='customer-section'>
+<div class='customer-header' tabindex='0' role='button' aria-expanded='false'><span><strong>Meridian Health</strong> (2 findings, 1 gap) <span class='severity-badge' style='background:#fd7e14'>P1:1</span> <span class='severity-badge' style='background:#ffc107'>P2:1</span></span><span class='arrow'>&#9654;</span></div>
+<div class='customer-body'>
+<div class='mb-8'>Governance Resolution: <strong style='color:#ffc107'>88%</strong></div>
+<h3>Cross-Reference Reconciliation</h3>
+<table class='sortable'><thead><tr><th scope='col'>Field</th><th scope='col'>Source A</th><th scope='col'>Source B</th><th scope='col'>Match</th></tr></thead><tbody>
+<tr class='xref-match'><td>Annual Revenue</td><td>$340,000</td><td>$340,000</td><td>Yes</td></tr>
+</tbody></table>
+<h3>Findings</h3>
+<h4 style='color:#4a90d9'>Legal</h4>
+<div class='finding-card' style='border-left-color:#fd7e14' data-severity='P1' data-domain='legal' tabindex='0' role='button' aria-expanded='false'><div class='fc-title'><span class='severity-badge sev-p1' style='background:#fd7e14'>P1</span> HIPAA BAA with strict breach notification requirements <span class='conf-dot conf-high' title='Confidence: high'></span> <span class='arrow'>&#9654;</span></div><div class='fc-meta'>Source: Meridian Health | Agent: legal</div></div>
+<div class='finding-detail' style='border-left-color:#fd7e14'>
+<div class='fd-description'>The Business Associate Agreement requires breach notification within 24 hours (stricter than the HIPAA 60-day requirement). Non-compliance penalties are uncapped and survive termination.</div>
+<div class='fd-badges'><span class='text-small'>Confidence: <strong>high</strong></span></div>
+<div class='citation'><span class='source'>Meridian_Health/BAA_2023.pdf</span> <span class='location'>(Section 4.1, page 2)</span><span class='quote'>&ldquo;Business Associate shall notify Covered Entity of any Breach of Unsecured PHI within twenty-four (24) hours of discovery.&rdquo;</span></div>
+</div>
+<h4 style='color:#d97706'>Product &amp; Tech</h4>
+<div class='finding-card' style='border-left-color:#ffc107' data-severity='P2' data-domain='producttech' tabindex='0' role='button' aria-expanded='false'><div class='fc-title'><span class='severity-badge sev-p2' style='background:#ffc107'>P2</span> Technical integration dependency on legacy API <span class='conf-dot conf-medium' title='Confidence: medium'></span> <span class='arrow'>&#9654;</span></div><div class='fc-meta'>Source: Meridian Health | Agent: product_tech</div></div>
+<div class='finding-detail' style='border-left-color:#ffc107'>
+<div class='fd-description'>Meridian&#x27;s integration relies on the v1 REST API which is scheduled for deprecation in Q3 2026. Migration to v2 requires Meridian&#x27;s development team involvement and has not been scheduled.</div>
+<div class='fd-badges'><span class='text-small'>Confidence: <strong>medium</strong></span></div>
+<div class='citation'><span class='source'>Meridian_Health/Integration_Spec.pdf</span> <span class='location'>(Section 2.1, page 3)</span><span class='quote'>&ldquo;All API calls shall use the Provider REST API v1 endpoint.&rdquo;</span></div>
+</div>
+<h3>Gaps</h3>
+<table class='sortable'><thead><tr><th scope='col'>Priority</th><th scope='col'>Type</th><th scope='col'>Missing Item</th><th scope='col'>Risk</th><th scope='col'>Why Needed</th><th scope='col'>Request to Company</th><th scope='col'>Agent</th></tr></thead><tbody>
+<tr><td>P2</td><td>Missing_Doc</td><td>Penetration test report (last available: 2023)</td><td>Security posture unverified for healthcare data handling</td><td></td><td></td><td></td></tr>
+</tbody></table>
+</div>
+</div>
+<div class='customer-section'>
+<div class='customer-header' tabindex='0' role='button' aria-expanded='false'><span><strong>Novabridge Software</strong> (5 findings, 2 gaps) <span class='severity-badge' style='background:#dc3545'>P0:2</span> <span class='severity-badge' style='background:#fd7e14'>P1:2</span> <span class='severity-badge' style='background:#ffc107'>P2:1</span></span><span class='arrow'>&#9654;</span></div>
+<div class='customer-body'>
+<div class='mb-8'>Governance Resolution: <strong style='color:#ffc107'>78%</strong></div>
+<h3>Cross-Reference Reconciliation</h3>
+<table class='sortable'><thead><tr><th scope='col'>Field</th><th scope='col'>Source A</th><th scope='col'>Source B</th><th scope='col'>Match</th></tr></thead><tbody>
+<tr class='xref-match'><td>Annual Revenue</td><td>$2,400,000</td><td>$2,400,000</td><td>Yes</td></tr>
+<tr class='xref-mismatch'><td>Contract End Date</td><td>2026-12-01</td><td>2026-11-30</td><td>No</td></tr>
+</tbody></table>
+<h3>Findings</h3>
+<h4 style='color:#4a90d9'>Legal</h4>
+<div class='finding-card' style='border-left-color:#dc3545' data-severity='P0' data-domain='legal' tabindex='0' role='button' aria-expanded='false'><div class='fc-title'><span class='severity-badge' style='background:#dc3545'>P0</span> Change of control triggers immediate termination <span class='conf-dot conf-high' title='Confidence: high'></span> <span class='arrow'>&#9654;</span></div><div class='fc-meta'>Source: Novabridge Software | Agent: legal</div></div>
+<div class='finding-detail' style='border-left-color:#dc3545'>
+<div class='fd-description'>Section 14.2 of the MSA grants NovaBridge the right to terminate the agreement immediately upon any change of control of the Provider, with no cure period. This affects $2.4M in annual recurring revenue and could result in complete revenue loss from this customer post-close.</div>
+<div class='fd-badges'><span class='text-small'>Confidence: <strong>high</strong></span></div>
+<div class='citation'><span class='source'>NovaBridge/MSA_2023.pdf</span> <span class='location'>(Section 14.2, page 8)</span><span class='quote'>&ldquo;Upon any Change of Control of Provider, Customer may terminate this Agreement immediately upon written notice without penalty.&rdquo;</span></div>
+</div>
+<div class='finding-card' style='border-left-color:#dc3545' data-severity='P0' data-domain='legal' tabindex='0' role='button' aria-expanded='false'><div class='fc-title'><span class='severity-badge' style='background:#dc3545'>P0</span> IP assignment clause missing for custom integrations <span class='conf-dot conf-high' title='Confidence: high'></span> <span class='arrow'>&#9654;</span></div><div class='fc-meta'>Source: Novabridge Software | Agent: legal</div></div>
+<div class='finding-detail' style='border-left-color:#dc3545'>
+<div class='fd-description'>Three custom integration modules were developed for NovaBridge under SOW-2024-003 but the SOW lacks an IP assignment clause. Work product ownership defaults to the developer under applicable law, creating ambiguity about who owns the integration code post-acquisition.</div>
+<div class='fd-badges'><span class='text-small'>Confidence: <strong>high</strong></span></div>
+<div class='citation'><span class='source'>NovaBridge/SOW_2024_003.pdf</span> <span class='location'>(Section 4, page 2)</span><span class='quote'>&ldquo;Provider shall deliver the Custom Integration Modules described in Exhibit A within 90 days of the Effective Date.&rdquo;</span></div>
+</div>
+<h4 style='color:#2d8a4e'>Finance</h4>
+<div class='finding-card' style='border-left-color:#fd7e14' data-severity='P1' data-domain='finance' tabindex='0' role='button' aria-expanded='false'><div class='fc-title'><span class='severity-badge sev-p1' style='background:#fd7e14'>P1</span> Revenue recognition timing mismatch <span class='conf-dot conf-high' title='Confidence: high'></span> <span class='arrow'>&#9654;</span></div><div class='fc-meta'>Source: Novabridge Software | Agent: finance</div></div>
+<div class='finding-detail' style='border-left-color:#fd7e14'>
+<div class='fd-description'>Contract specifies quarterly billing in advance, but financial records show monthly revenue recognition. The $600K quarterly prepayment is recognized as $200K/month, which is appropriate under ASC 606, but the deferred revenue balance of $400K at any given time represents a liability that must be carried through the acquisition.</div>
+<div class='fd-badges'><span class='text-small'>Confidence: <strong>high</strong></span></div>
+<div class='citation'><span class='source'>NovaBridge/Order_Form_2024.pdf</span> <span class='location'>(Section 3, page 1)</span><span class='quote'>&ldquo;Annual License Fee: $2,400,000, payable quarterly in advance.&rdquo;</span></div>
+</div>
+<h4 style='color:#7c3aed'>Commercial</h4>
+<div class='finding-card' style='border-left-color:#fd7e14' data-severity='P1' data-domain='commercial' tabindex='0' role='button' aria-expanded='false'><div class='fc-title'><span class='severity-badge sev-p1' style='background:#fd7e14'>P1</span> Auto-renewal with 120-day notice period <span class='conf-dot conf-high' title='Confidence: high'></span> <span class='arrow'>&#9654;</span></div><div class='fc-meta'>Source: Novabridge Software | Agent: commercial</div></div>
+<div class='finding-detail' style='border-left-color:#fd7e14'>
+<div class='fd-description'>Agreement auto-renews for successive 1-year terms unless either party provides 120 days written notice. The next renewal window closes on August 1, 2026, creating a narrow window for renegotiation post-close.</div>
+<div class='fd-badges'><span class='text-small'>Confidence: <strong>high</strong></span></div>
+<div class='citation'><span class='source'>NovaBridge/MSA_2023.pdf</span> <span class='location'>(Section 2.2, page 1)</span><span class='quote'>&ldquo;This Agreement shall automatically renew for additional one (1) year periods unless either party provides written notice of non-renewal at least one hundred twenty (120) days prior to the end of the then-current term.&rdquo;</span></div>
+</div>
+<h4 style='color:#d97706'>Product &amp; Tech</h4>
+<div class='finding-card' style='border-left-color:#ffc107' data-severity='P2' data-domain='producttech' tabindex='0' role='button' aria-expanded='false'><div class='fc-title'><span class='severity-badge sev-p2' style='background:#ffc107'>P2</span> SLA uptime guarantee at 99.95% with service credits <span class='conf-dot conf-medium' title='Confidence: medium'></span> <span class='arrow'>&#9654;</span></div><div class='fc-meta'>Source: Novabridge Software | Agent: product_tech</div></div>
+<div class='finding-detail' style='border-left-color:#ffc107'>
+<div class='fd-description'>SLA requires 99.95% monthly uptime with graduated service credits: 10% credit for 99.9-99.95%, 25% for 99.0-99.9%, and 50% for below 99.0%. Historical uptime has been 99.97% over the past 12 months.</div>
+<div class='fd-badges'><span class='text-small'>Confidence: <strong>medium</strong></span></div>
+<div class='citation'><span class='source'>NovaBridge/SLA_Addendum.pdf</span> <span class='location'>(Exhibit B, page 1)</span><span class='quote'>&ldquo;Provider guarantees 99.95% monthly uptime for the Platform.&rdquo;</span></div>
+</div>
+<h3>Gaps</h3>
+<table class='sortable'><thead><tr><th scope='col'>Priority</th><th scope='col'>Type</th><th scope='col'>Missing Item</th><th scope='col'>Risk</th><th scope='col'>Why Needed</th><th scope='col'>Request to Company</th><th scope='col'>Agent</th></tr></thead><tbody>
+<tr><td>P0</td><td>Missing_Doc</td><td>SOW IP Assignment Amendment</td><td>IP ownership of custom integrations remains ambiguous</td><td></td><td></td><td></td></tr>
+<tr><td>P1</td><td>Stale_Doc</td><td>Current DPA (last version from 2021)</td><td>Data processing agreement may not comply with current GDPR requirements</td><td></td><td></td><td></td></tr>
+</tbody></table>
+</div>
+</div>
+<div class='customer-section'>
+<div class='customer-header' tabindex='0' role='button' aria-expanded='false'><span><strong>Pinnacle Analytics</strong> (4 findings, 1 gap) <span class='severity-badge' style='background:#dc3545'>P0:1</span> <span class='severity-badge' style='background:#fd7e14'>P1:2</span> <span class='severity-badge' style='background:#ffc107'>P2:1</span></span><span class='arrow'>&#9654;</span></div>
+<div class='customer-body'>
+<div class='mb-8'>Governance Resolution: <strong style='color:#28a745'>91%</strong></div>
+<h3>Cross-Reference Reconciliation</h3>
+<table class='sortable'><thead><tr><th scope='col'>Field</th><th scope='col'>Source A</th><th scope='col'>Source B</th><th scope='col'>Match</th></tr></thead><tbody>
+<tr class='xref-match'><td>Annual Revenue</td><td>$1,800,000</td><td>$1,800,000</td><td>Yes</td></tr>
+</tbody></table>
+<h3>Findings</h3>
+<h4 style='color:#4a90d9'>Legal</h4>
+<div class='finding-card' style='border-left-color:#fd7e14' data-severity='P1' data-domain='legal' tabindex='0' role='button' aria-expanded='false'><div class='fc-title'><span class='severity-badge sev-p1' style='background:#fd7e14'>P1</span> Assignment requires prior written consent <span class='conf-dot conf-high' title='Confidence: high'></span> <span class='arrow'>&#9654;</span></div><div class='fc-meta'>Source: Pinnacle Analytics | Agent: legal</div></div>
+<div class='finding-detail' style='border-left-color:#fd7e14'>
+<div class='fd-description'>Section 15.1 requires Pinnacle&#x27;s prior written consent for any assignment of the agreement, including by operation of law or merger. Consent is not to be unreasonably withheld but adds friction to close.</div>
+<div class='fd-badges'><span class='text-small'>Confidence: <strong>high</strong></span></div>
+<div class='citation'><span class='source'>Pinnacle_Analytics/MSA_2022.pdf</span> <span class='location'>(Section 15.1, page 9)</span><span class='quote'>&ldquo;Neither party may assign this Agreement without the prior written consent of the other party, which consent shall not be unreasonably withheld. Any attempted assignment without such consent shall be void.&rdquo;</span></div>
+</div>
+<h4 style='color:#2d8a4e'>Finance</h4>
+<div class='finding-card' style='border-left-color:#dc3545' data-severity='P0' data-domain='finance' tabindex='0' role='button' aria-expanded='false'><div class='fc-title'><span class='severity-badge' style='background:#dc3545'>P0</span> Customer concentration risk exceeds 35% of total ARR <span class='conf-dot conf-high' title='Confidence: high'></span> <span class='arrow'>&#9654;</span></div><div class='fc-meta'>Source: Pinnacle Analytics | Agent: finance</div></div>
+<div class='finding-detail' style='border-left-color:#dc3545'>
+<div class='fd-description'>Pinnacle Analytics represents $1.8M of $4.9M total ARR (36.7%). Loss of this single customer would materially impact the business. Combined with the CoC termination right, this creates compounding risk.</div>
+<div class='fd-badges'><span class='text-small'>Confidence: <strong>high</strong></span></div>
+<div class='citation'><span class='source'>_reference/Customer_Revenue_2024.xlsx</span> <span class='location'>(Sheet 1, Row 3)</span><span class='quote'>&ldquo;Pinnacle Analytics Group | ARR: $1,800,000 | Status: Active&rdquo;</span></div>
+</div>
+<h4 style='color:#7c3aed'>Commercial</h4>
+<div class='finding-card' style='border-left-color:#fd7e14' data-severity='P1' data-domain='commercial' tabindex='0' role='button' aria-expanded='false'><div class='fc-title'><span class='severity-badge sev-p1' style='background:#fd7e14'>P1</span> MFN pricing clause limits future price increases <span class='conf-dot conf-high' title='Confidence: high'></span> <span class='arrow'>&#9654;</span></div><div class='fc-meta'>Source: Pinnacle Analytics | Agent: commercial</div></div>
+<div class='finding-detail' style='border-left-color:#fd7e14'>
+<div class='fd-description'>Section 7.3 contains a most-favored-nation clause requiring that Pinnacle receives pricing no less favorable than any similarly situated customer. This constrains post-acquisition pricing optimization.</div>
+<div class='fd-badges'><span class='text-small'>Confidence: <strong>high</strong></span></div>
+<div class='citation'><span class='source'>Pinnacle_Analytics/MSA_2022.pdf</span> <span class='location'>(Section 7.3, page 4)</span><span class='quote'>&ldquo;Provider represents that the fees charged to Customer are no less favorable than those charged to any other customer of comparable size and usage volume.&rdquo;</span></div>
+</div>
+<h4 style='color:#d97706'>Product &amp; Tech</h4>
+<div class='finding-card' style='border-left-color:#ffc107' data-severity='P2' data-domain='producttech' tabindex='0' role='button' aria-expanded='false'><div class='fc-title'><span class='severity-badge sev-p2' style='background:#ffc107'>P2</span> No SOC 2 Type II certification requirement <span class='conf-dot conf-medium' title='Confidence: medium'></span> <span class='arrow'>&#9654;</span></div><div class='fc-meta'>Source: Pinnacle Analytics | Agent: product_tech</div></div>
+<div class='finding-detail' style='border-left-color:#ffc107'>
+<div class='fd-description'>Despite handling sensitive financial data, the agreement does not require SOC 2 Type II certification from the Provider. Pinnacle may request this as a condition of consent to assignment.</div>
+<div class='fd-badges'><span class='text-small'>Confidence: <strong>medium</strong></span></div>
+</div>
+<h3>Gaps</h3>
+<table class='sortable'><thead><tr><th scope='col'>Priority</th><th scope='col'>Type</th><th scope='col'>Missing Item</th><th scope='col'>Risk</th><th scope='col'>Why Needed</th><th scope='col'>Request to Company</th><th scope='col'>Agent</th></tr></thead><tbody>
+<tr><td>P1</td><td>Missing_Doc</td><td>Data Processing Agreement</td><td>No formal DPA despite processing financial data</td><td></td><td></td><td></td></tr>
+</tbody></table>
+</div>
+</div>
+</section>
+<section class='report-section' id='sec-methodology'>
+<h2>Methodology &amp; Limitations</h2>
+<h3>Analysis Process</h3>
+<p>This due diligence report was generated through automated analysis of the target company's data room documents using specialized AI agents. The process follows a deterministic 35-step pipeline with 5 blocking quality gates.</p>
+<div class='metrics-strip'><div class='metric-card'><div class='value'>4</div><div class='label'>Entities Analyzed</div></div><div class='metric-card'><div class='value'>14</div><div class='label'>Findings Extracted</div></div><div class='metric-card'><div class='value'>4</div><div class='label'>Gaps Identified</div></div><div class='metric-card'><div class='value'>5</div><div class='label'>Data Points Reconciled</div></div></div>
+<h3>Agent Coverage</h3>
+<table class='sortable'><thead><tr><th scope='col'>Domain</th><th scope='col'>Findings</th><th scope='col'>Risk Level</th></tr></thead><tbody>
+<tr><td>Legal</td><td>6</td><td>High</td></tr>
+<tr><td>Finance</td><td>3</td><td>High</td></tr>
+<tr><td>Commercial</td><td>2</td><td>Medium</td></tr>
+<tr><td>Product &amp; Tech</td><td>3</td><td>Low</td></tr>
+</tbody></table>
+<h3>Data Quality</h3>
+<ul>
+<li>Cross-reference match rate: <strong>80%</strong> (4 matches, 1 mismatches of 5 data points)</li>
+<li>Average governance resolution: <strong>88%</strong></li>
+<li>Entities with incomplete governance: <strong>4</strong></li>
+</ul>
+<h3>Known Limitations</h3>
+<ul><li>Analysis is limited to documents provided in the data room. Documents not included may contain material information.</li><li>Financial figures extracted from contract text are best-effort and may not reflect current values.</li><li>Unreadable or corrupted documents are flagged as gaps but cannot be analyzed.</li><li>AI-generated findings should be verified by legal and financial advisors before making investment decisions.</li><li>Cross-reference reconciliation depends on data availability in both contract documents and reference sources.</li></ul>
+</section>
+<section class='report-section' id='sec-governance'>
+<h2>Governance Resolution</h2>
+<div class='gov-bar-container'><span class='gov-label'>Novabridge Software</span><div style='flex:1;background:#e9ecef;border-radius:4px;height:20px'><div class='gov-bar' style='width:78%;background:#ffc107'></div></div><span class='gov-pct' style='color:#ffc107'>78%</span></div>
+<div class='gov-bar-container'><span class='gov-label'>Meridian Health</span><div style='flex:1;background:#e9ecef;border-radius:4px;height:20px'><div class='gov-bar' style='width:88%;background:#ffc107'></div></div><span class='gov-pct' style='color:#ffc107'>88%</span></div>
+<div class='gov-bar-container'><span class='gov-label'>Pinnacle Analytics</span><div style='flex:1;background:#e9ecef;border-radius:4px;height:20px'><div class='gov-bar' style='width:91%;background:#28a745'></div></div><span class='gov-pct' style='color:#28a745'>91%</span></div>
+<div class='gov-bar-container'><span class='gov-label'>Horizon Logistics</span><div style='flex:1;background:#e9ecef;border-radius:4px;height:20px'><div class='gov-bar' style='width:95%;background:#28a745'></div></div><span class='gov-pct' style='color:#28a745'>95%</span></div>
+</section>
+</div>
+</div>
+<script>
+(function() {
+    'use strict';
+
+    // --- Toggle collapsible sections (click + keyboard) ---
+    function toggleSection(header) {
+        var body = header.nextElementSibling;
+        if (!body) return;
+        var isOpen = body.classList.toggle('open');
+        var arrow = header.querySelector('.arrow');
+        if (arrow) arrow.classList.toggle('open');
+        header.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    }
+    function setupToggles(headerSel, bodySel) {
+        document.querySelectorAll(headerSel).forEach(function(header) {
+            header.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') return;
+                toggleSection(this);
+            });
+            header.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggleSection(this);
+                }
+            });
+        });
+    }
+    setupToggles('.customer-header', '.customer-body');
+    setupToggles('.domain-header', '.domain-body');
+    setupToggles('.category-header', '.category-body');
+
+    // --- Finding card expand (click + keyboard) ---
+    function toggleFinding(card) {
+        var detail = card.nextElementSibling;
+        if (detail && detail.classList.contains('finding-detail')) {
+            var isOpen = detail.classList.toggle('open');
+            var arrow = card.querySelector('.arrow');
+            if (arrow) arrow.classList.toggle('open');
+            card.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        }
+    }
+    document.querySelectorAll('.finding-card').forEach(function(card) {
+        card.addEventListener('click', function() { toggleFinding(this); });
+        card.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                toggleFinding(this);
+            }
+        });
+    });
+
+    // --- Sortable tables ---
+    document.querySelectorAll('table.sortable th').forEach(function(th) {
+        th.addEventListener('click', function() {
+            var table = this.closest('table');
+            var tbody = table.querySelector('tbody');
+            if (!tbody) return;
+            var rows = Array.from(tbody.querySelectorAll('tr'));
+            var col = Array.from(this.parentNode.children).indexOf(this);
+            var asc = this.dataset.sort !== 'asc';
+            rows.sort(function(a, b) {
+                var va = (a.children[col] || {}).textContent || '';
+                var vb = (b.children[col] || {}).textContent || '';
+                va = va.trim(); vb = vb.trim();
+                var na = parseFloat(va), nb = parseFloat(vb);
+                if (!isNaN(na) && !isNaN(nb)) return asc ? na - nb : nb - na;
+                return asc ? va.localeCompare(vb) : vb.localeCompare(va);
+            });
+            rows.forEach(function(row) { tbody.appendChild(row); });
+            this.dataset.sort = asc ? 'asc' : 'desc';
+        });
+    });
+
+    // --- Sidebar scroll tracking (A1) ---
+    var sections = document.querySelectorAll('[id^="sec-"]');
+    var sidebarLinks = document.querySelectorAll('.sidebar a[href^="#"]');
+    if (sections.length && sidebarLinks.length) {
+        window.addEventListener('scroll', function() {
+            var scrollY = window.scrollY + 100;
+            var activeId = '';
+            sections.forEach(function(sec) {
+                if (sec.offsetTop <= scrollY) {
+                    activeId = sec.id;
+                }
+            });
+            sidebarLinks.forEach(function(l) {
+                l.classList.toggle('active', l.getAttribute('href') === '#' + activeId);
+            });
+        });
+    }
+
+    // --- Issue #108: Presentation mode toggle ---
+    var presBtn = document.getElementById('btn-presentation');
+    if (presBtn) {
+        presBtn.addEventListener('click', function() {
+            document.body.classList.toggle('presentation-mode');
+            var active = document.body.classList.contains('presentation-mode');
+            this.textContent = active ? '\u25C0 Exit' : '\u25B6 Present';
+            this.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+    }
+})();
+</script>
+</body>
+</html>

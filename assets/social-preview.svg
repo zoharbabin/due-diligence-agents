@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f172a"/>
+      <stop offset="100%" style="stop-color:#1e293b"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#3b82f6"/>
+      <stop offset="100%" style="stop-color:#8b5cf6"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="640" fill="url(#bg)"/>
+
+  <!-- Subtle grid pattern -->
+  <g opacity="0.03">
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="white" stroke-width="1"/>
+    </pattern>
+    <rect width="1280" height="640" fill="url(#grid)"/>
+  </g>
+
+  <!-- Accent line at top -->
+  <rect x="0" y="0" width="1280" height="4" fill="url(#accent)"/>
+
+  <!-- Title -->
+  <text x="80" y="160" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="56" font-weight="700" fill="white">Due Diligence Agents</text>
+
+  <!-- Tagline -->
+  <text x="80" y="220" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="26" fill="#94a3b8">Find what gets buried in the data room</text>
+
+  <!-- Description -->
+  <text x="80" y="280" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="20" fill="#64748b">Open-source AI-powered M&amp;A due diligence across</text>
+  <text x="80" y="310" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="20" fill="#64748b">legal, financial, commercial, and technical domains</text>
+
+  <!-- Stats boxes -->
+  <g transform="translate(80, 370)">
+    <!-- Box 1: 8 Agents -->
+    <rect x="0" y="0" width="200" height="100" rx="12" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+    <text x="100" y="42" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="36" font-weight="700" fill="#3b82f6">8</text>
+    <text x="100" y="72" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="16" fill="#94a3b8">AI Agents</text>
+
+    <!-- Box 2: 35 Steps -->
+    <rect x="230" y="0" width="200" height="100" rx="12" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+    <text x="330" y="42" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="36" font-weight="700" fill="#8b5cf6">35</text>
+    <text x="330" y="72" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="16" fill="#94a3b8">Pipeline Steps</text>
+
+    <!-- Box 3: 5 Gates -->
+    <rect x="460" y="0" width="200" height="100" rx="12" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+    <text x="560" y="42" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="36" font-weight="700" fill="#10b981">5</text>
+    <text x="560" y="72" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="16" fill="#94a3b8">Quality Gates</text>
+
+    <!-- Box 4: 4 Domains -->
+    <rect x="690" y="0" width="200" height="100" rx="12" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+    <text x="790" y="42" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="36" font-weight="700" fill="#f59e0b">4</text>
+    <text x="790" y="72" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="16" fill="#94a3b8">Domains</text>
+  </g>
+
+  <!-- Install command -->
+  <rect x="80" y="510" width="520" height="50" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+  <text x="100" y="542" font-family="'SF Mono', 'Fira Code', 'Consolas', monospace" font-size="18" fill="#94a3b8">$</text>
+  <text x="120" y="542" font-family="'SF Mono', 'Fira Code', 'Consolas', monospace" font-size="18" fill="#e2e8f0">pip install dd-agents[pdf]</text>
+
+  <!-- Right side: architecture mini-diagram -->
+  <g transform="translate(940, 130)">
+    <!-- Data Room -->
+    <rect x="40" y="0" width="180" height="36" rx="6" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+    <text x="130" y="24" text-anchor="middle" font-family="system-ui, sans-serif" font-size="13" fill="#94a3b8">Data Room</text>
+
+    <!-- Arrow down -->
+    <line x1="130" y1="36" x2="130" y2="60" stroke="#334155" stroke-width="1.5"/>
+    <polygon points="125,56 135,56 130,64" fill="#334155"/>
+
+    <!-- Orchestrator -->
+    <rect x="20" y="64" width="220" height="36" rx="6" fill="#1e3a5f" stroke="#3b82f6" stroke-width="1"/>
+    <text x="130" y="88" text-anchor="middle" font-family="system-ui, sans-serif" font-size="13" font-weight="600" fill="#93c5fd">Orchestrator</text>
+
+    <!-- Arrow down -->
+    <line x1="130" y1="100" x2="130" y2="120" stroke="#334155" stroke-width="1.5"/>
+
+    <!-- 4 Agent boxes -->
+    <rect x="0" y="124" width="56" height="44" rx="4" fill="#1e293b" stroke="#3b82f6" stroke-width="1"/>
+    <text x="28" y="142" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#93c5fd">Legal</text>
+    <text x="28" y="156" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#64748b">Agent</text>
+
+    <rect x="64" y="124" width="56" height="44" rx="4" fill="#1e293b" stroke="#8b5cf6" stroke-width="1"/>
+    <text x="92" y="142" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#c4b5fd">Finance</text>
+    <text x="92" y="156" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#64748b">Agent</text>
+
+    <rect x="128" y="124" width="56" height="44" rx="4" fill="#1e293b" stroke="#10b981" stroke-width="1"/>
+    <text x="156" y="142" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#6ee7b7">Comm.</text>
+    <text x="156" y="156" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#64748b">Agent</text>
+
+    <rect x="192" y="124" width="56" height="44" rx="4" fill="#1e293b" stroke="#f59e0b" stroke-width="1"/>
+    <text x="220" y="142" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#fcd34d">Tech</text>
+    <text x="220" y="156" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#64748b">Agent</text>
+
+    <!-- Arrow down -->
+    <line x1="130" y1="168" x2="130" y2="192" stroke="#334155" stroke-width="1.5"/>
+    <polygon points="125,188 135,188 130,196" fill="#334155"/>
+
+    <!-- Merge & Audit -->
+    <rect x="20" y="196" width="220" height="36" rx="6" fill="#1e293b" stroke="#10b981" stroke-width="1"/>
+    <text x="130" y="220" text-anchor="middle" font-family="system-ui, sans-serif" font-size="13" fill="#6ee7b7">Merge &amp; QA Audit</text>
+
+    <!-- Arrow down -->
+    <line x1="130" y1="232" x2="130" y2="256" stroke="#334155" stroke-width="1.5"/>
+    <polygon points="125,252 135,252 130,260" fill="#334155"/>
+
+    <!-- Output -->
+    <rect x="20" y="260" width="220" height="36" rx="6" fill="#1e293b" stroke="#f59e0b" stroke-width="1"/>
+    <text x="130" y="284" text-anchor="middle" font-family="system-ui, sans-serif" font-size="13" fill="#fcd34d">HTML + Excel + JSON</text>
+  </g>
+
+  <!-- Bottom: badges area -->
+  <text x="80" y="600" font-family="system-ui, sans-serif" font-size="14" fill="#475569">Python 3.12+</text>
+  <text x="200" y="600" font-family="system-ui, sans-serif" font-size="14" fill="#475569">Apache 2.0</text>
+  <text x="330" y="600" font-family="system-ui, sans-serif" font-size="14" fill="#475569">3,000+ tests</text>
+  <text x="470" y="600" font-family="system-ui, sans-serif" font-size="14" fill="#475569">mypy strict</text>
+  <text x="600" y="600" font-family="system-ui, sans-serif" font-size="14" fill="#475569">Built on Claude</text>
+</svg>
