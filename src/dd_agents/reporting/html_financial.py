@@ -107,22 +107,29 @@ class FinancialImpactRenderer(SectionRenderer):
                 continue
             amount = cat_data["amount"]
             contracts = cat_data.get("contracts", 0)
-            pct = amount / total * 100
-            offset_pct = (total - cumulative - amount) / total * 100
+            deduction_pct = min(amount / total * 100, 100.0)
+            remaining_pct = max((total - cumulative - amount) / total * 100, 0.0)
             cumulative += amount
             label = category_labels.get(cat_key, cat_key.replace("_", " ").title())
+            amount_label = f"-{_fmt_currency(amount)} ({contracts} entities)"
 
-            # Clamp so bar stays within container (0 <= margin-left, margin-left + width <= 100%)
-            capped_offset = max(0.0, min(offset_pct, 100.0 - pct))
-            narrow = "data-narrow" if pct < 25 else ""
+            # Show a stacked bar: faded "remaining" on left + pink "deduction" on right.
+            # If the deduction is wide enough, label goes inside; otherwise outside.
+            if deduction_pct >= 25:
+                inner_label = f"<span>{self.escape(amount_label)}</span>"
+                outer_label = ""
+            else:
+                inner_label = ""
+                outer_label = f"<span class='waterfall-deduction-label'>{self.escape(amount_label)}</span>"
+
             parts.append(
                 "<div class='waterfall-row'>"
                 f"<span class='waterfall-label'>{self.escape(label)}</span>"
                 "<div class='waterfall-bar-container'>"
-                f"<div class='waterfall-bar waterfall-bar--risk' {narrow} "
-                f"style='width:{pct:.1f}%;margin-left:{capped_offset:.1f}%'>"
-                f"<span>-{_fmt_currency(amount)} ({contracts} entities)</span>"
-                "</div></div></div>"
+                f"<div class='waterfall-risk-stack'>"
+                f"<div class='remaining' style='width:{remaining_pct:.1f}%'></div>"
+                f"<div class='deduction' style='width:{deduction_pct:.1f}%'>{inner_label}</div>"
+                f"</div></div>{outer_label}</div>"
             )
 
         # Risk-adjusted bar

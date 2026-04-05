@@ -689,16 +689,20 @@ table.sortable th::after { content: ' \\2195'; color: #aaa; font-size: 0.8em; }
 .waterfall-label { width: 220px; flex-shrink: 0; font-size: 0.85em; padding-right: 12px;
                    text-align: right; }
 .waterfall-bar-container { flex: 1; height: 32px; position: relative;
-                           background: var(--bg-light, #f8f9fa); border-radius: 4px; }
-.waterfall-bar { height: 100%; border-radius: 4px; display: flex; align-items: center;
-                 padding: 0 8px; font-size: 0.8em; color: #fff; white-space: nowrap;
-                 overflow: visible; position: absolute; top: 0; }
-.waterfall-bar--risk span { color: #fff; text-shadow: none; }
-.waterfall-bar--risk[data-narrow] span { color: var(--severity-p1, #d63384);
-                 position: relative; left: calc(100% + 8px); }
-.waterfall-bar--total { background: var(--navy, #1a365d); }
-.waterfall-bar--risk { background: var(--severity-p1, #d63384); }
-.waterfall-bar--adjusted { background: var(--severity-p3, #198754); }
+                           background: var(--bg-light, #f8f9fa); border-radius: 4px;
+                           overflow: hidden; }
+.waterfall-bar { height: 100%; display: flex; align-items: center;
+                 padding: 0 8px; font-size: 0.8em; color: #fff; white-space: nowrap; }
+.waterfall-bar--total { background: var(--navy, #1a365d); border-radius: 4px; }
+.waterfall-bar--adjusted { background: var(--severity-p3, #198754); border-radius: 4px; }
+/* Stacked risk row: dark "remaining" portion + pink "deduction" portion side by side */
+.waterfall-risk-stack { display: flex; width: 100%; height: 100%; }
+.waterfall-risk-stack .remaining { background: var(--navy, #1a365d); opacity: 0.25; }
+.waterfall-risk-stack .deduction { background: var(--severity-p1, #d63384);
+                 display: flex; align-items: center; padding: 0 8px;
+                 font-size: 0.8em; color: #fff; white-space: nowrap; }
+.waterfall-deduction-label { font-size: 0.8em; color: var(--severity-p1, #d63384);
+                 padding-left: 8px; white-space: nowrap; line-height: 32px; }
 .data-note { font-size: 0.8em; color: #6c757d; margin-top: 16px; font-style: italic; }
 
 /* Print mode (E5) */
