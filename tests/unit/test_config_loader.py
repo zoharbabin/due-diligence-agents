@@ -67,7 +67,7 @@ class TestLoadValidConfig:
         path = FIXTURES_DIR / "deal_config_valid.json"
         config = load_deal_config(path)
         assert len(config.key_executives) >= 1
-        assert config.key_executives[0].name == "Sarah Chen"
+        assert config.key_executives[0].name == "Executive A"
 
     def test_judge_config_defaults(self) -> None:
         path = FIXTURES_DIR / "deal_config_valid.json"

@@ -1,7 +1,7 @@
 """PreToolUse hook functions.
 
-Guards that fire before a tool executes. They return (allowed, reason) tuples
-for the simplified function-level API, or flat dicts for the SDK hook API.
+Guards that fire before a tool executes. They return flat dicts with
+``{"decision": "allow"|"block", "reason": "..."}`` for the SDK hook API.
 """
 
 from __future__ import annotations
@@ -83,7 +83,7 @@ def _normalize_whitespace(cmd: str) -> str:
     return re.sub(r"\s+", " ", cmd)
 
 
-def bash_guard(tool_name: str, tool_input: dict[str, Any]) -> tuple[bool, str]:
+def bash_guard(tool_name: str, tool_input: dict[str, Any]) -> dict[str, str]:
     """Block destructive bash commands.
 
     Applies whitespace normalization before checking the blocklist to prevent
@@ -92,17 +92,20 @@ def bash_guard(tool_name: str, tool_input: dict[str, Any]) -> tuple[bool, str]:
     and versioned interpreters.
 
     Returns:
-        (allowed, reason) -- ``True`` if allowed, ``False`` with explanation if blocked.
+        ``{"decision": "allow"|"block", "reason": "..."}``
     """
     if tool_name != "Bash":
-        return True, ""
+        return {"decision": "allow", "reason": ""}
 
     command = tool_input.get("command", "")
     cmd_lower = _normalize_whitespace(command.lower().strip())
 
     for dangerous in BASH_BLOCKLIST:
         if dangerous in cmd_lower:
-            return False, (f"Blocked dangerous command pattern: '{dangerous}' in: {command[:100]}")
+            return {
+                "decision": "block",
+                "reason": f"Blocked dangerous command pattern: '{dangerous}' in: {command[:100]}",
+            }
 
     # Scope-check prefixes: block if path is outside current working directory
     for prefix in SCOPE_CHECKED_PREFIXES:
@@ -111,14 +114,17 @@ def bash_guard(tool_name: str, tool_input: dict[str, Any]) -> tuple[bool, str]:
             parts = cmd_lower.split()
             for part in parts[1:]:
                 if part.startswith("/") or part.startswith(".."):
-                    return False, (f"Blocked: '{prefix.strip()}' with absolute/parent path in: {command[:100]}")
+                    return {
+                        "decision": "block",
+                        "reason": f"Blocked: '{prefix.strip()}' with absolute/parent path in: {command[:100]}",
+                    }
 
     # Regex patterns for shell invocation bypasses
     for pattern in _SHELL_INVOKE_PATTERNS:
         if pattern.search(cmd_lower):
-            return False, (f"Blocked shell/interpreter invocation pattern in: {command[:100]}")
+            return {"decision": "block", "reason": f"Blocked shell/interpreter invocation pattern in: {command[:100]}"}
 
-    return True, ""
+    return {"decision": "allow", "reason": ""}
 
 
 # ---------------------------------------------------------------------------
@@ -130,20 +136,20 @@ def path_guard(
     tool_name: str,
     tool_input: dict[str, Any],
     project_dir: str | Path,
-) -> tuple[bool, str]:
+) -> dict[str, str]:
     """Block Write/Edit operations outside the ``_dd/`` directory.
 
     Only writes under ``{project_dir}/_dd/`` are allowed.
 
     Returns:
-        (allowed, reason)
+        ``{"decision": "allow"|"block", "reason": "..."}``
     """
     if tool_name not in ("Write", "Edit"):
-        return True, ""
+        return {"decision": "allow", "reason": ""}
 
     file_path = tool_input.get("file_path", "")
     if not file_path:
-        return True, ""
+        return {"decision": "allow", "reason": ""}
 
     project_dir = Path(project_dir)
     dd_dir = project_dir / "_dd"
@@ -153,11 +159,15 @@ def path_guard(
     dd_resolved = Path(os.path.realpath(dd_dir))
 
     if resolved == dd_resolved or str(resolved).startswith(str(dd_resolved) + os.sep):
-        return True, ""
+        return {"decision": "allow", "reason": ""}
 
-    return False, (
-        f"Write/Edit blocked: path '{file_path}' is outside the _dd/ directory ({dd_dir}). All writes must target _dd/."
-    )
+    return {
+        "decision": "block",
+        "reason": (
+            f"Write/Edit blocked: path '{file_path}' is outside "
+            f"the _dd/ directory ({dd_dir}). All writes must target _dd/."
+        ),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -171,26 +181,27 @@ def file_size_guard(
     tool_name: str,
     tool_input: dict[str, Any],
     max_bytes: int = DEFAULT_MAX_BYTES,
-) -> tuple[bool, str]:
+) -> dict[str, str]:
     """Warn when a write payload exceeds *max_bytes*.
 
     Returns:
-        (allowed, reason) -- always allowed (warning only), but reason is
-        non-empty when the limit is exceeded.
+        ``{"decision": "allow", "reason": "..."}`` -- always allows (warning only),
+        but reason is non-empty when the limit is exceeded.
     """
     if tool_name not in ("Write", "Edit"):
-        return True, ""
+        return {"decision": "allow", "reason": ""}
 
     content = tool_input.get("content", "")
     content_bytes = len(content.encode("utf-8")) if isinstance(content, str) else 0
 
     if content_bytes > max_bytes:
-        return True, (
-            f"WARNING: Write payload is {content_bytes:,} bytes "
-            f"(limit {max_bytes:,} bytes). Consider splitting the output."
-        )
+        return {
+            "decision": "allow",
+            "reason": f"WARNING: Write payload is {content_bytes:,} bytes "
+            f"(limit {max_bytes:,} bytes). Consider splitting the output.",
+        }
 
-    return True, ""
+    return {"decision": "allow", "reason": ""}
 
 
 # ---------------------------------------------------------------------------

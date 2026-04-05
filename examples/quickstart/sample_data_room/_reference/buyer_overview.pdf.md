@@ -45,10 +45,10 @@ Since 2018, Meridian has completed 7 acquisitions, with an average acquisition m
 
 | Name | Title | Tenure |
 |---|---|---|
-| Jonathan Mercer | CEO & Chairman | Since 2008 (Founder) |
-| Patricia Hollis | CFO | Since 2019 |
-| Diana Frost | VP Corporate Development | Since 2021 |
-| Raj Patel | CTO | Since 2020 |
+| Executive A | CEO & Chairman | Since 2008 (Founder) |
+| Executive B | CFO | Since 2019 |
+| Executive C | VP Corporate Development | Since 2021 |
+| Executive D | CTO | Since 2020 |
 
 ## Proposed Transaction: NovaBridge Solutions
 

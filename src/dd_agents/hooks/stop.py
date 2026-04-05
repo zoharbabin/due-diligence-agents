@@ -1,8 +1,7 @@
 """Stop hook functions.
 
-Checks that fire when an agent signals it wants to stop. They return
-``(can_stop, reason)`` tuples: ``True`` to allow, ``False`` with an
-explanation to force the agent to continue.
+Checks that fire when an agent signals it wants to stop. They return flat
+dicts ``{"decision": "allow"|"block", "reason": "..."}`` for the SDK hook API.
 """
 
 from __future__ import annotations
@@ -17,35 +16,41 @@ from pathlib import Path
 def check_coverage(
     agent_output_dir: str | Path,
     expected_customer_count: int,
-) -> tuple[bool, str]:
+) -> dict[str, str]:
     """Check whether the agent has produced one JSON per expected customer.
 
     Counts ``*.json`` files in *agent_output_dir*, excluding
     ``coverage_manifest.json``.
 
     Returns:
-        (can_stop, reason)
+        ``{"decision": "allow"|"block", "reason": "..."}``
     """
     output_dir = Path(agent_output_dir)
 
     if not output_dir.exists():
-        return False, (
-            f"Output directory does not exist: {output_dir}. Expected {expected_customer_count} customer JSONs."
-        )
+        return {
+            "decision": "block",
+            "reason": (
+                f"Output directory does not exist: {output_dir}. Expected {expected_customer_count} customer JSONs."
+            ),
+        }
 
     customer_jsons = [f for f in output_dir.glob("*.json") if f.name != "coverage_manifest.json"]
     actual_count = len(customer_jsons)
 
     if actual_count < expected_customer_count:
         produced = sorted(f.stem for f in customer_jsons)
-        return False, (
-            f"Only {actual_count}/{expected_customer_count} customer JSONs "
-            f"found. Produced so far: {produced[:10]}"
-            f"{'...' if len(produced) > 10 else ''}. "
-            f"Continue processing remaining customers."
-        )
+        return {
+            "decision": "block",
+            "reason": (
+                f"Only {actual_count}/{expected_customer_count} customer JSONs "
+                f"found. Produced so far: {produced[:10]}"
+                f"{'...' if len(produced) > 10 else ''}. "
+                f"Continue processing remaining customers."
+            ),
+        }
 
-    return True, ""
+    return {"decision": "allow", "reason": ""}
 
 
 # ---------------------------------------------------------------------------
@@ -53,19 +58,22 @@ def check_coverage(
 # ---------------------------------------------------------------------------
 
 
-def check_manifest(agent_output_dir: str | Path) -> tuple[bool, str]:
+def check_manifest(agent_output_dir: str | Path) -> dict[str, str]:
     """Check whether ``coverage_manifest.json`` exists in *agent_output_dir*.
 
     Returns:
-        (can_stop, reason)
+        ``{"decision": "allow"|"block", "reason": "..."}``
     """
     output_dir = Path(agent_output_dir)
     manifest_path = output_dir / "coverage_manifest.json"
 
     if not manifest_path.exists():
-        return False, ("coverage_manifest.json not found. Write the coverage manifest before stopping.")
+        return {
+            "decision": "block",
+            "reason": "coverage_manifest.json not found. Write the coverage manifest before stopping.",
+        }
 
-    return True, ""
+    return {"decision": "allow", "reason": ""}
 
 
 # ---------------------------------------------------------------------------
@@ -73,14 +81,14 @@ def check_manifest(agent_output_dir: str | Path) -> tuple[bool, str]:
 # ---------------------------------------------------------------------------
 
 
-def check_audit_log(agent_output_dir: str | Path) -> tuple[bool, str]:
+def check_audit_log(agent_output_dir: str | Path) -> dict[str, str]:
     """Warn (but do not block) if ``audit_log.jsonl`` is missing.
 
     Looks for the file under a sibling ``audit/{agent_name}/`` directory,
     or directly under *agent_output_dir* as a fallback.
 
     Returns:
-        (can_stop, reason) -- ``can_stop`` is always ``True`` (warning only).
+        ``{"decision": "allow", "reason": "..."}`` -- always allows (warning only).
     """
     output_dir = Path(agent_output_dir)
 
@@ -94,8 +102,11 @@ def check_audit_log(agent_output_dir: str | Path) -> tuple[bool, str]:
         # Also check directly in output_dir
         alt_log = output_dir / "audit_log.jsonl"
         if not alt_log.exists():
-            return True, (
-                f"WARNING: audit_log.jsonl not found at {audit_log} or {alt_log}. Consider writing an audit log."
-            )
+            return {
+                "decision": "allow",
+                "reason": (
+                    f"WARNING: audit_log.jsonl not found at {audit_log} or {alt_log}. Consider writing an audit log."
+                ),
+            }
 
-    return True, ""
+    return {"decision": "allow", "reason": ""}

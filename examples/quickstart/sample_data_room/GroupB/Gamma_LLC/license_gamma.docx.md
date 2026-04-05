@@ -68,5 +68,5 @@ This Agreement shall be governed by the laws of the State of New York.
 
 | Party | Name | Title | Date |
 |---|---|---|---|
-| Gamma Group LLC | Thomas Nakamura | COO | Mar 8, 2025 |
-| NovaBridge Solutions, Inc. | Sarah Chen | CEO | Mar 10, 2025 |
+| Gamma Group LLC | Signatory A | COO | Mar 8, 2025 |
+| NovaBridge Solutions, Inc. | Signatory B | CEO | Mar 10, 2025 |

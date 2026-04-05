@@ -35,5 +35,5 @@ This Agreement shall be governed by and construed in accordance with the laws of
 
 | Party | Name | Title | Date |
 |---|---|---|---|
-| Acme Corporation | Robert Langford | VP Procurement | Jan 15, 2024 |
-| NovaBridge Solutions, Inc. | Sarah Chen | Chief Executive Officer | Jan 12, 2024 |
+| Acme Corporation | Signatory A | VP Procurement | Jan 15, 2024 |
+| NovaBridge Solutions, Inc. | Signatory B | Chief Executive Officer | Jan 12, 2024 |

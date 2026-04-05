@@ -147,7 +147,11 @@ class QueryEngine:
                 options=ClaudeAgentOptions(max_turns=1),
             ):
                 content = getattr(message, "content", None)
-                if content and isinstance(content, str):
+                if content and isinstance(content, list):
+                    for block in content:
+                        if hasattr(block, "text"):
+                            answer_parts.append(block.text)
+                elif content and isinstance(content, str):
                     answer_parts.append(content)
 
             answer = "".join(answer_parts) or "Unable to generate answer."

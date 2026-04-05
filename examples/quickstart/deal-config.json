@@ -68,19 +68,19 @@
   },
   "key_executives": [
     {
-      "name": "Sarah Chen",
+      "name": "Executive A",
       "title": "CEO",
       "company": "NovaBridge Solutions",
       "notes": "Co-founder, in role since 2019"
     },
     {
-      "name": "Marcus Webb",
+      "name": "Executive B",
       "title": "CFO",
       "company": "NovaBridge Solutions",
       "notes": ""
     },
     {
-      "name": "Diana Frost",
+      "name": "Executive C",
       "title": "VP Corporate Development",
       "company": "Meridian Holdings",
       "notes": "Deal lead"

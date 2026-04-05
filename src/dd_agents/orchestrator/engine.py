@@ -37,40 +37,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Custom exceptions
-# ---------------------------------------------------------------------------
-
-
-class BlockingGateError(Exception):
-    """Raised when a blocking validation gate fails.  Pipeline halts."""
-
-
-class RecoverableError(Exception):
-    """Raised for errors that may be recovered from automatically."""
-
-
-class AgentFailureError(RecoverableError):
-    """An agent failed entirely.  Recovery: re-spawn once."""
-
-    def __init__(self, message: str, *, agent_name: str = "unknown") -> None:
-        super().__init__(message)
-        self.agent_name = agent_name
-
-
-class PartialFailureError(RecoverableError):
-    """An agent produced partial output.  Recovery: re-spawn for missing."""
-
-    def __init__(
-        self,
-        message: str,
-        *,
-        agent_name: str = "unknown",
-        missing_customers: list[str] | None = None,
-    ) -> None:
-        super().__init__(message)
-        self.agent_name = agent_name
-        self.missing_customers = missing_customers or []
-
+# Re-export exception classes from errors module for backward compatibility.
+from dd_agents.errors import AgentFailureError as AgentFailureError  # noqa: E402, F401
+from dd_agents.errors import BlockingGateError as BlockingGateError  # noqa: E402, F401
+from dd_agents.errors import PartialFailureError as PartialFailureError  # noqa: E402, F401
+from dd_agents.errors import RecoverableError as RecoverableError  # noqa: E402, F401
 
 # ---------------------------------------------------------------------------
 # Type aliases
@@ -770,7 +741,7 @@ class PipelineEngine:
 
         entity_aliases = (state.deal_config or {}).get("entity_aliases", {})
         inv_dir = self._inventory_dir(state)
-        cache_path = state.project_dir / state.skill_dir / "entity_cache.json"
+        cache_path = state.project_dir / state.skill_dir / "entity_resolution_cache.json"
 
         # Build customers_csv format expected by EntityResolver
         customers_csv = [{"customer_name": c.name} for c in customers]
@@ -2936,6 +2907,19 @@ class PipelineEngine:
                 raise BlockingGateError(f"Post-generation schema validation failed: {', '.join(failed_rules)}")
             else:
                 logger.info("Schema validation passed")
+
+            # Layer 4: cross-format parity — spot-check Excel vs JSON numbers
+            manifest_path = state.run_dir / "numerical_manifest.json"
+            if manifest_path.exists():
+                from dd_agents.models.numerical import NumericalManifest
+                from dd_agents.validation.numerical_audit import NumericalAuditor
+
+                inv_dir = self._inventory_dir(state)
+                nm = NumericalManifest.model_validate_json(manifest_path.read_text())
+                auditor = NumericalAuditor(run_dir=state.run_dir, inventory_dir=inv_dir)
+                layer4 = auditor.check_cross_format_parity(excel_path=excel_files[0], manifest=nm)
+                if not layer4.passed:
+                    logger.warning("Numerical audit layer 4 (cross-format parity) failed: %s", layer4.details)
 
         return state
 

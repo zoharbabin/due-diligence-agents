@@ -74,14 +74,39 @@ class PipelineErrorRecord:
 # ---------------------------------------------------------------------------
 
 
-class ConfigurationError(Exception):
-    """Raised for missing or invalid configuration files.
+class BlockingGateError(Exception):
+    """Raised when a blocking validation gate fails.  Pipeline halts."""
 
-    This covers cases where ``deal-config.json`` is absent, contains
-    invalid JSON, or fails schema validation.  Distinct from the
-    ``ConfigError`` hierarchy in ``dd_agents.config`` which is used
-    exclusively by the config-loader module.
-    """
+
+class RecoverableError(Exception):
+    """Raised for errors that may be recovered from automatically."""
+
+
+class AgentFailureError(RecoverableError):
+    """An agent failed entirely.  Recovery: re-spawn once."""
+
+    def __init__(self, message: str, *, agent_name: str = "unknown") -> None:
+        super().__init__(message)
+        self.agent_name = agent_name
+
+
+class PartialFailureError(RecoverableError):
+    """An agent produced partial output.  Recovery: re-spawn for missing."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        agent_name: str = "unknown",
+        missing_customers: list[str] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.agent_name = agent_name
+        self.missing_customers = missing_customers or []
+
+
+class ConfigurationError(Exception):
+    """Raised for deal configuration errors (missing/invalid config file)."""
 
 
 class ExtractionError(Exception):
