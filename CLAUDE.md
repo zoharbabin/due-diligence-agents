@@ -48,6 +48,7 @@ dd-agents run path/to/deal-config.json
 - **Hooks** (`hooks/`): Flat return format `{"decision": "block"|"allow", "reason": "..."}` for ALL hook types. Never nest under `hookSpecificOutput`.
 - **Models** (`models/`): Pydantic v2 for all schemas. `model_json_schema()` for structured outputs. Note: some BaseModel subclasses live outside `models/` by design — agent output schemas (`agents/*.py`), report templates (`reporting/templates.py`), query models (`query/*.py`), and internal helpers (`orchestrator/batch_scheduler.py`, `validation/pre_merge.py`, `extraction/coordinates.py`) are co-located with their consumers for cohesion.
 - **Validation** (`validation/`): 6-layer numerical audit, 31 substantive DoD checks (content-validated, not file-existence). Fail-closed — validation failures block the pipeline.
+- **Knowledge** (`knowledge/`): Deal Knowledge Base — persistent knowledge layer that compounds across runs. 11 modules: `base.py` (article CRUD + atomic writes), `articles.py` (Pydantic models), `compiler.py` (findings → articles), `graph.py` (NetworkX knowledge graph), `chronicle.py` (append-only JSONL timeline), `lineage.py` (SHA-256 finding fingerprinting), `health.py` (5-category integrity checks), `enrichment.py` (agent context builder), `filing.py` (file-back to data room), `query.py` (search interface), `_utils.py` (shared helpers). Compiled automatically in step 32 unless `--no-knowledge` is passed.
 
 ## Code Style
 
@@ -92,6 +93,7 @@ PyPI uses OIDC trusted publishing (no API token needed). Docker images go to `gh
 | Channel | Install | Automated |
 |---------|---------|-----------|
 | **PyPI** | `pip install dd-agents[pdf]` | Yes, on version tag |
+| **Homebrew** | `brew install zoharbabin/due-diligence-agents/dd-agents` | Yes, formula auto-updated on version tag |
 | **Docker (GHCR)** | `docker pull ghcr.io/zoharbabin/due-diligence-agents:latest` | Yes, on version tag |
 | **GitHub Releases** | Download wheel/sdist from Releases page | Yes, on version tag |
 | **Source** | `git clone` + `pip install -e ".[dev,pdf]"` | N/A |
@@ -141,6 +143,7 @@ Update the phase status in IMPLEMENTATION_PLAN.md after completing each phase.
 | `persistence/project_registry.py` | `docs/plan/13-multi-project.md` |
 | `reporting/templates.py` | Issue #123 (Configurable Report Templates) |
 | `precedence/*` | Issue #163 (Document Precedence Engine) |
+| `knowledge/*` | Epic #186 (Issues #178-#185, Knowledge Compounding) |
 
 ## Don't Do This
 

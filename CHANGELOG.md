@@ -8,6 +8,28 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 > The first public release was **v0.4.0** (2026-03-30). Tagged releases on PyPI and
 > GitHub begin at **v0.4.1**.
 
+## [0.5.0] - 2026-04-05
+
+### Added
+
+- **Knowledge Compounding Architecture** (Epic #186) — Karpathy LLM Wiki pattern applied to M&A due diligence. Every pipeline run, search, and query now enriches a persistent Deal Knowledge Base. Subsequent interactions start from a richer baseline.
+- **Deal Knowledge Base** (#178) — PERMANENT-tier knowledge layer with article CRUD, atomic writes, batch write context manager, and auto-maintained JSON index. 5 article types: entity profiles, clause summaries, contradictions, insights, annotations.
+- **Unified Knowledge Graph** (#179) — NetworkX-based cross-document relationship intelligence with 11 typed edge types, cycle detection, path queries, contradiction detection, and merge from existing governance/ontology graphs.
+- **Analysis Chronicle** (#180) — Append-only JSONL interaction timeline with 5 interaction types, filtering by type/entity, timeline summary generation, and statistics.
+- **Knowledge-Enriched Search** (#181) — Search prompts enriched with entity profiles, prior findings, contradictions, and graph context from the Knowledge Base.
+- **Knowledge Compounding / File-back** (#182) — Pipeline findings compiled into entity profiles and clause summaries. Search results, query answers, and user annotations filed back as knowledge articles.
+- **Finding Lineage Tracking** (#183) — SHA-256 fingerprinting for stable finding identity across runs. 5-state status tracking (active, resolved, recurring, escalated, de-escalated) with severity evolution history.
+- **Agent Context Enrichment** (#184) — Agent prompts enriched with accumulated entity profiles, finding lineage, contradictions, graph context, and chronicle history. Domain-filtered for each specialist.
+- **Knowledge Health Checks** (#185) — 7-category automated integrity validation (broken links, orphans, missing coverage, citation drift, graph integrity, lineage gaps, staleness) with auto-fix for broken links and orphans.
+- 4 new CLI commands: `log` (chronicle viewer), `annotate` (user annotations), `lineage` (finding evolution), `health` (KB integrity checks with `--auto-fix`).
+- `--no-knowledge` flag on `run` command to skip knowledge compilation.
+- `--no-file` flag on `search` command to skip filing results back to KB.
+- Knowledge compilation wired into pipeline step 32 (finalize_metadata) — best-effort, never blocks pipeline.
+- New `src/dd_agents/knowledge/` package with 11 modules and 30+ public API exports.
+- 234 new unit tests for knowledge package (total: 3,240 unit tests).
+- **Homebrew formula** (#177) — `brew install zoharbabin/due-diligence-agents/dd-agents`. Formula auto-updated on each release via CI.
+- Release workflow updated with `update-formula` job for automatic Homebrew version bumps.
+
 ## [0.4.3] - 2026-04-04
 
 ### Fixed
@@ -63,7 +85,7 @@ Initial public release containing the complete Due Diligence Agent SDK.
 - **35-step deterministic orchestrator** with 5 blocking quality gates, step dependencies, state machine, and checkpoint/resume support.
 - **8 AI agents**: 4 specialists (Legal, Finance, Commercial, ProductTech) + Judge + Executive Synthesis + Red Flag Scanner + Acquirer Intelligence — all driven by `claude-agent-sdk` v0.1.39+.
 - **102 Pydantic v2 data models** covering findings, gaps, manifests, config, inventory, quality scores, and all intermediate pipeline schemas.
-- **CLI** with 11 commands: `run`, `validate`, `version`, `init`, `auto-config`, `search`, `assess`, `export-pdf`, `query`, `portfolio` (group), `templates` (group).
+- **CLI** with 15 commands: `run`, `validate`, `version`, `init`, `auto-config`, `search`, `assess`, `export-pdf`, `query`, `portfolio` (group), `templates` (group), `log`, `annotate`, `lineage`, `health`.
 
 ### Document Processing
 

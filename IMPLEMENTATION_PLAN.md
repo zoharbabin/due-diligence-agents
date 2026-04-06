@@ -290,26 +290,89 @@ pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/ && ruff
 
 ---
 
+## Phase 8: Knowledge Compounding (Epic #186)
+
+**Issues**: #178 (DKB), #179 (Knowledge Graph), #180 (Chronicle), #181 (Search Enrichment), #182 (File-back), #183 (Finding Lineage), #184 (Agent Enrichment), #185 (Health Checks)
+**Status**: Complete — 234 knowledge tests, 3240 total unit tests
+
+### 8.1 Deal Knowledge Base (#178)
+**Status**: Complete — 55 tests
+- [x] Implement `src/dd_agents/knowledge/base.py` — DealKnowledgeBase with atomic writes, batch context
+- [x] Implement `src/dd_agents/knowledge/articles.py` — KnowledgeArticle, ArticleType, KnowledgeSource
+- [x] Implement `src/dd_agents/knowledge/_utils.py` — Shared `now_iso()` helper
+- [x] Write `tests/unit/test_knowledge_base.py` — 55 tests
+
+### 8.2 Knowledge Graph (#179)
+**Status**: Complete — 42 tests
+- [x] Implement `src/dd_agents/knowledge/graph.py` — DealKnowledgeGraph (NetworkX), typed edges, merge
+- [x] Write `tests/unit/test_knowledge_graph.py` — 42 tests
+
+### 8.3 Analysis Chronicle (#180)
+**Status**: Complete — 38 tests
+- [x] Implement `src/dd_agents/knowledge/chronicle.py` — Append-only JSONL timeline
+- [x] Write `tests/unit/test_chronicle.py` — 38 tests
+
+### 8.4 Knowledge-Enriched Search (#181)
+**Status**: Complete — 15 tests
+- [x] Implement `src/dd_agents/knowledge/query.py` — KB search interface
+- [x] Write `tests/unit/test_knowledge_query.py` — 15 tests
+
+### 8.5 Knowledge Compounding / File-back (#182)
+**Status**: Complete — 25 tests
+- [x] Implement `src/dd_agents/knowledge/compiler.py` — Findings → articles compilation
+- [x] Implement `src/dd_agents/knowledge/filing.py` — File-back to data room
+- [x] Write `tests/unit/test_knowledge_compiler.py` — 25 tests
+
+### 8.6 Finding Lineage (#183)
+**Status**: Complete — 22 tests
+- [x] Implement `src/dd_agents/knowledge/lineage.py` — SHA-256 fingerprinting, status tracking
+- [x] Write `tests/unit/test_finding_lineage.py` — 22 tests
+
+### 8.7 Agent Context Enrichment (#184)
+**Status**: Complete — 12 tests
+- [x] Implement `src/dd_agents/knowledge/enrichment.py` — AgentKnowledgeEnricher, KnowledgeContextBuilder
+- [x] Write `tests/unit/test_knowledge_enrichment.py` — 12 tests
+
+### 8.8 Knowledge Health Checks (#185)
+**Status**: Complete — 25 tests
+- [x] Implement `src/dd_agents/knowledge/health.py` — 5-category checks with auto-fix
+- [x] Write `tests/unit/test_knowledge_health.py` — 25 tests
+
+### 8.9 CLI & Pipeline Integration
+**Status**: Complete
+- [x] Add 4 CLI commands: `log`, `annotate`, `lineage`, `health`
+- [x] Add `--no-knowledge` flag to `run` command
+- [x] Add `--no-file` flag to `search` command
+- [x] Wire knowledge compilation into step 32 (finalize_metadata)
+- [x] Update `knowledge/__init__.py` with all public exports
+
+### Phase 8 Acceptance
+- [x] `pytest tests/unit/ -x -q` — 3240 tests pass
+- [x] `mypy src/ --strict` — clean (181 source files)
+- [x] `ruff check src/ tests/` — clean
+
+---
+
 ## Completion Criteria
 
 The project is complete when ALL of the following are true:
-- [x] All 7 phases have status "Complete"
-- [x] `pytest tests/ -x` passes — 3006 unit tests, 17 integration, 9 E2E (3 skipped without API key)
-- [x] `mypy src/ --strict` passes — 0 errors across 168 source files
+- [x] All 8 phases have status "Complete"
+- [x] `pytest tests/ -x` passes — 3240 unit tests, 17 integration, 9 E2E (3 skipped without API key)
+- [x] `mypy src/ --strict` passes — 0 errors across 181 source files
 - [x] `ruff check src/ tests/` is clean
 - [x] `ruff format --check src/ tests/` is clean
 
-> **Status: COMPLETE** — All 7 phases implemented and verified. See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
+> **Status: COMPLETE** — All 8 phases implemented and verified. See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
 
 ## Test Summary
 
 | Category | Count |
 |----------|-------|
-| Unit tests (models, utils, entity resolution, extraction, config, hooks, tools, orchestrator, agents, reporting, validation, search, glm_ocr, type safety, visual grounding, entity dedup, OCR registry, layout PDF, HTML report, HTML renderers, report rendering, extraction backend, turn limits, severity recalibration, executive synthesis, data quality classification, follow-up verification, assessment, red flag scanner, cost tracker, batch scheduler, financial impact, project registry, report templates, ontology, precedence, read_office, net_safety, team, vector_store, search_runner, MCP server) | 3006 |
+| Unit tests (models, utils, entity resolution, extraction, config, hooks, tools, orchestrator, agents, reporting, validation, search, glm_ocr, type safety, visual grounding, entity dedup, OCR registry, layout PDF, HTML report, HTML renderers, report rendering, extraction backend, turn limits, severity recalibration, executive synthesis, data quality classification, follow-up verification, assessment, red flag scanner, cost tracker, batch scheduler, financial impact, project registry, report templates, ontology, precedence, read_office, net_safety, team, vector_store, search_runner, MCP server, knowledge base, knowledge graph, chronicle, knowledge query, knowledge compiler, finding lineage, knowledge enrichment, knowledge health) | 3240 |
 | Integration tests (pipeline steps 1-11) | 17 |
 | E2E tests (pre-agent: config, tiers, discovery, registry, run manager, cache) | 6 |
 | E2E tests (API-dependent: dry run, full pipeline, incremental — skipped without key) | 3 |
-| **Total** | **3006 passed, 3 skipped** |
+| **Total** | **3240 passed, 3 skipped** |
 
 ## Git History
 

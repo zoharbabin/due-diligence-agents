@@ -2969,7 +2969,33 @@ class PipelineEngine:
 
         run_mgr.finalize_run(metadata)
         logger.info("Run finalized: %s", state.run_id)
+
+        # Compile knowledge base unless --no-knowledge was passed
+        if not self._run_options.get("no_knowledge"):
+            await self._compile_knowledge(state)
+
         return state
+
+    async def _compile_knowledge(self, state: PipelineState) -> None:
+        """Compile run findings into the Deal Knowledge Base.
+
+        Best-effort: failures are logged but never block the pipeline.
+        """
+        try:
+            from dd_agents.knowledge.base import DealKnowledgeBase
+            from dd_agents.knowledge.compiler import KnowledgeCompiler
+
+            kb_path = state.project_dir / "knowledge"
+            kb = DealKnowledgeBase(kb_path)
+            compiler = KnowledgeCompiler(kb)
+            result = compiler.compile_from_run(state.run_dir, state.run_id)
+            logger.info(
+                "Knowledge compiled: %d articles created, %d updated",
+                result.articles_created,
+                result.articles_updated,
+            )
+        except Exception:
+            logger.warning("Knowledge compilation failed (non-blocking)", exc_info=True)
 
     def _compute_finding_counts(self, state: PipelineState) -> dict[str, int]:
         """Compute per-severity finding counts from merged findings."""

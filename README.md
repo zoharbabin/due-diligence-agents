@@ -9,7 +9,7 @@
     <a href="https://github.com/zoharbabin/due-diligence-agents/actions"><img src="https://github.com/zoharbabin/due-diligence-agents/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
     <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.12+-blue.svg" alt="Python 3.12+"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green.svg" alt="License"></a>
-    <img src="https://img.shields.io/badge/tests-3,000+-brightgreen.svg" alt="Tests">
+    <img src="https://img.shields.io/badge/tests-3,240-brightgreen.svg" alt="Tests">
     <img src="https://img.shields.io/badge/mypy-strict-blue.svg" alt="mypy strict">
     <a href="https://github.com/zoharbabin/due-diligence-agents/stargazers"><img src="https://img.shields.io/github/stars/zoharbabin/due-diligence-agents?style=social" alt="GitHub Stars"></a>
   </p>
@@ -253,12 +253,26 @@ _dd/forensic-dd/
 ## Installation
 
 ```bash
-pip install dd-agents           # Core (no PDF extraction)
-pip install dd-agents[pdf]      # + PDF extraction via pymupdf (recommended)
+pip install dd-agents[pdf]      # Recommended (includes PDF extraction via pymupdf)
+```
+
+<details>
+<summary><strong>Alternative install methods</strong></summary>
+
+```bash
+# macOS (Homebrew)
+brew install zoharbabin/due-diligence-agents/dd-agents
+
+# Docker
+docker pull ghcr.io/zoharbabin/due-diligence-agents:latest
+
+# Extras
+pip install dd-agents           # Core only (no PDF extraction)
 pip install dd-agents[vector]   # + semantic search via ChromaDB
 pip install dd-agents[ocr]      # + OCR for scanned documents (English)
 pip install dd-agents[glm-ocr]  # + multilingual OCR (100+ languages, Apple Silicon)
 ```
+</details>
 
 <details>
 <summary><strong>Optional System Dependencies</strong></summary>

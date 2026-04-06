@@ -86,6 +86,13 @@ def main() -> None:
     help="Run a quick Red Flag scan only (steps 1-13 + Red Flag Scanner agent).",
 )
 @click.option(
+    "--no-knowledge",
+    "no_knowledge",
+    is_flag=True,
+    default=False,
+    help="Skip knowledge compilation after pipeline run.",
+)
+@click.option(
     "--model-profile",
     "model_profile",
     type=click.Choice(["economy", "standard", "premium"], case_sensitive=False),
@@ -105,6 +112,7 @@ def run(
     resume_from: int,
     dry_run: bool,
     quick_scan: bool,
+    no_knowledge: bool,
     model_profile: str | None,
     model_overrides: tuple[str, ...],
 ) -> None:
@@ -232,6 +240,8 @@ def run(
         run_options["execution_mode"] = mode
     if quick_scan:
         run_options["quick_scan"] = True
+    if no_knowledge:
+        run_options["no_knowledge"] = True
 
     console.print()
     console.print(
@@ -874,6 +884,13 @@ def auto_config(
     help="Skip cost confirmation prompt.",
 )
 @click.option(
+    "--no-file",
+    "no_file",
+    is_flag=True,
+    default=False,
+    help="Skip filing search results back to the knowledge base.",
+)
+@click.option(
     "--verbose",
     "-v",
     is_flag=True,
@@ -888,6 +905,7 @@ def search(
     customers: str | None,
     concurrency: int,
     yes: bool,
+    no_file: bool,
     verbose: bool,
 ) -> None:
     """Search customer contracts using custom prompts.
@@ -1345,6 +1363,237 @@ def templates_show(template_id: str) -> None:
         console.print(f"Sections: {', '.join(tpl.sections.include)}")
     if tpl.branding.firm_name:
         console.print(f"Firm: {tpl.branding.firm_name}")
+
+
+# ---------------------------------------------------------------------------
+# knowledge log command (Issue #180)
+# ---------------------------------------------------------------------------
+
+
+@main.command("log")
+@click.option(
+    "--data-room",
+    "data_room",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    required=True,
+    help="Path to the data room folder.",
+)
+@click.option("--limit", type=int, default=20, show_default=True, help="Number of recent entries to show.")
+@click.option(
+    "--type", "interaction_type", default=None, help="Filter by type: pipeline_run, search, query, annotation."
+)
+def log_cmd(data_room: Path, limit: int, interaction_type: str | None) -> None:
+    """Show the analysis chronicle — timeline of all interactions.
+
+    \b
+    Example:
+        dd-agents log --data-room ./data_room
+        dd-agents log --data-room ./data_room --limit 5 --type search
+    """
+    from dd_agents.knowledge.chronicle import AnalysisChronicle, InteractionType
+
+    chronicle_path = data_room.resolve() / "_dd" / "forensic-dd" / "knowledge" / "chronicle.jsonl"
+    chronicle = AnalysisChronicle(chronicle_path)
+
+    if interaction_type:
+        try:
+            it = InteractionType(interaction_type)
+        except ValueError:
+            valid = ", ".join(t.value for t in InteractionType)
+            _print_error("Invalid Type", f"'{interaction_type}' is not valid. Options: {valid}")
+            raise SystemExit(1) from None
+        entries = chronicle.read_by_type(it)[-limit:]
+    else:
+        entries = chronicle.read_recent(limit=limit)
+
+    if not entries:
+        console.print("[dim]No analysis history recorded yet.[/dim]")
+        return
+
+    table = Table(title="Analysis Chronicle", show_header=True)
+    table.add_column("Timestamp", width=20)
+    table.add_column("Type", width=22)
+    table.add_column("Title")
+    table.add_column("Entities", width=15)
+
+    for entry in entries:
+        ts = entry.timestamp[:19].replace("T", " ")
+        entities = ", ".join(entry.entities_affected[:3])
+        if len(entry.entities_affected) > 3:
+            entities += f" +{len(entry.entities_affected) - 3}"
+        table.add_row(ts, entry.interaction_type.value, entry.title, entities or "-")
+
+    console.print(table)
+
+    stats = chronicle.get_stats()
+    console.print(f"\n[dim]Total entries: {stats['total_entries']}[/dim]")
+
+
+# ---------------------------------------------------------------------------
+# annotate command (Issue #182)
+# ---------------------------------------------------------------------------
+
+
+@main.command()
+@click.option(
+    "--data-room",
+    "data_room",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    required=True,
+    help="Path to the data room folder.",
+)
+@click.option("--entity", default=None, help="Entity safe_name to link this annotation to.")
+@click.argument("note")
+def annotate(data_room: Path, entity: str | None, note: str) -> None:
+    """Add a user annotation to the knowledge base.
+
+    \b
+    Example:
+        dd-agents annotate --data-room ./data_room "Key risk: vendor lock-in clause in Acme MSA"
+        dd-agents annotate --data-room ./data_room --entity acme_corp "Needs legal review"
+    """
+    from dd_agents.knowledge._utils import now_iso
+    from dd_agents.knowledge.base import DealKnowledgeBase
+    from dd_agents.knowledge.filing import file_annotation
+
+    kb = DealKnowledgeBase(data_room.resolve())
+    kb.ensure_dirs()
+    article_id = file_annotation(kb, note, entity, now_iso())
+    console.print(f"[green]Annotation saved:[/green] {article_id}")
+    if entity:
+        console.print(f"  Linked to entity: {entity}")
+
+
+# ---------------------------------------------------------------------------
+# lineage command (Issue #183)
+# ---------------------------------------------------------------------------
+
+
+@main.command()
+@click.option(
+    "--data-room",
+    "data_room",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    required=True,
+    help="Path to the data room folder.",
+)
+@click.option("--entity", default=None, help="Filter to a specific entity safe_name.")
+@click.option("--active-only", is_flag=True, default=False, help="Show only active findings.")
+def lineage(data_room: Path, entity: str | None, active_only: bool) -> None:
+    """Show finding lineage — how findings evolve across runs.
+
+    \b
+    Example:
+        dd-agents lineage --data-room ./data_room
+        dd-agents lineage --data-room ./data_room --entity acme_corp --active-only
+    """
+    from dd_agents.knowledge.lineage import FindingLineageTracker
+
+    lineage_path = data_room.resolve() / "_dd" / "forensic-dd" / "knowledge" / "lineage.json"
+    tracker = FindingLineageTracker(lineage_path)
+    tracker.load()
+
+    if entity:
+        findings = tracker.get_entity_lineage(entity)
+    elif active_only:
+        findings = tracker.get_active()
+    else:
+        findings = list(tracker._findings.values())
+
+    if active_only and entity:
+        findings = [f for f in findings if f.status.value == "active"]
+
+    if not findings:
+        console.print("[dim]No lineage data found.[/dim]")
+        return
+
+    table = Table(title="Finding Lineage", show_header=True)
+    table.add_column("Severity", width=8)
+    table.add_column("Status", width=10)
+    table.add_column("Entity", width=18)
+    table.add_column("Title")
+    table.add_column("Runs", justify="right", width=5)
+    table.add_column("Category", width=20)
+
+    for f in sorted(findings, key=lambda x: x.current_severity):
+        sev_color = {"P0": "red", "P1": "bright_red", "P2": "yellow"}.get(f.current_severity, "white")
+        status_color = {"active": "green", "resolved": "dim", "recurred": "yellow"}.get(f.status.value, "white")
+        table.add_row(
+            f"[{sev_color}]{f.current_severity}[/{sev_color}]",
+            f"[{status_color}]{f.status.value}[/{status_color}]",
+            f.entity_safe_name,
+            f.latest_title[:60],
+            str(f.run_count),
+            f.category,
+        )
+
+    console.print(table)
+    console.print(f"\n[dim]Total tracked: {len(findings)}[/dim]")
+
+
+# ---------------------------------------------------------------------------
+# health command (Issue #185)
+# ---------------------------------------------------------------------------
+
+
+@main.command()
+@click.option(
+    "--data-room",
+    "data_room",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    required=True,
+    help="Path to the data room folder.",
+)
+@click.option("--auto-fix", is_flag=True, default=False, help="Auto-fix broken links and orphan articles.")
+def health(data_room: Path, auto_fix: bool) -> None:
+    """Run knowledge base health checks.
+
+    \b
+    Example:
+        dd-agents health --data-room ./data_room
+        dd-agents health --data-room ./data_room --auto-fix
+    """
+    from dd_agents.knowledge.base import DealKnowledgeBase
+    from dd_agents.knowledge.health import KnowledgeHealthChecker
+
+    project_dir = data_room.resolve()
+    kb = DealKnowledgeBase(project_dir)
+
+    if not kb.exists:
+        console.print("[dim]No knowledge base found. Run the pipeline first.[/dim]")
+        return
+
+    checker = KnowledgeHealthChecker(kb, data_room_path=project_dir)
+    result = checker.run_all_checks(auto_fix=auto_fix)
+
+    # Summary
+    status_color = "green" if result.total_issues == 0 else "yellow" if result.total_issues < 5 else "red"
+    console.print(
+        Panel(
+            f"[bold {status_color}]Issues found: {result.total_issues}[/bold {status_color}]\n"
+            f"Articles: {result.knowledge_base_stats.get('total', 0)}\n"
+            f"Auto-fixed: {result.auto_fixed}",
+            title="Knowledge Base Health",
+            border_style=status_color,
+        )
+    )
+
+    if result.issues:
+        table = Table(show_header=True)
+        table.add_column("Severity", width=8)
+        table.add_column("Category", width=18)
+        table.add_column("Description")
+        table.add_column("Action")
+
+        for issue in result.issues:
+            sev_color = "red" if issue.severity == "error" else "yellow"
+            table.add_row(
+                f"[{sev_color}]{issue.severity}[/{sev_color}]",
+                issue.category.value,
+                issue.description[:80],
+                issue.suggested_action[:60],
+            )
+        console.print(table)
 
 
 # ---------------------------------------------------------------------------

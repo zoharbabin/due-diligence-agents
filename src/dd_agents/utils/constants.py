@@ -20,6 +20,7 @@ FINDINGS_DIR = "findings"
 JUDGE_DIR = "judge"
 REPORT_DIR = "report"
 AUDIT_DIR = "audit"
+KNOWLEDGE_DIR = f"{SKILL_DIR}/knowledge"
 
 # ---------------------------------------------------------------------------
 # Persistence tier names

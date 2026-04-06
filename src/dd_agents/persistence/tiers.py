@@ -37,6 +37,7 @@ PERMANENT_PATHS: list[str] = [
     f"{DD_DIR}/entity_resolution_cache.json",  # entity resolution cache
     f"{SKILL_DIR}/runs",  # all prior run directories
     f"{DD_DIR}/run_history.json",  # chronological run log
+    f"{SKILL_DIR}/knowledge",  # Deal Knowledge Base (Issue #178)
 ]
 
 # ---------------------------------------------------------------------------
@@ -106,6 +107,7 @@ class TierManager:
         (self.project_dir / TEXT_DIR).mkdir(parents=True, exist_ok=True)
         (self.skill_dir / "runs").mkdir(parents=True, exist_ok=True)
         (self.project_dir / INVENTORY_DIR).mkdir(parents=True, exist_ok=True)
+        (self.skill_dir / "knowledge").mkdir(parents=True, exist_ok=True)
         logger.debug("Ensured PERMANENT tier directories exist")
 
     def ensure_run_dirs(self, run_dir: Path) -> None:
