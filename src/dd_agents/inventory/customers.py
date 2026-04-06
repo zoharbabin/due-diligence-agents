@@ -234,7 +234,7 @@ class CustomerRegistryBuilder:
                 ]
             )
 
-        output_path.write_text(buf.getvalue())
+        output_path.write_text(buf.getvalue(), encoding="utf-8")
         logger.debug("Wrote customers.csv with %d rows", len(customers))
 
     def write_counts(self, counts: CountsJson, output_path: Path) -> None:
@@ -249,5 +249,5 @@ class CustomerRegistryBuilder:
         """
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(json.dumps(counts.model_dump(), indent=2))
+        output_path.write_text(json.dumps(counts.model_dump(), indent=2), encoding="utf-8")
         logger.debug("Wrote counts.json")

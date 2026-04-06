@@ -4,6 +4,17 @@ Reads binary Office files (.xlsx, .xls, .docx, .doc, .pptx, .ppt) and
 returns structured text content.  Uses openpyxl for Excel and markitdown
 for Word/PowerPoint.  Falls back to pre-extracted markdown in index/text/
 when primary reading fails.
+
+Excel-specific enhancements (E-1 through E-3 from docs/plan/22-llm-robustness.md):
+
+- **E-1 Date conversion**: ``datetime`` cells render as ISO-8601 (``YYYY-MM-DD``)
+  instead of Python's verbose ``2022-03-01 00:00:00``.
+- **E-2 Unit/scale preservation**: Currency- and percentage-formatted cells retain
+  their format symbols (``$1,234.56``, ``45.2%``) so LLMs don't misinterpret
+  raw decimals like ``0.452`` as dollars or ``1234.56`` without scale context.
+- **E-3 Sub-table detection**: Blank rows are treated as logical table boundaries.
+  Each sub-table is rendered as a separate markdown table with its own column
+  headers, matching how analysts structure multi-region spreadsheets.
 """
 
 from __future__ import annotations
@@ -90,7 +101,7 @@ def read_office(
         # Deterministic errors (invalid sheet name) — return immediately, no fallback
         return {"status": "error", "reason": str(exc)}
 
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — fallback to extracted text; MemoryError/SystemExit propagate
         logger.debug("Primary read failed for %s: %s", file_path, exc)
 
     # Fallback: pre-extracted text from index/text/
@@ -112,9 +123,16 @@ def read_office(
 def _read_excel(path: Path, sheet_name: str | None) -> str:
     """Read an Excel file using openpyxl and return markdown tables.
 
-    Streams rows directly into the output to avoid loading the entire
-    spreadsheet into memory.  Stops reading once the output exceeds
-    ``_MAX_OUTPUT_CHARS`` (truncation is applied by the caller).
+    Uses ``read_only=True`` for memory efficiency and ``data_only=True``
+    to resolve cached formula values.  Cell objects (``values_only=False``)
+    are read to access ``number_format`` metadata for type-aware formatting
+    (E-1 dates, E-2 currency/percentage).  Blank rows are detected as
+    sub-table boundaries (E-3).
+
+    All rows are buffered per-sheet to determine column dimensions and
+    detect sub-tables before rendering.  A periodic size check every 500
+    rows caps memory usage on huge sheets.  Final output is truncated by
+    the caller via :func:`_truncate`.
     """
     from openpyxl import load_workbook
 
@@ -137,46 +155,126 @@ def _read_excel(path: Path, sheet_name: str | None) -> str:
 
             ws = wb[name]
 
-            # First pass: read rows to determine dimensions.
+            # Read rows with cell objects (not values_only) for format access.
             # Use a capped read to avoid unbounded memory on huge sheets.
             rows: list[list[str]] = []
-            for raw_row in ws.iter_rows(values_only=True):
-                rows.append([_sanitize_cell(str(cell)) if cell is not None else "" for cell in raw_row])
-                # Check periodically — every 500 rows — whether we've read enough
-                if len(rows) % 500 == 0 and len(rows) > 0:
+            for cell_row in ws.iter_rows(values_only=False):
+                rows.append([_format_cell(cell) for cell in cell_row])
+                # Check periodically — every 500 rows — whether we've read enough.
+                if len(rows) % 500 == 0:
                     est_chars = sum(sum(len(c) + 3 for c in r) for r in rows)
                     if est_chars > _MAX_OUTPUT_CHARS * 2:
                         break
 
-            num_rows = len(rows)
-            num_cols = max((len(r) for r in rows), default=0)
-            parts.append(f"## Sheet: {name} ({num_rows} rows, {num_cols} columns)\n")
+            # E-3: split into sub-tables at blank-row boundaries.
+            sub_tables = _split_sub_tables(rows)
+            total_data_rows = sum(len(st) for st in sub_tables)
+            num_cols = max((len(r) for st in sub_tables for r in st), default=0)
+            parts.append(f"## Sheet: {name} ({total_data_rows} rows, {num_cols} columns)\n")
             total_chars += len(parts[-1])
 
-            if num_rows == 0:
+            if not sub_tables:
                 parts.append("(empty sheet)\n")
                 continue
 
-            # Generate column headers (A, B, C, ...) so real data isn't
-            # misinterpreted as headers when row 1 contains data values.
-            col_headers = [_col_letter(i) for i in range(num_cols)]
-            parts.append("| " + " | ".join(col_headers) + " |")
-            parts.append("| " + " | ".join("---" for _ in col_headers) + " |")
-            for row in rows:
-                padded = list(row)
-                while len(padded) < num_cols:
-                    padded.append("")
-                line = "| " + " | ".join(padded) + " |"
-                parts.append(line)
-                total_chars += len(line) + 1  # +1 for \n join
-                if total_chars > _MAX_OUTPUT_CHARS:
-                    budget_exceeded = True
+            for st_idx, sub_table in enumerate(sub_tables):
+                if budget_exceeded:
                     break
+
+                st_cols = max((len(r) for r in sub_table), default=0)
+                if st_cols == 0:
+                    continue
+
+                # Blank line between sub-tables for visual separation.
+                if st_idx > 0:
+                    parts.append("")
+
+                # Generate column headers (A, B, C, ...) so real data isn't
+                # misinterpreted as headers when row 1 contains data values.
+                col_headers = [_col_letter(i) for i in range(st_cols)]
+                header_line = "| " + " | ".join(col_headers) + " |"
+                sep_line = "| " + " | ".join("---" for _ in col_headers) + " |"
+                parts.append(header_line)
+                parts.append(sep_line)
+                total_chars += len(header_line) + len(sep_line) + 2
+                for row in sub_table:
+                    padded = list(row)
+                    while len(padded) < st_cols:
+                        padded.append("")
+                    line = "| " + " | ".join(padded) + " |"
+                    parts.append(line)
+                    total_chars += len(line) + 1  # +1 for \n join
+                    if total_chars > _MAX_OUTPUT_CHARS:
+                        budget_exceeded = True
+                        break
             parts.append("")
 
         return "\n".join(parts)
     finally:
         wb.close()
+
+
+# ---------------------------------------------------------------------------
+# Cell formatting helpers (E-1, E-2)
+# ---------------------------------------------------------------------------
+
+# Currency symbols recognised in Excel number_format strings.
+_CURRENCY_SYMBOLS: tuple[str, ...] = ("$", "€", "£", "¥")
+
+
+def _format_cell(cell: Any) -> str:
+    """Format a cell value with type-aware conversion for LLM accuracy.
+
+    Handles:
+    - ``datetime``/``date`` → ISO-8601 string (``YYYY-MM-DD``, or
+      ``YYYY-MM-DD HH:MM`` when a time component is present).
+    - ``time`` → ``HH:MM:SS``.
+    - Currency-formatted numbers → ``$1,234.56`` (symbol from format string).
+    - Percentage-formatted numbers → ``45.2%`` (value × 100, since Excel
+      stores percentages as decimals).
+    - Everything else → ``str(value)`` with markdown-table sanitisation.
+    """
+    import math
+    from datetime import date as date_cls
+    from datetime import datetime as dt_cls
+    from datetime import time as time_cls
+
+    value = getattr(cell, "value", cell)
+    if value is None:
+        return ""
+
+    # --- E-1: Date / datetime → ISO-8601 ---
+    # Check datetime before date because datetime is a subclass of date.
+    if isinstance(value, dt_cls):
+        if value.hour == 0 and value.minute == 0 and value.second == 0:
+            return value.strftime("%Y-%m-%d")
+        return value.strftime("%Y-%m-%d %H:%M")
+
+    if isinstance(value, date_cls):
+        return value.strftime("%Y-%m-%d")
+
+    if isinstance(value, time_cls):
+        return value.strftime("%H:%M:%S")
+
+    # --- E-2: Numeric formatting from cell metadata ---
+    # Guard against NaN/Inf which can appear from =NA() or =1/0 formulas.
+    if isinstance(value, (int, float)) and (isinstance(value, int) or math.isfinite(value)):
+        number_format: str = getattr(cell, "number_format", None) or ""
+
+        # Currency: detect symbol in the format string.
+        for symbol in _CURRENCY_SYMBOLS:
+            if symbol in number_format:
+                return _sanitize_cell(f"{symbol}{value:,.2f}")
+
+        # Percentage: Excel stores the decimal (0.452 for 45.2%).
+        if "%" in number_format:
+            pct = value * 100
+            if pct == int(pct):
+                return _sanitize_cell(f"{int(pct)}%")
+            return _sanitize_cell(f"{pct:.1f}%")
+
+    # --- Default: str() with markdown sanitisation ---
+    return _sanitize_cell(str(value))
 
 
 def _sanitize_cell(value: str) -> str:
@@ -186,6 +284,40 @@ def _sanitize_cell(value: str) -> str:
     - Escapes pipe characters (pipes break column boundaries)
     """
     return value.replace("\r\n", " ").replace("\r", " ").replace("\n", " ").replace("|", "\\|")
+
+
+# ---------------------------------------------------------------------------
+# Sub-table detection (E-3)
+# ---------------------------------------------------------------------------
+
+
+def _split_sub_tables(rows: list[list[str]]) -> list[list[list[str]]]:
+    """Split *rows* into sub-tables at blank-row boundaries.
+
+    A blank row is one where every cell is the empty string.  Multiple
+    consecutive blank rows are collapsed into a single boundary.  Returns
+    a list of sub-tables, each being a list of non-blank rows.  If there
+    are no blank rows the result is a single sub-table containing all rows
+    (backwards-compatible with the previous flat-table output).
+    """
+    if not rows:
+        return []
+
+    sub_tables: list[list[list[str]]] = []
+    current: list[list[str]] = []
+
+    for row in rows:
+        if all(cell == "" for cell in row):
+            if current:
+                sub_tables.append(current)
+                current = []
+        else:
+            current.append(row)
+
+    if current:
+        sub_tables.append(current)
+
+    return sub_tables
 
 
 def _col_letter(index: int) -> str:

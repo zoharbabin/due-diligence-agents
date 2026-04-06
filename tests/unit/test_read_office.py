@@ -81,7 +81,7 @@ class TestReadExcel:
         assert "999" not in result["content"]
 
     def test_read_xlsx_invalid_sheet_name(self, tmp_path: Path) -> None:
-        """Invalid sheet_name falls back to extracted text or returns error."""
+        """Invalid sheet_name returns error immediately (no fallback attempted)."""
         openpyxl = pytest.importorskip("openpyxl")
         wb = openpyxl.Workbook()
         ws = wb.active
@@ -109,7 +109,7 @@ class TestReadExcel:
         assert "Sheet" in result["content"] or "empty" in result["content"].lower()
 
     def test_read_xlsx_preserves_dates(self, tmp_path: Path) -> None:
-        """Dates are preserved as strings, not converted to timestamps."""
+        """String dates are preserved as-is."""
         openpyxl = pytest.importorskip("openpyxl")
         wb = openpyxl.Workbook()
         ws = wb.active
@@ -122,7 +122,7 @@ class TestReadExcel:
 
         result = read_office(str(tmp_path / "dates.xlsx"))
         assert result["status"] == "ok"
-        assert "2024" in result["content"]
+        assert "2024-01-15" in result["content"]
 
     def test_read_xlsx_uses_column_letter_headers(self, tmp_path: Path) -> None:
         """Table headers are Excel column letters (A, B, C), not data values."""
@@ -187,6 +187,341 @@ class TestReadExcel:
         # Content is preserved (newlines become spaces)
         assert "Line1 Line2" in result["content"]
         assert "Also fine" in result["content"]
+
+
+class TestCellFormatting:
+    """Tests for E-1 (date→ISO-8601), E-2 (currency/percentage), E-3 (sub-tables)."""
+
+    # --- E-1: datetime → ISO-8601 ---
+
+    def test_datetime_cells_render_as_iso_date(self, tmp_path: Path) -> None:
+        """datetime cells with no time component render as YYYY-MM-DD."""
+        openpyxl = pytest.importorskip("openpyxl")
+        from datetime import datetime
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        assert ws is not None
+        ws.cell(row=1, column=1, value="Date")
+        ws.cell(row=1, column=2, value="Event")
+        ws.cell(row=2, column=1, value=datetime(2024, 3, 15))
+        ws.cell(row=2, column=2, value="Launch")
+        wb.save(tmp_path / "dates.xlsx")
+
+        from dd_agents.tools.read_office import read_office
+
+        result = read_office(str(tmp_path / "dates.xlsx"))
+        assert result["status"] == "ok"
+        content = result["content"]
+        # Must be clean ISO, not "2024-03-15 00:00:00"
+        assert "2024-03-15" in content
+        assert "00:00:00" not in content
+
+    def test_datetime_with_time_preserves_hours_minutes(self, tmp_path: Path) -> None:
+        """datetime cells with non-zero time render as YYYY-MM-DD HH:MM."""
+        openpyxl = pytest.importorskip("openpyxl")
+        from datetime import datetime
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        assert ws is not None
+        ws.cell(row=1, column=1, value=datetime(2024, 6, 1, 14, 30))
+        wb.save(tmp_path / "time.xlsx")
+
+        from dd_agents.tools.read_office import read_office
+
+        result = read_office(str(tmp_path / "time.xlsx"))
+        assert result["status"] == "ok"
+        assert "2024-06-01 14:30" in result["content"]
+
+    def test_date_object_renders_as_iso(self, tmp_path: Path) -> None:
+        """Pure date objects (no time) render as YYYY-MM-DD."""
+        openpyxl = pytest.importorskip("openpyxl")
+        from datetime import date
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        assert ws is not None
+        ws.cell(row=1, column=1, value=date(2025, 12, 25))
+        wb.save(tmp_path / "date_only.xlsx")
+
+        from dd_agents.tools.read_office import read_office
+
+        result = read_office(str(tmp_path / "date_only.xlsx"))
+        assert result["status"] == "ok"
+        assert "2025-12-25" in result["content"]
+
+    # --- E-2: Currency formatting ---
+
+    def test_currency_formatted_cells(self, tmp_path: Path) -> None:
+        """Cells with currency number_format render with $ and commas."""
+        openpyxl = pytest.importorskip("openpyxl")
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        assert ws is not None
+        ws.cell(row=1, column=1, value="Item")
+        ws.cell(row=1, column=2, value="Price")
+        cell = ws.cell(row=2, column=1, value="Widget")
+        cell = ws.cell(row=2, column=2, value=1234567.89)
+        cell.number_format = "$#,##0.00"
+        wb.save(tmp_path / "currency.xlsx")
+
+        from dd_agents.tools.read_office import read_office
+
+        result = read_office(str(tmp_path / "currency.xlsx"))
+        assert result["status"] == "ok"
+        assert "$1,234,567.89" in result["content"]
+
+    def test_euro_formatted_cells(self, tmp_path: Path) -> None:
+        """Euro-formatted cells use the € symbol."""
+        openpyxl = pytest.importorskip("openpyxl")
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        assert ws is not None
+        cell = ws.cell(row=1, column=1, value=5000.00)
+        cell.number_format = "€#,##0.00"
+        wb.save(tmp_path / "euro.xlsx")
+
+        from dd_agents.tools.read_office import read_office
+
+        result = read_office(str(tmp_path / "euro.xlsx"))
+        assert result["status"] == "ok"
+        assert "€5,000.00" in result["content"]
+
+    # --- E-2: Percentage formatting ---
+
+    def test_percentage_formatted_cells(self, tmp_path: Path) -> None:
+        """Cells with percentage format render as X.X% (value × 100)."""
+        openpyxl = pytest.importorskip("openpyxl")
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        assert ws is not None
+        ws.cell(row=1, column=1, value="Metric")
+        ws.cell(row=1, column=2, value="Value")
+        cell = ws.cell(row=2, column=1, value="Margin")
+        cell = ws.cell(row=2, column=2, value=0.452)
+        cell.number_format = "0.0%"
+        wb.save(tmp_path / "pct.xlsx")
+
+        from dd_agents.tools.read_office import read_office
+
+        result = read_office(str(tmp_path / "pct.xlsx"))
+        assert result["status"] == "ok"
+        assert "45.2%" in result["content"]
+
+    def test_whole_number_percentage(self, tmp_path: Path) -> None:
+        """50% renders as '50%' not '50.0%'."""
+        openpyxl = pytest.importorskip("openpyxl")
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        assert ws is not None
+        cell = ws.cell(row=1, column=1, value=0.5)
+        cell.number_format = "0%"
+        wb.save(tmp_path / "whole_pct.xlsx")
+
+        from dd_agents.tools.read_office import read_office
+
+        result = read_office(str(tmp_path / "whole_pct.xlsx"))
+        assert result["status"] == "ok"
+        assert "50%" in result["content"]
+        assert "50.0%" not in result["content"]
+
+    # --- E-2: Unformatted numbers pass through unchanged ---
+
+    def test_plain_numbers_unchanged(self, tmp_path: Path) -> None:
+        """Numbers without special format render via str()."""
+        openpyxl = pytest.importorskip("openpyxl")
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        assert ws is not None
+        ws.cell(row=1, column=1, value=42)
+        ws.cell(row=1, column=2, value=3.14)
+        wb.save(tmp_path / "plain.xlsx")
+
+        from dd_agents.tools.read_office import read_office
+
+        result = read_office(str(tmp_path / "plain.xlsx"))
+        assert result["status"] == "ok"
+        assert "42" in result["content"]
+        assert "3.14" in result["content"]
+
+    # --- E-3: Sub-table detection ---
+
+    def test_blank_rows_create_sub_tables(self, tmp_path: Path) -> None:
+        """Blank rows split the sheet into separate markdown tables."""
+        openpyxl = pytest.importorskip("openpyxl")
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        assert ws is not None
+        # Sub-table 1: Revenue
+        ws.append(["Revenue", "Q1"])
+        ws.append(["Product A", 100])
+        # Blank separator row
+        ws.append([None, None])
+        # Sub-table 2: Costs
+        ws.append(["Costs", "Q1"])
+        ws.append(["Rent", 50])
+        wb.save(tmp_path / "subtables.xlsx")
+
+        from dd_agents.tools.read_office import read_office
+
+        result = read_office(str(tmp_path / "subtables.xlsx"))
+        assert result["status"] == "ok"
+        content = result["content"]
+
+        # Two separate markdown table headers (| A | B | ... | --- | --- |)
+        assert content.count("| --- |") == 2
+
+        # All data is preserved
+        assert "Revenue" in content
+        assert "Product A" in content
+        assert "Costs" in content
+        assert "Rent" in content
+
+        # Row count excludes blank rows
+        assert "4 rows" in content
+
+    def test_no_blank_rows_single_table(self, tmp_path: Path) -> None:
+        """Without blank rows, output is a single table (backwards-compatible)."""
+        openpyxl = pytest.importorskip("openpyxl")
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        assert ws is not None
+        ws.append(["A", 1])
+        ws.append(["B", 2])
+        ws.append(["C", 3])
+        wb.save(tmp_path / "single.xlsx")
+
+        from dd_agents.tools.read_office import read_office
+
+        result = read_office(str(tmp_path / "single.xlsx"))
+        assert result["status"] == "ok"
+        content = result["content"]
+
+        # Single table header
+        assert content.count("| --- |") == 1
+        assert "3 rows" in content
+
+    def test_multiple_consecutive_blank_rows_collapsed(self, tmp_path: Path) -> None:
+        """Multiple consecutive blank rows count as one boundary."""
+        openpyxl = pytest.importorskip("openpyxl")
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        assert ws is not None
+        ws.append(["Data1", 10])
+        ws.append([None, None])
+        ws.append([None, None])
+        ws.append([None, None])
+        ws.append(["Data2", 20])
+        wb.save(tmp_path / "multi_blank.xlsx")
+
+        from dd_agents.tools.read_office import read_office
+
+        result = read_office(str(tmp_path / "multi_blank.xlsx"))
+        assert result["status"] == "ok"
+        content = result["content"]
+        # Still just 2 sub-tables, not 4
+        assert content.count("| --- |") == 2
+        assert "2 rows" in content
+
+
+class TestCellEdgeCases:
+    """Tests for numeric edge cases in _format_cell."""
+
+    def test_nan_cell_renders_as_string(self) -> None:
+        """NaN with currency format falls through to str() instead of crashing."""
+        from types import SimpleNamespace
+
+        from dd_agents.tools.read_office import _format_cell
+
+        cell = SimpleNamespace(value=float("nan"), number_format="$#,##0.00")
+        result = _format_cell(cell)
+        assert "nan" in result.lower()
+        # Must NOT produce "$nan" — that would look like a currency value.
+        assert "$" not in result
+
+    def test_inf_cell_renders_as_string(self) -> None:
+        """Inf with percentage format falls through to str() instead of crashing."""
+        from types import SimpleNamespace
+
+        from dd_agents.tools.read_office import _format_cell
+
+        cell = SimpleNamespace(value=float("inf"), number_format="0.0%")
+        result = _format_cell(cell)
+        assert "inf" in result.lower()
+        assert "%" not in result
+
+    def test_negative_currency(self, tmp_path: Path) -> None:
+        """Negative currency values render with symbol and negative sign."""
+        openpyxl = pytest.importorskip("openpyxl")
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        assert ws is not None
+        cell = ws.cell(row=1, column=1, value=-1234.56)
+        cell.number_format = "$#,##0.00"
+        wb.save(tmp_path / "neg.xlsx")
+
+        from dd_agents.tools.read_office import read_office
+
+        result = read_office(str(tmp_path / "neg.xlsx"))
+        assert result["status"] == "ok"
+        content = result["content"]
+        assert "$" in content
+        assert "1,234.56" in content
+
+
+class TestPathSecurity:
+    """Tests for allowed_dir path containment (security boundary)."""
+
+    def test_path_inside_allowed_dir(self, tmp_path: Path) -> None:
+        """Files inside allowed_dir are readable."""
+        openpyxl = pytest.importorskip("openpyxl")
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        assert ws is not None
+        ws.append(["OK", 1])
+        wb.save(tmp_path / "inside.xlsx")
+
+        from dd_agents.tools.read_office import read_office
+
+        result = read_office(str(tmp_path / "inside.xlsx"), allowed_dir=str(tmp_path))
+        assert result["status"] == "ok"
+        assert "OK" in result["content"]
+
+    def test_path_outside_allowed_dir_blocked(self, tmp_path: Path) -> None:
+        """Files outside allowed_dir are blocked."""
+        openpyxl = pytest.importorskip("openpyxl")
+        # Create file in a sibling directory.
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        assert ws is not None
+        ws.append(["Secret", 999])
+        wb.save(outside / "secret.xlsx")
+
+        allowed = tmp_path / "allowed"
+        allowed.mkdir()
+
+        from dd_agents.tools.read_office import read_office
+
+        result = read_office(str(outside / "secret.xlsx"), allowed_dir=str(allowed))
+        assert result["status"] == "error"
+        assert "traversal" in result["reason"].lower() or "outside" in result["reason"].lower()
+
+    def test_no_allowed_dir_permits_any_path(self, tmp_path: Path) -> None:
+        """Without allowed_dir, any accessible path is permitted."""
+        openpyxl = pytest.importorskip("openpyxl")
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        assert ws is not None
+        ws.append(["Free", 1])
+        wb.save(tmp_path / "free.xlsx")
+
+        from dd_agents.tools.read_office import read_office
+
+        result = read_office(str(tmp_path / "free.xlsx"))
+        assert result["status"] == "ok"
 
 
 class TestReadDocx:

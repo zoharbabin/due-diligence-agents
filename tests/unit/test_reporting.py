@@ -875,7 +875,7 @@ class TestMergeNormalization:
         assert gap_types["Missing SOC 2 Type I"] == "Missing_Doc"
 
     def test_gap_string_recovery_infers_priority(self) -> None:
-        """Bare string gaps with critical keywords should get P1 priority."""
+        """Bare string gaps with critical keywords should get P0 priority."""
         agent_outputs = {
             "legal": {
                 "gaps": [
@@ -888,7 +888,7 @@ class TestMergeNormalization:
         assert len(gaps) == 2
         critical_gap = next(g for g in gaps if "CRITICAL" in g.missing_item)
         minor_gap = next(g for g in gaps if "Minor" in g.missing_item)
-        assert str(critical_gap.priority) == "P1"
+        assert str(critical_gap.priority) == "P0"
         assert str(minor_gap.priority) == "P2"
 
     # -----------------------------------------------------------------------

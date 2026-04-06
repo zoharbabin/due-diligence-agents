@@ -187,7 +187,7 @@ class ReferenceFileClassifier:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         data = [rf.model_dump() for rf in ref_files]
-        output_path.write_text(json.dumps(data, indent=2))
+        output_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
         logger.debug("Wrote reference_files.json with %d entries", len(ref_files))
 
     # ------------------------------------------------------------------

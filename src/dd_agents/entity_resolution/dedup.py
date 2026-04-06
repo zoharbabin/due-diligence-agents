@@ -60,4 +60,4 @@ class CrossDocumentDeduplicator:
     def write_summary(self, path: Path) -> None:
         """Write the dedup summary to a JSON file."""
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(self.get_summary(), indent=2))
+        path.write_text(json.dumps(self.get_summary(), indent=2), encoding="utf-8")

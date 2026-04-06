@@ -114,7 +114,7 @@ class CoverageValidator:
                 empty_files.append(jf.name)
                 continue
             try:
-                data = json.loads(jf.read_text())
+                data = json.loads(jf.read_text(encoding="utf-8"))
                 if isinstance(data, dict) and not data.get("findings") and not data.get("gaps"):
                     empty_files.append(jf.name)
             except (json.JSONDecodeError, OSError):

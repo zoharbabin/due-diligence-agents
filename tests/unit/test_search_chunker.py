@@ -356,3 +356,139 @@ class TestPageMarkerPreservation:
         chunk_text = "".join(seg.text for seg in chunks[0].file_segments)
         for page_num in range(1, 4):
             assert f"--- Page {page_num} ---" in chunk_text
+
+
+# ===================================================================
+# is_tabular (E-4)
+# ===================================================================
+
+
+class TestIsTabular:
+    def test_markdown_table_detected(self) -> None:
+        from dd_agents.search.chunker import is_tabular
+
+        text = "## Sheet: Revenue\n| A | B |\n| --- | --- |\n| 100 | 200 |\n| 300 | 400 |"
+        assert is_tabular(text) is True
+
+    def test_prose_not_tabular(self) -> None:
+        from dd_agents.search.chunker import is_tabular
+
+        text = "This is a contract.\nSection 1. Definitions.\nSection 2. Terms."
+        assert is_tabular(text) is False
+
+    def test_mixed_mostly_table(self) -> None:
+        from dd_agents.search.chunker import is_tabular
+
+        text = "## Sheet: Data\n| A | B |\n| --- | --- |\n" + "| x | y |\n" * 20
+        assert is_tabular(text) is True
+
+    def test_empty_text(self) -> None:
+        from dd_agents.search.chunker import is_tabular
+
+        assert is_tabular("") is False
+
+
+# ===================================================================
+# split_by_table_rows (E-4)
+# ===================================================================
+
+
+class TestSplitByTableRows:
+    def _make_table(self, num_rows: int, cols: int = 3, row_chars: int = 50) -> str:
+        """Build a markdown table with a sheet heading and column headers."""
+        filler = "x" * max(1, (row_chars - cols * 5) // cols)
+        lines = [f"## Sheet: Data ({num_rows} rows, {cols} columns)", ""]
+        headers = [_col_letter_simple(i) for i in range(cols)]
+        lines.append("| " + " | ".join(headers) + " |")
+        lines.append("| " + " | ".join("---" for _ in headers) + " |")
+        for i in range(num_rows):
+            cells = [f"{filler}_{i}_{c}" for c in range(cols)]
+            lines.append("| " + " | ".join(cells) + " |")
+        return "\n".join(lines)
+
+    def test_small_table_single_segment(self) -> None:
+        from dd_agents.search.chunker import split_by_table_rows
+
+        text = self._make_table(5)
+        segs = split_by_table_rows(text, "revenue.xlsx", target_chars=TARGET_CHUNK_CHARS)
+
+        assert len(segs) == 1
+        assert segs[0].is_partial is False
+        assert "## Sheet: Data" in segs[0].text
+
+    def test_large_table_splits_with_header_repetition(self) -> None:
+        from dd_agents.search.chunker import split_by_table_rows
+
+        # Each row ~60 chars.  200 rows = ~12000 chars.  Target 3000 → multiple segments.
+        text = self._make_table(200, row_chars=60)
+        segs = split_by_table_rows(text, "big.xlsx", target_chars=3000)
+
+        assert len(segs) > 1
+        # Every segment must contain the full header block:
+        # sheet heading, column letters, and separator.
+        for seg in segs:
+            assert "## Sheet: Data" in seg.text
+            assert "| A |" in seg.text
+            assert "| --- |" in seg.text
+
+    def test_all_data_rows_preserved(self) -> None:
+        from dd_agents.search.chunker import split_by_table_rows
+
+        text = self._make_table(50, row_chars=60)
+        segs = split_by_table_rows(text, "data.xlsx", target_chars=2000)
+
+        combined = "\n".join(seg.text for seg in segs)
+        # Use word-boundary marker (pipe-delimited) to avoid substring collisions
+        # (e.g. "_1_0" matching inside "_10_0").
+        for i in range(50):
+            assert f"_{i}_0 |" in combined or f"_{i}_0|" in combined
+
+    def test_partial_flags_set_correctly(self) -> None:
+        from dd_agents.search.chunker import split_by_table_rows
+
+        text = self._make_table(100, row_chars=60)
+        segs = split_by_table_rows(text, "data.xlsx", target_chars=2000)
+
+        assert len(segs) > 1
+        for idx, seg in enumerate(segs):
+            assert seg.is_partial is True
+            assert seg.part_number == idx + 1
+            assert seg.total_parts == len(segs)
+
+    def test_non_tabular_falls_back(self) -> None:
+        """Non-tabular text falls back to split_by_paragraphs."""
+        from dd_agents.search.chunker import split_by_table_rows
+
+        text = "Just a paragraph of text.\n\nAnother paragraph."
+        segs = split_by_table_rows(text, "notes.txt", target_chars=TARGET_CHUNK_CHARS)
+
+        assert len(segs) == 1
+        assert "Just a paragraph" in segs[0].text
+
+    def test_create_analysis_chunks_routes_tabular(self) -> None:
+        """create_analysis_chunks detects tabular text and uses table-row splitting."""
+        from dd_agents.search.chunker import is_tabular
+
+        text = self._make_table(100, row_chars=60)
+        assert is_tabular(text) is True
+
+        ft = _make_file_text("revenue.xlsx", text, has_page_markers=False)
+        chunks = create_analysis_chunks([ft], target_chars=2000)
+
+        assert len(chunks) > 1
+        # Every chunk's segments should contain the header.
+        for chunk in chunks:
+            for seg in chunk.file_segments:
+                assert "| A |" in seg.text
+
+
+def _col_letter_simple(index: int) -> str:
+    """Excel-style column letter.  Matches production ``_col_letter``."""
+    result = ""
+    i = index
+    while True:
+        result = chr(65 + i % 26) + result
+        i = i // 26 - 1
+        if i < 0:
+            break
+    return result

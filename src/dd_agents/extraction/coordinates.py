@@ -78,7 +78,7 @@ class CoordinateIndex:
         for fp, blocks in self._index.items():
             data[fp] = [b.model_dump() for b in blocks]
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(data, indent=2))
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     @classmethod
     def load(cls, path: Path) -> CoordinateIndex:
@@ -87,7 +87,7 @@ class CoordinateIndex:
         if not path.exists():
             return idx
         try:
-            raw = json.loads(path.read_text())
+            raw = json.loads(path.read_text(encoding="utf-8"))
             for fp, block_list in raw.items():
                 idx._index[fp] = [TextBlock.model_validate(b) for b in block_list]
         except (json.JSONDecodeError, OSError, KeyError) as exc:

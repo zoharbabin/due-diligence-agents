@@ -1148,9 +1148,9 @@ Where possible, the system uses deterministic computation instead of asking the 
 | "Are there conflicting termination clauses?" | Ask the LLM to compare | `detect_contradictions()` (Section 3.5) |
 | "What was the effective pricing on date X?" | Ask the LLM to reconstruct | `get_effective_terms_at(doc, date)` (Section 3.4) |
 
-### 6.4 Numerical Audit (5-Layer Validation)
+### 6.4 Numerical Audit (6-Layer Validation)
 
-The 5-layer numerical validation framework (`11-qa-validation.md`) catches fabricated numbers:
+The 6-layer numerical validation framework (`11-qa-validation.md`) catches fabricated numbers:
 
 - **Layer 1**: Every number traces to a source file
 - **Layer 2**: Every number is re-derived from source (not trusted from agent output)
@@ -1289,7 +1289,7 @@ How the ontology, reasoning, and explainability components integrate with existi
 | 17 (Coverage Gate) | No change | Existing gate already validates per-customer output |
 | 19-22 (Judge) | Chain validation | Judge validates reasoning chains as part of spot-checks |
 | 24 (Merge/Dedup) | Chain preservation | Reasoning chains carried through merge into final findings |
-| 27 (Numerical Audit) | No change | Existing 5-layer validation already prevents fabricated numbers |
+| 27 (Numerical Audit) | No change | Existing 6-layer validation already prevents fabricated numbers |
 | 28 (QA Audit) | Cross-document citation check | Add `validate_cross_document_citations()` to QA checks |
 | 30 (Excel Generation) | Reasoning column | Add Reasoning_Summary and Reasoning_Chain columns |
 

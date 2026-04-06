@@ -108,7 +108,7 @@ class ContractDateReconciler:
     ) -> None:
         """Serialize reconciliation result to JSON."""
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(result.model_dump_json(indent=2))
+        output_path.write_text(result.model_dump_json(indent=2), encoding="utf-8")
 
     # ------------------------------------------------------------------
     # Classification logic

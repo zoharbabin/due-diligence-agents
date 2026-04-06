@@ -24,7 +24,7 @@ In a production retrospective analyzing a real deal, all 17 quality failures wer
 
 ## What Transfers Directly
 
-All 3,102 lines of domain knowledge -- extraction rules, severity taxonomy (P0-P3), governance graph protocol, gap detection (cross-reference, pattern-based, checklist), cross-reference reconciliation, entity resolution (6-pass cascading matcher), reporting schema (14 sheets), numerical audit (5 layers), 30 Definition of Done checks -- transfer as agent prompts and Pydantic models. The SDK change is architectural. The analytical content is unchanged.
+All 3,102 lines of domain knowledge -- extraction rules, severity taxonomy (P0-P3), governance graph protocol, gap detection (cross-reference, pattern-based, checklist), cross-reference reconciliation, entity resolution (6-pass cascading matcher), reporting schema (14 sheets), numerical audit (6 layers), 31 Definition of Done checks -- transfer as agent prompts and Pydantic models. The SDK change is architectural. The analytical content is unchanged.
 
 ---
 
@@ -126,7 +126,7 @@ Detailed content is distributed across 22 numbered files. Each file is self-cont
 | 08 | Extraction (file discovery, markitdown fallback chain, checksum cache) |
 | 09 | Entity resolution (6-pass matcher, cache, rapidfuzz) |
 | 10 | Reporting (merge/dedup, 14-sheet Excel, report schema, report diff, date reconciliation) |
-| 11 | QA and validation (5-layer numerical audit, 30 DoD checks, audit gates, fail-closed) |
+| 11 | QA and validation (6-layer numerical audit, 31 DoD checks, audit gates, fail-closed) |
 | 12 | Error recovery (15 error scenarios, per-agent retry, partial failure, timeout, context exhaustion) |
 | 13 | Multi-project (data isolation between deals, project registry, parallel execution) |
 | 14 | Vector store (optional ChromaDB integration, chunking, semantic search) |

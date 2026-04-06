@@ -19,7 +19,8 @@ import logging
 import time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from typing import Any
 
 from dd_agents.orchestrator.checkpoints import (
     clean_checkpoints,
@@ -30,9 +31,6 @@ from dd_agents.orchestrator.state import PipelineError, PipelineState, StepResul
 from dd_agents.orchestrator.steps import PipelineStep
 from dd_agents.orchestrator.team import AgentTeam
 from dd_agents.utils.constants import ALL_SPECIALIST_AGENTS
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -355,8 +353,6 @@ class PipelineEngine:
         This is the single source of truth for artifact path resolution,
         preventing duplicate hardcoded path lists across methods.
         """
-        from pathlib import Path as _Path
-
         artifact_paths: dict[str, list[str]] = {
             "quality_scores": [
                 "quality_scores.json",
@@ -378,7 +374,7 @@ class PipelineEngine:
         if hasattr(state, "artifact_paths") and isinstance(getattr(state, "artifact_paths", None), dict):
             recorded = state.artifact_paths.get(artifact)
             if recorded:
-                recorded_path = _Path(recorded)
+                recorded_path = Path(recorded)
                 if recorded_path.exists():
                     return recorded_path
 
@@ -490,15 +486,20 @@ class PipelineEngine:
             )
 
         try:
-            from dd_agents.config import load_deal_config
+            raw_bytes = config_path.read_bytes()
+            raw = json.loads(raw_bytes.decode("utf-8-sig"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise BlockingGateError(f"Config validation failed: {exc}") from exc
 
-            load_deal_config(config_path)
+        try:
+            from dd_agents.config import validate_deal_config
+
+            validate_deal_config(raw)
         except Exception as exc:
             raise BlockingGateError(f"Config validation failed: {exc}") from exc
 
-        raw = json.loads(config_path.read_text(encoding="utf-8"))
         state.deal_config = raw
-        state.config_hash = hashlib.sha256(config_path.read_bytes()).hexdigest()
+        state.config_hash = hashlib.sha256(raw_bytes).hexdigest()
 
         # Pull execution settings from config
         execution = raw.get("execution", {})
@@ -760,7 +761,7 @@ class PipelineEngine:
 
         # Write entity_matches.json (initially empty, updated in step 9)
         match_log = resolver.get_match_log()
-        (inv_dir / "entity_matches.json").write_text(json.dumps(match_log, indent=2))
+        (inv_dir / "entity_matches.json").write_text(json.dumps(match_log, indent=2), encoding="utf-8")
 
         logger.info("Entity resolver initialized with %d customers", len(customers_csv))
         return state
@@ -817,7 +818,7 @@ class PipelineEngine:
                 source_type="reference_file",
             )
             match_log = resolver.get_match_log()
-            (inv_dir / "entity_matches.json").write_text(json.dumps(match_log, indent=2))
+            (inv_dir / "entity_matches.json").write_text(json.dumps(match_log, indent=2), encoding="utf-8")
 
         # Cross-document entity deduplication (Issue #11)
         from dd_agents.entity_resolution.dedup import CrossDocumentDeduplicator
@@ -875,7 +876,7 @@ class PipelineEngine:
             return state
 
         try:
-            customer_database = json.loads(db_path.read_text())
+            customer_database = json.loads(db_path.read_text(encoding="utf-8"))
             if not isinstance(customer_database, list):
                 customer_database = customer_database.get("customers", [])
         except (json.JSONDecodeError, OSError) as exc:
@@ -920,7 +921,7 @@ class PipelineEngine:
             prior_class_path = state.prior_run_dir / "classification.json"
             if prior_class_path.exists():
                 try:
-                    prior_data = json.loads(prior_class_path.read_text())
+                    prior_data = json.loads(prior_class_path.read_text(encoding="utf-8"))
                     for entry in prior_data.get("customers", []):
                         name = entry.get("customer_safe_name", "")
                         if name:
@@ -941,7 +942,7 @@ class PipelineEngine:
 
         # Write classification.json
         class_path = state.run_dir / "classification.json"
-        class_path.write_text(classification.model_dump_json(indent=2))
+        class_path.write_text(classification.model_dump_json(indent=2), encoding="utf-8")
 
         # Determine which customers to analyze
         state.customers_to_analyze = [
@@ -988,7 +989,8 @@ class PipelineEngine:
                 from dd_agents.config import load_deal_config
 
                 deal_config_obj = load_deal_config(self.deal_config_path)
-            except Exception:
+            except Exception as exc:
+                logger.warning("Failed to load deal config for prompt enrichment: %s", exc)
                 deal_config_obj = None
 
         run_dir = state.run_dir or (state.project_dir / state.skill_dir / "runs" / state.run_id)
@@ -1056,8 +1058,6 @@ class PipelineEngine:
         The routing manifest is written to ``{RUN_DIR}/reference_routing.json``
         for audit traceability.
         """
-        from pathlib import Path as _Path
-
         self._ensure_team(state)
 
         ref_files: list[Any] = getattr(state, "_reference_files", [])
@@ -1075,9 +1075,9 @@ class PipelineEngine:
 
         for ref in ref_files:
             # Resolve the extracted text path
-            source_text: _Path | None = None
+            source_text: Path | None = None
             if ref.text_path:
-                candidate = _Path(ref.text_path)
+                candidate = Path(ref.text_path)
                 if candidate.is_absolute() and candidate.exists():
                     source_text = candidate
                 else:
@@ -1097,7 +1097,7 @@ class PipelineEngine:
 
             if source_text is None:
                 # Strategy 3: fall back to simple stem.md (legacy convention)
-                stem = _Path(ref.file_path).stem
+                stem = Path(ref.file_path).stem
                 candidate = text_dir / f"{stem}.md"
                 if candidate.exists():
                     source_text = candidate
@@ -1134,7 +1134,7 @@ class PipelineEngine:
         # Write routing manifest for audit
         manifest_path = state.run_dir / "reference_routing.json"
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
-        manifest_path.write_text(json.dumps(routing_manifest, indent=2))
+        manifest_path.write_text(json.dumps(routing_manifest, indent=2), encoding="utf-8")
 
         logger.info("Routed %d reference files to agent directories", len(routing_manifest))
         return state
@@ -1294,7 +1294,7 @@ class PipelineEngine:
             gaps_dir = findings_dir / "coverage_gaps"
             gaps_dir.mkdir(parents=True, exist_ok=True)
             gap_path = gaps_dir / "coverage_gap_findings.json"
-            gap_path.write_text(json.dumps(all_gap_findings, indent=2))
+            gap_path.write_text(json.dumps(all_gap_findings, indent=2), encoding="utf-8")
             logger.info(
                 "Generated %d coverage gap findings at %s",
                 len(all_gap_findings),
@@ -1340,10 +1340,8 @@ class PipelineEngine:
         Returns a summary dict with counts of malformed entries per agent
         (useful for tests and monitoring).
         """
-        from pathlib import Path as _Path
-
         summary: dict[str, Any] = {}
-        findings_path = _Path(str(findings_dir))
+        findings_path = Path(str(findings_dir))
 
         for agent in ALL_SPECIALIST_AGENTS:
             agent_dir = findings_path / agent
@@ -1362,7 +1360,7 @@ class PipelineEngine:
                 if fp.name == "coverage_manifest.json":
                     continue
                 try:
-                    data = json.loads(fp.read_text())
+                    data = json.loads(fp.read_text(encoding="utf-8"))
                 except (json.JSONDecodeError, OSError):
                     continue
                 if not isinstance(data, dict):
@@ -1554,9 +1552,7 @@ class PipelineEngine:
         - ``reason``: str (empty if no exhaustion detected)
         - ``file_sizes``: list of (filename, size) tuples sorted by name
         """
-        from pathlib import Path as _Path
-
-        agent_dir = _Path(str(findings_dir)) / agent_name
+        agent_dir = Path(str(findings_dir)) / agent_name
         result: dict[str, Any] = {
             "agent": agent_name,
             "produced": 0,
@@ -1791,7 +1787,7 @@ class PipelineEngine:
                         if not candidate.exists():
                             continue
                         try:
-                            on_disk = json.loads(candidate.read_text())
+                            on_disk = json.loads(candidate.read_text(encoding="utf-8"))
                             if on_disk.get("agent_scores") and on_disk.get("overall_quality", 0) > 0:
                                 logger.info(
                                     "Judge text stream yielded empty scores; "
@@ -1804,7 +1800,7 @@ class PipelineEngine:
                         except (json.JSONDecodeError, OSError, Exception) as exc:  # noqa: BLE001
                             logger.warning("Failed to recover judge scores from %s: %s", candidate, exc)
 
-                scores_path.write_text(scores.model_dump_json(indent=2))
+                scores_path.write_text(scores.model_dump_json(indent=2), encoding="utf-8")
 
                 # Store in state for steps 21-22
                 state.judge_scores = {
@@ -1946,7 +1942,7 @@ class PipelineEngine:
         judge_dir = state.run_dir / "judge"
         judge_dir.mkdir(parents=True, exist_ok=True)
         scores_path = judge_dir / "quality_scores.json"
-        scores_path.write_text(json.dumps(judge_data, indent=2))
+        scores_path.write_text(json.dumps(judge_data, indent=2), encoding="utf-8")
 
         logger.info("Judge Round 2 complete: blended scores for %d agents", len(failing_agents))
         return state
@@ -1966,7 +1962,8 @@ class PipelineEngine:
         files_txt = self._inventory_dir(state) / "files.txt"
         file_inventory: list[str] = []
         if files_txt.exists():
-            file_inventory = [line.strip() for line in files_txt.read_text().strip().splitlines() if line.strip()]
+            raw = files_txt.read_text(encoding="utf-8").strip()
+            file_inventory = [line.strip() for line in raw.splitlines() if line.strip()]
 
         findings_dir = state.run_dir / "findings"
         validator = PreMergeValidator(
@@ -1979,7 +1976,7 @@ class PipelineEngine:
 
         # Write structured report for downstream consumption (HTML report).
         output_path = state.run_dir / "pre_merge_validation.json"
-        output_path.write_text(report.model_dump_json(indent=2))
+        output_path.write_text(report.model_dump_json(indent=2), encoding="utf-8")
         logger.info("Pre-merge validation report written to %s", output_path)
 
         # --- Follow-up verification of P0/P1 findings (Issue #140, AG-6) ---
@@ -2017,7 +2014,7 @@ class PipelineEngine:
                     continue
 
                 try:
-                    data = json.loads(customer_file.read_text())
+                    data = json.loads(customer_file.read_text(encoding="utf-8"))
                 except (json.JSONDecodeError, OSError):
                     continue
 
@@ -2059,7 +2056,7 @@ class PipelineEngine:
 
                 # Write back adjusted findings if any changed.
                 if adjusted > 0 and isinstance(data, dict):
-                    customer_file.write_text(json.dumps(data, indent=2))
+                    customer_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
         if total_verified > 0:
             logger.info(
@@ -2162,7 +2159,8 @@ class PipelineEngine:
         files_txt = self._inventory_dir(state) / "files.txt"
         file_inventory: list[str] = []
         if files_txt.exists():
-            file_inventory = [line.strip() for line in files_txt.read_text().strip().splitlines() if line.strip()]
+            raw = files_txt.read_text(encoding="utf-8").strip()
+            file_inventory = [line.strip() for line in raw.splitlines() if line.strip()]
 
         merger = FindingMerger(
             run_id=state.run_id,
@@ -2197,7 +2195,7 @@ class PipelineEngine:
                 gap_file = findings_dir / agent / "gaps" / f"{customer}.json"
                 if gap_file.exists():
                     try:
-                        data = json.loads(gap_file.read_text())
+                        data = json.loads(gap_file.read_text(encoding="utf-8"))
                         if isinstance(data, list):
                             all_gaps.extend(data)
                         elif isinstance(data, dict):
@@ -2206,7 +2204,7 @@ class PipelineEngine:
                         continue
             if all_gaps:
                 out = gaps_dir / f"{customer}.json"
-                out.write_text(json.dumps(all_gaps, indent=2))
+                out.write_text(json.dumps(all_gaps, indent=2), encoding="utf-8")
 
         logger.info("Gap merge complete")
         return state
@@ -2247,7 +2245,7 @@ class PipelineEngine:
                 writer.writerow(["group", "name", "safe_name", "path", "file_count", "file_list"])
                 for csn in state.customer_safe_names:
                     writer.writerow(["", csn, csn, "", 0, ""])
-                csv_path.write_text(buf.getvalue())
+                csv_path.write_text(buf.getvalue(), encoding="utf-8")
                 logger.info(
                     "Rebuilt minimal customers.csv (%d names) for audit traceability",
                     len(state.customer_safe_names),
@@ -2271,7 +2269,7 @@ class PipelineEngine:
         if not ref_path.exists():
             # Write a list with the correct length so count rederivation passes.
             placeholder = [{"path": f"ref_{i}", "category": "unknown"} for i in range(state.reference_file_count)]
-            ref_path.write_text(json.dumps(placeholder, indent=2))
+            ref_path.write_text(json.dumps(placeholder, indent=2), encoding="utf-8")
             logger.info(
                 "Rebuilt reference_files.json (%d entries) for audit traceability",
                 state.reference_file_count,
@@ -2288,7 +2286,8 @@ class PipelineEngine:
                         "total_reference_files": state.reference_file_count,
                     },
                     indent=2,
-                )
+                ),
+                encoding="utf-8",
             )
             logger.info("Rebuilt counts.json for audit traceability")
 
@@ -2386,7 +2385,7 @@ class PipelineEngine:
             total_gaps = 0
             for jf in merged_dir.glob("*.json"):
                 try:
-                    data = json.loads(jf.read_text())
+                    data = json.loads(jf.read_text(encoding="utf-8"))
                     findings = data.get("findings", [])
                     for f in findings:
                         if f.get("category") == "domain_reviewed_no_issues":
@@ -2410,7 +2409,7 @@ class PipelineEngine:
             manifest["numbers"][8]["value"] = total_gaps
 
         manifest_path = state.run_dir / "numerical_manifest.json"
-        manifest_path.write_text(json.dumps(manifest, indent=2))
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
         logger.info("Built numerical manifest with %d entries", len(manifest["numbers"]))
         return state
@@ -2433,7 +2432,7 @@ class PipelineEngine:
 
         from dd_agents.models.numerical import NumericalManifest
 
-        manifest_data = json.loads(manifest_path.read_text())
+        manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
         manifest = NumericalManifest.model_validate(manifest_data)
         checks = auditor.run_full_audit(manifest)
 
@@ -2532,7 +2531,7 @@ class PipelineEngine:
         qs_path = self._resolve_artifact(state, "quality_scores")
         if qs_path is not None:
             with contextlib.suppress(json.JSONDecodeError, OSError):
-                run_metadata["quality_scores"] = json.loads(qs_path.read_text())
+                run_metadata["quality_scores"] = json.loads(qs_path.read_text(encoding="utf-8"))
 
         # Entity matches (for Entity_Resolution_Log sheet)
         # The file is shaped {generated_at, matches: [...], unmatched, rejected};
@@ -2540,7 +2539,7 @@ class PipelineEngine:
         entity_path = inv_dir / "entity_matches.json"
         if entity_path.exists():
             with contextlib.suppress(json.JSONDecodeError, OSError):
-                em_data = json.loads(entity_path.read_text())
+                em_data = json.loads(entity_path.read_text(encoding="utf-8"))
                 if isinstance(em_data, dict):
                     run_metadata["entity_matches"] = em_data.get("matches", [])
                 elif isinstance(em_data, list):
@@ -2550,7 +2549,7 @@ class PipelineEngine:
         ref_path = inv_dir / "reference_files.json"
         if ref_path.exists():
             try:
-                data = json.loads(ref_path.read_text())
+                data = json.loads(ref_path.read_text(encoding="utf-8"))
                 run_metadata["reference_files"] = data if isinstance(data, list) else data.get("files", [])
             except (json.JSONDecodeError, OSError):
                 pass
@@ -2562,7 +2561,7 @@ class PipelineEngine:
         ]:
             if candidate.exists():
                 try:
-                    run_metadata["contract_date_reconciliation"] = json.loads(candidate.read_text())
+                    run_metadata["contract_date_reconciliation"] = json.loads(candidate.read_text(encoding="utf-8"))
                     break
                 except (json.JSONDecodeError, OSError):
                     continue
@@ -2571,7 +2570,7 @@ class PipelineEngine:
         diff_path = state.run_dir / "report_diff.json"
         if diff_path.exists():
             with contextlib.suppress(json.JSONDecodeError, OSError):
-                run_metadata["report_diff"] = json.loads(diff_path.read_text())
+                run_metadata["report_diff"] = json.loads(diff_path.read_text(encoding="utf-8"))
 
         # Finding and gap counts from merged data
         total_findings = 0
@@ -2615,7 +2614,7 @@ class PipelineEngine:
         if merged_dir.exists():
             for jf in merged_dir.glob("*.json"):
                 try:
-                    data = json.loads(jf.read_text())
+                    data = json.loads(jf.read_text(encoding="utf-8"))
                     merged_findings[jf.stem] = data
                 except (json.JSONDecodeError, OSError):
                     continue
@@ -2629,7 +2628,7 @@ class PipelineEngine:
         run_schema_path = state.run_dir / "report_schema.json"
         if run_schema_path.exists():
             try:
-                schema = ReportSchema.model_validate_json(run_schema_path.read_text())
+                schema = ReportSchema.model_validate_json(run_schema_path.read_text(encoding="utf-8"))
                 logger.info("Loaded report schema from run dir: %s", run_schema_path)
             except Exception:
                 logger.warning("Invalid report_schema.json in run dir -- trying config/")
@@ -2638,11 +2637,9 @@ class PipelineEngine:
         #    project_dir may point to the data room (not the codebase), so
         #    also search relative to the installed package location.
         if schema is None:
-            from pathlib import Path as _Path
-
             import dd_agents as _pkg
 
-            _pkg_root = _Path(_pkg.__file__).resolve().parent  # src/dd_agents/
+            _pkg_root = Path(_pkg.__file__).resolve().parent  # src/dd_agents/
             candidate_paths: list[Path] = [
                 self.project_dir / "config" / "report_schema.json",
                 _pkg_root.parent.parent / "config" / "report_schema.json",  # repo_root/config/
@@ -2651,11 +2648,11 @@ class PipelineEngine:
             for config_schema_path in candidate_paths:
                 if config_schema_path.exists():
                     try:
-                        schema = ReportSchema.model_validate_json(config_schema_path.read_text())
+                        schema = ReportSchema.model_validate_json(config_schema_path.read_text(encoding="utf-8"))
                         logger.info("Loaded report schema from: %s", config_schema_path)
                         # Copy to run_dir so step 31 can find it
                         run_schema_path.parent.mkdir(parents=True, exist_ok=True)
-                        run_schema_path.write_text(config_schema_path.read_text())
+                        run_schema_path.write_text(config_schema_path.read_text(encoding="utf-8"), encoding="utf-8")
                         break
                     except Exception:
                         logger.warning("Invalid report_schema.json at %s -- trying next", config_schema_path)
@@ -2696,7 +2693,7 @@ class PipelineEngine:
                 }
             )
             run_schema_path.parent.mkdir(parents=True, exist_ok=True)
-            run_schema_path.write_text(schema.model_dump_json(indent=2))
+            run_schema_path.write_text(schema.model_dump_json(indent=2), encoding="utf-8")
 
         generator = ExcelReportGenerator()
         report_dir = state.run_dir / "report"
@@ -2892,7 +2889,7 @@ class PipelineEngine:
             return state
 
         try:
-            schema = ReportSchema.model_validate_json(schema_path.read_text())
+            schema = ReportSchema.model_validate_json(schema_path.read_text(encoding="utf-8"))
         except Exception as exc:
             logger.warning("Cannot load report schema for validation: %s", exc)
             return state
@@ -2922,7 +2919,7 @@ class PipelineEngine:
                 from dd_agents.validation.numerical_audit import NumericalAuditor
 
                 inv_dir = self._inventory_dir(state)
-                nm = NumericalManifest.model_validate_json(manifest_path.read_text())
+                nm = NumericalManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
                 auditor = NumericalAuditor(run_dir=state.run_dir, inventory_dir=inv_dir)
                 layer4 = auditor.check_cross_format_parity(excel_path=excel_files[0], manifest=nm)
                 if not layer4.passed:
@@ -3005,7 +3002,7 @@ class PipelineEngine:
             return counts
         for jf in merged_dir.glob("*.json"):
             try:
-                data = json.loads(jf.read_text())
+                data = json.loads(jf.read_text(encoding="utf-8"))
                 for f in data.get("findings", []):
                     sev = f.get("severity", "P3")
                     if sev in counts:
@@ -3022,7 +3019,7 @@ class PipelineEngine:
         if merged_dir.exists():
             for jf in merged_dir.glob("*.json"):
                 try:
-                    data = json.loads(jf.read_text())
+                    data = json.loads(jf.read_text(encoding="utf-8"))
                     total += len(data.get("gaps", []))
                 except (json.JSONDecodeError, OSError):
                     continue
@@ -3034,7 +3031,7 @@ class PipelineEngine:
         if qs_path is None:
             return {}
         try:
-            data = json.loads(qs_path.read_text())
+            data = json.loads(qs_path.read_text(encoding="utf-8"))
             raw_scores = data.get("agent_scores", {})
             return {agent: (s.get("score", 0) if isinstance(s, dict) else int(s)) for agent, s in raw_scores.items()}
         except (json.JSONDecodeError, OSError, ValueError):
@@ -3048,7 +3045,7 @@ class PipelineEngine:
             return assignments
         for jf in merged_dir.glob("*.json"):
             try:
-                data = json.loads(jf.read_text())
+                data = json.loads(jf.read_text(encoding="utf-8"))
                 csn = jf.stem
                 agents: set[str] = set()
                 for f in data.get("findings", []):
@@ -3084,7 +3081,7 @@ class PipelineEngine:
     CRITICAL_DOD_CHECKS: frozenset[int] = frozenset({1, 2, 3, 11, 13, 14, 15, 17, 19})
 
     async def _step_35_shutdown(self, state: PipelineState) -> PipelineState:
-        """Shutdown all agents, run 30 DoD checks, set exit status.
+        """Shutdown all agents, run 31 DoD checks, set exit status.
 
         Tier 2 of the two-tier validation design.  Runs
         ``DefinitionOfDoneChecker`` which evaluates analysis completeness
@@ -3134,7 +3131,7 @@ class PipelineEngine:
         }
         dod_path = state.run_dir / "dod_results.json"
         dod_path.parent.mkdir(parents=True, exist_ok=True)
-        dod_path.write_text(json.dumps(dod_output, indent=2))
+        dod_path.write_text(json.dumps(dod_output, indent=2), encoding="utf-8")
         logger.info("DoD results written to %s", dod_path)
 
         # Store in state for pipeline exit status (Issue #56)

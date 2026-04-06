@@ -121,7 +121,7 @@ class CustomerMentionBuilder:
         """
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(json.dumps(index.model_dump(), indent=2))
+        output_path.write_text(json.dumps(index.model_dump(), indent=2), encoding="utf-8")
         logger.debug("Wrote customer_mentions.json")
 
     # ------------------------------------------------------------------

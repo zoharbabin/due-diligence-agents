@@ -25,6 +25,7 @@ _BLOCKED_HOSTS: frozenset[str] = frozenset(
         "metadata.google.internal",
         "metadata.goog",
         "169.254.169.254",
+        "169.254.170.2",  # AWS ECS task metadata
     }
 )
 
@@ -98,6 +99,35 @@ def _resolve_and_check(host: str) -> list[str]:
     return resolved_ips
 
 
+def _validate_common(url: str, *, allow_http: bool = False) -> tuple[str, list[str]]:
+    """Shared validation logic for :func:`validate_url` and :func:`resolve_and_validate`.
+
+    Returns (url, resolved_ips) on success.
+
+    Raises:
+        UnsafeURLError: if the URL is unsafe.
+    """
+    scheme, host = _extract_host(url)
+
+    # Scheme check
+    allowed = _ALLOWED_SCHEMES | ({"http"} if allow_http else set())
+    if scheme not in allowed:
+        raise UnsafeURLError(f"URL scheme {scheme!r} not allowed (permitted: {', '.join(sorted(allowed))})")
+
+    # Reject userinfo (credentials in URL)
+    parsed = urlparse(url)
+    if parsed.username or parsed.password:
+        raise UnsafeURLError("URLs with embedded credentials (userinfo) are not allowed")
+
+    # Blocklist check
+    if host in _BLOCKED_HOSTS:
+        raise UnsafeURLError(f"Requests to {host!r} are blocked (cloud metadata endpoint)")
+
+    # DNS resolution + private-IP check
+    resolved = _resolve_and_check(host)
+    return url, resolved
+
+
 def validate_url(url: str, *, allow_http: bool = False) -> str:
     """Validate *url* is safe for outbound server-side requests.
 
@@ -113,31 +143,8 @@ def validate_url(url: str, *, allow_http: bool = False) -> str:
     Raises:
         UnsafeURLError: if the URL is unsafe.
     """
-    scheme, host = _extract_host(url)
-
-    # --- scheme check ---
-    allowed = _ALLOWED_SCHEMES | ({"http"} if allow_http else set())
-    if scheme not in allowed:
-        raise UnsafeURLError(f"URL scheme {scheme!r} not allowed (permitted: {', '.join(sorted(allowed))})")
-
-    # --- reject userinfo (credentials in URL) ---
-    try:
-        parsed = urlparse(url)
-        if parsed.username or parsed.password:
-            raise UnsafeURLError("URLs with embedded credentials (userinfo) are not allowed")
-    except UnsafeURLError:
-        raise
-    except Exception:
-        pass
-
-    # --- blocklist check ---
-    if host in _BLOCKED_HOSTS:
-        raise UnsafeURLError(f"Requests to {host!r} are blocked (cloud metadata endpoint)")
-
-    # --- DNS resolution + private-IP check ---
-    _resolve_and_check(host)
-
-    return url
+    validated_url, _resolved = _validate_common(url, allow_http=allow_http)
+    return validated_url
 
 
 def resolve_and_validate(url: str, *, allow_http: bool = False) -> tuple[str, list[str]]:
@@ -155,24 +162,4 @@ def resolve_and_validate(url: str, *, allow_http: bool = False) -> tuple[str, li
     Raises:
         UnsafeURLError: if the URL is unsafe.
     """
-    scheme, host = _extract_host(url)
-
-    allowed = _ALLOWED_SCHEMES | ({"http"} if allow_http else set())
-    if scheme not in allowed:
-        raise UnsafeURLError(f"URL scheme {scheme!r} not allowed (permitted: {', '.join(sorted(allowed))})")
-
-    # Reject userinfo
-    try:
-        parsed = urlparse(url)
-        if parsed.username or parsed.password:
-            raise UnsafeURLError("URLs with embedded credentials (userinfo) are not allowed")
-    except UnsafeURLError:
-        raise
-    except Exception:
-        pass
-
-    if host in _BLOCKED_HOSTS:
-        raise UnsafeURLError(f"Requests to {host!r} are blocked (cloud metadata endpoint)")
-
-    resolved = _resolve_and_check(host)
-    return url, resolved
+    return _validate_common(url, allow_http=allow_http)

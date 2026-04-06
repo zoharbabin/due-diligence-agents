@@ -17,6 +17,8 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
+from dd_agents.utils.constants import ALL_SPECIALIST_AGENTS  # noqa: E402
+
 if TYPE_CHECKING:
     from dd_agents.reporting.computed_metrics import ReportComputedData
 
@@ -47,7 +49,7 @@ SEVERITY_LABELS: dict[str, str] = {
     "P3": "Low",
 }
 
-DOMAIN_AGENTS: list[str] = ["legal", "finance", "commercial", "producttech"]
+DOMAIN_AGENTS: list[str] = list(ALL_SPECIALIST_AGENTS)
 
 DOMAIN_DISPLAY: dict[str, str] = {
     "legal": "Legal",

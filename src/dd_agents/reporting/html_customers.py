@@ -51,7 +51,8 @@ class CustomerRenderer(SectionRenderer):
         for f in findings:
             sev_summary[f.get("severity", "P3")] += 1
         sev_str = " ".join(
-            f"<span class='severity-badge' style='background:{SEVERITY_COLORS.get(s, '#ccc')}'>{s}:{c}</span>"
+            f"<span class='severity-badge' style='background:{SEVERITY_COLORS.get(s, '#ccc')}'>"
+            f"{html.escape(str(s))}:{c}</span>"
             for s, c in sorted(sev_summary.items())
             if c > 0
         )

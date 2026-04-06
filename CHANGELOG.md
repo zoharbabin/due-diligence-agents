@@ -8,6 +8,49 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 > The first public release was **v0.4.0** (2026-03-30). Tagged releases on PyPI and
 > GitHub begin at **v0.4.1**.
 
+## [0.5.1] — 2026-04-06
+
+### Added
+
+- **Excel cell formatting (E-1/E-2)** — `read_office` tool now renders dates as ISO-8601, currencies with symbols, and percentages with `%` suffix instead of raw openpyxl values. Guards against NaN/Inf in numeric formatting.
+- **Sub-table detection (E-3)** — Blank rows in spreadsheets split into separate logical tables, each with its own column-letter headers.
+- **Table-aware chunking (E-4)** — Search chunker detects markdown tables and splits at row boundaries with header repetition, preserving table structure for LLM analysis.
+- Security tests for `read_office` path traversal validation.
+- Edge-case tests for NaN, Inf, and negative currency formatting.
+- Proper `__all__` exports for `precedence` and `reasoning` packages.
+
+### Security
+
+- **SSRF redirect validation** — HTTP redirects now re-validated against SSRF blocklist via `_NoRedirectHandler`.
+- **Credential bypass fix** — removed silent `except Exception: pass` that skipped embedded-credential checks in `net_safety.py`.
+- **AWS ECS metadata IP** (`169.254.170.2`) added to SSRF blocklist.
+- **XSS fix** — `html.escape()` on LLM-sourced severity values in HTML customer renderer.
+- **Bash blocklist hardening** — `dd of=`, `python -m`, `python3 -m` added to pre-tool hook blocklist.
+
+### Fixed
+
+- **Gap severity mapping** — "critical" keywords now correctly map to P0 (was P1), "important" to P1 (was P2) in merge gap recovery.
+- **File descriptor leak** in `chronicle.py` atomic write exception handler.
+- **Config triple-read eliminated** — step 1 now reads `deal-config.json` once, validates via `validate_deal_config()`, and hashes the same bytes.
+- **Platform encoding safety** — explicit `encoding="utf-8"` on all `read_text()`/`write_text()` calls across 15+ modules.
+
+### Changed
+
+- **DRY constants** — `NON_CUSTOMER_STEMS`, `ALL_SPECIALIST_AGENTS`, `SEVERITY_ORDER` extracted to `utils/constants.py`; removed duplicate definitions from `merge.py`, `pre_merge.py`, `computed_metrics.py`, `html_base.py`.
+- **`net_safety.py` refactored** — `_validate_common()` shared helper eliminates code duplication between `validate_url` and `resolve_and_validate`.
+- **Removed 12 redundant inline `_Path` imports** across 5 files, replaced with top-level `from pathlib import Path`.
+- `ThreadPoolExecutor` in `reference_downloader.py` now used as context manager.
+
+### Documentation
+
+- **"5-layer" → "6-layer"** numerical audit references corrected across 14 plan docs.
+- **"30 DoD" → "31 DoD"** corrected across 9 plan docs, CHANGELOG, and PRODUCTION_HARDENING_PLAN.
+- **ReportingLead removed** from `06-agents.md` — replaced with deterministic merge documentation reflecting v0.4.0 architecture.
+- CLI reference updated with knowledge commands (`log`, `annotate`, `lineage`, `health`) and `--no-knowledge`/`--no-file` flags.
+- Inline docstrings updated for qa_audit (18 checks), engine (31 DoD), numerical_audit (6 layers).
+
+## [Unreleased]
+
 ## [0.5.0] - 2026-04-05
 
 ### Added
@@ -25,8 +68,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - `--no-knowledge` flag on `run` command to skip knowledge compilation.
 - `--no-file` flag on `search` command to skip filing results back to KB.
 - Knowledge compilation wired into pipeline step 32 (finalize_metadata) — best-effort, never blocks pipeline.
-- New `src/dd_agents/knowledge/` package with 11 modules and 30+ public API exports.
-- 234 new unit tests for knowledge package (total: 3,240 unit tests).
+- New `src/dd_agents/knowledge/` package with 12 modules and 30+ public API exports.
+- 234 new unit tests for knowledge package (total: 3,267 unit tests).
 - **Homebrew formula** (#177) — `brew install zoharbabin/due-diligence-agents/dd-agents`. Formula auto-updated on each release via CI.
 - Release workflow updated with `update-formula` job for automatic Homebrew version bumps.
 
@@ -132,7 +175,7 @@ Initial public release containing the complete Due Diligence Agent SDK.
 - **6-pass cascading entity resolution** with rapidfuzz token-sort-ratio matching, abbreviation expansion, cache learning.
 - **Entity deduplication** for post-resolution duplicate detection.
 - **Pre-merge validation and cross-agent anomaly detection** (step 23) — deterministic Python replacing the former Reporting Lead agent.
-- **5-layer numerical audit system** and **30 Definition of Done checks** as fail-closed quality gates.
+- **6-layer numerical audit system** and **31 Definition of Done checks** as fail-closed quality gates.
 - **Three-tier persistence layer**: run-scoped file storage, cross-run project registry, optional database metadata.
 - **NetworkX governance graph** for entity relationship mapping and contract hierarchy analysis.
 - **Ontology and reasoning module** with contract ontology, risk scoring, and graph-based reasoning.
@@ -225,7 +268,7 @@ Initial public release containing the complete Due Diligence Agent SDK.
 - 35-step deterministic orchestrator with 5 blocking quality gates.
 - 4 specialist agents + Judge + Reporting Lead.
 - Schema-driven 14-sheet Excel report.
-- 5-layer numerical audit system and 30 DoD checks.
+- 6-layer numerical audit system and 31 DoD checks.
 - CLI with `run`, `validate`, and `version` commands.
 - Optional ChromaDB vector store integration.
 - Three-tier persistence layer.

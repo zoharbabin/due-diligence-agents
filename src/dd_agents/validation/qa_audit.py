@@ -1,6 +1,6 @@
 """Full QA audit implementing all checks from the spec section 8.
 
-The QA auditor runs 17 check functions and produces an
+The QA auditor runs 18 check functions and produces an
 :class:`~dd_agents.models.audit.AuditReport`.
 """
 
@@ -129,7 +129,7 @@ class QAAuditor:
     def write_audit_json(self, report: AuditReport, output_path: Path) -> None:
         """Serialize the audit report to JSON on disk."""
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(report.model_dump_json(indent=2, by_alias=True))
+        output_path.write_text(report.model_dump_json(indent=2, by_alias=True), encoding="utf-8")
 
     # ------------------------------------------------------------------ #
     # 8a - Agent Manifest Reconciliation (DoD 3)
@@ -158,7 +158,7 @@ class QAAuditor:
                 continue
             any_manifest_exists = True
             try:
-                manifest = json.loads(manifest_path.read_text())
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError):
                 details[agent] = {"error": "invalid manifest", "match": False}
                 all_match = False
@@ -223,7 +223,7 @@ class QAAuditor:
             if not manifest_path.exists():
                 continue
             try:
-                manifest = json.loads(manifest_path.read_text())
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
                 files_read = manifest.get("files_read", [])
                 if files_read:
                     has_file_level_data = True
@@ -351,7 +351,7 @@ class QAAuditor:
         if merged_dir.exists():
             for customer_file in merged_dir.glob("*.json"):
                 try:
-                    data = json.loads(customer_file.read_text())
+                    data = json.loads(customer_file.read_text(encoding="utf-8"))
                 except (json.JSONDecodeError, OSError):
                     continue
                 graph = data.get("governance_graph", {})
@@ -530,7 +530,7 @@ class QAAuditor:
                 if jf.name == "gaps":
                     continue
                 try:
-                    data = json.loads(jf.read_text())
+                    data = json.loads(jf.read_text(encoding="utf-8"))
                     gap_count += len(data.get("gaps", []))
                 except (json.JSONDecodeError, OSError):
                     continue
@@ -540,7 +540,7 @@ class QAAuditor:
         if gaps_dir.exists():
             for gap_file in gaps_dir.glob("*.json"):
                 try:
-                    data = json.loads(gap_file.read_text())
+                    data = json.loads(gap_file.read_text(encoding="utf-8"))
                     if isinstance(data, list):
                         gap_count += len(data)
                     elif isinstance(data, dict):
@@ -590,7 +590,7 @@ class QAAuditor:
                     customers_without_xrefs.append(customer)
                     continue
                 try:
-                    data = json.loads(merged_path.read_text())
+                    data = json.loads(merged_path.read_text(encoding="utf-8"))
                     xrefs = data.get("cross_references", [])
                     total_xrefs += len(xrefs)
                 except (json.JSONDecodeError, OSError):
@@ -633,7 +633,7 @@ class QAAuditor:
                     )
                     continue
                 try:
-                    data = json.loads(merged_path.read_text())
+                    data = json.loads(merged_path.read_text(encoding="utf-8"))
                 except (json.JSONDecodeError, OSError):
                     customers_missing.append(
                         {
@@ -699,7 +699,7 @@ class QAAuditor:
                 details={"error": "extraction_quality.json missing"},
             )
         try:
-            eq_data = json.loads(eq_path.read_text())
+            eq_data = json.loads(eq_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             return "extraction_quality", AuditCheck(
                 passed=False,
@@ -735,7 +735,7 @@ class QAAuditor:
             for jf in merged_dir.glob("*.json"):
                 merged_count += 1
                 try:
-                    data = json.loads(jf.read_text())
+                    data = json.loads(jf.read_text(encoding="utf-8"))
                     total_findings += len(data.get("findings", []))
                 except (json.JSONDecodeError, OSError):
                     continue
@@ -791,7 +791,7 @@ class QAAuditor:
         unmatched_with_aliases = 0
         if log_path.exists():
             try:
-                data = json.loads(log_path.read_text())
+                data = json.loads(log_path.read_text(encoding="utf-8"))
                 unmatched = data.get("unmatched", [])
                 unmatched_with_aliases = len([u for u in unmatched if u.get("aliases_available", False)])
             except (json.JSONDecodeError, OSError):
@@ -816,7 +816,7 @@ class QAAuditor:
                 details={"error": "numerical_manifest.json missing"},
             )
         try:
-            data = json.loads(manifest_path.read_text())
+            data = json.loads(manifest_path.read_text(encoding="utf-8"))
             numbers = data.get("numbers", [])
             has_required = len(numbers) >= 10
         except (json.JSONDecodeError, OSError):
@@ -902,7 +902,7 @@ class QAAuditor:
         if merged_dir.exists():
             for jf in merged_dir.glob("*.json"):
                 try:
-                    data = json.loads(jf.read_text())
+                    data = json.loads(jf.read_text(encoding="utf-8"))
                 except (json.JSONDecodeError, OSError):
                     continue
                 for f in data.get("findings", []):
@@ -991,7 +991,7 @@ class QAAuditor:
         path = self.inventory_dir / "files.txt"
         if not path.exists():
             return []
-        return [line.strip() for line in path.read_text().strip().splitlines() if line.strip()]
+        return [line.strip() for line in path.read_text(encoding="utf-8").strip().splitlines() if line.strip()]
 
     def _load_all_merged_findings(self) -> list[dict[str, Any]]:
         merged_dir = self.run_dir / "findings" / "merged"
@@ -1000,7 +1000,7 @@ class QAAuditor:
             return findings
         for jf in merged_dir.glob("*.json"):
             try:
-                data = json.loads(jf.read_text())
+                data = json.loads(jf.read_text(encoding="utf-8"))
                 findings.extend(data.get("findings", []))
             except (json.JSONDecodeError, OSError):
                 continue
@@ -1025,7 +1025,7 @@ class QAAuditor:
         if merged_dir.exists():
             for jf in merged_dir.glob("*.json"):
                 try:
-                    data = json.loads(jf.read_text())
+                    data = json.loads(jf.read_text(encoding="utf-8"))
                 except (json.JSONDecodeError, OSError):
                     continue
                 for gap in data.get("gaps", []):

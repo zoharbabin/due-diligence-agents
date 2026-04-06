@@ -118,3 +118,17 @@ FUZZY_THRESHOLD_LONG = int(os.getenv("DD_FUZZY_THRESHOLD_LONG", "88"))  # Names 
 FUZZY_THRESHOLD_MEDIUM = int(os.getenv("DD_FUZZY_THRESHOLD_MEDIUM", "95"))  # Names 5-8 chars
 SHORT_NAME_MAX_LEN = int(os.getenv("DD_SHORT_NAME_MAX_LEN", "5"))  # Never fuzzy-matched
 TFIDF_THRESHOLD = float(os.getenv("DD_TFIDF_THRESHOLD", "0.80"))  # Cosine similarity for TF-IDF
+
+# ---------------------------------------------------------------------------
+# Non-customer JSON stems (used by merge and pre-merge validation)
+# ---------------------------------------------------------------------------
+
+NON_CUSTOMER_STEMS: frozenset[str] = frozenset(
+    {
+        "coverage_manifest",
+        "numerical_manifest",
+        "report_diff",
+        "quality_scores",
+        "metadata",
+    }
+)

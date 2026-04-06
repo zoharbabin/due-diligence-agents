@@ -1273,7 +1273,7 @@ log = logging.getLogger("dd_agents.steps.27")
 
 
 async def step_27_numerical_audit(state: PipelineState) -> PipelineState:
-    """Five-layer numerical validation. BLOCKING GATE.
+    """Six-layer numerical validation. BLOCKING GATE.
 
     Layers 1-3 and 5 run before Excel generation.
     Layer 4 (cross-format parity) runs after Excel at step 31.
@@ -1364,7 +1364,7 @@ log = logging.getLogger("dd_agents.steps.28")
 
 
 async def step_28_full_qa_audit(state: PipelineState) -> PipelineState:
-    """Full QA audit covering all 30 Definition of Done checks. BLOCKING GATE.
+    """Full QA audit covering all 31 Definition of Done checks. BLOCKING GATE.
 
     Fail-closed: ANY check failure blocks the report.
     Writes {RUN_DIR}/audit.json with per-check results.

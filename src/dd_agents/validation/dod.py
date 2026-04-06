@@ -169,7 +169,8 @@ class DefinitionOfDoneChecker:
                 dod_checks=[2],
                 details={"total_files": 0, "error": "files.txt missing"},
             )
-        all_files = [line.strip() for line in files_txt.read_text().strip().splitlines() if line.strip()]
+        raw = files_txt.read_text(encoding="utf-8").strip()
+        all_files = [line.strip() for line in raw.splitlines() if line.strip()]
         total = len(all_files)
         if total == 0:
             return AuditCheck(
@@ -185,7 +186,7 @@ class DefinitionOfDoneChecker:
             if not manifest_path.exists():
                 continue
             try:
-                mdata = json.loads(manifest_path.read_text())
+                mdata = json.loads(manifest_path.read_text(encoding="utf-8"))
                 for f in mdata.get("files_covered", mdata.get("covered", [])):
                     fname = f if isinstance(f, str) else f.get("file_path", f.get("path", ""))
                     if fname:
@@ -215,7 +216,7 @@ class DefinitionOfDoneChecker:
                 missing.append(agent)
                 continue
             try:
-                mdata = json.loads(manifest_path.read_text())
+                mdata = json.loads(manifest_path.read_text(encoding="utf-8"))
                 # Validate that manifest has meaningful content
                 files_covered = mdata.get("files_covered", mdata.get("covered", []))
                 customers_processed = mdata.get("customers_processed", mdata.get("customers", []))
@@ -238,7 +239,7 @@ class DefinitionOfDoneChecker:
         audit_path = self.run_dir / "audit.json"
         if audit_path.exists():
             try:
-                data = json.loads(audit_path.read_text())
+                data = json.loads(audit_path.read_text(encoding="utf-8"))
                 checks = data.get("checks", {})
                 gov_check = checks.get("governance_completeness", {})
                 passed = gov_check.get("passed", False)
@@ -260,7 +261,7 @@ class DefinitionOfDoneChecker:
         audit_path = self.run_dir / "audit.json"
         if audit_path.exists():
             try:
-                data = json.loads(audit_path.read_text())
+                data = json.loads(audit_path.read_text(encoding="utf-8"))
                 checks = data.get("checks", {})
                 cit_check = checks.get("citation_integrity", {})
                 passed = cit_check.get("passed", False)
@@ -294,7 +295,7 @@ class DefinitionOfDoneChecker:
             if jf.stem.startswith("_") or jf.stem == "coverage_manifest":
                 continue
             try:
-                data = json.loads(jf.read_text())
+                data = json.loads(jf.read_text(encoding="utf-8"))
                 customers_checked += 1
                 # The merge step writes a "gaps" key for every customer —
                 # its presence proves gap tracking ran for this customer.
@@ -317,7 +318,7 @@ class DefinitionOfDoneChecker:
         audit_path = self.run_dir / "audit.json"
         if audit_path.exists():
             try:
-                data = json.loads(audit_path.read_text())
+                data = json.loads(audit_path.read_text(encoding="utf-8"))
                 checks = data.get("checks", {})
                 xref_check = checks.get("cross_reference_completeness", {})
                 passed = xref_check.get("passed", False)
@@ -339,7 +340,7 @@ class DefinitionOfDoneChecker:
         audit_path = self.run_dir / "audit.json"
         if audit_path.exists():
             try:
-                data = json.loads(audit_path.read_text())
+                data = json.loads(audit_path.read_text(encoding="utf-8"))
                 checks = data.get("checks", {})
                 xref_check = checks.get("cross_reference_completeness", {})
                 passed = xref_check.get("passed", False)
@@ -361,7 +362,7 @@ class DefinitionOfDoneChecker:
         audit_path = self.run_dir / "audit.json"
         if audit_path.exists():
             try:
-                data = json.loads(audit_path.read_text())
+                data = json.loads(audit_path.read_text(encoding="utf-8"))
                 checks = data.get("checks", {})
                 gap_check = checks.get("gap_completeness", {})
                 passed = gap_check.get("passed", False)
@@ -389,7 +390,7 @@ class DefinitionOfDoneChecker:
         audit_path = self.run_dir / "audit.json"
         if audit_path.exists():
             try:
-                data = json.loads(audit_path.read_text())
+                data = json.loads(audit_path.read_text(encoding="utf-8"))
                 checks = data.get("checks", {})
                 ref_check = checks.get("cross_reference_completeness", {})
                 if ref_check:
@@ -414,7 +415,7 @@ class DefinitionOfDoneChecker:
                 details={"reference_files_json_exists": False},
             )
         try:
-            raw = json.loads(ref_path.read_text())
+            raw = json.loads(ref_path.read_text(encoding="utf-8"))
             ref_files = raw if isinstance(raw, list) else raw.get("files", [])
         except (json.JSONDecodeError, OSError):
             return AuditCheck(
@@ -439,7 +440,7 @@ class DefinitionOfDoneChecker:
                 manifest = agent_dir / "reference_files_processed.json"
                 if manifest.exists():
                     try:
-                        processed = json.loads(manifest.read_text())
+                        processed = json.loads(manifest.read_text(encoding="utf-8"))
                         processed_names = {Path(p).name for p in (processed if isinstance(processed, list) else [])}
                         unprocessed -= processed_names
                     except (json.JSONDecodeError, OSError):
@@ -474,7 +475,7 @@ class DefinitionOfDoneChecker:
         audit_path = self.run_dir / "audit.json"
         if audit_path.exists():
             try:
-                data = json.loads(audit_path.read_text())
+                data = json.loads(audit_path.read_text(encoding="utf-8"))
                 if data.get("audit_passed", False):
                     return AuditCheck(
                         passed=True,
@@ -498,7 +499,7 @@ class DefinitionOfDoneChecker:
         audit_path = self.run_dir / "audit.json"
         if audit_path.exists():
             try:
-                data = json.loads(audit_path.read_text())
+                data = json.loads(audit_path.read_text(encoding="utf-8"))
                 checks = data.get("checks", {})
                 dom_check = checks.get("domain_coverage", {})
                 passed = dom_check.get("passed", False)
@@ -531,7 +532,7 @@ class DefinitionOfDoneChecker:
         customer_assignments: dict[str, list[str]] = {}
         metadata_path = self.run_dir / "metadata.json"
         try:
-            meta = json.loads(metadata_path.read_text())
+            meta = json.loads(metadata_path.read_text(encoding="utf-8"))
             customer_assignments = meta.get("customer_assignments", {})
         except (ValueError, OSError):
             pass
@@ -541,7 +542,7 @@ class DefinitionOfDoneChecker:
 
         for jf in sorted(merged_dir.glob("*.json")):
             try:
-                data = json.loads(jf.read_text())
+                data = json.loads(jf.read_text(encoding="utf-8"))
             except (ValueError, OSError):
                 continue
             # Use the actual assignment for this customer, or all 4 as fallback
@@ -601,7 +602,7 @@ class DefinitionOfDoneChecker:
         multi_agent_count = 0
         for jf in matched:
             try:
-                data = json.loads(jf.read_text())
+                data = json.loads(jf.read_text(encoding="utf-8"))
                 agents_seen = {f.get("agent", "") for f in data.get("findings", [])}
                 agents_seen.discard("")
                 if len(agents_seen) >= 2:
@@ -675,7 +676,7 @@ class DefinitionOfDoneChecker:
                 details={"error": "audit.json missing"},
             )
         try:
-            data = json.loads(audit_path.read_text())
+            data = json.loads(audit_path.read_text(encoding="utf-8"))
             return AuditCheck(
                 passed=data.get("audit_passed", False),
                 dod_checks=[15],
@@ -710,7 +711,7 @@ class DefinitionOfDoneChecker:
                     details={"entity_matches_exists": False},
                 )
         try:
-            data = json.loads(log_path.read_text())
+            data = json.loads(log_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             return AuditCheck(
                 passed=False,
@@ -755,7 +756,7 @@ class DefinitionOfDoneChecker:
                 details={"error": "numerical_manifest.json missing"},
             )
         try:
-            data = json.loads(manifest_path.read_text())
+            data = json.loads(manifest_path.read_text(encoding="utf-8"))
             numbers = data.get("numbers", [])
             entry_count = len(numbers)
             if entry_count < 10:
@@ -839,7 +840,7 @@ class DefinitionOfDoneChecker:
                 details={"error": "extraction_quality.json not found"},
             )
         try:
-            data = json.loads(eq_path.read_text())
+            data = json.loads(eq_path.read_text(encoding="utf-8"))
             entries = data if isinstance(data, list) else data.get("files", data.get("entries", []))
             if not entries:
                 return AuditCheck(
@@ -883,7 +884,7 @@ class DefinitionOfDoneChecker:
                 details={"error": "quality_scores.json missing"},
             )
         try:
-            data = json.loads(path.read_text())
+            data = json.loads(path.read_text(encoding="utf-8"))
             agents_scored = set(data.get("agent_scores", {}).keys())
             all_scored = agents_scored >= set(ALL_SPECIALIST_AGENTS)
             return AuditCheck(
@@ -911,7 +912,7 @@ class DefinitionOfDoneChecker:
                 details={"error": "quality_scores.json missing"},
             )
         try:
-            data = json.loads(path.read_text())
+            data = json.loads(path.read_text(encoding="utf-8"))
             spot_checks = data.get("spot_checks", [])
             p0_checks = [sc for sc in spot_checks if sc.get("severity") == "P0"]
             # Pass if there are P0 spot checks OR if there are no P0 findings at all
@@ -945,7 +946,7 @@ class DefinitionOfDoneChecker:
                 details={"error": "quality_scores.json missing"},
             )
         try:
-            data = json.loads(path.read_text())
+            data = json.loads(path.read_text(encoding="utf-8"))
             threshold = self.deal_config.get("judge", {}).get("threshold", 70)
             below = []
             for agent, scores in data.get("agent_scores", {}).items():
@@ -977,7 +978,7 @@ class DefinitionOfDoneChecker:
                 details={"error": "quality_scores.json missing"},
             )
         try:
-            data = json.loads(path.read_text())
+            data = json.loads(path.read_text(encoding="utf-8"))
             contradictions = data.get("contradictions", [])
             unresolved = [c for c in contradictions if not c.get("resolved", True)]
             return AuditCheck(
@@ -1006,7 +1007,7 @@ class DefinitionOfDoneChecker:
                 details={"error": "classification.json missing"},
             )
         try:
-            data = json.loads(path.read_text())
+            data = json.loads(path.read_text(encoding="utf-8"))
             classifications = data if isinstance(data, dict) else {}
             # Each customer should have a classification status
             classified = {k: v for k, v in classifications.items() if isinstance(v, dict) and v.get("status")}
@@ -1040,7 +1041,7 @@ class DefinitionOfDoneChecker:
         missing_metadata: list[str] = []
         for jf in merged_dir.glob("*.json"):
             try:
-                data = json.loads(jf.read_text())
+                data = json.loads(jf.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError):
                 continue
             for finding in data.get("findings", []):
@@ -1065,7 +1066,7 @@ class DefinitionOfDoneChecker:
                 details={"error": "run_history.json missing"},
             )
         try:
-            data = json.loads(history_path.read_text())
+            data = json.loads(history_path.read_text(encoding="utf-8"))
             runs = data.get("runs", data) if isinstance(data, dict) else data
             if not isinstance(runs, list):
                 runs = []
@@ -1135,7 +1136,7 @@ class DefinitionOfDoneChecker:
                 details={"error": "report_schema.json missing"},
             )
         try:
-            data = json.loads(schema_path.read_text())
+            data = json.loads(schema_path.read_text(encoding="utf-8"))
             sheets = data.get("sheets", [])
             has_version = bool(data.get("schema_version"))
             return AuditCheck(
@@ -1170,7 +1171,7 @@ class DefinitionOfDoneChecker:
                 },
             )
         try:
-            schema_data = json.loads(schema_path.read_text())
+            schema_data = json.loads(schema_path.read_text(encoding="utf-8"))
             expected_sheets = {s.get("name", "") for s in schema_data.get("sheets", []) if s.get("name")}
 
             from openpyxl import load_workbook

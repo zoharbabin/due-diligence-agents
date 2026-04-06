@@ -17,7 +17,7 @@ due-diligence-agents/
 ├── src/
 │   └── dd_agents/
 │       ├── __init__.py
-│       ├── cli.py                    # Click CLI entry point (11 commands)
+│       ├── cli.py                    # Click CLI entry point (15 commands)
 │       ├── cli_auto_config.py        # Auto-config command implementation
 │       ├── cli_init.py               # Interactive init command implementation
 │       ├── cli_logging.py            # Logging configuration for CLI
@@ -97,9 +97,9 @@ due-diligence-agents/
 │       ├── validation/
 │       │   ├── __init__.py
 │       │   ├── coverage.py           # Coverage gate (step 17)
-│       │   ├── numerical_audit.py    # 5-layer numerical audit
-│       │   ├── qa_audit.py           # Full QA audit (17 checks, step 28 blocking gate)
-│       │   ├── dod.py                # 30 Definition of Done checks (step 35 non-blocking)
+│       │   ├── numerical_audit.py    # 6-layer numerical audit
+│       │   ├── qa_audit.py           # Full QA audit (18 checks, step 28 blocking gate)
+│       │   ├── dod.py                # 31 Definition of Done checks (step 35 non-blocking)
 │       │   ├── pre_merge.py          # Pre-merge validation (step 23)
 │       │   └── schema_validator.py   # Report schema validation
 │       ├── reporting/
@@ -207,7 +207,7 @@ due-diligence-agents/
 ├── tests/
 │   ├── conftest.py
 │   ├── fixtures/                     # Test data room, sample configs
-│   ├── unit/                         # ~2,960+ unit tests
+│   ├── unit/                         # ~3,267 unit tests
 │   ├── integration/                  # ~17 integration tests
 │   └── e2e/                          # E2E tests (requires API key)
 ├── config/
@@ -229,7 +229,7 @@ due-diligence-agents/
 | File | Responsibilities |
 |------|-----------------|
 | `__init__.py` | Package root. Exports version string and key public classes. |
-| `cli.py` | Click CLI entry point. 11 commands: run, validate, version, init, auto-config, search, assess, export-pdf, query, portfolio (group), templates (group). |
+| `cli.py` | Click CLI entry point. 15 commands: run, validate, version, init, auto-config, search, assess, export-pdf, query, portfolio (group), templates (group), log, annotate, lineage, health. |
 | `cli_auto_config.py` | Auto-config command implementation. Uses Claude to analyze data room structure and generate deal config. |
 | `cli_init.py` | Interactive init command implementation. Walks through config fields with prompts. |
 | `cli_logging.py` | Logging configuration for CLI (log levels, formatting, file handlers). |
@@ -331,9 +331,9 @@ due-diligence-agents/
 |------|-----------------|
 | `__init__.py` | Exports validation gate functions. |
 | `coverage.py` | Coverage gate (pipeline step 17). For each agent type, counts unique `{customer_safe_name}.json` files against expected customer count. Detects missing customers, aggregate files, and empty outputs. Triggers re-spawn for missing customers. Enforces clean-result entries for customers with zero findings. |
-| `numerical_audit.py` | 5-layer numerical audit. Layer 1: source traceability (every number traces to a file). Layer 2: arithmetic verification (re-derive from source). Layer 3: cross-source consistency (customers.csv vs counts.json, etc.). Layer 4: cross-format parity (Excel vs JSON spot-check). Layer 5: semantic reasonableness (flag implausible numbers). Blocking gate between analysis and Excel generation. |
-| `qa_audit.py` | Full QA audit (17 checks, step 28 blocking gate). Structural integrity verification: manifests, file coverage, citations, report sheets, etc. Produces `audit.json`. |
-| `dod.py` | 30 Definition of Done checks (step 35 non-blocking). Completeness and quality evaluation. See dod.py module docstring for the two-tier validation design. |
+| `numerical_audit.py` | 6-layer numerical audit. Layer 1: source traceability (every number traces to a file). Layer 2: arithmetic verification (re-derive from source). Layer 3: cross-source consistency (customers.csv vs counts.json, etc.). Layer 4: cross-format parity (Excel vs JSON spot-check). Layer 5: semantic reasonableness (flag implausible numbers). Layer 6: cross-run consistency (compare with prior run values). Blocking gate between analysis and Excel generation. |
+| `qa_audit.py` | Full QA audit (18 checks, step 28 blocking gate). Structural integrity verification: manifests, file coverage, citations, report sheets, etc. Produces `audit.json`. |
+| `dod.py` | 31 Definition of Done checks (step 35 non-blocking). Completeness and quality evaluation. See dod.py module docstring for the two-tier validation design. |
 | `pre_merge.py` | Pre-merge validation (step 23). Validates agent outputs before merge/dedup. |
 | `schema_validator.py` | Report schema validation. After Excel generation, verifies all sheets exist, columns match schema, sort orders are correct. |
 
@@ -444,6 +444,10 @@ due-diligence-agents/
 | `__init__.py` | Exports query engine. |
 | `indexer.py` | Finding index builder. Indexes merged findings for fast lookup by customer, severity, category, and keyword. |
 | `engine.py` | Query engine for `dd-agents query` command. Natural-language queries over findings using Claude. |
+
+### Knowledge (`src/dd_agents/knowledge/`)
+
+`knowledge/` — Deal Knowledge Base: persistent knowledge layer (12 modules). Article CRUD, knowledge graph, analysis chronicle, finding lineage, health checks.
 
 ### Testing (`src/dd_agents/testing/`)
 

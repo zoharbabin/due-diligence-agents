@@ -1,10 +1,10 @@
-# 11 -- QA and Validation (Audit Gates, 30 DoD Checks, Numerical Validation)
+# 11 -- QA and Validation (Audit Gates, 31 DoD Checks, Numerical Validation)
 
 All validation is fail-closed. The Reporting Lead runs every QA check before finalizing the report. Any failure blocks the report. Numbers are validated by counting, not by LLM reasoning.
 
 ---
 
-## 5-Layer Numerical Validation
+## 6-Layer Numerical Validation
 
 Every number that appears in the final Excel report or any generated summary MUST have a provenance record. This prevents the class of errors where counts shift between report versions, totals do not add up, or numbers are carried forward from stale analysis.
 
@@ -968,7 +968,7 @@ All other checks (DoD 1-17, 19, 28-29) are ALWAYS required.
 
 ### 8i. Numerical Audit
 
-Run the 5-layer numerical validation framework (see above). Build `{RUN_DIR}/numerical_manifest.json`. This is a BLOCKING gate -- must pass Layers 1-3, 5 before generating Excel. Run Layer 4 after generation.
+Run the 6-layer numerical validation framework (see above). Build `{RUN_DIR}/numerical_manifest.json`. This is a BLOCKING gate -- must pass Layers 1-3, 5-6 before generating Excel. Run Layer 4 after generation.
 
 ### 8i2. Extraction Quality Completeness
 
@@ -1094,7 +1094,7 @@ class ReportSchemaCheck:
 
 ---
 
-## 30 Definition of Done Checks
+## 31 Definition of Done Checks
 
 Every applicable check must pass before the report is finalized. If ANY fails, DO NOT FINALIZE. Output audit failures and specific missing items.
 

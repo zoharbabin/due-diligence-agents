@@ -33,7 +33,7 @@ def _atomic_write_text(path: Path, content: str) -> None:
     """
     tmp = path.with_suffix(".tmp")
     try:
-        tmp.write_text(content)
+        tmp.write_text(content, encoding="utf-8")
         os.replace(str(tmp), str(path))
     except BaseException:
         tmp.unlink(missing_ok=True)
@@ -173,7 +173,7 @@ class RunManager:
 
         fw_path = self.project_dir / DD_DIR / "framework_version.txt"
         if fw_path.exists():
-            framework_version = fw_path.read_text().strip()
+            framework_version = fw_path.read_text(encoding="utf-8").strip()
 
         metadata = RunMetadata(
             run_id=run_id,
@@ -266,7 +266,7 @@ class RunManager:
         if not history_path.exists():
             return []
         try:
-            result: list[dict[str, Any]] = json.loads(history_path.read_text())
+            result: list[dict[str, Any]] = json.loads(history_path.read_text(encoding="utf-8"))
             return result
         except (json.JSONDecodeError, ValueError):
             logger.warning("Corrupt or unreadable run_history.json at %s", history_path)

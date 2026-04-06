@@ -212,10 +212,10 @@ class IncrementalClassifier:
 
                 # Copy and annotate with _carried_forward metadata
                 try:
-                    data = json.loads(source_file.read_text())
+                    data = json.loads(source_file.read_text(encoding="utf-8"))
                     data["_carried_forward"] = True
                     data["_carried_from_run"] = prior_findings_dir.parent.name
-                    target_file.write_text(json.dumps(data, indent=2))
+                    target_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
                     carried += 1
                 except (json.JSONDecodeError, OSError) as exc:
                     logger.warning(
@@ -232,13 +232,13 @@ class IncrementalClassifier:
                     target_gap_dir.mkdir(parents=True, exist_ok=True)
                     target_gap = target_gap_dir / f"{customer}.json"
                     try:
-                        gap_data = json.loads(source_gap.read_text())
+                        gap_data = json.loads(source_gap.read_text(encoding="utf-8"))
                         if isinstance(gap_data, list):
                             for g in gap_data:
                                 g["_carried_forward"] = True
                         elif isinstance(gap_data, dict):
                             gap_data["_carried_forward"] = True
-                        target_gap.write_text(json.dumps(gap_data, indent=2))
+                        target_gap.write_text(json.dumps(gap_data, indent=2), encoding="utf-8")
                     except (json.JSONDecodeError, OSError) as exc:
                         logger.warning(
                             "Failed to carry forward gap %s/%s: %s",

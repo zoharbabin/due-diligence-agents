@@ -151,26 +151,25 @@ class ReferenceDownloader:
         urls_to_process = list(url_map.items())[: self._max_downloads]
         results: list[DownloadResult] = []
 
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=self._workers)
-        future_to_url = {executor.submit(self._download_and_extract, url): (url, refs) for url, refs in urls_to_process}
-        try:
-            for future in concurrent.futures.as_completed(future_to_url):
-                url, referencing_files = future_to_url[future]
-                try:
-                    result = future.result()
-                except Exception as exc:
-                    logger.warning("Download thread failed for %s: %s", url, exc)
-                    result = DownloadResult(url=url, success=False, error=str(exc))
-                result.referencing_files = referencing_files
-                results.append(result)
-        except KeyboardInterrupt:
-            logger.warning("Reference download interrupted — cancelling pending downloads")
-            for f in future_to_url:
-                f.cancel()
-            executor.shutdown(wait=False, cancel_futures=True)
-            raise
-        finally:
-            executor.shutdown(wait=False)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self._workers) as executor:
+            future_to_url = {
+                executor.submit(self._download_and_extract, url): (url, refs) for url, refs in urls_to_process
+            }
+            try:
+                for future in concurrent.futures.as_completed(future_to_url):
+                    url, referencing_files = future_to_url[future]
+                    try:
+                        result = future.result()
+                    except Exception as exc:
+                        logger.warning("Download thread failed for %s: %s", url, exc)
+                        result = DownloadResult(url=url, success=False, error=str(exc))
+                    result.referencing_files = referencing_files
+                    results.append(result)
+            except KeyboardInterrupt:
+                logger.warning("Reference download interrupted — cancelling pending downloads")
+                for f in future_to_url:
+                    f.cancel()
+                raise
 
         succeeded = sum(1 for r in results if r.success)
         failed = len(results) - succeeded
@@ -333,23 +332,46 @@ def _url_to_safe_filename(url: str) -> str:
     return f"__external__{slug}.md"
 
 
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Block HTTP redirects to prevent SSRF via redirect to internal IPs."""
+
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: object,
+        code: int,
+        msg: str,
+        headers: object,
+        newurl: str,
+    ) -> urllib.request.Request | None:
+        from dd_agents.net_safety import UnsafeURLError, validate_url
+
+        try:
+            validate_url(newurl, allow_http=True)
+        except UnsafeURLError as exc:
+            raise urllib.error.URLError(f"Redirect blocked by SSRF check: {exc}") from exc
+        return super().redirect_request(req, fp, code, msg, headers, newurl)  # type: ignore[arg-type]
+
+
 def _fetch_url(url: str, timeout: int, max_bytes: int) -> bytes:
     """Fetch URL content via urllib (stdlib, no new dependencies).
 
     Raises on network errors, timeouts, and oversized responses.
     Validates the URL against private/reserved IP ranges before fetching.
+    Redirect targets are re-validated to prevent SSRF via redirect.
     """
     from dd_agents.net_safety import validate_url
 
     validate_url(url, allow_http=True)
 
+    opener = urllib.request.build_opener(_NoRedirectHandler)
     req = urllib.request.Request(
         url,
         headers={
             "User-Agent": "Mozilla/5.0 (compatible; dd-agents/0.1; +legal-due-diligence)",
         },
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    with opener.open(req, timeout=timeout) as resp:
         content_length = resp.headers.get("Content-Length")
         if content_length and int(content_length) > max_bytes:
             raise ValueError(f"Content too large: {content_length} bytes (max {max_bytes})")

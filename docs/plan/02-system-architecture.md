@@ -146,9 +146,9 @@ PHASE 6: REPORTING (Steps 23-31)
   Step 24: Merge and deduplicate findings per customer
   Step 25: Merge gap files (collect from all agents, dedup by missing_item)
   Step 26: Build numerical manifest (N001-N010 minimum entries)
-  Step 27: Numerical audit (5-layer validation)
+  Step 27: Numerical audit (6-layer validation)
            *** BLOCKING GATE: all layers must pass ***
-  Step 28: Full QA audit (16+ checks mapping to 30 DoD items)
+  Step 28: Full QA audit (16+ checks mapping to 31 DoD items)
            *** BLOCKING GATE: audit_passed must be true ***
   Step 29: [IF prior run exists] Build report diff
   Step 30: Generate Excel from report_schema.json via build_report.py
@@ -282,7 +282,7 @@ Each run creates `_dd/forensic-dd/runs/{run_id}/` with immutable artifacts. Neve
 | `findings/merged/*.json` | Merged per-customer findings |
 | `findings/merged/gaps/*.json` | Merged per-customer gaps |
 | `audit/{agent}/audit_log.jsonl` | Per-agent audit trail (one per specialist + reporting_lead + judge) |
-| `audit.json` | Consolidated QA audit results (16+ checks, 30 DoD items) |
+| `audit.json` | Consolidated QA audit results (16+ checks, 31 DoD items) |
 | `numerical_manifest.json` | All numbers used in report with source traceability |
 | `file_coverage.json` | File-to-agent coverage mapping |
 | `classification.json` | Customer classification (incremental mode only) |

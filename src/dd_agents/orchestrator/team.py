@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from dd_agents.utils.constants import (
@@ -22,8 +23,6 @@ from dd_agents.utils.constants import (
 )
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from dd_agents.orchestrator.state import PipelineState
 
 logger = logging.getLogger(__name__)
@@ -171,9 +170,7 @@ class AgentTeam:
         monitor_task: asyncio.Task[None] | None = None
         run_dir = getattr(self.state, "run_dir", None)
         if run_dir is not None:
-            from pathlib import Path as _Path
-
-            findings_dir = _Path(str(run_dir)) / "findings"
+            findings_dir = Path(str(run_dir)) / "findings"
             monitor_task = asyncio.create_task(
                 self.monitor_agent_output(
                     findings_dir,
@@ -592,9 +589,7 @@ class AgentTeam:
 
         Returns ``None`` if the directory does not exist or contains no files.
         """
-        from pathlib import Path as _Path
-
-        dir_path = _Path(directory) if not isinstance(directory, _Path) else directory
+        dir_path = Path(directory) if not isinstance(directory, Path) else directory
         if not dir_path.is_dir():
             return None
 

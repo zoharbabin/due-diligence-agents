@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import (
     Any,
-    ClassVar,  # noqa: F401, UP035
+    ClassVar,
 )
 
 from dd_agents.orchestrator.steps import PipelineStep

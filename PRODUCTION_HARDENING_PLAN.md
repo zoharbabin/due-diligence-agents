@@ -50,7 +50,7 @@ Excel report — or fail loudly with actionable diagnostics.
 | **Accuracy** | Citation quotes match source documents | Page markers stripped in multi-chunk, cross-file search incomplete | All citations verified against source text |
 | **Blocking gates** | 5 gates block on failure as specified | 4 of 5 gates do not actually block | All 5 gates enforce their contracts |
 | **Agent integration** | Agents produce real findings via Claude Agent SDK | All agent calls are placeholders returning empty strings | Full SDK integration with retry and recovery |
-| **Validation** | 30 DoD checks enforce quality | 19 of 30 checks hardcoded to pass | All 30 checks implemented against real data |
+| **Validation** | 31 DoD checks enforce quality | 19 of 31 checks hardcoded to pass | All 31 checks implemented against real data |
 | **Resume** | Pipeline can resume from checkpoint after interruption | State not fully serialized, runtime attributes lost | Full checkpoint/resume with atomic persistence |
 | **Test coverage** | Critical paths have unit tests | 1544 tests, all modules covered | Target exceeded |
 
@@ -518,13 +518,13 @@ rederivation formulas)
 
 ### Issue #50 — QA audit hardcoded passes + DoD stubs
 
-**What**: 19 of 30 DoD checks are hardcoded to `passed=True` or use `or True`.
+**What**: 19 of 31 DoD checks are hardcoded to `passed=True` or use `or True`.
 3 QA audit checks (`gap_completeness`, `cross_reference_completeness`,
 schema conditional checks) are hardcoded.
 
 **Where**: `src/dd_agents/validation/dod.py`, `qa_audit.py`, `schema_validator.py`
 
-**Spec**: `docs/plan/11-qa-validation.md` (all 30 DoD checks with implementation)
+**Spec**: `docs/plan/11-qa-validation.md` (all 31 DoD checks with implementation)
 
 ---
 

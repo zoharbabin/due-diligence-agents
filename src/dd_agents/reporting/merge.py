@@ -27,7 +27,7 @@ from dd_agents.models.finding import (
     MergedCustomerOutput,
 )
 from dd_agents.models.governance import GovernanceEdge, GovernanceGraph
-from dd_agents.utils.constants import ALL_SPECIALIST_AGENTS, SEVERITY_ORDER
+from dd_agents.utils.constants import ALL_SPECIALIST_AGENTS, NON_CUSTOMER_STEMS, SEVERITY_ORDER
 from dd_agents.utils.naming import customer_safe_name as compute_safe_name
 
 if TYPE_CHECKING:
@@ -247,15 +247,7 @@ class FindingMerger:
         )
 
     # Non-customer JSON files that agents may write alongside customer findings.
-    _NON_CUSTOMER_STEMS: frozenset[str] = frozenset(
-        {
-            "coverage_manifest",
-            "numerical_manifest",
-            "report_diff",
-            "quality_scores",
-            "metadata",
-        }
-    )
+    _NON_CUSTOMER_STEMS = NON_CUSTOMER_STEMS
 
     def merge_all(
         self,
@@ -345,7 +337,7 @@ class FindingMerger:
                 fp = findings_dir / agent / f"{csn}.json"
                 if fp.exists():
                     try:
-                        loaded = json.loads(fp.read_text())
+                        loaded = json.loads(fp.read_text(encoding="utf-8"))
                     except (json.JSONDecodeError, OSError) as exc:
                         logger.warning("Skipping corrupt findings file %s: %s", fp, exc)
                         continue
@@ -401,7 +393,7 @@ class FindingMerger:
 
         for csn, mco in merged.items():
             out_path = output_dir / f"{csn}.json"
-            out_path.write_text(mco.model_dump_json(indent=2))
+            out_path.write_text(mco.model_dump_json(indent=2), encoding="utf-8")
 
     # ------------------------------------------------------------------
     # Agent coverage validation (Issue #85)
@@ -1306,9 +1298,9 @@ class FindingMerger:
 
         # Infer priority from severity-like keywords.
         if any(w in lower for w in ("critical", "blocker", "deal-stopper", "urgent")):
-            priority = Severity.P1.value
+            priority = Severity.P0.value
         elif any(w in lower for w in ("important", "significant", "material")):
-            priority = Severity.P2.value
+            priority = Severity.P1.value
         else:
             priority = Severity.P2.value  # default for gaps
 

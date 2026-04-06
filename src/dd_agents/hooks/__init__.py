@@ -9,7 +9,6 @@ from dd_agents.hooks.post_tool import (
     validate_manifest_json,
 )
 from dd_agents.hooks.pre_tool import (
-    ALLOWED_SPECIAL_FILES,
     BASH_BLOCKLIST,
     BLOCKED_FILENAMES,
     DEFAULT_MAX_BYTES,
@@ -43,6 +42,5 @@ __all__ = [
     "BASH_BLOCKLIST",
     "SCOPE_CHECKED_PREFIXES",
     "BLOCKED_FILENAMES",
-    "ALLOWED_SPECIAL_FILES",
     "DEFAULT_MAX_BYTES",
 ]

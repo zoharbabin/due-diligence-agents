@@ -43,6 +43,7 @@ dd-agents run deal-config.json --mode incremental
 | `--quick-scan` | Run steps 1-13 plus Red Flag Scanner only (fast triage) |
 | `--model-profile PROFILE` | Override model tier: `economy`, `standard`, `premium` |
 | `--model-override AGENT=MODEL` | Per-agent model, e.g. `--model-override legal=claude-opus-4-6` |
+| `--no-knowledge` | Skip knowledge compilation after pipeline run |
 | `--verbose / -v` | Enable debug logging |
 
 ### Examples

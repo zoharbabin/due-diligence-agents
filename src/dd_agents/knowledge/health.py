@@ -1,6 +1,6 @@
 """Knowledge Health Checks — automated integrity validation (Issue #185).
 
-Runs 8 categories of health checks against the Deal Knowledge Base,
+Runs 7 categories of health checks against the Deal Knowledge Base,
 optionally auto-fixing broken links and orphan articles. Produces a
 structured :class:`HealthCheckResult` with issues, severity counts,
 and suggested remediation actions.
@@ -66,7 +66,7 @@ class HealthCheckResult(BaseModel):
 class KnowledgeHealthChecker:
     """Automated integrity validation for the Deal Knowledge Base.
 
-    Runs 8 categories of checks and optionally auto-fixes certain issues
+    Runs 7 categories of checks and optionally auto-fixes certain issues
     (broken links, orphan articles).
 
     Parameters

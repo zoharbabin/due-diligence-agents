@@ -502,7 +502,7 @@ class NumericalAuditor:
         all_findings: list[dict[str, Any]] = []
         for jf in sorted(merged_dir.glob("*.json")):
             try:
-                data = json.loads(jf.read_text())
+                data = json.loads(jf.read_text(encoding="utf-8"))
                 findings = data.get("findings", [])
                 all_findings.extend(findings)
             except (json.JSONDecodeError, OSError):
@@ -543,7 +543,7 @@ class NumericalAuditor:
         total = 0
         for jf in sorted(merged_dir.glob("*.json")):
             try:
-                data = json.loads(jf.read_text())
+                data = json.loads(jf.read_text(encoding="utf-8"))
                 total += len(data.get("gaps", []))
             except (json.JSONDecodeError, OSError):
                 continue
@@ -555,7 +555,7 @@ class NumericalAuditor:
         if not path.exists():
             return None
         try:
-            data = json.loads(path.read_text())
+            data = json.loads(path.read_text(encoding="utf-8"))
             if isinstance(data, list):
                 return len(data)
             if isinstance(data, dict):
@@ -569,7 +569,7 @@ class NumericalAuditor:
         path = self.inventory_dir / filename
         if not path.exists():
             return None
-        lines = path.read_text().strip().splitlines()
+        lines = path.read_text(encoding="utf-8").strip().splitlines()
         # Subtract header row
         return max(0, len(lines) - 1) if lines else 0
 
@@ -578,7 +578,7 @@ class NumericalAuditor:
         path = self.inventory_dir / filename
         if not path.exists():
             return None
-        lines = path.read_text().strip().splitlines()
+        lines = path.read_text(encoding="utf-8").strip().splitlines()
         return len(lines)
 
     def _read_counts_json_field(self, field: str) -> Any:
@@ -587,7 +587,7 @@ class NumericalAuditor:
         if not path.exists():
             return None
         try:
-            data = json.loads(path.read_text())
+            data = json.loads(path.read_text(encoding="utf-8"))
             return data.get(field)
         except (json.JSONDecodeError, OSError):
             return None

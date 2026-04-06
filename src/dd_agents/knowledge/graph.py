@@ -15,15 +15,13 @@ import json
 import logging
 import os
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from typing import Any
 
 import networkx as nx  # type: ignore[import-untyped]
 from pydantic import BaseModel, Field
 
 from dd_agents.knowledge._utils import now_iso
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -615,9 +613,7 @@ class DealKnowledgeGraph:
         path:
             File path to write the JSON to.
         """
-        from pathlib import Path as _Path
-
-        p = _Path(path)
+        p = Path(path)
         p.parent.mkdir(parents=True, exist_ok=True)
         data = self.to_serializable()
         tmp = p.with_suffix(".tmp")
@@ -645,9 +641,7 @@ class DealKnowledgeGraph:
         DealKnowledgeGraph
             Reconstructed graph.
         """
-        from pathlib import Path as _Path
-
-        p = _Path(path)
+        p = Path(path)
         data = json.loads(p.read_text(encoding="utf-8"))
         graph = cls()
 

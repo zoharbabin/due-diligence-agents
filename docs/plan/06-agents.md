@@ -11,7 +11,7 @@
 All agents are **workers**, not orchestrators. Python controls flow.
 
 - Each agent is invoked via `query()` — a one-shot call that returns `ResultMessage`
-- 4 specialists run **in parallel** (`asyncio.gather`), Judge runs after (if enabled), ReportingLead runs last
+- 4 specialists run **in parallel** (`asyncio.gather`), Judge runs after (if enabled), then deterministic merge + validation
 - Agents use Claude Code's full tool ecosystem (Read, Write, Glob, Grep) within their working directory
 - Every agent receives a self-contained prompt — agents **cannot** read skill files or other agents' instructions
 - Hooks enforce output format and block dangerous operations (see `07-tools-and-hooks.md`)
@@ -30,7 +30,7 @@ Eight agents, four categories:
 | **Commercial** | Specialist | 16 | Extraction + inventory | No |
 | **ProductTech** | Specialist | 16 | Extraction + inventory | No |
 | **Judge** | QA | 19-22 | All 4 specialists | Yes (`judge.enabled`) |
-| **ReportingLead** | Reporting | 23 | Judge (or specialists if Judge disabled) | No |
+| ~~ReportingLead~~ | ~~Reporting~~ | ~~23~~ | ~~Judge~~ | **Removed in v0.4.0** — replaced by deterministic pre-merge validation (`validation/pre_merge.py`) and deterministic merge (`reporting/merge.py`) |
 | **ExecutiveSynthesis** | Synthesis | 30 | Merged findings | No (always runs) |
 | **AcquirerIntelligence** | Synthesis | 30 | Merged findings | Yes (`buyer_strategy`) |
 
@@ -101,12 +101,10 @@ class BaseAgentRunner:
 | Commercial | claude-sonnet-4-20250514 | 200 | 5.00 | Read, Write, Glob, Grep | validate_finding, validate_gap, verify_citation, resolve_entity, get_customer_files, report_progress |
 | ProductTech | claude-sonnet-4-20250514 | 200 | 5.00 | Read, Write, Glob, Grep | validate_finding, validate_gap, verify_citation, resolve_entity, get_customer_files, report_progress |
 | Judge | claude-sonnet-4-20250514 | 150 | 3.00 | Read, Write, Glob, Grep | verify_citation, get_customer_files |
-| ReportingLead | claude-sonnet-4-20250514 | 300 | 8.00 | Read, Write, Glob, Grep, Bash | validate_manifest, get_customer_files |
 
 **Notes**:
-- ReportingLead gets Bash for running `build_report.py` (Excel generation)
 - Judge gets fewer turns (review only, no analysis)
-- ReportingLead gets higher budget (merge + audit + Excel generation is the most expensive phase)
+- ReportingLead was removed in v0.4.0. Merge, audit, and Excel generation are now handled by deterministic Python code (`validation/pre_merge.py`, `reporting/merge.py`) with no LLM calls
 - Model selection is configured in `deal-config.json` under `agents.{agent_name}.model`. Default: `claude-sonnet-4-20250514` for specialists, `claude-sonnet-4-20250514` for Judge. Override by setting the model field in the agent config. The orchestrator passes this to `ClaudeAgentOptions(model=...)` at agent spawn time. The global fallback `execution.model` applies to any agent without an explicit per-agent override.
 - When web research is enabled, specialists additionally receive: google-researcher-mcp:search_and_scrape, google-researcher-mcp:google_search, google-researcher-mcp:scrape_page
 
@@ -143,7 +141,7 @@ class AgentType(str, Enum):
     COMMERCIAL = "commercial"
     PRODUCTTECH = "producttech"
     JUDGE = "judge"
-    REPORTING_LEAD = "reportinglead"
+    # REPORTING_LEAD was removed in v0.4.0 — merge/reporting is now deterministic Python
 
 # Focus areas per specialist (embedded into prompt)
 SPECIALIST_FOCUS = {
@@ -571,7 +569,7 @@ def route_references(
     reference_files: list[ReferenceFile],
 ) -> dict[str, list[ReferenceFile]]:
     """Route reference files to agents by category."""
-    result: dict[str, list[ReferenceFile]] = {t.value: [] for t in AgentType if t not in (AgentType.JUDGE, AgentType.REPORTING_LEAD)}
+    result: dict[str, list[ReferenceFile]] = {t.value: [] for t in AgentType if t != AgentType.JUDGE}
 
     for ref in reference_files:
         category = ref.category.lower().replace(" ", "_")
@@ -796,7 +794,7 @@ async def run_judge_with_iteration(
         ]
 
         if not failing:
-            return scores  # All pass — proceed to ReportingLead
+            return scores  # All pass — proceed to deterministic merge
 
         if round_num == max_rounds:
             # Force finalization with quality caveats
@@ -851,60 +849,27 @@ final_score = (
 
 This blending maps from the 5-dimension spot-check scores (section 10.4) to a single quality score: `citation_accuracy` = `citation_verification`, `completeness` = `completeness` + `contextual_validation` (averaged), `consistency` = `cross_agent_consistency`, `formatting` = derived from structural compliance checks.
 
-**Force finalization**: If still below threshold after max rounds, add `"_quality_caveat"` metadata to every finding from failing agents. Proceed to ReportingLead with caveats.
+**Force finalization**: If still below threshold after max rounds, add `"_quality_caveat"` metadata to every finding from failing agents. Proceed to deterministic merge with caveats.
 
 ---
 
-## 11. Reporting Lead Agent
+## 11. Merge and Reporting (Deterministic)
 
-### 11.1 Role
+> **Changed in v0.4.0**: The ReportingLead agent was removed and replaced by deterministic Python code. This eliminated LLM non-determinism from the merge/reporting phase and reduced per-run cost.
 
-The ReportingLead is the final agent. It does NOT perform new analysis. It:
-1. Merges + deduplicates specialist findings (6-step protocol in `10-reporting.md`)
-2. Builds the numerical manifest
-3. Runs the 5-layer numerical audit
-4. Generates the 14-sheet Excel report from `report_schema.json`
-5. Builds the report diff (if prior run exists)
+### 11.1 What Replaced ReportingLead
 
-### 11.2 Prompt Content
+The merge, audit, and report generation steps that ReportingLead previously handled are now performed by deterministic Python modules with no LLM calls:
 
-The ReportingLead's prompt includes:
-- Full reporting rules (from `reporting-protocol.md`)
-- Numerical validation rules (from `numerical-validation.md`)
-- customer_safe_name convention
-- Per-customer JSON schema (needed to parse agent outputs during merge)
-- Gap JSON schema
-- Paths to all findings and index files
-- Judge quality scores (if available)
-- `deal-config.json` (for _Metadata sheet)
-- `report_schema.json` path
+| Responsibility | Now Handled By | Module |
+|---------------|---------------|--------|
+| Pre-merge validation | `validation/pre_merge.py` | Validates specialist outputs before merge |
+| Finding merge + deduplication | `reporting/merge.py` | 6-step merge protocol (semantic dedup via rapidfuzz) |
+| Numerical manifest + audit | `reporting/merge.py` + `validation/` | 6-layer numerical audit |
+| Excel report generation | `reporting/` | 14-sheet Excel from `report_schema.json` |
+| Report diff | `reporting/` | Deterministic diff against prior run |
 
-### 11.3 ReportingLead Spawn
-
-```python
-# src/dd_agents/agents/reporting_lead.py
-
-async def spawn_reporting_lead(
-    runner: BaseAgentRunner,
-    prompt_builder: PromptBuilder,
-    deal_config: DealConfig,
-    judge_scores: QualityScores | None,
-) -> ResultMessage:
-    """Spawn the Reporting Lead agent (pipeline step 23)."""
-
-    prompt = prompt_builder.build_reporting_lead_prompt(
-        deal_config=deal_config,
-        judge_scores=judge_scores,
-    )
-
-    return await runner.spawn(
-        "reportinglead",
-        prompt,
-        max_turns=300,
-        max_budget_usd=8.0,
-        tools=["Read", "Write", "Glob", "Grep", "Bash"],
-    )
-```
+See `10-reporting.md` for the full merge protocol and `11-qa-validation.md` for validation details.
 
 ---
 
@@ -1031,9 +996,9 @@ Pipeline step 21: [IF JUDGE] Re-spawn failing agents with targeted feedback
                    ↓
 Pipeline step 22: [IF JUDGE] Judge round 2 review, force finalization if still < threshold
                    ↓
-Pipeline step 23: Spawn ReportingLead (receives all findings, judge scores, schema)
+Pipeline step 23: Deterministic pre-merge validation (validation/pre_merge.py)
                    ↓
-Pipeline steps 24-31: ReportingLead merges, audits, generates Excel, validates
+Pipeline steps 24-31: Deterministic merge, audit, Excel generation, validation (reporting/merge.py + validation/)
 ```
 
 **Error recovery**: Any agent spawn failure triggers `spawn_with_retry` from `12-error-recovery.md`. Maximum 3 retries per agent. Partial failures (some customers missing) trigger targeted re-spawn for the missing subset only.

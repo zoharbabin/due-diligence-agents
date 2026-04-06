@@ -115,7 +115,7 @@ class FileDiscovery:
         lines: list[str] = []
         _render_tree(tree, lines, prefix="")
 
-        output_path.write_text("\n".join(lines) + "\n")
+        output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         logger.debug("Wrote tree.txt with %d lines", len(lines))
 
     def write_files_list(self, files: list[FileEntry], output_path: Path) -> None:
@@ -132,7 +132,7 @@ class FileDiscovery:
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         content = "\n".join(entry.path for entry in files) + "\n"
-        output_path.write_text(content)
+        output_path.write_text(content, encoding="utf-8")
         logger.debug("Wrote files.txt with %d entries", len(files))
 
 

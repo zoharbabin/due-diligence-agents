@@ -75,7 +75,7 @@ tests/
     test_entity_resolution.py          # 6-pass matcher
     test_safe_name.py                  # customer_safe_name convention
     test_extraction.py                 # Fallback chain, checksums
-    test_numerical_validation.py       # 5-layer validation
+    test_numerical_validation.py       # 6-layer validation
     test_hooks.py                      # PreToolUse, PostToolUse, Stop hooks
     test_persistence.py                # Tier management, read-validate-write
     test_config.py                     # Config loading and validation

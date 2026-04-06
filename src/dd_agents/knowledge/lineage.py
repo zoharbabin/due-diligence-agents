@@ -16,14 +16,12 @@ import logging
 import os
 import re
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, Field
 
 from dd_agents.knowledge._utils import now_iso
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -135,9 +133,7 @@ class FindingLineageTracker:
     """
 
     def __init__(self, lineage_path: Path) -> None:
-        from pathlib import Path as _Path
-
-        self._path = _Path(lineage_path)
+        self._path = Path(lineage_path)
         self._findings: dict[str, FindingLineage] = {}
 
     def load(self) -> None:

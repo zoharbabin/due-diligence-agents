@@ -324,6 +324,173 @@ def _find_split_point(text: str, start: int, end: int) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Table-aware splitting (E-4)
+# ---------------------------------------------------------------------------
+
+# Matches a markdown table separator line: | --- | --- | ...
+_TABLE_SEP_RE = re.compile(r"^\|\s*-{3,}[\s|:-]*\|", re.MULTILINE)
+
+
+def is_tabular(text: str) -> bool:
+    """Return ``True`` if *text* is predominantly a markdown table.
+
+    A text is considered tabular when more than 50% of its non-empty lines
+    start with ``|`` (the markdown table row delimiter).
+    """
+    lines = [ln for ln in text.split("\n") if ln.strip()]
+    if not lines:
+        return False
+    table_lines = sum(1 for ln in lines if ln.lstrip().startswith("|"))
+    return table_lines > len(lines) * 0.5
+
+
+def split_by_table_rows(
+    text: str,
+    file_path: str,
+    target_chars: int = TARGET_CHUNK_CHARS,
+) -> list[FileSegment]:
+    """Split tabular markdown at row boundaries, repeating headers in each segment.
+
+    Implements E-4 from ``docs/plan/22-llm-robustness.md``: large spreadsheet
+    output is split by rows (not characters) with the table header block
+    (sheet heading + column letters + separator) prepended to every segment
+    so the LLM never sees data rows without column context.
+
+    Parameters
+    ----------
+    text:
+        Markdown text containing one or more tables (typically from
+        :func:`read_office`).
+    file_path:
+        Original file path for provenance.
+    target_chars:
+        Target size per segment.
+
+    Returns
+    -------
+    list[FileSegment]
+        Segments with table headers repeated.  Falls back to
+        :func:`split_by_paragraphs` if no table structure is detected.
+    """
+    lines = text.split("\n")
+
+    # --- Phase 1: Parse table sections ---
+    # Walk lines to find separator rows (| --- | --- |).  For each, look
+    # backwards to capture the full header block: ## Sheet heading (if any),
+    # blank lines, and the column-header row.  Collect data rows forward
+    # until the next non-table line.
+    sections: list[tuple[str, list[str]]] = []  # (header_text, [data_lines])
+    consumed: set[int] = set()  # line indices that belong to a table section
+    i = 0
+
+    while i < len(lines):
+        if not _TABLE_SEP_RE.match(lines[i]):
+            i += 1
+            continue
+
+        # Found a separator.  Walk backwards to find the header block.
+        header_end = i  # inclusive — the separator itself
+        header_start = i
+
+        # Step 1: the column-header row is directly above the separator.
+        if i > 0 and lines[i - 1].lstrip().startswith("|"):
+            header_start = i - 1
+
+        # Step 2: skip blank lines above the column-header row.
+        scan = header_start - 1
+        while scan >= 0 and lines[scan].strip() == "":
+            scan -= 1
+
+        # Step 3: if the next non-blank line above is a ## heading, include it.
+        if scan >= 0 and lines[scan].startswith("## "):
+            header_start = scan
+
+        header_text = "\n".join(lines[header_start : header_end + 1])
+        for j in range(header_start, header_end + 1):
+            consumed.add(j)
+
+        # Collect data rows forward until end of table.
+        data_lines: list[str] = []
+        i = header_end + 1
+        while i < len(lines):
+            if lines[i].startswith("|"):
+                data_lines.append(lines[i])
+                consumed.add(i)
+                i += 1
+            elif lines[i].strip() == "":
+                # Blank line: peek ahead for more table rows (sub-table gap).
+                if i + 1 < len(lines) and lines[i + 1].startswith("|"):
+                    data_lines.append(lines[i])
+                    consumed.add(i)
+                    i += 1
+                else:
+                    break
+            else:
+                break
+
+        sections.append((header_text, data_lines))
+
+    if not sections:
+        return split_by_paragraphs(text, file_path, target_chars=target_chars)
+
+    # Build preamble from lines not consumed by any table section.
+    preamble = "\n".join(lines[j] for j in range(len(lines)) if j not in consumed).strip()
+
+    # --- Phase 2: Chunk data rows per section ---
+    segments: list[FileSegment] = []
+
+    for header_text, data_lines in sections:
+        header_block = header_text + "\n"
+        overhead = len(header_block) + len(preamble) + 2
+        available = max(target_chars - overhead, 1000)
+
+        current_rows: list[str] = []
+        current_size = 0
+
+        for row_line in data_lines:
+            row_len = len(row_line) + 1  # +1 for newline
+            if current_rows and current_size + row_len > available:
+                segments.append(_make_table_segment(file_path, preamble, header_block, current_rows))
+                current_rows = []
+                current_size = 0
+
+            current_rows.append(row_line)
+            current_size += row_len
+
+        if current_rows:
+            segments.append(_make_table_segment(file_path, preamble, header_block, current_rows))
+
+    if not segments:
+        return split_by_paragraphs(text, file_path, target_chars=target_chars)
+
+    # Tag partial segments.
+    if len(segments) > 1:
+        for idx, seg in enumerate(segments):
+            seg.is_partial = True
+            seg.part_number = idx + 1
+            seg.total_parts = len(segments)
+
+    return segments
+
+
+def _make_table_segment(file_path: str, preamble: str, header: str, data_rows: list[str]) -> FileSegment:
+    """Assemble a table segment with preamble, repeated header, and data rows."""
+    parts: list[str] = []
+    if preamble:
+        parts.append(preamble)
+        parts.append("")
+    parts.append(header.rstrip("\n"))
+    parts.extend(data_rows)
+    return FileSegment(
+        file_path=file_path,
+        text="\n".join(parts),
+        start_page=None,
+        end_page=None,
+        total_pages=None,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Orchestration: split + bin-pack
 # ---------------------------------------------------------------------------
 
@@ -336,6 +503,9 @@ def create_analysis_chunks(
 
     For each :class:`FileText`:
     - If ``has_page_markers`` is ``True``, uses :func:`split_by_pages`.
+    - If the text is predominantly tabular (markdown tables), uses
+      :func:`split_by_table_rows` to split at row boundaries with header
+      repetition (E-4).
     - Otherwise, falls back to :func:`split_by_paragraphs`.
 
     Segments are then greedily packed into chunks up to *target_chars*.
@@ -354,6 +524,8 @@ def create_analysis_chunks(
     for ft in file_texts:
         if ft.has_page_markers:
             segs = split_by_pages(ft.text, ft.file_path, target_chars=target_chars)
+        elif is_tabular(ft.text):
+            segs = split_by_table_rows(ft.text, ft.file_path, target_chars=target_chars)
         else:
             segs = split_by_paragraphs(ft.text, ft.file_path, target_chars=target_chars)
         all_segments.extend(segs)

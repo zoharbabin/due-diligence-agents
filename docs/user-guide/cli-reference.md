@@ -38,6 +38,7 @@ dd-agents run CONFIG_PATH [OPTIONS]
 | `--quick-scan` | flag | off | Run steps 1-13 + Red Flag Scanner only |
 | `--model-profile` | `economy\|standard\|premium` | from config | Model quality: `economy` (fastest, cheapest), `standard` (balanced), `premium` (most accurate, most expensive) |
 | `--model-override` | `AGENT=MODEL` | none | Per-agent model override (repeatable) |
+| `--no-knowledge` | flag | off | Skip knowledge compilation after pipeline run |
 | `--verbose / -v` | flag | off | Enable debug logging |
 
 **Examples:**
@@ -214,6 +215,7 @@ dd-agents search PROMPTS_PATH [OPTIONS]
 | `--customers` | string | all | Comma-separated customer names to filter |
 | `--concurrency` | int (1-20) | 5 | Maximum parallel API calls |
 | `--yes / -y` | flag | off | Skip cost confirmation prompt |
+| `--no-file` | flag | off | Skip filing search results back to Knowledge Base |
 | `--verbose / -v` | flag | off | Enable debug logging |
 
 **Examples:**
@@ -450,6 +452,111 @@ dd-agents templates list
 dd-agents templates show board_summary
 dd-agents templates show legal_deep_dive
 ```
+
+---
+
+## log
+
+View the analysis chronicle — an append-only timeline of all pipeline runs, searches, and queries.
+
+```
+dd-agents log [OPTIONS]
+```
+
+**Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--project-dir` | path | `.` | Project directory |
+| `--type` | string | all | Filter by interaction type (pipeline_run, search, query, annotation, manual) |
+| `--entity` | string | all | Filter by entity safe name |
+| `--limit` | int | 50 | Maximum entries to display |
+
+**Examples:**
+
+```bash
+dd-agents log
+dd-agents log --type search --limit 10
+dd-agents log --entity acme_corp
+```
+
+---
+
+## annotate
+
+Add a user annotation to the Deal Knowledge Base. Annotations capture analyst observations, corrections, or notes that enrich future analysis.
+
+```
+dd-agents annotate ENTITY TEXT [OPTIONS]
+```
+
+**Arguments:**
+- `ENTITY` -- Entity safe name (e.g., `acme_corp`)
+- `TEXT` -- Annotation text
+
+**Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--project-dir` | path | `.` | Project directory |
+
+**Examples:**
+
+```bash
+dd-agents annotate acme_corp "CFO confirmed revenue recognition change in Q3 call"
+```
+
+---
+
+## lineage
+
+View finding lineage — how findings evolve across pipeline runs.
+
+```
+dd-agents lineage [OPTIONS]
+```
+
+**Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--project-dir` | path | `.` | Project directory |
+| `--entity` | string | all | Filter by entity safe name |
+| `--status` | string | all | Filter by status (active, resolved, recurring, escalated, de-escalated) |
+
+**Examples:**
+
+```bash
+dd-agents lineage
+dd-agents lineage --entity acme_corp --status escalated
+```
+
+---
+
+## health
+
+Run automated integrity checks against the Deal Knowledge Base.
+
+```
+dd-agents health [OPTIONS]
+```
+
+**Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--project-dir` | path | `.` | Project directory |
+| `--auto-fix` | flag | off | Automatically fix broken links and orphan articles |
+| `--verbose / -v` | flag | off | Enable debug logging |
+
+**Examples:**
+
+```bash
+dd-agents health
+dd-agents health --auto-fix
+```
+
+Checks 7 categories: staleness, orphans, broken links, missing coverage, citation drift, graph integrity, and lineage gaps.
 
 ---
 

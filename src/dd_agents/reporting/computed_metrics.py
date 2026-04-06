@@ -17,13 +17,13 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from dd_agents.utils.constants import ALL_SPECIALIST_AGENTS, SEVERITY_ORDER
+
 logger = logging.getLogger(__name__)
 
 # Severity weights used for sorting findings (wolf pack, domain lists).
 # Risk score uses a separate logarithmic formula in _compute_risk_score().
 _SEVERITY_WEIGHTS: dict[str, float] = {"P0": 10.0, "P1": 5.0, "P2": 2.0, "P3": 1.0}
-
-_DOMAIN_AGENTS: list[str] = ["legal", "finance", "commercial", "producttech"]
 
 # Regex for extracting dollar amounts from finding text (D3)
 _DOLLAR_RE = re.compile(r"\$\s*([\d,]+(?:\.\d+)?)\s*([KMBkmb])?")
@@ -57,8 +57,6 @@ _NOISE_PATTERNS: list[str] = [
 # ---------------------------------------------------------------------------
 # Post-hoc severity recalibration — deterministic rules for known false-positive patterns
 # ---------------------------------------------------------------------------
-
-_SEVERITY_ORDER: dict[str, int] = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
 
 _RECALIBRATION_RULES: list[dict[str, object]] = [
     {
@@ -1034,7 +1032,7 @@ class ReportDataComputer:
     def _agent_to_domain(agent: str) -> str:
         """Map agent name to one of the 4 domains."""
         agent = agent.lower().strip()
-        if agent in _DOMAIN_AGENTS:
+        if agent in ALL_SPECIALIST_AGENTS:
             return agent
         if "legal" in agent:
             return "legal"
@@ -1056,7 +1054,7 @@ class ReportDataComputer:
         When multiple rules match, the mildest cap (highest P-number) wins.
         """
         current_sev = str(finding.get("severity", "P3"))
-        if current_sev not in _SEVERITY_ORDER:
+        if current_sev not in SEVERITY_ORDER:
             return finding
 
         title_lower = str(finding.get("title", "")).lower()
@@ -1094,7 +1092,7 @@ class ReportDataComputer:
                 continue
 
             # This rule matches — check if its cap is milder than current best
-            if best_cap is None or _SEVERITY_ORDER.get(max_sev, 3) > _SEVERITY_ORDER.get(best_cap, 3):
+            if best_cap is None or SEVERITY_ORDER.get(max_sev, 3) > SEVERITY_ORDER.get(best_cap, 3):
                 best_cap = max_sev
                 best_reason = str(rule.get("reason", ""))
 
@@ -1102,7 +1100,7 @@ class ReportDataComputer:
             return finding
 
         # Only downgrade (higher P-number = less severe)
-        if _SEVERITY_ORDER.get(current_sev, 3) < _SEVERITY_ORDER.get(best_cap, 3):
+        if SEVERITY_ORDER.get(current_sev, 3) < SEVERITY_ORDER.get(best_cap, 3):
             recalibrated = {**finding, "severity": best_cap}
             recalibrated["_recalibrated_from"] = current_sev
             recalibrated["_recalibration_reason"] = best_reason
@@ -1173,8 +1171,12 @@ class ReportDataComputer:
         total_gaps = 0
         severity_counts: dict[str, int] = {"P0": 0, "P1": 0, "P2": 0, "P3": 0}
         domain_findings_count: dict[str, int] = defaultdict(int)
-        domain_severity: dict[str, dict[str, int]] = {d: {"P0": 0, "P1": 0, "P2": 0, "P3": 0} for d in _DOMAIN_AGENTS}
-        category_groups: dict[str, dict[str, list[dict[str, Any]]]] = {d: defaultdict(list) for d in _DOMAIN_AGENTS}
+        domain_severity: dict[str, dict[str, int]] = {
+            d: {"P0": 0, "P1": 0, "P2": 0, "P3": 0} for d in ALL_SPECIALIST_AGENTS
+        }
+        category_groups: dict[str, dict[str, list[dict[str, Any]]]] = {
+            d: defaultdict(list) for d in ALL_SPECIALIST_AGENTS
+        }
         findings_by_category: dict[str, list[dict[str, Any]]] = defaultdict(list)
         wolf_pack: list[dict[str, Any]] = []
         all_findings: list[dict[str, Any]] = []
@@ -1293,7 +1295,7 @@ class ReportDataComputer:
 
         domain_risk_scores: dict[str, float] = {}
         domain_risk_labels: dict[str, str] = {}
-        for d in _DOMAIN_AGENTS:
+        for d in ALL_SPECIALIST_AGENTS:
             domain_risk_scores[d] = self._compute_risk_score(domain_severity.get(d, {}))
             domain_risk_labels[d] = self._compute_risk_label(domain_severity.get(d, {}))
 
@@ -1336,7 +1338,7 @@ class ReportDataComputer:
 
         # Top 10 material findings per domain (sorted by severity weight desc)
         top_by_domain: dict[str, list[dict[str, Any]]] = {}
-        for d in _DOMAIN_AGENTS:
+        for d in ALL_SPECIALIST_AGENTS:
             domain_material = [f for f in material_findings if self._agent_to_domain(str(f.get("agent", ""))) == d]
             domain_material.sort(key=lambda f: -_SEVERITY_WEIGHTS.get(str(f.get("severity", "P3")), 0))
             top_by_domain[d] = domain_material[:10]

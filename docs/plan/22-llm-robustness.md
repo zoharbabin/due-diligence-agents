@@ -569,9 +569,9 @@ Mitigations:
 
 ## 8. Hallucination Prevention Architecture
 
-### 8.1 Five-Layer Defense
+### 8.1 Six-Layer Defense
 
-The plan implements five complementary layers against hallucination. No single layer is sufficient (per S-4); the combination provides defense-in-depth:
+The plan implements six complementary layers against hallucination. No single layer is sufficient (per S-4); the combination provides defense-in-depth:
 
 | Layer | Mechanism | Where Implemented | Catches |
 |-------|-----------|------------------|---------|
@@ -579,7 +579,7 @@ The plan implements five complementary layers against hallucination. No single l
 | **L2: Citation Verification** | `verify_citation` MCP tool performs exact and fuzzy matching of quotes against extracted text | `07-tools-and-hooks.md` | Fabricated quotes, misattributed sources, wrong sections cited |
 | **L3: Not-Found Protocol** | Explicit escape valve for missing information (§6 above) | Agent prompts, gap validation | Fabricated clauses, hallucinated terms |
 | **L4: Judge Spot-Check** | Adversarial review of sampled findings (§5 above) | `06-agents.md` §10 | Contextual misinterpretation, severity inflation, missed qualifiers |
-| **L5: Numerical Audit** | 5-layer deterministic validation of all numbers | `11-qa-validation.md` | Wrong amounts, arithmetic errors, unit mismatches |
+| **L5: Numerical Audit** | 6-layer deterministic validation of all numbers | `11-qa-validation.md` | Wrong amounts, arithmetic errors, unit mismatches |
 
 ### 8.2 Citation Verification Details
 
@@ -744,8 +744,8 @@ The 35-step pipeline (doc 05) is specifically ordered to catch errors early:
 | 13-16 | Agent analysis | First LLM stage. Errors caught by coverage gate (step 17). |
 | 17 | **BLOCKING GATE**: Coverage validation | Catches missing customers, aggregate files, incomplete manifests. Triggers re-spawn. |
 | 18-22 | Judge review (optional) | Second LLM stage. Catches hallucinations, severity errors, contradictions. |
-| 23-27 | Reporting Lead: merge + audit | Third LLM stage. Numerical audit catches financial errors. |
-| 28 | **BLOCKING GATE**: Numerical audit | 5-layer deterministic validation. Catches any number that can't be traced to source. |
+| 23-27 | Merge + audit | Third stage. Deterministic pre-merge validation catches financial errors. |
+| 28 | **BLOCKING GATE**: Numerical audit | 6-layer deterministic validation. Catches any number that can't be traced to source. |
 | 29-31 | Report generation, validation | Deterministic steps from schema. Schema validation catches structural errors. |
 
 ---
@@ -766,13 +766,13 @@ This section maps every research finding to its concrete implementation across p
 | AG-8: "Not found" option | Not-Found Protocol in every prompt | This doc §6 | 06 §5, 07 |
 | AG-9: Temperature 0 | Enforce in SDK config | This doc §11 | 06 §3 |
 | AG-10: 74% → 95% is engineering | This entire document | — | — |
-| S-1: 17-33% hallucination rate | 5-layer hallucination prevention | This doc §8 | 07, 11 |
+| S-1: 17-33% hallucination rate | 6-layer hallucination prevention | This doc §8 | 07, 11 |
 | S-2: Length correlates with hallucination | Constrain output, structured JSON | 04, 06 §7 | — |
 | S-3: Elementary comprehension failures | Pydantic validation of parties/terms | 04 | 11 |
 | A-1: Contextual chunk metadata | Document context prepended to chunks | This doc §9.2 | 14 §3 |
 | D-1: Boilerplate causes retrieval mismatch | Source document metadata in chunks | This doc §9.2 | 14 §3 |
-| E-1: Excel date serial numbers | Pre-convert in extraction | This doc §7.2 | 08 §1 |
-| E-2: Unit ambiguity | Extract units, include headers | This doc §7.2 | 08 §1 |
+| E-1: Excel date serial numbers | `_format_cell` in `tools/read_office.py` converts to ISO-8601 | This doc §7.2 | 08 §1 |
+| E-2: Unit ambiguity | `_format_cell` reads `cell.number_format` for currency/percentage | This doc §7.2 | 08 §1 |
 | C-1: Lost-in-the-middle | Prompt structure with edges for key content | This doc §3.4 | 06 §5 |
 | C-2: Degradation beyond 80K | 80% safety margin already in place | 06 §6.1 | — |
 
@@ -782,14 +782,18 @@ This section maps every research finding to its concrete implementation across p
 
 Discrete changes required to integrate these mitigations into the existing plan:
 
-### 14.1 New Files
+### 14.1 Implemented Files
 
-| File | Lines (est.) | Purpose |
-|------|-------------|---------|
-| `src/dd_agents/extraction/chunking.py` | 200 | Clause-aware chunking for vector store |
-| `src/dd_agents/extraction/tabular.py` | 150 | Smart Excel extraction with date conversion |
-| `tests/unit/test_chunking.py` | 120 | Chunking boundary tests |
-| `tests/unit/test_tabular.py` | 100 | Excel extraction tests (dates, units, structure) |
+E-1 through E-4 mitigations were integrated into existing modules rather than creating separate files:
+
+| Mitigation | Implemented In | Tests In |
+|-----------|---------------|----------|
+| E-1: Date conversion (ISO-8601) | `src/dd_agents/tools/read_office.py` (`_format_cell`) | `tests/unit/test_read_office.py` (`TestCellFormatting`) |
+| E-2: Currency/percentage formatting | `src/dd_agents/tools/read_office.py` (`_format_cell`) | `tests/unit/test_read_office.py` (`TestCellFormatting`, `TestCellEdgeCases`) |
+| E-3: Sub-table detection | `src/dd_agents/tools/read_office.py` (`_split_sub_tables`) | `tests/unit/test_read_office.py` (`TestCellFormatting`) |
+| E-4: Table-aware chunking | `src/dd_agents/search/chunker.py` (`is_tabular`, `split_by_table_rows`) | `tests/unit/test_search_chunker.py` (`TestIsTabular`, `TestSplitByTableRows`) |
+
+**Design rationale**: E-1/E-2/E-3 belong in `read_office.py` because that's where agents read Excel via the `read_office` tool — avoids maintaining parallel implementations. E-4 belongs in `search/chunker.py` because the search module already handles document chunking and the vector store is optional.
 
 ### 14.2 File Modifications
 

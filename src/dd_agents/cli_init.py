@@ -228,7 +228,7 @@ def write_config(
 
     # Write
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(config_dict, indent=2) + "\n")
+    output_path.write_text(json.dumps(config_dict, indent=2) + "\n", encoding="utf-8")
 
     console.print(
         Panel(

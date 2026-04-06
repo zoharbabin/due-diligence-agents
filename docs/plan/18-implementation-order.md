@@ -124,8 +124,8 @@ Phase 5: Reporting + Validation ────────────────
 
     validation/*             QA and validation gates
     ├── coverage.py          File coverage audit
-    ├── numerical_audit.py   5-layer numerical validation
-    ├── qa_audit.py          Full QA audit (30 DoD checks)
+    ├── numerical_audit.py   6-layer numerical validation
+    ├── qa_audit.py          Full QA audit (31 DoD checks)
     ├── dod.py               Definition of Done checker
     └── schema_validator.py  Post-generation schema validation
 
@@ -303,8 +303,8 @@ These modules can be built concurrently with the critical path:
 | Deliverable | Files | Acceptance |
 |-------------|-------|------------|
 | Merge/dedup | `src/dd_agents/reporting/merge.py` | Correct merge from 4 agents per customer |
-| Numerical validation | `src/dd_agents/validation/numerical_audit.py` | 5 layers validate correctly |
-| QA audit | `src/dd_agents/validation/qa_audit.py` | All 30 DoD checks pass on valid data |
+| Numerical validation | `src/dd_agents/validation/numerical_audit.py` | 6 layers validate correctly |
+| QA audit | `src/dd_agents/validation/qa_audit.py` | All 31 DoD checks pass on valid data |
 | Excel generation | `src/dd_agents/reporting/excel.py` | 14-sheet Excel matches report_schema.json |
 | Report diff | `src/dd_agents/reporting/diff.py` | Diff detects changes between runs |
 | Production comparison | N/A | Reference data room output matches within tolerance |
@@ -336,7 +336,7 @@ Approximate lines of code per module (excluding tests):
 | `orchestrator/*` | 800 | High (state machine, coverage gate) |
 | `agents/*` | 600 | High (prompt assembly, retry logic) |
 | `reporting/*` | 700 | High (merge logic, Excel generation) |
-| `validation/*` | 500 | High (30 DoD checks, 5-layer numerical) |
+| `validation/*` | 500 | High (31 DoD checks, 6-layer numerical) |
 | `reasoning/*` | 250 | Medium (NetworkX graph queries, verification tiers) |
 | `errors.py` | 100 | Low |
 | `cli.py` | 200 | Low |
@@ -426,7 +426,7 @@ Phase 5: Reporting + Validation
   [ ] reporting/contract_dates.py
   [ ] validation/coverage.py
   [ ] validation/numerical_audit.py
-  [ ] validation/qa_audit.py (30 DoD checks)
+  [ ] validation/qa_audit.py (31 DoD checks)
   [ ] validation/dod.py
   [ ] validation/schema_validator.py
   [ ] Reference data room comparison test

@@ -31,6 +31,7 @@ BASH_BLOCKLIST: list[str] = [
     "sudo ",
     "mkfs",
     "dd if=",
+    "dd of=",
     "> /dev/",
     "curl | sh",
     "curl | bash",
@@ -44,6 +45,8 @@ BASH_BLOCKLIST: list[str] = [
     "| node",
     "python -c",
     "python3 -c",
+    "python -m",
+    "python3 -m",
     "perl -e",
     "ruby -e",
     "node -e",
@@ -223,9 +226,4 @@ BLOCKED_FILENAMES: list[str] = [
     "miscellaneous.json",
     "misc.json",
     "overflow.json",
-]
-
-ALLOWED_SPECIAL_FILES: list[str] = [
-    "coverage_manifest.json",
-    "audit_log.jsonl",
 ]

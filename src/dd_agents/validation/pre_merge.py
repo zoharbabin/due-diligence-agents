@@ -14,23 +14,12 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from dd_agents.utils.constants import ALL_SPECIALIST_AGENTS, SEVERITY_ORDER
+from dd_agents.utils.constants import ALL_SPECIALIST_AGENTS, NON_CUSTOMER_STEMS, SEVERITY_ORDER
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Non-customer JSON stems -- same set as FindingMerger._NON_CUSTOMER_STEMS
-# ---------------------------------------------------------------------------
-
-_NON_CUSTOMER_STEMS: frozenset[str] = frozenset(
-    {
-        "coverage_manifest",
-        "numerical_manifest",
-        "report_diff",
-        "quality_scores",
-        "metadata",
-    }
-)
+# Alias for backward compatibility — canonical definition in utils.constants.
+_NON_CUSTOMER_STEMS = NON_CUSTOMER_STEMS
 
 # Required keys in each finding dict
 _REQUIRED_FINDING_KEYS: frozenset[str] = frozenset({"severity", "category", "title", "description", "citations"})
@@ -195,7 +184,7 @@ class PreMergeValidator:
                 if stem not in self.customer_safe_names:
                     continue
                 try:
-                    data = json.loads(fpath.read_text())
+                    data = json.loads(fpath.read_text(encoding="utf-8"))
                     findings_list: list[dict[str, Any]] = []
                     if isinstance(data, dict):
                         raw = data.get("findings", [])

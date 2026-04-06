@@ -106,7 +106,7 @@ class ReportDiffBuilder:
     def write_diff(self, diff: ReportDiff, output_path: Path) -> None:
         """Serialize the diff to JSON."""
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(diff.model_dump_json(indent=2))
+        output_path.write_text(diff.model_dump_json(indent=2), encoding="utf-8")
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -245,7 +245,7 @@ class ReportDiffBuilder:
         for fp in sorted(merged_dir.glob("*.json")):
             if fp.is_file():
                 try:
-                    data = json.loads(fp.read_text())
+                    data = json.loads(fp.read_text(encoding="utf-8"))
                     customer = data.get("customer", fp.stem)
                     findings_raw = data.get("findings", [])
                     # Normalise Finding models back to dicts if needed
@@ -266,7 +266,7 @@ class ReportDiffBuilder:
         for fp in sorted(gaps_dir.glob("*.json")):
             if fp.is_file():
                 try:
-                    data = json.loads(fp.read_text())
+                    data = json.loads(fp.read_text(encoding="utf-8"))
                     gaps = data if isinstance(data, list) else data.get("gaps", [])
                     customer = fp.stem
                     result[customer] = gaps

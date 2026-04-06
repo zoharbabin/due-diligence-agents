@@ -113,7 +113,11 @@ class AnalysisChronicle:
             os.close(fd)
             os.replace(tmp_path, str(self._log_path))
         except Exception:
-            os.close(fd) if not _is_closed(fd) else None  # noqa: B018
+            try:
+                if not _is_closed(fd):
+                    os.close(fd)
+            except OSError:
+                pass
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
             raise

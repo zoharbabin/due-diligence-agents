@@ -27,7 +27,7 @@ Cross-reference: `01-architecture-decisions.md` ADR-01 (why SDK over Skills), `0
 | `agent-prompts.md` | `src/dd_agents/agents/prompt_builder.py` | Agent prompt templates (Legal, Finance, Commercial, ProductTech, Judge, Reporting Lead) |
 | `entity-resolution-protocol.md` | `src/dd_agents/entity_resolution/` | 6-pass cascading matcher, cache protocol, short name guards |
 | `reporting-protocol.md` | `src/dd_agents/reporting/` | Merge/dedup rules, 14-sheet structure, report diff |
-| `numerical-validation.md` | `src/dd_agents/validation/numerical_audit.py` | 5-layer validation framework |
+| `numerical-validation.md` | `src/dd_agents/validation/numerical_audit.py` | 6-layer validation framework |
 | `deal-config.schema.json` | `src/dd_agents/models/config.py` | Deal configuration Pydantic model |
 | `report_schema.json` | `src/dd_agents/reporting/schema.py` | Excel report structure (loaded at runtime) |
 | `deal-config.template.json` | `src/dd_agents/config/deal-config.template.json` | Template for new deals |
@@ -274,7 +274,7 @@ Source: `reporting-protocol.md` section 1.
 
 ### Step 19: Numerical Validation
 
-- `src/dd_agents/validation/numerical_audit.py` -- 5-layer validation framework
+- `src/dd_agents/validation/numerical_audit.py` -- 6-layer validation framework
 - `src/dd_agents/validation/numerical_manifest.py` -- Manifest builder
 
 Source: `numerical-validation.md`.
@@ -294,7 +294,7 @@ Source: `reporting-protocol.md` section 4.
 
 ### Step 22: Full QA Audit
 
-- `src/dd_agents/validation/qa_audit.py` -- All 30 DoD checks (SKILL.md section 9)
+- `src/dd_agents/validation/qa_audit.py` -- All 31 DoD checks (SKILL.md section 9)
 - `src/dd_agents/validation/dod.py` -- Definition of Done checker
 - `src/dd_agents/validation/schema_validator.py` -- Post-generation schema validation
 
@@ -308,7 +308,7 @@ Run the SDK on the same reference data room that the skill processed. Compare ou
 - Same customers identified (count match)
 - Same files covered (count match)
 - Finding counts within 15% per customer (for a customer with 20 findings in the Skill run, the SDK run should produce 17-23 findings; this accounts for LLM non-determinism). Structural metrics (customer count, file count, sheet count) must match exactly.
-- All 30 DoD checks pass
+- All 31 DoD checks pass
 - Excel report has all 14 sheets
 - No P0 findings missed that the skill found
 - Severity distribution roughly matches (not exact -- different runs will vary)

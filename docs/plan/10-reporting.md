@@ -890,7 +890,7 @@ The complete reporting pipeline executes as pipeline steps 23-31:
 | 24 | Merge and deduplicate findings | `{RUN_DIR}/findings/merged/{customer_safe_name}.json` |
 | 25 | Merge gap files | `{RUN_DIR}/findings/merged/gaps/{customer_safe_name}.json` |
 | 26 | Build numerical manifest | `{RUN_DIR}/numerical_manifest.json` |
-| 27 | Numerical audit (5-layer, BLOCKING) | Pass/fail |
+| 27 | Numerical audit (6-layer, BLOCKING) | Pass/fail |
 | 28 | Full QA audit (fail-closed) | `{RUN_DIR}/audit.json` |
 | 29 | Build report diff (if prior run) | `{RUN_DIR}/report_diff.json` |
 | 30 | Generate Excel from schema | `{RUN_DIR}/report/Due_Diligence_Report_{run_id}.xlsx` |

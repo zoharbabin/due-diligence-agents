@@ -11,11 +11,10 @@ import logging
 import re
 import time
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from dd_agents.models.config import DealConfig
 
 logger = logging.getLogger(__name__)
@@ -135,9 +134,7 @@ class BaseAgentRunner(ABC):
         Returns 3× the largest ``.txt`` file in the text directory, with
         a floor of :attr:`_MIN_BUFFER_BYTES`.
         """
-        from pathlib import Path as _Path
-
-        text_dir = _Path(self.project_dir) / "_dd" / "forensic-dd" / "index" / "text"
+        text_dir = Path(self.project_dir) / "_dd" / "forensic-dd" / "index" / "text"
         if not text_dir.is_dir():
             return self._MIN_BUFFER_BYTES
 
@@ -157,9 +154,7 @@ class BaseAgentRunner(ABC):
 
     def _raw_output_path(self) -> Path:
         """Return the path for saving raw agent output text."""
-        from pathlib import Path as _Path
-
-        return _Path(self.run_dir) / "agent_output" / f"{self.get_agent_name()}_raw.txt"
+        return Path(self.run_dir) / "agent_output" / f"{self.get_agent_name()}_raw.txt"
 
     # ------------------------------------------------------------------
     # Main execution entry-point
