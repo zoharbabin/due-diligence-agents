@@ -159,6 +159,7 @@ class DealType(StrEnum):
     """Deal type enum from deal-config.schema.json."""
 
     ACQUISITION = "acquisition"
+    ASSET_SALE = "asset_sale"
     MERGER = "merger"
     DIVESTITURE = "divestiture"
     INVESTMENT = "investment"

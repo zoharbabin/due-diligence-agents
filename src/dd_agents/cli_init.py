@@ -34,7 +34,15 @@ _FOCUS_AREA_LABELS: dict[str, str] = {
     "non_compete_agreements": "Non-compete agreements",
 }
 
-VALID_DEAL_TYPES = ["acquisition", "merger", "divestiture", "investment", "joint_venture", "other"]
+VALID_DEAL_TYPES = [
+    "acquisition",
+    "asset_sale",
+    "merger",
+    "divestiture",
+    "investment",
+    "joint_venture",
+    "other",
+]
 
 
 def scan_data_room(path: Path) -> dict[str, Any]:

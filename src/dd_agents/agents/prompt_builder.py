@@ -322,6 +322,32 @@ class PromptBuilder:
                     "",
                 ]
             )
+        elif deal_type in ("asset_sale", "asset_purchase"):
+            lines.extend(
+                [
+                    "### Deal-Type Context: Asset Sale / Asset Purchase",
+                    f"This is a {deal_type}. Key calibration rules:",
+                    "- Only PURCHASED ASSETS transfer — liabilities, contracts, and IP not "
+                    "explicitly listed in the APA do NOT transfer. Flag ambiguous asset "
+                    "schedules as P1.",
+                    "- Contract assignability is critical — each customer/vendor contract "
+                    "needs consent or court order to assign. Non-assignable contracts "
+                    "covering >5% revenue are P0.",
+                    "- Excluded liabilities remain with the seller — but verify the APA "
+                    "clearly delineates assumed vs. excluded. Ambiguity is P1.",
+                    "- Employee transfer is selective — buyer chooses which employees to "
+                    "offer positions. Flag key-person risk if critical staff are not "
+                    "confirmed as transferring (P1).",
+                    "- IP must be explicitly scheduled — any IP not listed in purchased "
+                    "assets does NOT transfer. Missing IP schedules for core technology "
+                    "are P0.",
+                    "- If the sale is out of receivership/bankruptcy, assets vest free and "
+                    "clear via court order — pre-existing liens are less relevant, but "
+                    "court approval is a closing condition (P0 if at risk).",
+                    "- Cure costs for defaulted contracts may be required — flag material cure obligations as P1.",
+                    "",
+                ]
+            )
         elif deal_type in ("divestiture", "carve-out", "spin-off"):
             lines.extend(
                 [
