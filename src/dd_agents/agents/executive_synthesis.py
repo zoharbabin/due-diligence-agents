@@ -59,11 +59,11 @@ class ExecutiveSynthesisOutput(BaseModel):
     )
     go_no_go_rationale: str = Field(
         default="",
-        description="Board-ready paragraph explaining the recommendation",
+        description="Concise paragraph explaining the recommendation",
     )
     executive_narrative: str = Field(
         default="",
-        description="2-3 paragraph DD summary for board presentation",
+        description="2-3 paragraph DD summary for the deal team",
     )
     risk_score_override: int = Field(
         default=-1,

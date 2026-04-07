@@ -367,5 +367,7 @@ def _build_runtime_context(
         "files_list": files_list or None,
         "customers_csv": customers_csv,
         "cache_path": cache_path if cache_path.exists() else None,
-        "allowed_dir": dd_dir if dd_dir.is_dir() else None,
+        # Always set allowed_dir to the project dir for path containment.
+        # Even if _dd/ doesn't exist yet, agents should not read outside it.
+        "allowed_dir": dd_dir if dd_dir.is_dir() else project_dir,
     }

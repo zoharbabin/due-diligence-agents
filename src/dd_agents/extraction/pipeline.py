@@ -7,11 +7,16 @@ The verify_citation tool uses extracted text as a fallback for quote
 verification.
 
 The pipeline converts every data-room file to a single canonical
-markdown representation.  PDFs are pre-inspected to route the chain:
+markdown representation.  Routing is by file type:
 
-    Normal:  pymupdf → pdftotext → markitdown → GLM-OCR → pytesseract → Claude vision → direct read
-    Scanned: GLM-OCR → pytesseract → Claude vision → direct read
-    Images:  markitdown → GLM-OCR → pytesseract → Claude vision → diagram placeholder
+    PDF (normal):   pymupdf → pdftotext → markitdown → GLM-OCR → pytesseract → Claude vision → direct read
+    PDF (scanned):  GLM-OCR → pytesseract → Claude vision → direct read
+    Images:         markitdown → GLM-OCR → pytesseract → Claude vision → diagram placeholder
+    Spreadsheets:   openpyxl (.xlsx) / xlrd (.xls) / csv module (.csv/.tsv) → markitdown → direct read
+    Plain text:     direct read
+
+A magic-byte detector corrects misnamed files (e.g. JPEG with .pdf
+extension) before routing.
 
 Extracted files are written as ``<safe_name>.md`` into the output
 directory.  Unchanged files (SHA-256 match) are skipped.
@@ -455,6 +460,17 @@ class ExtractionPipeline:
 
         suffix = filepath.suffix.lower()
 
+        # Sniff magic bytes to detect misnamed files (e.g. JPEG with .pdf extension).
+        actual = self._detect_actual_type(filepath, suffix)
+        if actual != suffix:
+            logger.info(
+                "File type mismatch: %s has extension '%s' but actual type is '%s' — routing by content",
+                filepath.name,
+                suffix,
+                actual,
+            )
+            suffix = actual
+
         if suffix in PLAINTEXT_EXTENSIONS:
             return self._extract_plaintext(filepath, out_file)
 
@@ -678,19 +694,16 @@ class ExtractionPipeline:
     def _extract_spreadsheet(self, filepath: Path, out_file: Path) -> ExtractionQualityEntry:
         """Extract spreadsheet files using native Python libraries.
 
-        Uses openpyxl for .xlsx, csv/tsv module for delimited files,
-        and falls back to markitdown → direct read for .xls (legacy format).
+        Routes by extension: openpyxl (.xlsx), csv module (.csv/.tsv),
+        xlrd (.xls).  Each primary method falls back to markitdown then
+        direct read if the native reader fails quality gates.
         """
         suffix = filepath.suffix.lower()
         chain: list[str] = []
         failure_reasons: list[str] = []
 
-        text: str | None = None
-        conf = 0.0
-
         if suffix == ".xlsx":
             text, conf = self._read_xlsx(filepath)
-            chain.append("openpyxl")
             if text:
                 entry = self._try_method(
                     "openpyxl",
@@ -707,7 +720,6 @@ class ExtractionPipeline:
 
         elif suffix in (".csv", ".tsv"):
             text, conf = self._read_delimited(filepath, suffix)
-            chain.append("csv_reader")
             if text:
                 entry = self._try_method(
                     "csv_reader",
@@ -722,7 +734,24 @@ class ExtractionPipeline:
                 if entry is not None:
                     return entry
 
-        # .xls or fallback for failed xlsx/csv: try markitdown then direct read.
+        # .xls: try xlrd first (native BIFF reader), then markitdown, then direct read.
+        if suffix == ".xls":
+            xls_text, xls_conf = self._read_xls(filepath)
+            if xls_text:
+                entry = self._try_method(
+                    "xlrd",
+                    xls_text,
+                    xls_conf,
+                    out_file,
+                    filepath,
+                    chain,
+                    failure_reasons,
+                    method_label="primary",
+                )
+                if entry is not None:
+                    return entry
+
+        # Fallback: markitdown then direct read.
         md_text, md_conf = self._markitdown.extract(filepath)
         entry = self._try_method(
             "markitdown",
@@ -732,7 +761,7 @@ class ExtractionPipeline:
             filepath,
             chain,
             failure_reasons,
-            method_label="fallback_read" if chain else "primary",
+            method_label="fallback_markitdown" if chain else "primary",
         )
         if entry is not None:
             return entry
@@ -770,6 +799,81 @@ class ExtractionPipeline:
             return text, 0.9
         except Exception as exc:
             logger.debug("openpyxl failed for %s: %s", filepath.name, exc)
+            return None, 0.0
+
+    @staticmethod
+    def _read_xls(filepath: Path) -> tuple[str | None, float]:
+        """Read legacy .xls (BIFF) files using xlrd."""
+        try:
+            import xlrd
+
+            wb = xlrd.open_workbook(str(filepath))
+            parts: list[str] = []
+
+            for sheet_name in wb.sheet_names():
+                ws = wb.sheet_by_name(sheet_name)
+                if ws.nrows == 0:
+                    continue
+
+                rows: list[list[str]] = []
+                max_rows = min(ws.nrows, 50_000)
+                for rx in range(max_rows):
+                    cells: list[str] = []
+                    for cx in range(ws.ncols):
+                        cell = ws.cell(rx, cx)
+                        # xlrd cell types: 0=empty, 1=text, 2=number, 3=date, 4=bool, 5=error
+                        if cell.ctype == xlrd.XL_CELL_DATE:
+                            try:
+                                dt_tuple = xlrd.xldate_as_tuple(cell.value, wb.datemode)
+                                if dt_tuple[3:] == (0, 0, 0):
+                                    cells.append(f"{dt_tuple[0]:04d}-{dt_tuple[1]:02d}-{dt_tuple[2]:02d}")
+                                else:
+                                    cells.append(
+                                        f"{dt_tuple[0]:04d}-{dt_tuple[1]:02d}-{dt_tuple[2]:02d}"
+                                        f" {dt_tuple[3]:02d}:{dt_tuple[4]:02d}"
+                                    )
+                            except Exception:
+                                cells.append(str(cell.value))
+                        elif cell.ctype == xlrd.XL_CELL_EMPTY:
+                            cells.append("")
+                        elif cell.ctype == xlrd.XL_CELL_BOOLEAN:
+                            cells.append("TRUE" if cell.value else "FALSE")
+                        else:
+                            val = str(cell.value)
+                            # Clean up float display: 1000.0 → 1000
+                            if cell.ctype == xlrd.XL_CELL_NUMBER and val.endswith(".0"):
+                                val = val[:-2]
+                            cells.append(val)
+                    # Sanitize for markdown tables
+                    cells = [
+                        c.replace("\r\n", " ").replace("\r", " ").replace("\n", " ").replace("|", "\\|") for c in cells
+                    ]
+                    if any(c.strip() for c in cells):
+                        rows.append(cells)
+
+                if not rows:
+                    continue
+
+                ncols = max(len(r) for r in rows)
+                parts.append(f"## Sheet: {sheet_name} ({len(rows)} rows, {ncols} columns)\n")
+
+                # Column letter headers (consistent with openpyxl reader)
+                from dd_agents.tools.read_office import _col_letter
+
+                col_headers = [_col_letter(i) for i in range(ncols)]
+                parts.append("| " + " | ".join(col_headers) + " |")
+                parts.append("| " + " | ".join("---" for _ in col_headers) + " |")
+                for row in rows:
+                    padded = row + [""] * (ncols - len(row))
+                    parts.append("| " + " | ".join(padded) + " |")
+                parts.append("")
+
+            text = "\n".join(parts).strip()
+            if not text:
+                return None, 0.0
+            return text, 0.85
+        except Exception as exc:
+            logger.debug("xlrd failed for %s: %s", filepath.name, exc)
             return None, 0.0
 
     @staticmethod
@@ -1077,6 +1181,49 @@ class ExtractionPipeline:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _detect_actual_type(filepath: Path, extension: str) -> str:
+        """Sniff magic bytes to detect files with wrong extensions.
+
+        Returns the corrected extension if a mismatch is found, otherwise
+        returns the original extension unchanged.  Only checks formats
+        where mismatches are common in data rooms (e.g. JPEG saved as .pdf).
+        """
+        # Map of magic byte signatures → canonical extension.
+        magic_map: list[tuple[bytes, int, str]] = [
+            (b"%PDF-", 0, ".pdf"),
+            (b"\x89PNG\r\n\x1a\n", 0, ".png"),
+            (b"\xff\xd8\xff", 0, ".jpg"),  # JPEG (covers JFIF and Exif)
+            (b"PK\x03\x04", 0, ".docx"),  # ZIP-based (docx/xlsx/pptx) — refine below
+            (b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1", 0, ".xls"),  # OLE2 (xls/doc/ppt)
+        ]
+        try:
+            with open(filepath, "rb") as fh:
+                header = fh.read(16)
+        except OSError:
+            return extension
+
+        if len(header) < 4:
+            return extension
+
+        for magic, offset, detected_ext in magic_map:
+            if header[offset : offset + len(magic)] == magic:
+                if detected_ext == extension:
+                    return extension  # No mismatch
+
+                # ZIP-based: don't override .docx/.xlsx/.pptx with each other
+                # since they all share PK magic. Only override non-ZIP extensions.
+                if detected_ext == ".docx" and extension in (".xlsx", ".pptx", ".docx", ".zip"):
+                    return extension
+
+                # OLE2: don't override .doc/.xls/.ppt with each other.
+                if detected_ext == ".xls" and extension in (".doc", ".ppt", ".xls", ".msg"):
+                    return extension
+
+                return detected_ext
+
+        return extension
 
     @staticmethod
     def _safe_text_name(source_path: str) -> str:

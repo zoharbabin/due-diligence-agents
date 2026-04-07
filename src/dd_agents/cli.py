@@ -158,7 +158,7 @@ def run(
             "legal",
             "finance",
             "commercial",
-            "product_tech",
+            "producttech",
             "judge",
             "executive_synthesis",
             "red_flag_scanner",
@@ -434,11 +434,11 @@ def version() -> None:
     "--deal-type",
     "deal_type",
     type=click.Choice(
-        ["acquisition", "merger", "divestiture", "investment", "joint_venture", "other"],
+        ["acquisition", "asset_sale", "merger", "divestiture", "investment", "joint_venture", "other"],
         case_sensitive=False,
     ),
     default=None,
-    help="Type of deal (e.g. acquisition, merger). Default: acquisition.",
+    help="Type of deal (e.g. acquisition, asset_sale, merger). Default: acquisition.",
 )
 @click.option(
     "--focus-areas",
@@ -635,7 +635,7 @@ def init(
     "--deal-type",
     "deal_type",
     type=click.Choice(
-        ["acquisition", "merger", "divestiture", "investment", "joint_venture", "other"],
+        ["acquisition", "asset_sale", "merger", "divestiture", "investment", "joint_venture", "other"],
         case_sensitive=False,
     ),
     default=None,

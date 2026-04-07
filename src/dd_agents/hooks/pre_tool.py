@@ -161,7 +161,7 @@ def path_guard(
     resolved = Path(os.path.realpath(file_path))
     dd_resolved = Path(os.path.realpath(dd_dir))
 
-    if resolved == dd_resolved or str(resolved).startswith(str(dd_resolved) + os.sep):
+    if resolved.is_relative_to(dd_resolved):
         return {"decision": "allow", "reason": ""}
 
     return {

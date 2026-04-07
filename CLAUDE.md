@@ -45,7 +45,7 @@ dd-agents run path/to/deal-config.json
 - **Orchestrator** (`orchestrator/engine.py`): 35 async steps as methods on `PipelineEngine`. State machine with checkpoint/resume.
 - **Agents** (`agents/`): 4 specialists (Legal, Finance, Commercial, ProductTech) + Judge + Executive Synthesis + Red Flag Scanner + Acquirer Intelligence. Spawned via `claude-agent-sdk`.
 - **Persistence**: Three tiers — PERMANENT (never wiped), VERSIONED (archived per run), FRESH (rebuilt each run).
-- **Hooks** (`hooks/`): Flat return format `{"decision": "block"|"allow", "reason": "..."}` for ALL hook types. Never nest under `hookSpecificOutput`.
+- **Hooks** (`hooks/`): PreToolUse hooks return flat `{"decision": "block"|"allow", "reason": "..."}`. Stop hooks use SDK format `{"continue_": bool, "stopReason": "..."}`. Never nest under `hookSpecificOutput`.
 - **Models** (`models/`): Pydantic v2 for all schemas. `model_json_schema()` for structured outputs. Note: some BaseModel subclasses live outside `models/` by design — agent output schemas (`agents/*.py`), report templates (`reporting/templates.py`), query models (`query/*.py`), and internal helpers (`orchestrator/batch_scheduler.py`, `validation/pre_merge.py`, `extraction/coordinates.py`) are co-located with their consumers for cohesion.
 - **Validation** (`validation/`): 6-layer numerical audit, 31 substantive DoD checks (content-validated, not file-existence). Fail-closed — validation failures block the pipeline.
 - **Knowledge** (`knowledge/`): Deal Knowledge Base — persistent knowledge layer that compounds across runs. 12 modules: `base.py` (article CRUD + atomic writes), `articles.py` (Pydantic models), `compiler.py` (findings → articles), `graph.py` (NetworkX knowledge graph), `chronicle.py` (append-only JSONL timeline), `lineage.py` (SHA-256 finding fingerprinting), `health.py` (7-category integrity checks), `prompt_enrichment.py` (agent context builder), `filing.py` (file-back to data room), `search_context.py` (search enrichment interface), `index.py` (auto-maintained JSON index), `_utils.py` (shared helpers). Compiled automatically in step 32 unless `--no-knowledge` is passed.
@@ -150,7 +150,7 @@ Update the phase status in IMPLEMENTATION_PLAN.md after completing each phase.
 - Don't implement a module without reading its spec doc first
 - Don't skip tests — write tests BEFORE implementation
 - Don't create aggregate files (e.g., `summary.json`, `all_findings.json`) — findings are always per-customer
-- Don't use `hookSpecificOutput` wrapper — all hooks return flat `{"decision": ..., "reason": ...}`
+- Don't use `hookSpecificOutput` wrapper — PreToolUse hooks return flat `{"decision": ..., "reason": ...}`, Stop hooks use `{"continue_": ..., "stopReason": ...}`
 - Don't use 0-based batch naming — batches start at 1
 - Don't modify PERMANENT tier files during runs (only extraction creates them)
 - Don't skip type annotations — `mypy --strict` must pass
@@ -198,18 +198,19 @@ Update the phase status in IMPLEMENTATION_PLAN.md after completing each phase.
 All core dependencies are permissively licensed (Apache 2.0, MIT, BSD). pymupdf is AGPL-3.0 and optional.
 
 ```
-claude-agent-sdk>=0.1.39   # Agent spawning, hooks, tools
-pydantic>=2.0              # Data models, schema validation
-openpyxl>=3.1.3            # Excel report generation
-networkx>=3.0              # Governance graph (cycle detection, topological sort)
-rapidfuzz>=3.0             # Entity resolution fuzzy matching
-markitdown>=0.1            # PDF/Office document extraction
-scikit-learn>=1.3          # TF-IDF vectorization for entity resolution
-click>=8.0                 # CLI interface
-rich>=13.0                 # Terminal output formatting
+claude-agent-sdk>=0.1.39        # Agent spawning, hooks, tools
+pydantic>=2.0                   # Data models, schema validation
+openpyxl>=3.1.3                 # Excel report generation + .xlsx extraction
+networkx>=3.0                   # Governance graph (cycle detection, topological sort)
+rapidfuzz>=3.0                  # Entity resolution fuzzy matching
+markitdown[docx,xlsx,pptx]>=0.1 # PDF/Office document extraction
+xlrd>=2.0                       # Legacy .xls (BIFF) extraction
+scikit-learn>=1.3               # TF-IDF vectorization for entity resolution
+click>=8.0                      # CLI interface
+rich>=13.0                      # Terminal output formatting
 ```
 
-Optional: `pymupdf>=1.23` (PDF extraction, AGPL-3.0), `chromadb>=0.4` (vector search), `pytesseract>=0.3` (OCR), `mlx-vlm>=0.1` (GLM-OCR)
+Optional: `pymupdf>=1.23` (PDF extraction, AGPL-3.0), `chromadb>=0.4` (vector search), `pytesseract>=0.3` + `Pillow>=12.1` + `pdf2image>=1.16` (OCR), `mlx-vlm>=0.1` + `pypdfium2>=4.0` (GLM-OCR)
 
 ## Repo Structure (non-code files)
 

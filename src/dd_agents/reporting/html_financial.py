@@ -62,10 +62,10 @@ class FinancialImpactRenderer(SectionRenderer):
             "<div class='metrics-strip'>"
             f"<div class='metric-card'><div class='value'>{_fmt_currency(total)}</div>"
             "<div class='label'>Total Contracted ARR</div></div>"
-            f"<div class='metric-card'><div class='value' style='color: var(--severity-p1, #d63384)'>"
+            f"<div class='metric-card'><div class='value' style='color: var(--sev-p1, #fd7e14)'>"
             f"{_fmt_currency(exposure)}</div>"
             f"<div class='label'>Revenue at Risk ({_fmt_pct(exposure_pct)})</div></div>"
-            f"<div class='metric-card'><div class='value' style='color: var(--severity-p3, #198754)'>"
+            f"<div class='metric-card'><div class='value' style='color: var(--sev-p3, #198754)'>"
             f"{_fmt_currency(adjusted)}</div>"
             "<div class='label'>Risk-Adjusted ARR</div></div>"
             "</div>"
@@ -156,10 +156,10 @@ class FinancialImpactRenderer(SectionRenderer):
             return ""
 
         risk_colors: dict[str, str] = {
-            "critical": "var(--severity-p0, #dc3545)",
-            "high": "var(--severity-p1, #d63384)",
-            "medium": "var(--severity-p2, #fd7e14)",
-            "low": "var(--severity-p3, #198754)",
+            "critical": "var(--sev-p0, #dc3545)",
+            "high": "var(--sev-p1, #fd7e14)",
+            "medium": "var(--sev-p2, #ffc107)",
+            "low": "var(--sev-p3, #6c757d)",
         }
 
         parts: list[str] = [
@@ -178,7 +178,7 @@ class FinancialImpactRenderer(SectionRenderer):
             parts.append(
                 f"<div style='flex-basis:{min_width}%;background:{color};"
                 f"padding:8px;color:#fff;border-radius:4px;min-width:60px' "
-                f"title='{name}: {revenue} ({_fmt_pct(pct)})'>"
+                f'title="{name}: {revenue} ({_fmt_pct(pct)})">'
                 f"<strong>{name}</strong><br>{revenue} ({_fmt_pct(pct)})"
                 "</div>"
             )

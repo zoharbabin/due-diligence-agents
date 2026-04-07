@@ -25,6 +25,15 @@ def _sanitize_mermaid_id(text: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_]", "_", text)[:40]
 
 
+def _sanitize_mermaid_label(text: str) -> str:
+    """Sanitize text for use inside Mermaid node labels (``["..."]``).
+
+    Strips characters that break Mermaid syntax: quotes, brackets, pipes,
+    backticks, angle brackets, and braces.
+    """
+    return re.sub(r'["\[\]|`<>{}]', "", text)[:60]
+
+
 def _short_name(file_path: str) -> str:
     """Extract a short display name from a file path."""
     parts = file_path.replace("\\", "/").split("/")
@@ -126,8 +135,8 @@ class GovernanceGraphRenderer(SectionRenderer):
 
             from_id = _sanitize_mermaid_id(from_file)
             to_id = _sanitize_mermaid_id(to_file)
-            from_label = self.escape(_short_name(from_file))
-            to_label = self.escape(_short_name(to_file))
+            from_label = _sanitize_mermaid_label(_short_name(from_file))
+            to_label = _sanitize_mermaid_label(_short_name(to_file))
             rel = str(edge.get("relationship", "references")).lower()
             arrow = _RELATIONSHIP_STYLES.get(rel, "-->")
 
@@ -139,7 +148,7 @@ class GovernanceGraphRenderer(SectionRenderer):
                 parts.append(f'    {to_id}["{to_label}"]')
                 nodes.add(to_id)
 
-            parts.append(f"    {from_id} {arrow}|{self.escape(rel)}| {to_id}")
+            parts.append(f"    {from_id} {arrow}|{_sanitize_mermaid_label(rel)}| {to_id}")
 
         parts.append("</div>")
         return "\n".join(parts)

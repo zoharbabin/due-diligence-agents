@@ -62,6 +62,8 @@ def read_office(
     path = Path(file_path)
 
     # Path containment check — prevent agents from reading outside data room.
+    # When called internally (extraction pipeline), allowed_dir is None — no check.
+    # When called via MCP server, allowed_dir is always set by _build_runtime_context.
     if allowed_dir:
         try:
             resolved = path.resolve()

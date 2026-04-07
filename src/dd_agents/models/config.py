@@ -37,7 +37,9 @@ class AcquiredEntity(BaseModel):
     @field_validator("acquisition_date")
     @classmethod
     def validate_date_format(cls, v: str) -> str:
-        if v and not __import__("re").match(r"^\d{4}-\d{2}-\d{2}$", v):
+        import re
+
+        if v and not re.match(r"^\d{4}-\d{2}-\d{2}$", v):
             raise ValueError("acquisition_date must be YYYY-MM-DD format")
         return v
 

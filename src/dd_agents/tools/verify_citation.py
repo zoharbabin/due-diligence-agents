@@ -82,6 +82,7 @@ def verify_citation(
     text_path = _get_text_path(source_path, text_dir)
 
     # Path containment check — prevent agents from reading outside data room.
+    # When called via MCP server, allowed_dir is always set by _build_runtime_context.
     if allowed_dir:
         try:
             resolved = text_path.resolve()

@@ -13,7 +13,7 @@
 ```bash
 git clone https://github.com/zoharbabin/due-diligence-agents.git
 cd due-diligence-agents
-pip install -e ".[dev]"
+pip install -e ".[dev,pdf]"
 pre-commit install
 ```
 
@@ -94,7 +94,7 @@ This project is structured for autonomous implementation by Claude Code:
 To start autonomous implementation:
 ```bash
 cd due-diligence-agents
-pip install -e ".[dev]"
+pip install -e ".[dev,pdf]"
 claude    # Claude Code reads CLAUDE.md + IMPLEMENTATION_PLAN.md automatically
 ```
 

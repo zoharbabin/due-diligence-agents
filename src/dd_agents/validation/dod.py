@@ -49,7 +49,7 @@ logger = logging.getLogger(__name__)
 
 
 class DefinitionOfDoneChecker:
-    """Run 30 DoD checks and return a list of AuditCheck results.
+    """Run 31 DoD checks and return a list of AuditCheck results.
 
     Parameters
     ----------
@@ -341,14 +341,22 @@ class DefinitionOfDoneChecker:
         )
 
     def check_8_cross_reference_reconciliation(self) -> AuditCheck:
-        """Completed for ALL customers with reference data."""
+        """Cross-reference reconciliation completed for ALL customers with reference data.
+
+        Distinct from check_7: this verifies that the reconciliation_complete
+        sub-field is true (contract_date_reconciliation.json exists), not just
+        that cross-references were gathered.
+        """
         audit_path = self.run_dir / "audit.json"
         if audit_path.exists():
             try:
                 data = json.loads(audit_path.read_text(encoding="utf-8"))
                 checks = data.get("checks", {})
                 xref_check = checks.get("cross_reference_completeness", {})
-                passed = xref_check.get("passed", False)
+                details = xref_check.get("details", {})
+                # Check_8 specifically verifies reconciliation was completed,
+                # while check_7 verifies cross-references were gathered.
+                passed = bool(xref_check.get("passed", False)) and bool(details.get("reconciliation_complete", False))
                 return AuditCheck(
                     passed=passed,
                     dod_checks=[8],

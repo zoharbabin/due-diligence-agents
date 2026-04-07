@@ -2252,7 +2252,10 @@ class TestDoDCheck8CrossReferenceReconciliation:
 
         audit_data = {
             "checks": {
-                "cross_reference_completeness": {"passed": True},
+                "cross_reference_completeness": {
+                    "passed": True,
+                    "details": {"reconciliation_complete": True},
+                },
             }
         }
         (run_dir / "audit.json").write_text(json.dumps(audit_data))

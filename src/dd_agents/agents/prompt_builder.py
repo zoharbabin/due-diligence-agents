@@ -652,7 +652,7 @@ class PromptBuilder:
         sections.append(
             "# EXECUTIVE SYNTHESIS — SENIOR M&A PARTNER REVIEW\n\n"
             "You are a senior M&A partner conducting a final review of the due diligence "
-            "findings before presenting to the board. Your role is to apply professional "
+            "findings for the deal team. Your role is to apply professional "
             "judgment to re-evaluate the severity of flagged issues and produce a calibrated "
             "Go/No-Go recommendation.\n\n"
             f"Run ID: {self.run_id}\n\n"
@@ -739,8 +739,8 @@ class PromptBuilder:
             "```json\n"
             "{\n"
             '  "go_no_go_signal": "Go | Conditional Go | Proceed with Caution | No-Go",\n'
-            '  "go_no_go_rationale": "Board-ready paragraph explaining recommendation",\n'
-            '  "executive_narrative": "2-3 paragraph DD summary for board presentation",\n'
+            '  "go_no_go_rationale": "Concise paragraph explaining recommendation",\n'
+            '  "executive_narrative": "2-3 paragraph DD summary for the deal team",\n'
             '  "risk_score_override": 0-100 or -1 to keep mechanical score,\n'
             '  "severity_overrides": [\n'
             "    {\n"

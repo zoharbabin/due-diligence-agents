@@ -118,7 +118,9 @@ class TestBuildRuntimeContext:
         ctx = _build_runtime_context(project_dir, run_dir)
         assert ctx["text_dir"] is None
         assert ctx["cache_path"] is None
-        assert ctx["allowed_dir"] is None
+        # When _dd/ doesn't exist, allowed_dir falls back to project_dir
+        # (fail-closed: agents are still restricted to the project tree).
+        assert ctx["allowed_dir"] == project_dir
 
     def test_existing_dirs_return_paths(self, tmp_path: Path) -> None:
         """When dd dirs exist, paths should be populated."""
