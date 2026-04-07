@@ -3,8 +3,8 @@ class DdAgents < Formula
 
   desc "AI-powered forensic due diligence analysis for M&A deal teams"
   homepage "https://github.com/zoharbabin/due-diligence-agents"
-  url "https://files.pythonhosted.org/packages/76/9f/35d8fb28181cd52a858a63b79fff1064d828ed49ee562bbc9084703ce23a/dd_agents-0.5.8.tar.gz"
-  sha256 "49fb3ad712d6c1e3d923d27c4bc62387897ea4ceb829f3ede70c5b56df6e2ff1"
+  url "https://files.pythonhosted.org/packages/6e/65/3f4b31edaaa8885341c77d5949b88614b09eda5279a656688673f95608cc/dd_agents-0.5.9.tar.gz"
+  sha256 "fdde6b96e903c7b65d315da885c7b9faffff9eea348febe3d36809291cccb0ec"
   license "Apache-2.0"
 
   depends_on "python@3.12"
