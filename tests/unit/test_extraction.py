@@ -318,7 +318,9 @@ class TestMarkitdownExtractor:
         extractor = MarkitdownExtractor()
         text, confidence = extractor.extract(f)
         assert "alpha" in text
-        assert confidence == 0.5
+        # CSV is no longer in PLAINTEXT_EXTENSIONS (routed via spreadsheet
+        # extractor in pipeline), so markitdown processes it directly.
+        assert confidence >= 0.5
 
     def test_extract_md_file(self, tmp_path: Path) -> None:
         f = tmp_path / "notes.md"
@@ -400,7 +402,8 @@ class TestExtractionPipeline:
         pipeline = ExtractionPipeline()
         entry = pipeline.extract_single(src, output_dir)
 
-        assert entry.method == "direct_read"
+        # CSV now routed through spreadsheet extractor (csv_reader) as primary method
+        assert entry.method == "primary"
         assert entry.bytes_extracted > 0
 
     def test_extract_all_with_cache_hit(self, tmp_path: Path) -> None:
@@ -1896,12 +1899,16 @@ class TestSharedConstants:
             assert ext in IMAGE_EXTENSIONS
 
     def test_plaintext_extensions_complete(self) -> None:
-        """PLAINTEXT_EXTENSIONS contains exactly 12 extensions."""
-        from dd_agents.extraction._constants import PLAINTEXT_EXTENSIONS
+        """PLAINTEXT_EXTENSIONS contains exactly 10 extensions (csv/tsv moved to SPREADSHEET)."""
+        from dd_agents.extraction._constants import PLAINTEXT_EXTENSIONS, SPREADSHEET_EXTENSIONS
 
-        assert len(PLAINTEXT_EXTENSIONS) == 12
-        for ext in (".txt", ".csv", ".md", ".json", ".yaml", ".yml", ".xml", ".log", ".tsv", ".ini", ".cfg", ".conf"):
+        assert len(PLAINTEXT_EXTENSIONS) == 10
+        for ext in (".txt", ".md", ".json", ".yaml", ".yml", ".xml", ".log", ".ini", ".cfg", ".conf"):
             assert ext in PLAINTEXT_EXTENSIONS
+        # csv and tsv are now in SPREADSHEET_EXTENSIONS
+        for ext in (".csv", ".tsv", ".xlsx", ".xls"):
+            assert ext in SPREADSHEET_EXTENSIONS
+            assert ext not in PLAINTEXT_EXTENSIONS
 
     def test_read_text_basic(self, tmp_path: Path) -> None:
         """Shared read_text helper reads a UTF-8 text file."""

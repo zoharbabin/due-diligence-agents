@@ -31,7 +31,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from dd_agents.extraction._constants import IMAGE_EXTENSIONS, PLAINTEXT_EXTENSIONS
+from dd_agents.extraction._constants import (
+    IMAGE_EXTENSIONS,
+    PLAINTEXT_EXTENSIONS,
+    SPREADSHEET_EXTENSIONS,
+)
 from dd_agents.extraction._helpers import read_text
 from dd_agents.extraction.cache import ExtractionCache
 from dd_agents.extraction.markitdown import MarkitdownExtractor
@@ -454,6 +458,9 @@ class ExtractionPipeline:
         if suffix in PLAINTEXT_EXTENSIONS:
             return self._extract_plaintext(filepath, out_file)
 
+        if suffix in SPREADSHEET_EXTENSIONS:
+            return self._extract_spreadsheet(filepath, out_file)
+
         if suffix in _PDF_EXTENSIONS:
             return self._extract_pdf(filepath, out_file)
 
@@ -667,6 +674,140 @@ class ExtractionPipeline:
                 fallback_chain=chain,
             )
         return self._failed_entry(filepath, chain)
+
+    def _extract_spreadsheet(self, filepath: Path, out_file: Path) -> ExtractionQualityEntry:
+        """Extract spreadsheet files using native Python libraries.
+
+        Uses openpyxl for .xlsx, csv/tsv module for delimited files,
+        and falls back to markitdown → direct read for .xls (legacy format).
+        """
+        suffix = filepath.suffix.lower()
+        chain: list[str] = []
+        failure_reasons: list[str] = []
+
+        text: str | None = None
+        conf = 0.0
+
+        if suffix == ".xlsx":
+            text, conf = self._read_xlsx(filepath)
+            chain.append("openpyxl")
+            if text:
+                entry = self._try_method(
+                    "openpyxl",
+                    text,
+                    conf,
+                    out_file,
+                    filepath,
+                    chain,
+                    failure_reasons,
+                    method_label="primary",
+                )
+                if entry is not None:
+                    return entry
+
+        elif suffix in (".csv", ".tsv"):
+            text, conf = self._read_delimited(filepath, suffix)
+            chain.append("csv_reader")
+            if text:
+                entry = self._try_method(
+                    "csv_reader",
+                    text,
+                    conf,
+                    out_file,
+                    filepath,
+                    chain,
+                    failure_reasons,
+                    method_label="primary",
+                )
+                if entry is not None:
+                    return entry
+
+        # .xls or fallback for failed xlsx/csv: try markitdown then direct read.
+        md_text, md_conf = self._markitdown.extract(filepath)
+        entry = self._try_method(
+            "markitdown",
+            md_text,
+            md_conf,
+            out_file,
+            filepath,
+            chain,
+            failure_reasons,
+            method_label="fallback_read" if chain else "primary",
+        )
+        if entry is not None:
+            return entry
+
+        # Last resort: direct text read.
+        raw_text, raw_conf = self._read_text(filepath)
+        entry = self._try_method(
+            "direct_read",
+            raw_text,
+            raw_conf,
+            out_file,
+            filepath,
+            chain,
+            failure_reasons,
+            method_label="fallback_read",
+        )
+        if entry is not None:
+            return entry
+
+        return self._failed_entry(filepath, chain, failure_reasons=failure_reasons)
+
+    @staticmethod
+    def _read_xlsx(filepath: Path) -> tuple[str | None, float]:
+        """Read .xlsx using the read_office tool's openpyxl-based reader.
+
+        Reuses read_office._read_excel which handles date→ISO-8601,
+        currency/percentage formatting, and sub-table detection.
+        """
+        try:
+            from dd_agents.tools.read_office import _read_excel
+
+            text = _read_excel(filepath, sheet_name=None)
+            if not text or not text.strip():
+                return None, 0.0
+            return text, 0.9
+        except Exception as exc:
+            logger.debug("openpyxl failed for %s: %s", filepath.name, exc)
+            return None, 0.0
+
+    @staticmethod
+    def _read_delimited(filepath: Path, suffix: str) -> tuple[str | None, float]:
+        """Read CSV/TSV files with proper dialect handling."""
+        import csv as csv_mod
+
+        def _esc(val: str) -> str:
+            """Escape pipe and newline for markdown table cells."""
+            return val.replace("\r\n", " ").replace("\r", " ").replace("\n", " ").replace("|", "\\|")
+
+        delimiter = "\t" if suffix == ".tsv" else ","
+        try:
+            with open(filepath, encoding="utf-8", errors="replace", newline="") as fh:
+                reader = csv_mod.reader(fh, delimiter=delimiter)
+                rows: list[list[str]] = []
+                for row in reader:
+                    if any(cell.strip() for cell in row):
+                        rows.append([_esc(c) for c in row])
+                    if len(rows) >= 50_000:  # safety cap for huge files
+                        break
+
+            if not rows:
+                return None, 0.0
+
+            parts: list[str] = []
+            header = rows[0]
+            parts.append("| " + " | ".join(header) + " |")
+            parts.append("| " + " | ".join("---" for _ in header) + " |")
+            for row in rows[1:]:
+                padded = row + [""] * (len(header) - len(row))
+                parts.append("| " + " | ".join(padded[: len(header)]) + " |")
+
+            text = "\n".join(parts).strip()
+            return text, 0.85
+        except Exception as exc:
+            logger.debug("csv_reader failed for %s: %s", filepath.name, exc)
+            return None, 0.0
 
     def _extract_pdf(self, filepath: Path, out_file: Path) -> ExtractionQualityEntry:
         """PDF fallback chain with pre-inspection routing.

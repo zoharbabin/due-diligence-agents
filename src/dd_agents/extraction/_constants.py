@@ -10,17 +10,17 @@ CONFIDENCE_FALLBACK_READ: float = 0.5
 
 IMAGE_EXTENSIONS: frozenset[str] = frozenset({".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".gif"})
 
+SPREADSHEET_EXTENSIONS: frozenset[str] = frozenset({".xlsx", ".xls", ".csv", ".tsv"})
+
 PLAINTEXT_EXTENSIONS: frozenset[str] = frozenset(
     {
         ".txt",
-        ".csv",
         ".md",
         ".json",
         ".yaml",
         ".yml",
         ".xml",
         ".log",
-        ".tsv",
         ".ini",
         ".cfg",
         ".conf",
