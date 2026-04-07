@@ -50,6 +50,7 @@ def main() -> None:
 @click.argument(
     "config_path",
     type=click.Path(exists=False, dir_okay=False, path_type=Path),
+    metavar="CONFIG_PATH",
 )
 @click.option(
     "--mode",
@@ -69,7 +70,7 @@ def main() -> None:
     "resume_from",
     type=int,
     default=0,
-    help="Resume pipeline from a specific step number (1-35).",
+    help="Resume pipeline from a specific step number (0-35).",
 )
 @click.option(
     "--dry-run",
@@ -103,7 +104,7 @@ def main() -> None:
     "--model-override",
     "model_overrides",
     multiple=True,
-    help="Per-agent model override in agent=model format (e.g. --model-override legal=claude-opus-4-6).",
+    help="Per-agent model override in agent=model format (e.g. --model-override legal=claude-sonnet-4-20250514).",
 )
 def run(
     config_path: Path,
@@ -1220,11 +1221,17 @@ def portfolio() -> None:
 
 
 @portfolio.command("add")
-@click.argument("name")
-@click.option("--data-room", "data_room", type=click.Path(exists=True, file_okay=False, path_type=Path), required=True)
-@click.option("--deal-type", "deal_type", default="")
-@click.option("--buyer", default="")
-@click.option("--target", default="")
+@click.argument("name", metavar="NAME")
+@click.option(
+    "--data-room",
+    "data_room",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    required=True,
+    help="Path to the project data room directory.",
+)
+@click.option("--deal-type", "deal_type", default="", help="Type of deal (e.g. acquisition, merger).")
+@click.option("--buyer", default="", help="Name of the acquiring company.")
+@click.option("--target", default="", help="Name of the target company.")
 def portfolio_add(name: str, data_room: Path, deal_type: str, buyer: str, target: str) -> None:
     """Register a new deal project in the portfolio."""
     from dd_agents.persistence.project_registry import ProjectRegistryManager
@@ -1276,7 +1283,7 @@ def portfolio_list() -> None:
 
 
 @portfolio.command("compare")
-@click.argument("slugs", nargs=-1)
+@click.argument("slugs", nargs=-1, metavar="[SLUGS]...")
 def portfolio_compare(slugs: tuple[str, ...]) -> None:
     """Compare risk profiles across deals."""
     from dd_agents.persistence.project_registry import ProjectRegistryManager
@@ -1308,7 +1315,7 @@ def portfolio_compare(slugs: tuple[str, ...]) -> None:
 
 
 @portfolio.command("remove")
-@click.argument("slug")
+@click.argument("slug", metavar="SLUG")
 def portfolio_remove(slug: str) -> None:
     """Remove a project from the portfolio (does not delete deal data)."""
     from dd_agents.persistence.project_registry import ProjectRegistryManager
@@ -1344,7 +1351,7 @@ def templates_list() -> None:
 
 
 @templates.command("show")
-@click.argument("template_id")
+@click.argument("template_id", metavar="TEMPLATE_ID")
 def templates_show(template_id: str) -> None:
     """Show details of a specific template."""
     from dd_agents.reporting.templates import TemplateLibrary
