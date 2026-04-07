@@ -1195,6 +1195,12 @@ class ExtractionPipeline:
             (b"%PDF-", 0, ".pdf"),
             (b"\x89PNG\r\n\x1a\n", 0, ".png"),
             (b"\xff\xd8\xff", 0, ".jpg"),  # JPEG (covers JFIF and Exif)
+            (b"GIF87a", 0, ".gif"),
+            (b"GIF89a", 0, ".gif"),
+            (b"BM", 0, ".bmp"),
+            (b"II\x2a\x00", 0, ".tiff"),  # TIFF little-endian
+            (b"MM\x00\x2a", 0, ".tiff"),  # TIFF big-endian
+            (b"RIFF", 0, ".webp"),  # WebP (RIFF container) — refine below
             (b"PK\x03\x04", 0, ".docx"),  # ZIP-based (docx/xlsx/pptx) — refine below
             (b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1", 0, ".xls"),  # OLE2 (xls/doc/ppt)
         ]
@@ -1207,8 +1213,10 @@ class ExtractionPipeline:
         if len(header) < 4:
             return extension
 
+        matched_ext: str | None = None
         for magic, offset, detected_ext in magic_map:
             if header[offset : offset + len(magic)] == magic:
+                matched_ext = detected_ext
                 if detected_ext == extension:
                     return extension  # No mismatch
 
@@ -1221,7 +1229,21 @@ class ExtractionPipeline:
                 if detected_ext == ".xls" and extension in (".doc", ".ppt", ".xls", ".msg"):
                     return extension
 
+                # RIFF is a container — only treat as .webp if header confirms it.
+                if detected_ext == ".webp":
+                    if len(header) >= 12 and header[8:12] == b"WEBP":
+                        return detected_ext
+                    return extension  # Non-WebP RIFF (e.g. AVI, WAV)
+
                 return detected_ext
+
+        # If extension claims PDF but magic bytes don't match %PDF-, it's not
+        # a real PDF.  In data rooms these are almost always scanned images
+        # (JPEG/TIFF) saved with .pdf extension — route to image extraction
+        # which can OCR them, rather than the PDF chain which will fail.
+        if extension == ".pdf" and matched_ext is None:
+            logger.info("File %s has .pdf extension but no PDF magic bytes — routing as image", filepath.name)
+            return ".jpg"
 
         return extension
 

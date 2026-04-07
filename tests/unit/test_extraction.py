@@ -1891,11 +1891,11 @@ class TestSharedConstants:
     """Tests for shared constants and helpers in dd_agents.extraction._constants / _helpers."""
 
     def test_image_extensions_complete(self) -> None:
-        """IMAGE_EXTENSIONS contains exactly 7 extensions."""
+        """IMAGE_EXTENSIONS contains exactly 8 extensions."""
         from dd_agents.extraction._constants import IMAGE_EXTENSIONS
 
-        assert len(IMAGE_EXTENSIONS) == 7
-        for ext in (".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".gif"):
+        assert len(IMAGE_EXTENSIONS) == 8
+        for ext in (".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".gif", ".webp"):
             assert ext in IMAGE_EXTENSIONS
 
     def test_plaintext_extensions_complete(self) -> None:

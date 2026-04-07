@@ -8,7 +8,7 @@ CONFIDENCE_FAILURE: float = 0.0
 # Confidence score for a plain-text fallback read.
 CONFIDENCE_FALLBACK_READ: float = 0.5
 
-IMAGE_EXTENSIONS: frozenset[str] = frozenset({".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".gif"})
+IMAGE_EXTENSIONS: frozenset[str] = frozenset({".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".gif", ".webp"})
 
 SPREADSHEET_EXTENSIONS: frozenset[str] = frozenset({".xlsx", ".xls", ".csv", ".tsv"})
 
