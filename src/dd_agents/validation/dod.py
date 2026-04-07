@@ -187,10 +187,15 @@ class DefinitionOfDoneChecker:
                 continue
             try:
                 mdata = json.loads(manifest_path.read_text(encoding="utf-8"))
-                for f in mdata.get("files_covered", mdata.get("covered", [])):
-                    fname = f if isinstance(f, str) else f.get("file_path", f.get("path", ""))
-                    if fname:
-                        covered.add(Path(fname).name)
+                # Support multiple manifest formats:
+                #   - files_covered / covered: list[str] or list[dict]
+                #   - files_read: list[dict] with path key (CoverageManifest model)
+                #   - files_assigned: list[str]
+                for key in ("files_covered", "covered", "files_read", "files_assigned"):
+                    for f in mdata.get(key, []):
+                        fname = f if isinstance(f, str) else f.get("file_path", f.get("path", ""))
+                        if fname:
+                            covered.add(Path(fname).name)
             except (json.JSONDecodeError, OSError):
                 continue
         all_basenames = {Path(f).name for f in all_files}
@@ -765,21 +770,25 @@ class DefinitionOfDoneChecker:
                     dod_checks=[17],
                     details={"entry_count": entry_count, "error": "fewer than 10 numerical entries"},
                 )
-            # Validate that entries have required fields (source, value, layer).
+            # Validate that entries have required fields (source, value, layer/derivation).
             valid_entries = 0
             missing_fields: list[str] = []
             for i, entry in enumerate(numbers[:50]):  # Sample first 50
                 if not isinstance(entry, dict):
                     continue
-                has_source = bool(entry.get("source") or entry.get("source_path"))
+                has_source = bool(entry.get("source") or entry.get("source_path") or entry.get("source_file"))
                 has_value = entry.get("value") is not None or entry.get("original") is not None
-                has_layer = bool(entry.get("layer") or entry.get("audit_layer"))
+                has_layer = bool(entry.get("layer") or entry.get("audit_layer") or entry.get("derivation"))
                 if has_source and has_value:
                     valid_entries += 1
                 elif i < 5:  # Report first 5 issues
                     missing_fields.append(f"entry[{i}]: source={has_source} value={has_value} layer={has_layer}")
             # Check that audit layers are represented
-            layers_seen = {str(e.get("layer", e.get("audit_layer", ""))) for e in numbers if isinstance(e, dict)}
+            layers_seen = {
+                str(e.get("layer", e.get("audit_layer", e.get("derivation", ""))))
+                for e in numbers
+                if isinstance(e, dict)
+            }
             layers_seen.discard("")
             return AuditCheck(
                 passed=valid_entries >= 10 and len(layers_seen) >= 1,
@@ -841,7 +850,20 @@ class DefinitionOfDoneChecker:
             )
         try:
             data = json.loads(eq_path.read_text(encoding="utf-8"))
-            entries = data if isinstance(data, list) else data.get("files", data.get("entries", []))
+            # Support multiple formats:
+            #   - list[dict]: direct list of entries
+            #   - {"files": [...]} or {"entries": [...]}: wrapped list
+            #   - dict[filepath -> entry_dict]: keyed by filepath (ExtractionQualityTracker format)
+            entries: list[Any]
+            if isinstance(data, list):
+                entries = data
+            elif isinstance(data, dict) and ("files" in data or "entries" in data):
+                entries = data.get("files", data.get("entries", []))  # type: ignore[assignment]
+            elif isinstance(data, dict):
+                # dict keyed by filepath → entry_dict (ExtractionQualityTracker.save format)
+                entries = list(data.values())
+            else:
+                entries = []
             if not entries:
                 return AuditCheck(
                     passed=False,

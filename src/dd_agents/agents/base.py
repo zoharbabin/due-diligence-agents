@@ -540,7 +540,7 @@ class BaseAgentRunner(ABC):
                 results.append(data)
             return results
         except (json.JSONDecodeError, ValueError) as exc:
-            logger.warning(
+            logger.debug(
                 "Strategy 1 (full JSON parse) failed for output of %d chars: %s",
                 len(raw_output),
                 exc,

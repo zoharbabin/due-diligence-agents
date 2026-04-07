@@ -2708,6 +2708,46 @@ class TestDoDCheck30ReportDiff:
         check = checker.check_19_extraction_quality()
         assert check.passed is True
 
+    def test_check_19_dict_format(self, tmp_path: Path) -> None:
+        """check_19 passes with dict-keyed format from ExtractionQualityTracker."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+        # Dict keyed by filepath (real ExtractionQualityTracker.save format)
+        (inventory_dir / "extraction_quality.json").write_text(
+            json.dumps(
+                {
+                    "./Acme/MSA.pdf": {
+                        "file_path": "./Acme/MSA.pdf",
+                        "method": "direct_read",
+                        "bytes_extracted": 5000,
+                        "confidence": 0.95,
+                        "fallback_chain": ["direct_read"],
+                        "failure_reasons": [],
+                    },
+                    "./Beta/NDA.pdf": {
+                        "file_path": "./Beta/NDA.pdf",
+                        "method": "direct_read",
+                        "bytes_extracted": 3000,
+                        "confidence": 0.90,
+                        "fallback_chain": ["direct_read"],
+                        "failure_reasons": [],
+                    },
+                }
+            )
+        )
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            customer_safe_names=CUSTOMERS,
+        )
+        check = checker.check_19_extraction_quality()
+        assert check.passed is True
+        assert check.details["total_entries"] == 2
+        assert check.details["entries_with_quality_score"] == 2
+
     # ------------------------------------------------------------------ #
     # DoD [10] -- reference files defers to QA audit
     # ------------------------------------------------------------------ #
