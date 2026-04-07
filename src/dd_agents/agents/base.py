@@ -227,7 +227,17 @@ class BaseAgentRunner(ABC):
             result["error"] = f"{type(exc).__name__}: {exc}"
             logger.exception("Agent %s failed", agent_name)
         finally:
-            result["elapsed_seconds"] = time.monotonic() - start
+            elapsed = time.monotonic() - start
+            result["elapsed_seconds"] = elapsed
+
+            # Telemetry: token estimates from session stats (chars // 4 heuristic)
+            prompt_chars = getattr(self, "_last_session_prompt_chars", 0)
+            output_chars = getattr(self, "_last_session_output_chars", 0)
+            turns = getattr(self, "_last_session_turns", 0)
+            result["num_turns"] = turns
+            result["input_tokens_est"] = prompt_chars // 4
+            result["output_tokens_est"] = output_chars // 4
+            result["duration_ms"] = int(elapsed * 1000)
 
         return result
 
@@ -468,6 +478,11 @@ class BaseAgentRunner(ABC):
             total_text,
             " (exceeded soft limit)" if exceeded_soft else "",
         )
+
+        # Store telemetry for the caller to pick up
+        self._last_session_turns = msg_count
+        self._last_session_output_chars = total_text
+        self._last_session_prompt_chars = len(prompt)
 
         return "\n".join(text_parts)
 

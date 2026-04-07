@@ -310,11 +310,17 @@ class AgentTeam:
                 "error": result.get("error"),
                 "elapsed_ms": elapsed_ms,
                 "label": batch_label,
+                "num_turns": result.get("num_turns", 0),
+                "input_tokens_est": result.get("input_tokens_est", 0),
+                "output_tokens_est": result.get("output_tokens_est", 0),
             }
 
         # Run batches concurrently (up to *concurrency* at a time).
         all_outputs: list[Any] = []
         total_elapsed_ms = 0
+        total_turns = 0
+        total_input_tokens = 0
+        total_output_tokens = 0
         errors: list[str] = []
 
         if concurrency >= len(batch_prompts):
@@ -333,6 +339,9 @@ class AgentTeam:
                     errors.append(f"[{agent_name}] batch exception: {br}")
                     continue
                 total_elapsed_ms = max(total_elapsed_ms, br["elapsed_ms"])
+                total_turns += br.get("num_turns", 0)
+                total_input_tokens += br.get("input_tokens_est", 0)
+                total_output_tokens += br.get("output_tokens_est", 0)
                 if br["output"]:
                     all_outputs.extend(br["output"])
                 if br["error"]:
@@ -358,6 +367,9 @@ class AgentTeam:
                     errors.append(f"[{agent_name}] batch exception: {br}")
                     continue
                 total_elapsed_ms = max(total_elapsed_ms, br["elapsed_ms"])
+                total_turns += br.get("num_turns", 0)
+                total_input_tokens += br.get("input_tokens_est", 0)
+                total_output_tokens += br.get("output_tokens_est", 0)
                 if br["output"]:
                     all_outputs.extend(br["output"])
                 if br["error"]:
@@ -369,13 +381,27 @@ class AgentTeam:
         elif errors:
             status = "partial"
 
+        # Estimate cost from token counts
+        from dd_agents.agents.cost_tracker import _estimate_cost
+
+        model_id = ""
+        if runner_cls is not None:
+            try:
+                _tmp = runner_cls.__new__(runner_cls)  # type: ignore[call-overload]
+                model_id = (_tmp.get_model_id() if hasattr(_tmp, "get_model_id") else "") or ""
+            except Exception:  # noqa: BLE001
+                pass
+        cost_usd = _estimate_cost(model_id, total_input_tokens, total_output_tokens)
+
         return {
             "agent": agent_name,
             "status": status,
-            "cost_usd": 0.0,
+            "cost_usd": cost_usd,
             "session_id": "",
-            "num_turns": 0,
+            "num_turns": total_turns,
             "duration_ms": total_elapsed_ms,
+            "input_tokens_est": total_input_tokens,
+            "output_tokens_est": total_output_tokens,
             "is_error": status == "failed",
             "output": all_outputs or None,
             "error": "; ".join(errors) if errors else None,
@@ -414,13 +440,25 @@ class AgentTeam:
         scores = await runner.run_with_iteration(agent_state)
         elapsed_ms = int((time.monotonic() - start_ms) * 1000)
 
+        # Collect telemetry from the runner (accumulated across iteration rounds)
+        input_tokens = getattr(runner, "_last_session_prompt_chars", 0) // 4
+        output_tokens = getattr(runner, "_last_session_output_chars", 0) // 4
+        num_turns = getattr(runner, "_last_session_turns", 0)
+
+        from dd_agents.agents.cost_tracker import _estimate_cost
+
+        model_id = (runner.get_model_id() if hasattr(runner, "get_model_id") else "") or ""
+        cost_usd = _estimate_cost(model_id, input_tokens, output_tokens)
+
         return {
             "agent": AGENT_JUDGE,
             "status": "completed",
-            "cost_usd": 0.0,
+            "cost_usd": cost_usd,
             "session_id": "",
-            "num_turns": 0,
+            "num_turns": num_turns,
             "duration_ms": elapsed_ms,
+            "input_tokens_est": input_tokens,
+            "output_tokens_est": output_tokens,
             "is_error": False,
             "quality_scores": scores,
         }

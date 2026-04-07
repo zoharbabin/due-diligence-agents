@@ -343,3 +343,93 @@ class TestSeverityChangesQuery:
         assert len(changes_r2) == 1
         all_changes = tracker.get_severity_changes()
         assert len(all_changes) == 1  # one finding with changes
+
+
+# ---- CLI lineage export tests (JSON/CSV) ----
+
+
+class TestLineageCLIExport:
+    """Test the lineage CLI command with --format json and --format csv."""
+
+    @staticmethod
+    def _setup_lineage(tmp_path: Path) -> Path:
+        """Create a data room with lineage data and return data_room path."""
+        kb_dir = tmp_path / "_dd" / "forensic-dd" / "knowledge"
+        kb_dir.mkdir(parents=True)
+        tracker = FindingLineageTracker(kb_dir / "lineage.json")
+        tracker.load()
+        tracker.update_from_run(
+            "run_1",
+            [
+                _make_finding(title="CoC clause missing", severity="high", entity="acme"),
+                _make_finding(title="IP assignment unclear", severity="medium", entity="beta", category="ip"),
+            ],
+        )
+        tracker.save()
+        return tmp_path
+
+    def test_json_output(self, tmp_path: Path) -> None:
+        import json as _json
+
+        from click.testing import CliRunner
+
+        from dd_agents.cli import main
+
+        data_room = self._setup_lineage(tmp_path)
+        runner = CliRunner()
+        result = runner.invoke(main, ["lineage", "--data-room", str(data_room), "--format", "json"])
+        assert result.exit_code == 0
+        records = _json.loads(result.output)
+        assert isinstance(records, list)
+        assert len(records) == 2
+        assert "fingerprint" in records[0]
+        assert "entity" in records[0]
+        assert "severity" in records[0]
+
+    def test_csv_output(self, tmp_path: Path) -> None:
+        from click.testing import CliRunner
+
+        from dd_agents.cli import main
+
+        data_room = self._setup_lineage(tmp_path)
+        runner = CliRunner()
+        result = runner.invoke(main, ["lineage", "--data-room", str(data_room), "--format", "csv"])
+        assert result.exit_code == 0
+        lines = result.output.strip().split("\n")
+        assert len(lines) == 3  # header + 2 findings
+        assert "fingerprint" in lines[0]
+        assert "entity" in lines[0]
+
+    def test_json_to_file(self, tmp_path: Path) -> None:
+        import json as _json
+
+        from click.testing import CliRunner
+
+        from dd_agents.cli import main
+
+        data_room = self._setup_lineage(tmp_path)
+        out_file = tmp_path / "output.json"
+        runner = CliRunner()
+        result = runner.invoke(
+            main, ["lineage", "--data-room", str(data_room), "--format", "json", "--output", str(out_file)]
+        )
+        assert result.exit_code == 0
+        assert out_file.exists()
+        records = _json.loads(out_file.read_text())
+        assert len(records) == 2
+
+    def test_csv_to_file(self, tmp_path: Path) -> None:
+        from click.testing import CliRunner
+
+        from dd_agents.cli import main
+
+        data_room = self._setup_lineage(tmp_path)
+        out_file = tmp_path / "output.csv"
+        runner = CliRunner()
+        result = runner.invoke(
+            main, ["lineage", "--data-room", str(data_room), "--format", "csv", "--output", str(out_file)]
+        )
+        assert result.exit_code == 0
+        assert out_file.exists()
+        lines = out_file.read_text().strip().split("\n")
+        assert len(lines) == 3

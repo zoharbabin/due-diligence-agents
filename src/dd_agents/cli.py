@@ -1486,13 +1486,36 @@ def annotate(data_room: Path, entity: str | None, note: str) -> None:
 )
 @click.option("--entity", default=None, help="Filter to a specific entity safe_name.")
 @click.option("--active-only", is_flag=True, default=False, help="Show only active findings.")
-def lineage(data_room: Path, entity: str | None, active_only: bool) -> None:
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["table", "json", "csv"], case_sensitive=False),
+    default="table",
+    show_default=True,
+    help="Output format: table (rich), json, or csv.",
+)
+@click.option(
+    "--output",
+    "output_path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Write output to file instead of stdout.",
+)
+def lineage(
+    data_room: Path,
+    entity: str | None,
+    active_only: bool,
+    output_format: str,
+    output_path: Path | None,
+) -> None:
     """Show finding lineage — how findings evolve across runs.
 
     \b
     Example:
         dd-agents lineage --data-room ./data_room
         dd-agents lineage --data-room ./data_room --entity acme_corp --active-only
+        dd-agents lineage --data-room ./data_room --format json --output lineage.json
+        dd-agents lineage --data-room ./data_room --format csv --output lineage.csv
     """
     from dd_agents.knowledge.lineage import FindingLineageTracker
 
@@ -1514,6 +1537,72 @@ def lineage(data_room: Path, entity: str | None, active_only: bool) -> None:
         console.print("[dim]No lineage data found.[/dim]")
         return
 
+    sorted_findings = sorted(findings, key=lambda x: x.current_severity)
+
+    if output_format == "json":
+        records = [
+            {
+                "fingerprint": f.fingerprint,
+                "entity": f.entity_safe_name,
+                "severity": f.current_severity,
+                "status": f.status.value,
+                "title": f.latest_title,
+                "category": f.category,
+                "run_count": f.run_count,
+                "first_seen": f.first_seen_run_id,
+                "last_seen": f.last_seen_run_id,
+                "severity_history": [
+                    {
+                        "run_id": h.run_id,
+                        "old_severity": h.old_severity,
+                        "new_severity": h.new_severity,
+                        "timestamp": h.timestamp,
+                    }
+                    for h in f.severity_history
+                ],
+            }
+            for f in sorted_findings
+        ]
+        json_text = json.dumps(records, indent=2)
+        if output_path:
+            output_path.write_text(json_text, encoding="utf-8")
+            console.print(f"[green]Wrote {len(records)} findings to {output_path}[/green]")
+        else:
+            click.echo(json_text)
+        return
+
+    if output_format == "csv":
+        import csv
+        import io
+
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(
+            ["fingerprint", "entity", "severity", "status", "title", "category", "run_count", "first_seen", "last_seen"]
+        )
+        for f in sorted_findings:
+            writer.writerow(
+                [
+                    f.fingerprint,
+                    f.entity_safe_name,
+                    f.current_severity,
+                    f.status.value,
+                    f.latest_title,
+                    f.category,
+                    f.run_count,
+                    f.first_seen_run_id,
+                    f.last_seen_run_id,
+                ]
+            )
+        csv_text = buf.getvalue()
+        if output_path:
+            output_path.write_text(csv_text, encoding="utf-8")
+            console.print(f"[green]Wrote {len(sorted_findings)} findings to {output_path}[/green]")
+        else:
+            click.echo(csv_text, nl=False)
+        return
+
+    # Default: rich table
     table = Table(title="Finding Lineage", show_header=True)
     table.add_column("Severity", width=8)
     table.add_column("Status", width=10)
@@ -1522,7 +1611,7 @@ def lineage(data_room: Path, entity: str | None, active_only: bool) -> None:
     table.add_column("Runs", justify="right", width=5)
     table.add_column("Category", width=20)
 
-    for f in sorted(findings, key=lambda x: x.current_severity):
+    for f in sorted_findings:
         sev_color = {"P0": "red", "P1": "bright_red", "P2": "yellow"}.get(f.current_severity, "white")
         status_color = {"active": "green", "resolved": "dim", "recurred": "yellow"}.get(f.status.value, "white")
         table.add_row(
@@ -1535,7 +1624,7 @@ def lineage(data_room: Path, entity: str | None, active_only: bool) -> None:
         )
 
     console.print(table)
-    console.print(f"\n[dim]Total tracked: {len(findings)}[/dim]")
+    console.print(f"\n[dim]Total tracked: {len(sorted_findings)}[/dim]")
 
 
 # ---------------------------------------------------------------------------

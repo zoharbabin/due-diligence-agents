@@ -84,6 +84,10 @@ class PipelineEngine:
         self.team: AgentTeam | None = None
         self._run_options: dict[str, Any] = {}
 
+        from dd_agents.agents.cost_tracker import CostTracker
+
+        self.cost_tracker = CostTracker()
+
         # Build the ordered mapping of PipelineStep -> async method
         self._step_registry: dict[PipelineStep, StepFn] = self._build_step_registry()
 
@@ -1011,6 +1015,10 @@ class PipelineEngine:
             if discovered:
                 file_prec_entries = {f.path: f for f in discovered}
 
+        # Use actual extracted text sizes for accurate batching
+        text_dir = self._text_dir(state)
+        batch_text_dir = text_dir if text_dir.exists() else None
+
         for agent_name in ALL_SPECIALIST_AGENTS:
             agent_cls = SPECIALIST_CLASSES.get(AgentType(agent_name))
             max_per_batch = getattr(agent_cls, "max_customers_per_batch", 20) if agent_cls else 20
@@ -1019,6 +1027,7 @@ class PipelineEngine:
                 customers,
                 max_tokens=max_tokens,
                 max_per_batch=max_per_batch,
+                text_dir=batch_text_dir,
             )
             prompts: list[str] = []
             for batch in batches:
@@ -1179,6 +1188,15 @@ class PipelineEngine:
             state.agent_results[name] = result
             state.agent_sessions[name] = result.get("session_id", "")
             state.agent_costs[name] = result.get("cost_usd", 0.0)
+
+            # Record telemetry in cost tracker
+            self.cost_tracker.record(
+                agent_name=name,
+                step="16_spawn_specialists",
+                input_tokens=result.get("input_tokens_est", 0),
+                output_tokens=result.get("output_tokens_est", 0),
+                model=result.get("model", ""),
+            )
 
             # Save sub-checkpoint with full result so resume restores
             # complete agent_results (output, session_id, etc.) — Issue #51
@@ -1459,7 +1477,8 @@ class PipelineEngine:
         )
 
         # Batch the missing customers to avoid context exhaustion.
-        batches = PromptBuilder.batch_customers(subset)
+        text_dir = self._text_dir(state)
+        batches = PromptBuilder.batch_customers(subset, text_dir=text_dir if text_dir.exists() else None)
         if not batches:
             logger.warning(
                 "Respawn for %s: batch_customers returned empty for %d entries",
@@ -1717,6 +1736,15 @@ class PipelineEngine:
         state.agent_results["judge"] = result
         state.agent_sessions["judge"] = result.get("session_id", "")
         state.agent_costs["judge"] = result.get("cost_usd", 0.0)
+
+        # Record telemetry in cost tracker
+        self.cost_tracker.record(
+            agent_name="judge",
+            step="19_spawn_judge",
+            input_tokens=result.get("input_tokens_est", 0),
+            output_tokens=result.get("output_tokens_est", 0),
+            model=result.get("model", ""),
+        )
         return state
 
     async def _step_20_judge_review(self, state: PipelineState) -> PipelineState:
@@ -2781,6 +2809,17 @@ class PipelineEngine:
                 "merged_findings_dir": str(state.run_dir / "findings" / "merged"),
             }
             es_result = await es_agent.run(es_state)
+
+            # Record executive synthesis telemetry
+            self.cost_tracker.record(
+                agent_name="executive_synthesis",
+                step="30_generate_reports",
+                input_tokens=es_result.get("input_tokens_est", 0),
+                output_tokens=es_result.get("output_tokens_est", 0),
+                model=es_result.get("model", ""),
+            )
+            state.agent_costs["executive_synthesis"] = es_result.get("cost_usd", 0.0)
+
             if es_result.get("status") == "success" and es_result.get("output"):
                 outputs = es_result["output"]
                 if outputs and isinstance(outputs, list) and isinstance(outputs[0], dict):
@@ -2821,6 +2860,17 @@ class PipelineEngine:
                     "merged_findings_dir": str(state.run_dir / "findings" / "merged"),
                 }
                 ai_result = await ai_agent.run(ai_state)
+
+                # Record acquirer intelligence telemetry
+                self.cost_tracker.record(
+                    agent_name="acquirer_intelligence",
+                    step="30_generate_reports",
+                    input_tokens=ai_result.get("input_tokens_est", 0),
+                    output_tokens=ai_result.get("output_tokens_est", 0),
+                    model=ai_result.get("model", ""),
+                )
+                state.agent_costs["acquirer_intelligence"] = ai_result.get("cost_usd", 0.0)
+
                 if ai_result.get("status") == "success" and ai_result.get("output"):
                     outputs = ai_result["output"]
                     if outputs and isinstance(outputs, list) and isinstance(outputs[0], dict):
@@ -3143,6 +3193,17 @@ class PipelineEngine:
                 len(critical_failures),
                 critical_failures,
             )
+
+        # Persist cost summary
+        cost_summary = self.cost_tracker.to_dict()
+        cost_path = state.run_dir / "cost_summary.json"
+        cost_path.write_text(json.dumps(cost_summary, indent=2), encoding="utf-8")
+        logger.info(
+            "Cost summary: $%.4f total (%d tokens) -- %s",
+            cost_summary["total_cost"],
+            cost_summary["total_tokens"],
+            cost_path,
+        )
 
         self.team = None
         logger.info("Pipeline shutdown complete")

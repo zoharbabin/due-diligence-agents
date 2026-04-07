@@ -324,6 +324,64 @@ class TestPromptBuilder:
         total = sum(len(b) for b in batches)
         assert total == 10
 
+    def test_estimate_customer_tokens_with_text_dir(self, tmp_path: Path) -> None:
+        """Text-dir-aware estimation reads actual extracted file sizes."""
+        text_dir = tmp_path / "text"
+        text_dir.mkdir()
+        # Create extracted text files with known sizes
+        (text_dir / "small.pdf.md").write_text("x" * 400)  # 400 chars
+        (text_dir / "big.pdf.md").write_text("x" * 40_000)  # 40K chars
+
+        customer = CustomerEntry(
+            group="g",
+            name="Test",
+            safe_name="test",
+            path="/test",
+            file_count=2,
+            files=["small.pdf", "big.pdf"],
+        )
+
+        # Without text_dir: estimate based on path lengths (~50 tokens)
+        no_dir_est = PromptBuilder._estimate_customer_tokens(customer)
+        # With text_dir: estimate based on actual file sizes (~10K tokens)
+        with_dir_est = PromptBuilder._estimate_customer_tokens(customer, text_dir=text_dir)
+
+        assert with_dir_est > no_dir_est * 10, (
+            f"Text-dir estimate ({with_dir_est}) should be much larger than path estimate ({no_dir_est})"
+        )
+        # 40400 chars + 160 header ≈ 10140 tokens
+        assert with_dir_est > 10_000
+
+    def test_batch_customers_text_dir_splits_more(self, tmp_path: Path) -> None:
+        """With actual text sizes, large files cause more batches."""
+        text_dir = tmp_path / "text"
+        text_dir.mkdir()
+
+        customers = []
+        for i in range(5):
+            fname = f"doc_{i}.pdf"
+            (text_dir / f"{fname}.md").write_text("x" * 80_000)  # 80K chars each
+            customers.append(
+                CustomerEntry(
+                    group="g",
+                    name=f"C{i}",
+                    safe_name=f"c{i}",
+                    path=f"/c{i}",
+                    file_count=1,
+                    files=[fname],
+                )
+            )
+
+        # Without text_dir: all fit in one batch (tiny path estimates)
+        batches_no_dir = PromptBuilder.batch_customers(customers, max_tokens=40_000)
+        # With text_dir: ~20K tokens each, only ~1-2 per batch
+        batches_with_dir = PromptBuilder.batch_customers(customers, max_tokens=40_000, text_dir=text_dir)
+
+        assert len(batches_with_dir) > len(batches_no_dir), (
+            f"Text-aware batching ({len(batches_with_dir)} batches) should split more than"
+            f" path-based ({len(batches_no_dir)} batches)"
+        )
+
     def test_specialist_focus_all_agents_have_entries(self) -> None:
         specialist_types = [
             AgentType.LEGAL,

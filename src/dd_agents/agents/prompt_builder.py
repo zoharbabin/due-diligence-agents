@@ -750,20 +750,44 @@ class PromptBuilder:
         return len(prompt) // 4
 
     @staticmethod
-    def _estimate_customer_tokens(customer: CustomerEntry) -> int:
+    def _estimate_customer_tokens(
+        customer: CustomerEntry,
+        text_dir: Path | None = None,
+    ) -> int:
         """Estimate the prompt tokens one customer entry will occupy.
 
-        Accounts for the header lines (name, safe_name, path, file count)
-        plus one line per file in the listing.  Capped at
-        :attr:`MAX_LISTED_FILES` to match the inline listing limit.
+        When *text_dir* is provided, measures actual extracted text sizes
+        from ``<text_dir>/<filename>.md`` files.  This produces accurate
+        token estimates based on real content rather than path-length
+        heuristics.
+
+        Without *text_dir*, falls back to header + path-length estimation.
         """
         # Fixed header: "### Customer: ...", safe_name, path, "Files (N):"
         chars = 160
         files = customer.files or []
-        for fp in files[: PromptBuilder.MAX_LISTED_FILES]:
-            chars += len(fp) + 8  # "    - {fp}\n"
-        if len(files) > PromptBuilder.MAX_LISTED_FILES:
-            chars += 120  # truncation notice
+
+        if text_dir is not None:
+            # Measure actual extracted text sizes
+            from pathlib import Path as _Path
+
+            for fp in files:
+                # Extraction writes <filename>.md in text_dir
+                text_file = text_dir / (_Path(fp).name + ".md")
+                if text_file.exists():
+                    try:
+                        chars += text_file.stat().st_size
+                    except OSError:
+                        chars += len(fp) + 8  # fallback to path estimate
+                else:
+                    # No extracted text — use path-based estimate
+                    chars += len(fp) + 8
+        else:
+            for fp in files[: PromptBuilder.MAX_LISTED_FILES]:
+                chars += len(fp) + 8  # "    - {fp}\n"
+            if len(files) > PromptBuilder.MAX_LISTED_FILES:
+                chars += 120  # truncation notice
+
         return max(1, chars // 4)
 
     @staticmethod
@@ -773,6 +797,7 @@ class PromptBuilder:
         tokens_per_customer: int | None = None,
         overhead_tokens: int = 5_000,
         max_per_batch: int = 20,
+        text_dir: Path | None = None,
     ) -> list[list[CustomerEntry]]:
         """Split *customers* into batches that each fit within *max_tokens*.
 
@@ -793,6 +818,10 @@ class PromptBuilder:
             Hard cap on customers per batch (default 20).  Prevents
             oversized batches when file listings are unavailable and
             the token estimation underestimates prompt size.
+        text_dir:
+            Path to the extracted text directory.  When provided, token
+            estimation uses actual file sizes instead of path-length
+            heuristics.
 
         Returns
         -------
@@ -821,7 +850,7 @@ class PromptBuilder:
         current_tokens = 0
 
         for customer in customers:
-            est = PromptBuilder._estimate_customer_tokens(customer)
+            est = PromptBuilder._estimate_customer_tokens(customer, text_dir=text_dir)
             if current_batch and (current_tokens + est > available or len(current_batch) >= max_per_batch):
                 batches.append(current_batch)
                 current_batch = []
