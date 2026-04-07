@@ -8,10 +8,13 @@ class DdAgents < Formula
   license "Apache-2.0"
 
   depends_on "python@3.12"
+  depends_on "tesseract"
+  depends_on "pandoc"
+  depends_on "poppler" # pdf2image needs pdfinfo/pdftoppm from poppler
 
   def install
     virtualenv_create(libexec, "python3.12")
-    system libexec/"bin/python", "-m", "pip", "install", "--verbose", buildpath
+    system libexec/"bin/python", "-m", "pip", "install", "--verbose", "#{buildpath}[ocr]"
     bin.install_symlink Dir[libexec/"bin/dd-agents"]
 
     # Pre-built wheels (e.g. pydantic-core) ship .so files as MH_DYLIB with
