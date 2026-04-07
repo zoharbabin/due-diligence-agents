@@ -201,6 +201,7 @@ class PromptBuilder:
         self.run_dir = run_dir
         self.run_id = run_id
         self.prompt_version = self.PROMPT_VERSION
+        self.max_listed_files: int = self.MAX_LISTED_FILES
 
     # ------------------------------------------------------------------
     # Specialist prompt
@@ -228,7 +229,8 @@ class PromptBuilder:
 
             try:
                 return _DealConfig.model_validate(deal_config)
-            except Exception:
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Could not coerce deal_config to DealConfig: %s", exc)
                 return None
 
         return None
@@ -441,10 +443,10 @@ class PromptBuilder:
                 agent_name,
                 len(prompt),
                 len(prompt) // 4000,
-                self.MAX_LISTED_FILES,
-                self.MAX_LISTED_FILES // 2,
+                self.max_listed_files,
+                self.max_listed_files // 2,
             )
-            self.MAX_LISTED_FILES = max(50, self.MAX_LISTED_FILES // 2)
+            self.max_listed_files = max(50, self.max_listed_files // 2)
             sections[1] = self._build_customer_list(agent_name, customers, file_precedence)
             prompt = "\n\n---\n\n".join(sections)
 
@@ -929,8 +931,8 @@ class PromptBuilder:
                     )
 
                 # Cap inline listing for very large customers.
-                truncated = len(sorted_files) > self.MAX_LISTED_FILES
-                display_files = sorted_files[: self.MAX_LISTED_FILES] if truncated else sorted_files
+                truncated = len(sorted_files) > self.max_listed_files
+                display_files = sorted_files[: self.max_listed_files] if truncated else sorted_files
 
                 if file_precedence:
                     lines.append(f"  Files ({cust.file_count}) — ordered by precedence:")
@@ -942,7 +944,7 @@ class PromptBuilder:
                     lines.append(f"    - {fp}{annotation}")
 
                 if truncated:
-                    omitted = len(sorted_files) - self.MAX_LISTED_FILES
+                    omitted = len(sorted_files) - self.max_listed_files
                     lines.append(
                         f'    ... and {omitted} more files. Use `Glob(pattern="**/*")` on the '
                         f"customer's directory to discover all files. You MUST analyze every file."

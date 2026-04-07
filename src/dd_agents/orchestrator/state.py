@@ -154,7 +154,7 @@ class PipelineState:
             }
 
         # Persist dynamic attributes that downstream steps depend on.
-        # ``_customer_entries`` is set via setattr in step 6 and consumed
+        # ``_customer_entries`` is assigned in step 6 and consumed
         # by step 14 (prompt building) and the respawn path (step 17).
         customer_entries_ser: list[dict[str, Any]] = []
         _entries: list[Any] = getattr(self, "_customer_entries", [])

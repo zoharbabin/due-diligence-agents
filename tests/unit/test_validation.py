@@ -824,7 +824,8 @@ class TestQAAuditorDeferredChecks:
     def _populate_minimal(run_dir: Path, inventory_dir: Path) -> None:
         """Populate with ONLY the artifacts the pipeline actually produces.
 
-        No coverage manifests, no audit logs, no report_schema.json.
+        No coverage manifests, no report_schema.json.
+        Includes per-agent audit logs (pipeline writes them in step 16).
         """
         customers = CUSTOMERS
         inventory_dir.mkdir(parents=True, exist_ok=True)
@@ -846,6 +847,14 @@ class TestQAAuditorDeferredChecks:
             agent_dir.mkdir(parents=True, exist_ok=True)
             for customer in customers:
                 (agent_dir / f"{customer}.json").write_text(json.dumps(_make_customer_json(customer, agent)))
+
+        # Per-agent audit logs (pipeline writes these in step 16)
+        for agent in AGENTS:
+            audit_dir = run_dir / "audit" / agent
+            audit_dir.mkdir(parents=True, exist_ok=True)
+            (audit_dir / "audit_log.jsonl").write_text(
+                json.dumps({"agent": agent, "step": "16_spawn_specialists", "status": "success"}) + "\n"
+            )
 
         # Merged output with ALL agents represented
         merged_dir = run_dir / "findings" / "merged"
@@ -907,16 +916,17 @@ class TestQAAuditorDeferredChecks:
         assert check.passed is True
         assert "deferred" in check.details.get("note", "").lower()
 
-    def test_deferred_audit_logs(self, tmp_path: Path) -> None:
-        """audit_logs passes when no logs exist."""
+    def test_missing_audit_logs_fails(self, tmp_path: Path) -> None:
+        """audit_logs fails when no logs exist (pipeline now writes them)."""
         run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True, exist_ok=True)
         inventory_dir = tmp_path / "inventory"
-        self._populate_minimal(run_dir, inventory_dir)
+        inventory_dir.mkdir(parents=True, exist_ok=True)
 
         auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, customer_safe_names=CUSTOMERS)
         name, check = auditor.check_audit_logs()
-        assert check.passed is True
-        assert "deferred" in check.details.get("note", "").lower()
+        assert check.passed is False
+        assert len(check.details["missing_logs"]) == 4
 
     def test_deferred_report_consistency(self, tmp_path: Path) -> None:
         """report_consistency passes when report_schema.json doesn't exist."""

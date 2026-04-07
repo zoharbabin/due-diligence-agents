@@ -8,6 +8,27 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 > The first public release was **v0.4.0** (2026-03-30). Tagged releases on PyPI and
 > GitHub begin at **v0.4.1**.
 
+## [0.5.4] — 2026-04-07
+
+### Security
+
+- **CSS injection hardening** — removed parentheses from CSS value allowlist regex in `templates.py`, preventing `url()` / `expression()` injection vectors.
+- **Production assert removal** — replaced `assert last_error is not None` in pipeline retry loop with explicit `RuntimeError` (asserts are stripped by `python -O`).
+
+### Fixed
+
+- **`lstrip("#")` → `removeprefix("#")`** — 6 instances in `excel.py` where `lstrip` could strip multiple `#` characters from color hex values (e.g., `"#00FF00"` → `"FF00"` instead of `"00FF00"`).
+- **Redundant `Exception` in except tuple** — `except (json.JSONDecodeError, OSError, Exception)` in engine.py made the specific catches dead code; narrowed to `except (json.JSONDecodeError, OSError)`.
+- **Class attribute mutation** — `PromptBuilder.MAX_LISTED_FILES` was mutated via `self.MAX_LISTED_FILES = ...`, affecting all instances; now uses explicit instance attribute `self.max_listed_files`.
+- **Silent exception logging** — `PromptBuilder._coerce_deal_config` bare `except Exception: return None` now logs the error at DEBUG level.
+- **Redundant import** — removed local `import datetime` in `_write_audit_log` that shadowed the module-level import.
+
+### Changed
+
+- **Encoding fallback logging** — `extraction/_helpers.py` now logs at DEBUG when falling back from UTF-8 to latin-1 encoding.
+- **Doc accuracy** — fixed check counts in `dod.py` docstring (30→31), QA audit reference (17→18 checks), stale comment in `state.py`.
+- **Test & doc counts updated** — README badge (3,267→3,289), CONTRIBUTING.md (~2,900→~3,300, 9→24 E2E), CLAUDE.md (~3,000+→~3,300), IMPLEMENTATION_PLAN.md refreshed with post-phase feature history.
+
 ## [0.5.1] — 2026-04-06
 
 ### Added

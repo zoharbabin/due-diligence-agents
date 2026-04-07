@@ -276,16 +276,14 @@ class QAAuditor:
             else:
                 missing_logs.append(agent)
 
-        # When no audit logs exist at all, defer -- the current pipeline does
-        # not generate per-agent audit_log.jsonl files.
+        # All specialist audit logs missing — fail the check.
         if not agents_with_logs:
             return "audit_logs", AuditCheck(
-                passed=True,
+                passed=False,
                 dod_checks=[11],
                 details={
                     "agents_with_logs": [],
                     "missing_logs": missing_logs,
-                    "note": "No audit logs found -- deferred (pipeline does not yet write them)",
                 },
                 rule="ALL 4 specialist agents MUST have non-empty audit_log.jsonl.",
             )

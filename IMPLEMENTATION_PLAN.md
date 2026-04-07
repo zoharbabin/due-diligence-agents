@@ -1,6 +1,6 @@
 # Implementation Plan — Due Diligence Agent SDK
 
-> **STATUS: COMPLETE** — All 7 phases implemented and verified. This document is kept as development history. See [CHANGELOG.md](CHANGELOG.md) for version-by-version changes.
+> **STATUS: COMPLETE** — All 8 phases implemented and verified. Post-phase features shipped via point releases (v0.5.0–v0.5.3). This document is kept as development history. See [CHANGELOG.md](CHANGELOG.md) for version-by-version changes.
 
 > Execute ONE phase at a time. Write tests first, then implement. Run quality gates after every module.
 > Update status as you complete each item. Do NOT proceed to the next phase until the current phase is fully complete.
@@ -195,7 +195,7 @@ pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/ && ruff
 **Status**: Complete — 33 tests
 - [x] Implement `src/dd_agents/validation/coverage.py` — CoverageValidator
 - [x] Implement `src/dd_agents/validation/numerical_audit.py` — 6-layer NumericalAuditor (Layer 6: financial citation verification)
-- [x] Implement `src/dd_agents/validation/qa_audit.py` — 17-check QAAuditor
+- [x] Implement `src/dd_agents/validation/qa_audit.py` — 18-check QAAuditor
 - [x] Implement `src/dd_agents/validation/dod.py` — 30-check DefinitionOfDoneChecker
 - [x] Implement `src/dd_agents/validation/schema_validator.py` — SchemaValidator
 - [x] Write `tests/unit/test_validation.py` — 33 tests
@@ -242,7 +242,7 @@ pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/ && ruff
 
 ### 6.5 Quality Hardening
 **Status**: Complete
-- [x] `mypy src/ --strict` — 0 errors in 172 files
+- [x] `mypy src/ --strict` — 0 errors in 181 files
 - [x] `ruff check src/ tests/` — all checks passed
 - [x] `ruff format --check src/ tests/` — all files formatted
 - [x] All 188 mypy strict errors fixed across 25 files
@@ -293,7 +293,7 @@ pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/ && ruff
 ## Phase 8: Knowledge Compounding (Epic #186)
 
 **Issues**: #178 (DKB), #179 (Knowledge Graph), #180 (Chronicle), #181 (Search Enrichment), #182 (File-back), #183 (Finding Lineage), #184 (Agent Enrichment), #185 (Health Checks)
-**Status**: Complete — 234 knowledge tests, 3240 total unit tests
+**Status**: Complete — 234 knowledge tests
 
 ### 8.1 Deal Knowledge Base (#178)
 **Status**: Complete — 55 tests
@@ -347,9 +347,46 @@ pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/ && ruff
 - [x] Update `knowledge/__init__.py` with all public exports
 
 ### Phase 8 Acceptance
-- [x] `pytest tests/unit/ -x -q` — 3240 tests pass
+- [x] `pytest tests/unit/ -x -q` — 3240+ tests pass (3289 as of v0.5.3)
 - [x] `mypy src/ --strict` — clean (181 source files)
 - [x] `ruff check src/ tests/` — clean
+
+---
+
+## Post-Phase Features (v0.5.0–v0.5.3)
+
+Features shipped after the core 8 phases were complete. See [CHANGELOG.md](CHANGELOG.md) for full details.
+
+### v0.5.0 — Knowledge Compounding (Epic #186)
+- Deal Knowledge Base with atomic writes and auto-maintained index
+- Unified Knowledge Graph (NetworkX, 11 edge types)
+- Analysis Chronicle (append-only JSONL timeline)
+- Finding Lineage (SHA-256 fingerprinting, 5-state tracking)
+- Agent context enrichment from accumulated knowledge
+- Knowledge health checks with auto-fix
+- 4 CLI commands: `log`, `annotate`, `lineage`, `health`
+- Homebrew formula with CI auto-update
+
+### v0.5.1 — Security Hardening & Code Quality
+- Excel cell formatting (`read_office` tool)
+- Sub-table detection and table-aware chunking
+- SSRF redirect validation, credential bypass fix
+- Gap severity mapping fix, config triple-read elimination
+- DRY constants refactor, platform encoding safety
+
+### v0.5.2 — Agent Telemetry & Lineage Export
+- Agent telemetry pipeline (base.py → team.py → engine.py → CostTracker)
+- Text-size batching in PromptBuilder
+- Lineage CLI export (JSON/CSV via `--format`/`--output`)
+- ChromaDB verification (graceful degradation confirmed)
+
+### v0.5.3 — Pipeline Robustness
+- Per-agent audit log writing (JSONL at `{run_dir}/audit/{agent}/audit_log.jsonl`)
+- QA audit DoD #11 now enforced (no more deferred pass-through)
+- BatchScheduler complexity scoring wired into step 14 (simple-first ordering)
+- E2E local validation tests (15 tests with `@pytest.mark.local`)
+- Enriched E2E data room (7 files, 3 customers, Judge enabled)
+- Bedrock authentication support in E2E fixtures
 
 ---
 
@@ -357,35 +394,20 @@ pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/ && ruff
 
 The project is complete when ALL of the following are true:
 - [x] All 8 phases have status "Complete"
-- [x] `pytest tests/ -x` passes — 3240 unit tests, 17 integration, 9 E2E (3 skipped without API key)
+- [x] `pytest tests/ -x` passes — 3289 unit tests, 17 integration, 24 E2E
 - [x] `mypy src/ --strict` passes — 0 errors across 181 source files
 - [x] `ruff check src/ tests/` is clean
 - [x] `ruff format --check src/ tests/` is clean
 
-> **Status: COMPLETE** — All 8 phases implemented and verified. See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
+> **Status: COMPLETE** — All 8 phases implemented and verified. Post-phase features ship as point releases. See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
 
 ## Test Summary
 
 | Category | Count |
 |----------|-------|
-| Unit tests (models, utils, entity resolution, extraction, config, hooks, tools, orchestrator, agents, reporting, validation, search, glm_ocr, type safety, visual grounding, entity dedup, OCR registry, layout PDF, HTML report, HTML renderers, report rendering, extraction backend, turn limits, severity recalibration, executive synthesis, data quality classification, follow-up verification, assessment, red flag scanner, cost tracker, batch scheduler, financial impact, project registry, report templates, ontology, precedence, read_office, net_safety, team, vector_store, search_runner, MCP server, knowledge base, knowledge graph, chronicle, knowledge query, knowledge compiler, finding lineage, knowledge enrichment, knowledge health) | 3240 |
+| Unit tests | 3289 |
 | Integration tests (pipeline steps 1-11) | 17 |
-| E2E tests (pre-agent: config, tiers, discovery, registry, run manager, cache) | 6 |
-| E2E tests (API-dependent: dry run, full pipeline, incremental — skipped without key) | 3 |
-| **Total** | **3240 passed, 3 skipped** |
-
-## Git History
-
-```
-Phase 1.2-1.3: Implement utility modules and all 102 data models
-Phase 1.4: Implement 6-pass entity resolution with cache
-Phase 1.5-1.6: Implement extraction pipeline, config loader, and CLI
-Phase 2: Implement persistence, inventory, hooks, and MCP tools
-Phase 3-4: Implement orchestrator pipeline engine and agent module
-Phase 5: Implement reporting and validation modules
-Phase 6: Vector store, pipeline wiring, integration tests, CLI
-Quality hardening: mypy strict, ruff format, E2E tests
-Issue #25: GLM-OCR vision-language model extractor
-Issue #27: Extraction pipeline optimization + Claude vision fallback
-Issue #4: Structured LLM output + 18 bug fixes from codebase-wide review
-```
+| E2E tests (pre-agent: config, tiers, discovery, registry, run manager, cache, Bedrock auth) | 7 |
+| E2E tests (API-dependent: dry run, full pipeline, incremental) | 2 |
+| E2E tests (local-only: 15 live agent validation tests, `@pytest.mark.local`) | 15 |
+| **Total** | **3289 unit + 17 integration + 24 E2E** |

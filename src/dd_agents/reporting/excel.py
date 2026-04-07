@@ -220,13 +220,13 @@ class ExcelReportGenerator:
         for col_idx, col_def in enumerate(columns, start=1):
             cell = ws.cell(row=1, column=col_idx, value=col_def.name)
             cell.fill = PatternFill(
-                start_color=fmt.header_bg_color.lstrip("#"),
-                end_color=fmt.header_bg_color.lstrip("#"),
+                start_color=fmt.header_bg_color.removeprefix("#"),
+                end_color=fmt.header_bg_color.removeprefix("#"),
                 fill_type="solid",
             )
             cell.font = Font(
                 bold=fmt.header_bold,
-                color=fmt.header_font_color.lstrip("#"),
+                color=fmt.header_font_color.removeprefix("#"),
                 size=fmt.header_font_size,
             )
 
@@ -284,13 +284,13 @@ class ExcelReportGenerator:
                 cell = ws.cell(row=row, column=cf_col_idx)
                 if self._rule_matches(cf_rule.rule, cell.value):
                     cell.fill = PatternFill(
-                        start_color=cf_rule.format.bg.lstrip("#"),
-                        end_color=cf_rule.format.bg.lstrip("#"),
+                        start_color=cf_rule.format.bg.removeprefix("#"),
+                        end_color=cf_rule.format.bg.removeprefix("#"),
                         fill_type="solid",
                     )
                     cell.font = Font(
                         size=fmt.body_font_size,
-                        color=cf_rule.format.font.lstrip("#"),
+                        color=cf_rule.format.font.removeprefix("#"),
                     )
 
     # ------------------------------------------------------------------

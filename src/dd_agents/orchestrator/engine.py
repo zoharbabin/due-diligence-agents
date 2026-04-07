@@ -329,7 +329,8 @@ class PipelineEngine:
                     continue
 
         # All retries exhausted -- raise the last error
-        assert last_error is not None  # noqa: S101
+        if last_error is None:
+            raise RuntimeError("Pipeline retries exhausted but no error was recorded")
         raise last_error
 
     # ------------------------------------------------------------------
@@ -346,6 +347,38 @@ class PipelineEngine:
         if self.team is None:
             self.team = AgentTeam(state)
         return self.team
+
+    @staticmethod
+    def _write_audit_log(
+        run_dir: Path,
+        agent_name: str,
+        result: dict[str, Any],
+        step: str,
+    ) -> None:
+        """Append a JSONL audit log entry for an agent execution (DoD #11).
+
+        Writes to ``{run_dir}/audit/{agent_name}/audit_log.jsonl``.
+        Each line is a self-contained JSON object with execution metadata.
+        """
+        audit_dir = run_dir / "audit" / agent_name
+        audit_dir.mkdir(parents=True, exist_ok=True)
+        log_path = audit_dir / "audit_log.jsonl"
+
+        entry: dict[str, Any] = {
+            "agent": agent_name,
+            "step": step,
+            "timestamp": datetime.now(tz=UTC).isoformat(),
+            "status": "error" if result.get("is_error") else "success",
+            "duration_ms": result.get("duration_ms", 0),
+            "num_turns": result.get("num_turns", 0),
+            "input_tokens_est": result.get("input_tokens_est", 0),
+            "output_tokens_est": result.get("output_tokens_est", 0),
+            "cost_usd": result.get("cost_usd", 0.0),
+            "model": result.get("model", ""),
+        }
+
+        with log_path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry) + "\n")
 
     def _inventory_dir(self, state: PipelineState) -> Path:
         """Return the PERMANENT inventory directory."""
@@ -1019,12 +1052,48 @@ class PipelineEngine:
         text_dir = self._text_dir(state)
         batch_text_dir = text_dir if text_dir.exists() else None
 
+        # Sort customers simple-first using BatchScheduler complexity scoring (Issue #148)
+        from dd_agents.orchestrator.batch_scheduler import score_customer_complexity
+
+        def _customer_text_bytes(entry: Any) -> int:
+            """Sum extracted text file sizes for a customer."""
+            total = 0
+            if batch_text_dir:
+                for fp in getattr(entry, "files", []):
+                    stem = Path(fp).stem
+                    txt = batch_text_dir / f"{stem}.md"
+                    if txt.exists():
+                        total += txt.stat().st_size
+            return total
+
+        scored = [
+            score_customer_complexity(
+                getattr(c, "safe_name", ""),
+                file_count=getattr(c, "file_count", 0),
+                total_bytes=_customer_text_bytes(c),
+            )
+            for c in customers
+        ]
+        # Build name → complexity lookup for logging
+        complexity_by_name = {s.customer_safe_name: s for s in scored}
+        # Sort customers by score ascending (simple first)
+        customers_sorted = sorted(
+            customers,
+            key=lambda c: complexity_by_name.get(getattr(c, "safe_name", ""), scored[0]).score if scored else 0,
+        )
+
+        logger.info(
+            "BatchScheduler: %d customers scored — %s",
+            len(scored),
+            ", ".join(f"{s.customer_safe_name}({s.tier}:{s.score:.1f})" for s in scored),
+        )
+
         for agent_name in ALL_SPECIALIST_AGENTS:
             agent_cls = SPECIALIST_CLASSES.get(AgentType(agent_name))
             max_per_batch = getattr(agent_cls, "max_customers_per_batch", 20) if agent_cls else 20
             max_tokens = getattr(agent_cls, "max_tokens_per_batch", 40_000) if agent_cls else 40_000
             batches = PromptBuilder.batch_customers(
-                customers,
+                customers_sorted,
                 max_tokens=max_tokens,
                 max_per_batch=max_per_batch,
                 text_dir=batch_text_dir,
@@ -1197,6 +1266,9 @@ class PipelineEngine:
                 output_tokens=result.get("output_tokens_est", 0),
                 model=result.get("model", ""),
             )
+
+            # Write per-agent audit log entry (DoD #11)
+            self._write_audit_log(state.run_dir, name, result, "16_spawn_specialists")
 
             # Save sub-checkpoint with full result so resume restores
             # complete agent_results (output, session_id, etc.) — Issue #51
@@ -1745,6 +1817,9 @@ class PipelineEngine:
             output_tokens=result.get("output_tokens_est", 0),
             model=result.get("model", ""),
         )
+
+        # Write per-agent audit log entry (DoD #11)
+        self._write_audit_log(state.run_dir, "judge", result, "19_spawn_judge")
         return state
 
     async def _step_20_judge_review(self, state: PipelineState) -> PipelineState:
@@ -1825,7 +1900,7 @@ class PipelineEngine:
                                 )
                                 scores = QualityScores.model_validate(on_disk)
                                 break
-                        except (json.JSONDecodeError, OSError, Exception) as exc:  # noqa: BLE001
+                        except (json.JSONDecodeError, OSError) as exc:
                             logger.warning("Failed to recover judge scores from %s: %s", candidate, exc)
 
                 scores_path.write_text(scores.model_dump_json(indent=2), encoding="utf-8")

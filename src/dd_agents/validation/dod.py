@@ -1,18 +1,18 @@
-"""Definition of Done checker -- 30 checks mapped to SKILL.md section 9.
+"""Definition of Done checker -- 31 checks mapped to SKILL.md section 9.
 
 Two-tier validation design
 --------------------------
 The pipeline uses two complementary validation tiers:
 
 **Tier 1 — Step 28 (BLOCKING GATE): QA Audit**
-    ``qa_audit.py`` runs 17 structural checks (spec section 8a-8k) that
+    ``qa_audit.py`` runs 18 structural checks (spec section 8a-8k) that
     verify the pipeline produced well-formed output: manifests exist, files
     are covered, citations parse, reports render, etc.  Failures **halt the
     pipeline** via ``BlockingGateError`` — no reports are generated if
     structural integrity is compromised.
 
 **Tier 2 — Step 35 (NON-BLOCKING): Definition of Done**
-    This module runs 30 substantive checks that evaluate *completeness and
+    This module runs 31 substantive checks (1-30 + 12b) that evaluate *completeness and
     quality* of the analysis: every customer has all 4 agents' output, gaps
     are tracked, cross-references reconciled, Judge scores meet thresholds,
     etc.  These run during shutdown and produce ``dod_results.json``.

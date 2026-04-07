@@ -202,7 +202,7 @@ class TemplateLibrary:
         return False
 
 
-_CSS_SAFE_RE = re.compile(r"^[a-zA-Z0-9 #(),._\-]+$")
+_CSS_SAFE_RE = re.compile(r"^[a-zA-Z0-9 #,._\-]+$")
 
 
 def _sanitize_css_value(value: str) -> str:
