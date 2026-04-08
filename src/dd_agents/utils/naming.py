@@ -149,8 +149,9 @@ def customer_safe_name(name: str) -> str:
     name = name.lower()
     name = _strip_legal_suffixes(name)
 
-    # Remove parenthesized text
+    # Remove parenthesized and bracketed text
     name = re.sub(r"\([^)]*\)", " ", name)
+    name = re.sub(r"\[[^\]]*\]", lambda m: m.group(0)[1:-1], name)
 
     # Replace special characters and spaces with underscore
     for ch in "&'/,.- ":

@@ -86,6 +86,8 @@ class TestCustomerSafeName:
             ("Already_safe_name", "already_safe_name"),
             ("123 Numeric Start", "123_numeric_start"),
             ("Company (Subsidiary)", "company"),
+            ("[Confidential] HR materials", "confidential_hr_materials"),
+            ("[Old] Potential transaction structures", "old_potential_transaction_structures"),
         ],
     )
     def test_safe_name_convention(self, input_name: str, expected: str) -> None:
