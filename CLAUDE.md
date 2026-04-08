@@ -198,7 +198,7 @@ Update the phase status in IMPLEMENTATION_PLAN.md after completing each phase.
 All core dependencies are permissively licensed (Apache 2.0, MIT, BSD). pymupdf is AGPL-3.0 and optional.
 
 ```
-claude-agent-sdk>=0.1.39        # Agent spawning, hooks, tools
+claude-agent-sdk>=0.1.56        # Agent spawning, hooks, tools (>=0.1.56 fixes stream-closed hook errors)
 pydantic>=2.0                   # Data models, schema validation
 openpyxl>=3.1.3                 # Excel report generation + .xlsx extraction
 networkx>=3.0                   # Governance graph (cycle detection, topological sort)

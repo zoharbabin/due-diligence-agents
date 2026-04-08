@@ -41,38 +41,43 @@ def _build_pre_tool_hook(
     """
 
     async def pre_tool_hook(hook_input: Any, tool_name: str | None, context: Any) -> dict[str, Any]:
-        tn = hook_input.get("tool_name", "") if tool_name is None else tool_name
-        ti = hook_input.get("tool_input", {})
+        try:
+            tn = hook_input.get("tool_name", "") if tool_name is None else tool_name
+            ti = hook_input.get("tool_input", {})
 
-        # 1. Bash guard
-        result = bash_guard(tn, ti)
-        if result["decision"] == "block":
-            return {"decision": "block", "reason": result["reason"]}
+            # 1. Bash guard
+            result = bash_guard(tn, ti)
+            if result["decision"] == "block":
+                return {"decision": "block", "reason": result["reason"]}
 
-        # 2. Path guard — only for Write/Edit
-        result = path_guard(tn, ti, project_dir)
-        if result["decision"] == "block":
-            return {"decision": "block", "reason": result["reason"]}
+            # 2. Path guard — only for Write/Edit
+            result = path_guard(tn, ti, project_dir)
+            if result["decision"] == "block":
+                return {"decision": "block", "reason": result["reason"]}
 
-        # 3. File size guard (warning only)
-        result = file_size_guard(tn, ti)
-        if result["reason"]:
-            logger.warning("[%s] %s", agent_name, result["reason"])
+            # 3. File size guard (warning only)
+            result = file_size_guard(tn, ti)
+            if result["reason"]:
+                logger.warning("[%s] %s", agent_name, result["reason"])
 
-        # 4. Aggregate file guard — block writes to known bad filenames
-        if tn in ("Write", "Edit"):
-            file_path = ti.get("file_path", "")
-            filename = Path(file_path).name if file_path else ""
-            if filename in BLOCKED_FILENAMES:
-                return {
-                    "decision": "block",
-                    "reason": (
-                        f"Blocked write to aggregate filename '{filename}'. "
-                        f"Findings must be per-customer, not aggregated."
-                    ),
-                }
+            # 4. Aggregate file guard — block writes to known bad filenames
+            if tn in ("Write", "Edit"):
+                file_path = ti.get("file_path", "")
+                filename = Path(file_path).name if file_path else ""
+                if filename in BLOCKED_FILENAMES:
+                    return {
+                        "decision": "block",
+                        "reason": (
+                            f"Blocked write to aggregate filename '{filename}'. "
+                            f"Findings must be per-customer, not aggregated."
+                        ),
+                    }
 
-        return {}
+            return {}
+        except Exception as exc:  # noqa: BLE001
+            # Guard against SDK stream-closed errors during session teardown.
+            logger.debug("PreToolUse hook error (likely session teardown): %s", exc)
+            return {}
 
     return pre_tool_hook
 
@@ -95,22 +100,27 @@ def _build_stop_hook(
     output_dir = run_dir / "findings" / agent_name
 
     async def stop_hook(hook_input: Any, tool_name: str | None, context: Any) -> dict[str, Any]:
-        # 1. Coverage check — must have produced all customer JSONs
-        result = check_coverage(output_dir, expected_customers)
-        if result["decision"] == "block":
-            return {"continue_": False, "stopReason": result["reason"]}
+        try:
+            # 1. Coverage check — must have produced all customer JSONs
+            result = check_coverage(output_dir, expected_customers)
+            if result["decision"] == "block":
+                return {"continue_": False, "stopReason": result["reason"]}
 
-        # 2. Manifest check — coverage_manifest.json must exist
-        result = check_manifest(output_dir)
-        if result["decision"] == "block":
-            return {"continue_": False, "stopReason": result["reason"]}
+            # 2. Manifest check — coverage_manifest.json must exist
+            result = check_manifest(output_dir)
+            if result["decision"] == "block":
+                return {"continue_": False, "stopReason": result["reason"]}
 
-        # 3. Audit log check (warning only)
-        result = check_audit_log(output_dir)
-        if result["reason"]:
-            logger.warning("[%s] %s", agent_name, result["reason"])
+            # 3. Audit log check (warning only)
+            result = check_audit_log(output_dir)
+            if result["reason"]:
+                logger.warning("[%s] %s", agent_name, result["reason"])
 
-        return {}
+            return {}
+        except Exception as exc:  # noqa: BLE001
+            # Guard against SDK stream-closed errors during session teardown.
+            logger.debug("Stop hook error (likely session teardown): %s", exc)
+            return {}
 
     return stop_hook
 
