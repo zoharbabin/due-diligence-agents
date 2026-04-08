@@ -309,6 +309,13 @@ def run(
         )
         close_pipeline_logging()
 
+        # Force-exit to kill orphaned SDK JS subprocesses that refuse to
+        # terminate after session teardown (causes "Stream closed" errors
+        # and hangs).  All work is complete and flushed at this point.
+        import os as _os
+
+        _os._exit(0)
+
     except BlockingGateError as exc:
         console.print()
         _print_error(
