@@ -1820,6 +1820,113 @@ class TestStep17CoverageGate:
         assert result is not None  # Should not raise
 
 
+class TestReconcileAgentOutputFilenames:
+    """Tests for _reconcile_agent_output_filenames (misnamed file recovery)."""
+
+    def test_misnamed_file_gets_renamed(self, tmp_path: Path) -> None:
+        """A file named entity.json with customer_safe_name='commercial' is renamed."""
+        agent_dir = tmp_path / "commercial_agent"
+        agent_dir.mkdir()
+        data = {"customer_safe_name": "commercial", "findings": [{"title": "F1"}]}
+        (agent_dir / "fidelity.json").write_text(json.dumps(data))
+
+        count = PipelineEngine._reconcile_agent_output_filenames(
+            agent_dir,
+            ["commercial", "legal"],
+        )
+        assert count >= 1
+        assert (agent_dir / "commercial.json").exists()
+        assert not (agent_dir / "fidelity.json").exists()
+        result = json.loads((agent_dir / "commercial.json").read_text())
+        assert result["customer_safe_name"] == "commercial"
+        assert len(result["findings"]) == 1
+
+    def test_correctly_named_file_untouched(self, tmp_path: Path) -> None:
+        """Files already matching expected names are not modified."""
+        agent_dir = tmp_path / "agent"
+        agent_dir.mkdir()
+        data = {"customer_safe_name": "legal", "findings": [{"title": "ok"}]}
+        (agent_dir / "legal.json").write_text(json.dumps(data))
+
+        count = PipelineEngine._reconcile_agent_output_filenames(
+            agent_dir,
+            ["legal"],
+        )
+        assert count == 0
+        assert (agent_dir / "legal.json").exists()
+
+    def test_multiple_files_merged_into_one(self, tmp_path: Path) -> None:
+        """Multiple entity files with the same customer_safe_name get merged."""
+        agent_dir = tmp_path / "agent"
+        agent_dir.mkdir()
+        d1 = {"customer_safe_name": "commercial", "findings": [{"title": "A"}], "files_analyzed": 3}
+        d2 = {"customer_safe_name": "commercial", "findings": [{"title": "B"}], "files_analyzed": 2}
+        (agent_dir / "fidelity.json").write_text(json.dumps(d1))
+        (agent_dir / "pacific_life.json").write_text(json.dumps(d2))
+
+        count = PipelineEngine._reconcile_agent_output_filenames(
+            agent_dir,
+            ["commercial"],
+        )
+        assert count >= 1
+        merged = json.loads((agent_dir / "commercial.json").read_text())
+        assert len(merged["findings"]) == 2
+        assert merged["files_analyzed"] == 5
+        assert not (agent_dir / "fidelity.json").exists()
+        assert not (agent_dir / "pacific_life.json").exists()
+
+    def test_file_without_customer_safe_name_skipped(self, tmp_path: Path) -> None:
+        """Files without a customer_safe_name field are left alone."""
+        agent_dir = tmp_path / "agent"
+        agent_dir.mkdir()
+        (agent_dir / "unknown.json").write_text('{"findings": []}')
+
+        count = PipelineEngine._reconcile_agent_output_filenames(
+            agent_dir,
+            ["commercial"],
+        )
+        assert count == 0
+        assert (agent_dir / "unknown.json").exists()
+
+    def test_nonexistent_dir_returns_zero(self, tmp_path: Path) -> None:
+        """Non-existent agent directory returns 0 without error."""
+        count = PipelineEngine._reconcile_agent_output_filenames(
+            tmp_path / "nonexistent",
+            ["commercial"],
+        )
+        assert count == 0
+
+    def test_merge_into_existing_correctly_named_file(self, tmp_path: Path) -> None:
+        """Misnamed files merge into an already-existing correctly-named file."""
+        agent_dir = tmp_path / "agent"
+        agent_dir.mkdir()
+        base = {"customer_safe_name": "commercial", "findings": [{"title": "Base"}], "files_analyzed": 1}
+        extra = {"customer_safe_name": "commercial", "findings": [{"title": "Extra"}], "files_analyzed": 2}
+        (agent_dir / "commercial.json").write_text(json.dumps(base))
+        (agent_dir / "entity_x.json").write_text(json.dumps(extra))
+
+        PipelineEngine._reconcile_agent_output_filenames(
+            agent_dir,
+            ["commercial"],
+        )
+        merged = json.loads((agent_dir / "commercial.json").read_text())
+        assert len(merged["findings"]) == 2
+        assert merged["files_analyzed"] == 3
+        assert not (agent_dir / "entity_x.json").exists()
+
+    def test_coverage_manifest_ignored(self, tmp_path: Path) -> None:
+        """coverage_manifest.json is never reconciled."""
+        agent_dir = tmp_path / "agent"
+        agent_dir.mkdir()
+        (agent_dir / "coverage_manifest.json").write_text('{"customer_safe_name": "commercial"}')
+
+        count = PipelineEngine._reconcile_agent_output_filenames(
+            agent_dir,
+            ["commercial"],
+        )
+        assert count == 0
+
+
 class TestRespawnBatching:
     """Tests that _respawn_for_missing_customers batches large customer sets."""
 
@@ -2763,6 +2870,39 @@ class TestStep15ErrorHandlingMissingReferenceFiles:
         manifest = json.loads(manifest_path.read_text())
         assert len(manifest) == 1
         assert "report.md" in manifest[0]["text_source"]
+        assert result is state
+
+    @pytest.mark.asyncio
+    async def test_step_15_finds_text_via_absolute_path_naming(self, tmp_path: Path) -> None:
+        """When extraction used absolute paths, step 15 finds text using the same convention."""
+        from unittest.mock import MagicMock
+
+        from dd_agents.extraction.pipeline import ExtractionPipeline
+
+        engine = self._make_engine(tmp_path)
+        state = self._make_state(tmp_path)
+
+        text_dir = tmp_path / "_dd" / "forensic-dd" / "index" / "text"
+
+        # Simulate what step 5 does: extraction uses absolute paths.
+        ref_rel_path = "data/reference_report.pdf"
+        abs_path = str(tmp_path / ref_rel_path)
+        safe_name = ExtractionPipeline._safe_text_name(abs_path)
+        (text_dir / safe_name).write_text("# Extracted content")
+
+        mock_ref = MagicMock()
+        mock_ref.file_path = ref_rel_path
+        mock_ref.text_path = None
+        mock_ref.category = "Financial"
+        mock_ref.assigned_to_agents = ["finance"]
+
+        state._reference_files = [mock_ref]  # type: ignore[attr-defined]
+
+        result = await engine._step_15_route_references(state)
+
+        manifest_path = state.run_dir / "reference_routing.json"
+        manifest = json.loads(manifest_path.read_text())
+        assert len(manifest) == 1
         assert result is state
 
 

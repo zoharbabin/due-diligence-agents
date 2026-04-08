@@ -1165,16 +1165,25 @@ class PipelineEngine:
                         source_text = candidate
 
             if source_text is None:
-                # Strategy 2: use extraction pipeline's naming convention.
-                # Extraction writes files as path__to__file.pdf.md (slashes
-                # replaced with __, original extension preserved, .md appended).
+                # Strategy 2: use extraction pipeline's naming convention
+                # with the absolute path (matching what step 5 passed to
+                # extract_all: str(state.project_dir / entry.path)).
+                abs_path = str(state.project_dir / ref.file_path)
+                safe_name = ExtractionPipeline._safe_text_name(abs_path)
+                candidate = text_dir / safe_name
+                if candidate.exists():
+                    source_text = candidate
+
+            if source_text is None:
+                # Strategy 3: try with the relative path (covers cases
+                # where extraction used relative paths).
                 safe_name = ExtractionPipeline._safe_text_name(ref.file_path)
                 candidate = text_dir / safe_name
                 if candidate.exists():
                     source_text = candidate
 
             if source_text is None:
-                # Strategy 3: fall back to simple stem.md (legacy convention)
+                # Strategy 4: fall back to simple stem.md (legacy convention)
                 stem = Path(ref.file_path).stem
                 candidate = text_dir / f"{stem}.md"
                 if candidate.exists():
@@ -1303,6 +1312,16 @@ class PipelineEngine:
             logger.info("Coverage gate: no customers to check")
             return state
 
+        # --- Reconcile misnamed output files --------------------------------
+        # Agents sometimes write files with entity names (e.g. fidelity.json)
+        # instead of customer_safe_names (e.g. commercial.json).  Reconcile
+        # by reading the customer_safe_name field from file content.
+        for agent in ALL_SPECIALIST_AGENTS:
+            self._reconcile_agent_output_filenames(
+                findings_dir / agent,
+                state.customer_safe_names,
+            )
+
         # --- First pass: per-agent coverage ---------------------------------
         per_agent_missing: dict[str, list[str]] = {}
         for agent in ALL_SPECIALIST_AGENTS:
@@ -1343,6 +1362,13 @@ class PipelineEngine:
                     missing_customers=missing_custs,
                     state=state,
                 )
+
+        # --- Reconcile again after respawn -----------------------------------
+        for agent in ALL_SPECIALIST_AGENTS:
+            self._reconcile_agent_output_filenames(
+                findings_dir / agent,
+                state.customer_safe_names,
+            )
 
         # --- Second pass: re-check coverage after respawn -------------------
         all_gap_findings: list[dict[str, Any]] = []
@@ -1511,6 +1537,111 @@ class PipelineEngine:
     # ------------------------------------------------------------------
     # Coverage helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _reconcile_agent_output_filenames(
+        agent_dir: Path,
+        expected_names: list[str],
+    ) -> int:
+        """Rename misnamed agent output files using the ``customer_safe_name`` field.
+
+        Agents sometimes write files with entity names (e.g. ``fidelity.json``)
+        instead of the expected customer_safe_name (e.g. ``commercial.json``).
+        This method reads each JSON file, extracts ``customer_safe_name``, and
+        renames/merges files that don't match an expected name.
+
+        When multiple misnamed files map to the same customer_safe_name, their
+        ``findings``, ``gaps``, ``cross_references``, and ``file_headers`` arrays
+        are merged into a single output file.  Scalar fields (``files_analyzed``)
+        are summed.
+
+        Returns the number of files reconciled.
+        """
+        if not agent_dir.is_dir():
+            return 0
+
+        expected_set = set(expected_names)
+        # Map: customer_safe_name → list of (path, parsed_data)
+        pending: dict[str, list[tuple[Path, dict[str, Any]]]] = {}
+        reconciled = 0
+
+        for fp in sorted(agent_dir.glob("*.json")):
+            if fp.name == "coverage_manifest.json":
+                continue
+            stem = fp.stem
+            # Already matches an expected name — skip.
+            if stem in expected_set:
+                continue
+
+            try:
+                data = json.loads(fp.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                continue
+            if not isinstance(data, dict):
+                continue
+
+            csn = data.get("customer_safe_name", "")
+            if not csn or csn not in expected_set:
+                continue
+
+            pending.setdefault(csn, []).append((fp, data))
+
+        for csn, entries in pending.items():
+            target = agent_dir / f"{csn}.json"
+            num_misnamed = len(entries)
+            # Collect all source paths before mutating the list.
+            source_paths = [fp for fp, _ in entries]
+
+            if target.exists():
+                # Merge into existing file.
+                try:
+                    base = json.loads(target.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    base = {}
+                if not isinstance(base, dict):
+                    base = {}
+            else:
+                # Use the first entry as the base.
+                _, base = entries.pop(0)
+
+            for _, data in entries:
+                # Merge list fields.
+                for key in ("findings", "gaps", "cross_references", "file_headers"):
+                    existing = base.get(key, [])
+                    incoming = data.get(key, [])
+                    if isinstance(existing, list) and isinstance(incoming, list):
+                        base[key] = existing + incoming
+                # Sum files_analyzed.
+                base_count = base.get("files_analyzed", 0)
+                inc_count = data.get("files_analyzed", 0)
+                if isinstance(base_count, int) and isinstance(inc_count, int):
+                    base["files_analyzed"] = base_count + inc_count
+
+            # Ensure the canonical safe_name is set.
+            base["customer_safe_name"] = csn
+
+            target.write_text(json.dumps(base, indent=2), encoding="utf-8")
+            reconciled += num_misnamed
+
+            # Remove the misnamed source files.
+            for fp in source_paths:
+                if fp != target and fp.exists():
+                    fp.unlink()
+
+            logger.info(
+                "Reconciled %d misnamed file(s) → %s for agent %s",
+                num_misnamed,
+                target.name,
+                agent_dir.name,
+            )
+
+        if reconciled:
+            logger.info(
+                "Coverage reconciliation: fixed %d misnamed files in %s",
+                reconciled,
+                agent_dir.name,
+            )
+        return reconciled
 
     async def _respawn_for_missing_customers(
         self,
