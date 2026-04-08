@@ -6,6 +6,7 @@ Registered as ``dd-agents`` console script via pyproject.toml.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import traceback
@@ -28,6 +29,31 @@ from dd_agents.config import (
 logger = logging.getLogger(__name__)
 console = Console()
 err_console = Console(stderr=True)
+
+
+def _terminate_child_processes() -> None:
+    """Send SIGTERM to all child processes of the current PID.
+
+    SDK JS (Bun) subprocesses survive ``os._exit()`` and keep printing
+    "Stream closed" errors.  This kills them before we exit.
+    """
+    import os
+    import signal
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["pgrep", "-P", str(os.getpid())],
+            capture_output=True,
+            text=True,
+        )
+        for line in result.stdout.strip().splitlines():
+            pid_str = line.strip()
+            if pid_str:
+                with contextlib.suppress(OSError):
+                    os.kill(int(pid_str), signal.SIGTERM)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -309,9 +335,10 @@ def run(
         )
         close_pipeline_logging()
 
-        # Force-exit to kill orphaned SDK JS subprocesses that refuse to
-        # terminate after session teardown (causes "Stream closed" errors
-        # and hangs).  All work is complete and flushed at this point.
+        # Kill orphaned SDK JS (Bun) subprocesses that keep printing
+        # "Stream closed" errors after session teardown, then force-exit.
+        # All pipeline work is complete and flushed at this point.
+        _terminate_child_processes()
         import os as _os
 
         _os._exit(0)
@@ -348,9 +375,7 @@ def run(
             )
         )
         close_pipeline_logging()
-        # Use os._exit to bypass atexit handlers that join thread pool
-        # worker threads — those threads may be blocked on long-running
-        # OCR subprocesses and would cause the process to hang.
+        _terminate_child_processes()
         import os as _os
 
         _os._exit(130)
