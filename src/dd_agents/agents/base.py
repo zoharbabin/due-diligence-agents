@@ -581,19 +581,21 @@ class BaseAgentRunner(ABC):
         if results:
             return results
 
-        # Strategy 3: find standalone JSON objects via brace matching.
-        brace_pattern = re.compile(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}")
-        for match in brace_pattern.finditer(cleaned):
-            try:
-                data = json.loads(match.group(0))
-                results.append(data)
-            except (json.JSONDecodeError, ValueError) as exc:
-                logger.warning(
-                    "Strategy 3 (brace matching) failed for candidate of %d chars: %s",
-                    len(match.group(0)),
-                    exc,
-                )
-                continue
+        # Strategy 3: scan for JSON objects using the stdlib decoder.
+        # Unlike the prior regex approach this handles arbitrary nesting.
+        decoder = json.JSONDecoder()
+        idx = 0
+        while idx < len(cleaned):
+            if cleaned[idx] == "{":
+                try:
+                    obj, end_idx = decoder.raw_decode(cleaned, idx)
+                    if isinstance(obj, dict):
+                        results.append(obj)
+                    idx = end_idx
+                    continue
+                except (json.JSONDecodeError, ValueError):
+                    pass
+            idx += 1
 
         if results:
             return results

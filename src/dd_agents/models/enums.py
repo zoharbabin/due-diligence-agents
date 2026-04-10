@@ -101,9 +101,9 @@ class SpotCheckDimension(StrEnum):
 class SpotCheckResult(StrEnum):
     """Outcome of a judge spot-check on a single dimension."""
 
-    PASS = "PASS"
-    PARTIAL = "PARTIAL"
-    FAIL = "FAIL"
+    PASS = "pass"
+    PARTIAL = "partial"
+    FAIL = "fail"
 
 
 class MatchStatus(StrEnum):

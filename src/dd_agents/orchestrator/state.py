@@ -154,6 +154,16 @@ class PipelineState:
             }
 
         # Persist dynamic attributes that downstream steps depend on.
+        # ``_discovered_files`` is assigned in step 4 and consumed
+        # by steps 5, 6, 7, 8, 9, 15, and precedence computation.
+        discovered_files_ser: list[dict[str, Any]] = []
+        _dfiles: list[Any] = getattr(self, "_discovered_files", [])
+        for entry in _dfiles:
+            if hasattr(entry, "model_dump"):
+                discovered_files_ser.append(entry.model_dump())
+            elif isinstance(entry, dict):
+                discovered_files_ser.append(entry)
+
         # ``_subject_entries`` is assigned in step 6 and consumed
         # by step 14 (prompt building) and the respawn path (step 17).
         subject_entries_ser: list[dict[str, Any]] = []
@@ -197,6 +207,7 @@ class PipelineState:
             "judge_scores": self.judge_scores,
             "exit_code": self.exit_code,
             "file_precedence": self.file_precedence,
+            "_discovered_files": discovered_files_ser,
             "_subject_entries": subject_entries_ser,
         }
 
@@ -259,6 +270,22 @@ class PipelineState:
             exit_code=data.get("exit_code", 0),
             file_precedence=data.get("file_precedence", {}),
         )
+
+        # Restore dynamic attribute ``_discovered_files`` so that steps
+        # 5-9, 15, and precedence work correctly after checkpoint resume.
+        raw_files = data.get("_discovered_files", [])
+        if raw_files:
+            import contextlib
+
+            from dd_agents.models.inventory import FileEntry
+
+            restored_files: list[FileEntry] = []
+            for item in raw_files:
+                if isinstance(item, dict):
+                    with contextlib.suppress(Exception):
+                        restored_files.append(FileEntry.model_validate(item))
+            if restored_files:
+                state._discovered_files = restored_files  # type: ignore[attr-defined]
 
         # Restore dynamic attribute ``_subject_entries`` so that respawn
         # and prompt rebuilding work correctly after checkpoint resume.

@@ -8,6 +8,14 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 > The first public release was **v0.4.0** (2026-03-30). Tagged releases on PyPI and
 > GitHub begin at **v0.4.1**.
 
+## [1.0.2] — 2026-04-10
+
+### Fixed
+
+- **Resume from step 6+ finds 0 subjects** — `_discovered_files` was not persisted in checkpoints. Steps 6-9 and precedence depend on it but got an empty list after resume. Now serialized/restored alongside `_subject_entries`.
+- **Judge spot-check validation errors** — `SpotCheckResult` enum expected uppercase `PASS`/`PARTIAL`/`FAIL` but the prompt instructs the agent to write lowercase. Changed enum values to lowercase to match prompt and agent output.
+- **Judge score parsing fails on deeply nested JSON** — Strategy 3 (brace matching) used a regex limited to 2 nesting levels, failing on the judge's multi-level `agent_scores` structure. Replaced with `json.JSONDecoder.raw_decode()` which handles arbitrary nesting depth.
+
 ## [1.0.1] — 2026-04-10
 
 ### Fixed
