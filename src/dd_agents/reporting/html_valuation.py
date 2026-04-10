@@ -69,7 +69,7 @@ class ValuationBridgeRenderer(SectionRenderer):
         # Valuation impact at multiples
         parts.append("<h3>Valuation Impact at Multiples</h3>")
         parts.append(
-            "<table class='customer-table sortable'><thead><tr>"
+            "<table class='subject-table sortable'><thead><tr>"
             "<th scope='col'>Multiple</th>"
             "<th scope='col'>Gross Valuation</th>"
             "<th scope='col'>Risk Adjustment</th>"
@@ -93,7 +93,7 @@ class ValuationBridgeRenderer(SectionRenderer):
         if categories:
             parts.append("<h3>Risk Category Breakdown</h3>")
             parts.append(
-                "<table class='customer-table sortable'><thead><tr>"
+                "<table class='subject-table sortable'><thead><tr>"
                 "<th scope='col'>Category</th>"
                 "<th scope='col'>Exposure</th>"
                 "<th scope='col'>% of Total</th>"

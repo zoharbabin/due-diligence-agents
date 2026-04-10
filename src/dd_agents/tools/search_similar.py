@@ -23,7 +23,7 @@ def set_vector_store(store: Any) -> None:
 
 def search_similar(
     query: str,
-    customer: str | None = None,
+    subject: str | None = None,
     top_k: int = 5,
 ) -> dict[str, Any]:
     """Search the vector store for documents matching *query*.
@@ -32,8 +32,8 @@ def search_similar(
     ----------
     query:
         Natural-language search query.
-    customer:
-        Optional customer_safe_name to filter results.
+    subject:
+        Optional subject_safe_name to filter results.
     top_k:
         Maximum results (capped at 20).
 
@@ -55,7 +55,7 @@ def search_similar(
     results: list[dict[str, Any]] = []
     for r in raw_results:
         metadata = r.get("metadata", {})
-        if customer and metadata.get("customer_safe_name") != customer:
+        if subject and metadata.get("subject_safe_name") != subject:
             continue
         results.append(
             {
@@ -83,9 +83,9 @@ def search_similar_tool_schema() -> dict[str, Any]:
                     "type": "string",
                     "description": "Natural-language search query (e.g., 'change of control clause')",
                 },
-                "customer": {
+                "subject": {
                     "type": "string",
-                    "description": "Optional customer_safe_name to filter results",
+                    "description": "Optional subject_safe_name to filter results",
                 },
                 "top_k": {
                     "type": "integer",

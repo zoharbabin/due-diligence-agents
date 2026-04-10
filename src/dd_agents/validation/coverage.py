@@ -1,8 +1,8 @@
 """Coverage gate validator (pipeline step 17).
 
-For each agent type, counts unique ``{customer_safe_name}.json`` files
-against the expected customer count. Detects missing customers,
-aggregate files (should be per-customer), and empty outputs.
+For each agent type, counts unique ``{subject_safe_name}.json`` files
+against the expected subject count. Detects missing subjects,
+aggregate files (should be per-subject), and empty outputs.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class CoverageValidator:
-    """Validate per-agent output file coverage against expected customers."""
+    """Validate per-agent output file coverage against expected subjects."""
 
     # ------------------------------------------------------------------ #
     # public API
@@ -30,17 +30,17 @@ class CoverageValidator:
     def validate(
         self,
         agent_output_dirs: dict[str, Path],
-        expected_customers: list[str],
+        expected_subjects: list[str],
     ) -> list[AuditCheck]:
         """Run coverage checks for every specialist agent.
 
         Parameters
         ----------
         agent_output_dirs:
-            Mapping of agent name -> directory containing per-customer
+            Mapping of agent name -> directory containing per-subject
             JSON output files.
-        expected_customers:
-            List of ``customer_safe_name`` strings that each agent is
+        expected_subjects:
+            List of ``subject_safe_name`` strings that each agent is
             expected to produce output for.
 
         Returns
@@ -49,7 +49,7 @@ class CoverageValidator:
             One :class:`AuditCheck` per agent, plus an aggregate check.
         """
         results: list[AuditCheck] = []
-        expected_set = set(expected_customers)
+        expected_set = set(expected_subjects)
 
         for agent in ALL_SPECIALIST_AGENTS:
             agent_dir = agent_output_dirs.get(agent)
@@ -67,7 +67,7 @@ class CoverageValidator:
                     "agents_checked": len(results),
                     "all_passed": all_passed,
                 },
-                rule="All specialist agents must have per-customer output for every expected customer.",
+                rule="All specialist agents must have per-subject output for every expected subject.",
             )
         )
         return results
@@ -89,7 +89,7 @@ class CoverageValidator:
                 details={
                     "agent": agent,
                     "error": "output directory missing",
-                    "missing_customers": sorted(expected),
+                    "missing_subjects": sorted(expected),
                     "aggregate_files": [],
                     "empty_files": [],
                 },
@@ -102,8 +102,8 @@ class CoverageValidator:
 
         for jf in json_files:
             stem = jf.stem
-            # Detect aggregate/non-customer files
-            if stem in ("coverage_manifest", "audit_log", "summary", "all_customers"):
+            # Detect aggregate/non-subject files
+            if stem in ("coverage_manifest", "audit_log", "summary", "all_subjects"):
                 aggregate_files.append(jf.name)
                 continue
 
@@ -120,8 +120,8 @@ class CoverageValidator:
             except (json.JSONDecodeError, OSError):
                 empty_files.append(jf.name)
 
-        missing_customers = sorted(expected - found_names)
-        passed = len(missing_customers) == 0 and len(empty_files) == 0
+        missing_subjects = sorted(expected - found_names)
+        passed = len(missing_subjects) == 0 and len(empty_files) == 0
 
         return AuditCheck(
             passed=passed,
@@ -130,7 +130,7 @@ class CoverageValidator:
                 "agent": agent,
                 "expected_count": len(expected),
                 "found_count": len(found_names),
-                "missing_customers": missing_customers,
+                "missing_subjects": missing_subjects,
                 "aggregate_files": aggregate_files,
                 "empty_files": empty_files,
             },

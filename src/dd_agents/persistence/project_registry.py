@@ -138,7 +138,7 @@ class ProjectRegistryManager:
         self,
         slug: str,
         run_id: str,
-        total_customers: int,
+        total_subjects: int,
         total_findings: int,
         finding_counts: dict[str, int],
         risk_score: float,
@@ -151,7 +151,7 @@ class ProjectRegistryManager:
                 p.last_run_at = _now_iso()
                 p.last_run_id = run_id
                 p.total_runs += 1
-                p.total_customers = total_customers
+                p.total_subjects = total_subjects
                 p.total_findings = total_findings
                 p.finding_counts = finding_counts
                 p.risk_score = risk_score

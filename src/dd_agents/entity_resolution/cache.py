@@ -194,7 +194,7 @@ class EntityResolutionCache:
         if entry is None:
             return None
 
-        # Validate: canonical must still exist in customers.csv
+        # Validate: canonical must still exist in subjects.csv
         canonical_preprocessed = preprocess_name(entry["canonical"])
         if canonical_preprocessed not in target_names:
             return None
@@ -237,7 +237,7 @@ class EntityResolutionCache:
                 "match_pass": match_pass,
                 "match_type": match_type,
                 "confidence": confidence,
-                "entity_type": "customer",
+                "entity_type": "subject",
                 "first_seen_run": run_id,
                 "last_confirmed_run": run_id,
                 "confirmation_count": 1,

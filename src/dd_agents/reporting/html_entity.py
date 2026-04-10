@@ -62,7 +62,7 @@ class EntityDistributionRenderer(SectionRenderer):
         if entity_names:
             parts.append("<h3>Referenced Entities</h3>")
             parts.append(
-                "<table class='customer-table sortable'><thead><tr><th scope='col'>Entity Name</th></tr></thead><tbody>"
+                "<table class='subject-table sortable'><thead><tr><th scope='col'>Entity Name</th></tr></thead><tbody>"
             )
             for name in entity_names[:15]:
                 parts.append(f"<tr><td>{self.escape(str(name))}</td></tr>")
@@ -82,7 +82,7 @@ class EntityDistributionRenderer(SectionRenderer):
         if findings:
             parts.append("<h3>Entity-Related Findings</h3>")
             parts.append(
-                "<table class='customer-table sortable'><thead><tr>"
+                "<table class='subject-table sortable'><thead><tr>"
                 "<th scope='col'>Severity</th>"
                 "<th scope='col'>Entity</th>"
                 "<th scope='col'>Finding</th>"
@@ -91,8 +91,8 @@ class EntityDistributionRenderer(SectionRenderer):
             for f in findings[:15]:
                 sev = str(f.get("severity", "P3"))
                 title = self.escape(str(f.get("title", "")))
-                customer = self.escape(self._resolve_display_name(f))
-                parts.append(f"<tr><td>{self.severity_badge(sev)}</td><td>{customer}</td><td>{title}</td></tr>")
+                entity_name = self.escape(self._resolve_display_name(f))
+                parts.append(f"<tr><td>{self.severity_badge(sev)}</td><td>{entity_name}</td><td>{title}</td></tr>")
             parts.append("</tbody></table>")
 
         parts.append("</section>")

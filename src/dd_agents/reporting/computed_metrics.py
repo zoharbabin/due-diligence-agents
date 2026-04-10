@@ -1,6 +1,6 @@
 """Pre-computed report metrics engine (Issue #101, #113).
 
-Single-pass computation of ALL report metrics from merged customer outputs.
+Single-pass computation of ALL report metrics from merged subject outputs.
 Every renderer consumes ``ReportComputedData`` — no renderer computes its own metrics.
 
 Deterministic — no LLM calls. Pure data aggregation.
@@ -161,7 +161,7 @@ def _is_noise_gap(gap: dict[str, Any]) -> bool:
 
 
 def _clean_display_name(safe_name: str) -> str:
-    """Convert a customer safe_name to a human-readable display name.
+    """Convert a subject safe name to a human-readable display name.
 
     Examples:
         "1_5_customer_contracts" → "Customer Contracts"
@@ -418,7 +418,7 @@ CANONICAL_CATEGORIES: dict[str, dict[str, list[str]]] = {
             "customer_concentrat",
             "revenue_concentrat",
             "single_customer",
-            "top_customer_risk",
+            "top_subject_risk",
             "dependency_risk",
         ],
         "Pricing & Discounts": [
@@ -722,8 +722,8 @@ class ReportComputedData(BaseModel):
     # Deal-level counts
     total_findings: int = 0
     total_gaps: int = 0
-    total_customers: int = 0
-    customers_analyzed: int = 0
+    total_subjects: int = 0
+    subjects_analyzed: int = 0
 
     # Severity breakdown
     findings_by_severity: dict[str, int] = Field(default_factory=lambda: {"P0": 0, "P1": 0, "P2": 0, "P3": 0})
@@ -742,8 +742,8 @@ class ReportComputedData(BaseModel):
     deal_risk_label: str = "Clean"
     domain_risk_scores: dict[str, float] = Field(default_factory=dict)
     domain_risk_labels: dict[str, str] = Field(default_factory=dict)
-    customer_risk_scores: dict[str, float] = Field(default_factory=dict)
-    top_customers_by_risk: list[str] = Field(default_factory=list)
+    subject_risk_scores: dict[str, float] = Field(default_factory=dict)
+    top_subjects_by_risk: list[str] = Field(default_factory=list)
 
     # Domain severity matrix: domain -> severity -> count
     domain_severity: dict[str, dict[str, int]] = Field(default_factory=dict)
@@ -772,7 +772,7 @@ class ReportComputedData(BaseModel):
     # Wolf pack P0 only (capped at 15, for Deal Breakers section)
     wolf_pack_p0: list[dict[str, Any]] = Field(default_factory=list)
 
-    # All findings enriched with _customer_safe_name and _customer
+    # All findings enriched with _subject_safe_name and _subject
     all_findings: list[dict[str, Any]] = Field(default_factory=list)
 
     # Category-domain matrices (for heat map)
@@ -806,16 +806,16 @@ class ReportComputedData(BaseModel):
 
     # TfC analysis (valuation concern, separate from termination)
     tfc_findings: list[dict[str, Any]] = Field(default_factory=list)
-    tfc_customers_affected: int = 0
+    tfc_subjects_affected: int = 0
 
     # CoC analysis
-    coc_customers_affected: int = 0
-    consent_required_customers: int = 0
+    coc_subjects_affected: int = 0
+    consent_required_subjects: int = 0
 
-    # Customer health tiers
-    tier1_customers: list[str] = Field(default_factory=list, description="P0 findings — immediate attention")
-    tier2_customers: list[str] = Field(default_factory=list, description="P1 findings — medium risk")
-    tier3_customers: list[str] = Field(default_factory=list, description="P2/P3 only — lower risk")
+    # Subject health tiers
+    tier1_subjects: list[str] = Field(default_factory=list, description="P0 findings — immediate attention")
+    tier2_subjects: list[str] = Field(default_factory=list, description="P1 findings — medium risk")
+    tier3_subjects: list[str] = Field(default_factory=list, description="P2/P3 only — lower risk")
 
     # Financial extraction (best-effort regex from finding text)
     extracted_amounts: list[dict[str, Any]] = Field(default_factory=list)
@@ -827,9 +827,9 @@ class ReportComputedData(BaseModel):
     # Section RAG status (red/amber/green per section)
     section_rag: dict[str, str] = Field(default_factory=dict)
 
-    # Per-customer P0/P1 summary for customer-level tables
-    customer_p0_summary: list[dict[str, Any]] = Field(default_factory=list)
-    customer_p1_summary: list[dict[str, Any]] = Field(default_factory=list)
+    # Per-subject P0/P1 summary for subject-level tables
+    subject_p0_summary: list[dict[str, Any]] = Field(default_factory=list)
+    subject_p1_summary: list[dict[str, Any]] = Field(default_factory=list)
 
     # --- Rendering overhaul: material vs noise separation ---
 
@@ -866,14 +866,14 @@ class ReportComputedData(BaseModel):
     # --- Issue #115: SaaS Health Metrics ---
     saas_metrics: dict[str, Any] = Field(
         default_factory=dict,
-        description="SaaS health metrics: total_customers, avg_contract_value, tier_distribution, etc.",
+        description="SaaS health metrics: total_subjects, avg_contract_value, tier_distribution, etc.",
     )
 
     # --- Issue #125: Red Flag Scan (quick-scan mode) ---
     red_flag_scan: dict[str, Any] | None = None
 
     # --- Issue #102: Revenue-at-Risk & Financial Impact ---
-    revenue_by_customer: dict[str, float] = Field(default_factory=dict)
+    revenue_by_subject: dict[str, float] = Field(default_factory=dict)
     total_contracted_arr: float = 0.0
     risk_adjusted_arr: float = 0.0
     revenue_data_coverage: float = 0.0
@@ -895,12 +895,12 @@ class ReportComputedData(BaseModel):
     # --- Issue #135: Discount & Pricing Analysis ---
     discount_analysis: dict[str, Any] = Field(
         default_factory=lambda: {
-            "customers_with_discounts": 0,
+            "subjects_with_discounts": 0,
             "total_pricing_findings": 0,
             "distribution": {},
             "findings": [],
         },
-        description="Discount and pricing analysis: distribution, top discounted customers",
+        description="Discount and pricing analysis: distribution, top discounted subjects",
     )
 
     # --- Issue #136: Renewal & Contract Expiry Analysis ---
@@ -1008,7 +1008,7 @@ class ReportComputedData(BaseModel):
     # --- Issue #138: Product Adoption Matrix ---
     product_adoption: dict[str, Any] = Field(
         default_factory=dict,
-        description="Product adoption: products, customer-product matrix, single-product risk",
+        description="Product adoption: products, subject-product matrix, single-product risk",
     )
 
     # --- Issue #144: Language Distribution ---
@@ -1150,23 +1150,23 @@ class ReportDataComputer:
         return min(round(raw, 1), 100.0)
 
     @staticmethod
-    def _compute_hhi(customer_finding_counts: dict[str, int]) -> float:
+    def _compute_hhi(subject_finding_counts: dict[str, int]) -> float:
         """Compute Herfindahl-Hirschman Index from finding distribution.
 
         HHI = sum((share_i * 100)^2) where share_i = count_i / total.
-        Range: 10000/N (equal) to 10000 (single customer).
+        Range: 10000/N (equal) to 10000 (single subject).
         """
-        total = sum(customer_finding_counts.values())
+        total = sum(subject_finding_counts.values())
         if total == 0:
             return 0.0
-        return sum(((count / total) * 100) ** 2 for count in customer_finding_counts.values())
+        return sum(((count / total) * 100) ** 2 for count in subject_finding_counts.values())
 
     def compute(
         self,
         merged_data: dict[str, Any],
         executive_synthesis: dict[str, Any] | None = None,
     ) -> ReportComputedData:
-        """Compute all metrics in one pass from merged customer output dicts."""
+        """Compute all metrics in one pass from merged subject output dicts."""
         total_findings = 0
         total_gaps = 0
         severity_counts: dict[str, int] = {"P0": 0, "P1": 0, "P2": 0, "P3": 0}
@@ -1183,8 +1183,8 @@ class ReportDataComputer:
         gap_priority_counts: dict[str, int] = defaultdict(int)
         gap_type_counts: dict[str, int] = defaultdict(int)
         governance_scores: dict[str, float] = {}
-        customer_finding_counts: dict[str, int] = defaultdict(int)
-        customer_risk_raw: dict[str, dict[str, int]] = defaultdict(lambda: {"P0": 0, "P1": 0, "P2": 0, "P3": 0})
+        subject_finding_counts: dict[str, int] = defaultdict(int)
+        subject_risk_raw: dict[str, dict[str, int]] = defaultdict(lambda: {"P0": 0, "P1": 0, "P2": 0, "P3": 0})
 
         # Cross-reference tracking
         total_xrefs = 0
@@ -1208,7 +1208,7 @@ class ReportDataComputer:
 
             total_findings += len(findings)
             total_gaps += len(gaps)
-            customer_finding_counts[csn] = len(findings)
+            subject_finding_counts[csn] = len(findings)
 
             # Governance
             gov = data.get("governance_resolution_pct")
@@ -1240,12 +1240,12 @@ class ReportDataComputer:
                 sev = str(f.get("severity", "P3"))
                 if sev in severity_counts:
                     severity_counts[sev] += 1
-                if sev in customer_risk_raw[csn]:
-                    customer_risk_raw[csn][sev] += 1
+                if sev in subject_risk_raw[csn]:
+                    subject_risk_raw[csn][sev] += 1
 
                 agent = str(f.get("agent", "")).lower()
                 domain = self._agent_to_domain(agent)
-                enriched = {**f, "_customer_safe_name": csn, "_customer": data.get("customer", csn)}
+                enriched = {**f, "_subject_safe_name": csn, "_subject": data.get("subject", csn)}
                 domain_findings_count[domain] += 1
                 if domain in domain_severity and sev in domain_severity[domain]:
                     domain_severity[domain][sev] += 1
@@ -1299,16 +1299,16 @@ class ReportDataComputer:
             domain_risk_scores[d] = self._compute_risk_score(domain_severity.get(d, {}))
             domain_risk_labels[d] = self._compute_risk_label(domain_severity.get(d, {}))
 
-        customer_risk_scores: dict[str, float] = {}
-        for csn, sev_dict in customer_risk_raw.items():
-            customer_risk_scores[csn] = self._compute_risk_score(sev_dict)
+        subject_risk_scores: dict[str, float] = {}
+        for csn, sev_dict in subject_risk_raw.items():
+            subject_risk_scores[csn] = self._compute_risk_score(sev_dict)
 
-        top_customers = sorted(customer_risk_scores.keys(), key=lambda c: customer_risk_scores[c], reverse=True)
+        top_subjects = sorted(subject_risk_scores.keys(), key=lambda c: subject_risk_scores[c], reverse=True)
 
         avg_gov = sum(governance_scores.values()) / len(governance_scores) if governance_scores else 0.0
         unresolved = sum(1 for v in governance_scores.values() if v < 100.0)
 
-        concentration_hhi = self._compute_hhi(customer_finding_counts)
+        concentration_hhi = self._compute_hhi(subject_finding_counts)
 
         match_rate = xref_matches / total_xrefs if total_xrefs > 0 else 0.0
 
@@ -1350,19 +1350,19 @@ class ReportDataComputer:
                 continue
             for g in data.get("gaps", []):
                 if isinstance(g, dict):
-                    all_gaps_flat.append({**g, "_customer": data.get("customer", csn), "_customer_safe_name": csn})
+                    all_gaps_flat.append({**g, "_subject": data.get("subject", csn), "_subject_safe_name": csn})
         material_gaps_list = [g for g in all_gaps_flat if not _is_noise_gap(g)]
         noise_gaps_list = [g for g in all_gaps_flat if _is_noise_gap(g)]
 
         # --- Issue #102: Revenue-at-Risk ---
-        revenue_by_customer = self._extract_revenue_from_cross_refs(merged_data)
-        total_contracted_arr = sum(revenue_by_customer.values())
+        revenue_by_subject = self._extract_revenue_from_cross_refs(merged_data)
+        total_contracted_arr = sum(revenue_by_subject.values())
 
         # --- Issue #113: Topic classification, health tiers, recommendations ---
         topic_findings = self._classify_by_topic(all_findings)
         extracted_amounts, total_arr = self._extract_financials(all_findings)
-        tier1, tier2, tier3 = self._compute_health_tiers(customer_risk_raw, merged_data)
-        customer_p0_summary, customer_p1_summary = self._build_customer_severity_tables(merged_data, customer_risk_raw)
+        tier1, tier2, tier3 = self._compute_health_tiers(subject_risk_raw, merged_data)
+        subject_p0_summary, subject_p1_summary = self._build_subject_severity_tables(merged_data, subject_risk_raw)
         recommendations = self._generate_recommendations(
             severity_counts,
             topic_findings,
@@ -1382,19 +1382,19 @@ class ReportDataComputer:
         )
 
         # --- Issue #102: Waterfall and treemap ---
-        risk_waterfall = self._compute_risk_waterfall(revenue_by_customer, topic_findings)
-        # Total exposure = union of unique customers across ALL categories to avoid
-        # double-counting when one customer has findings in multiple categories.
+        risk_waterfall = self._compute_risk_waterfall(revenue_by_subject, topic_findings)
+        # Total exposure = union of unique subjects across ALL categories to avoid
+        # double-counting when one subject has findings in multiple categories.
         all_at_risk_csns: set[str] = set()
         for cat_data in risk_waterfall.values():
-            all_at_risk_csns.update(cat_data.get("customers", []))
-        total_risk_exposure = sum(revenue_by_customer.get(csn, 0.0) for csn in all_at_risk_csns)
+            all_at_risk_csns.update(cat_data.get("subjects", []))
+        total_risk_exposure = sum(revenue_by_subject.get(csn, 0.0) for csn in all_at_risk_csns)
         risk_adjusted_arr = max(0.0, total_contracted_arr - total_risk_exposure)
-        customers_with_revenue = len(revenue_by_customer)
-        revenue_data_coverage = customers_with_revenue / len(merged_data) if merged_data else 0.0
+        subjects_with_revenue = len(revenue_by_subject)
+        revenue_data_coverage = subjects_with_revenue / len(merged_data) if merged_data else 0.0
         concentration_treemap = self._build_concentration_treemap(
-            revenue_by_customer,
-            customer_risk_raw,
+            revenue_by_subject,
+            subject_risk_raw,
             display_names,
         )
 
@@ -1410,7 +1410,7 @@ class ReportDataComputer:
                 low_conf_count += 1
 
         # --- Issue #115: SaaS health metrics ---
-        saas_metrics = self._compute_saas_metrics(revenue_by_customer, merged_data)
+        saas_metrics = self._compute_saas_metrics(revenue_by_subject, merged_data)
 
         # --- Wave 1 analyses ---
         # Count recalibrated findings for provenance audit trail
@@ -1443,7 +1443,7 @@ class ReportDataComputer:
         entity_domains: dict[str, set[str]] = defaultdict(set)
         entity_sevs: dict[str, list[str]] = defaultdict(list)
         for f in material_findings:
-            csn = f.get("_customer_safe_name", "")
+            csn = f.get("_subject_safe_name", "")
             dom = self._agent_to_domain(f.get("agent", ""))
             if csn and dom:
                 entity_domains[csn].add(dom)
@@ -1501,8 +1501,8 @@ class ReportDataComputer:
         return ReportComputedData(
             total_findings=total_findings,
             total_gaps=total_gaps,
-            total_customers=len(merged_data),
-            customers_analyzed=len(merged_data),
+            total_subjects=len(merged_data),
+            subjects_analyzed=len(merged_data),
             findings_by_severity=severity_counts,
             findings_by_domain=dict(domain_findings_count),
             findings_by_category={k: v for k, v in findings_by_category.items()},
@@ -1518,8 +1518,8 @@ class ReportDataComputer:
             deal_risk_label=deal_risk_label,
             domain_risk_scores=domain_risk_scores,
             domain_risk_labels=domain_risk_labels,
-            customer_risk_scores=customer_risk_scores,
-            top_customers_by_risk=top_customers,
+            subject_risk_scores=subject_risk_scores,
+            top_subjects_by_risk=top_subjects,
             domain_severity=domain_severity,
             concentration_hhi=concentration_hhi,
             gaps_by_priority=dict(gap_priority_counts),
@@ -1547,25 +1547,25 @@ class ReportDataComputer:
             tech_debt_findings=topic_findings.get("tech_debt", []),
             security_findings=topic_findings.get("security", []),
             tfc_findings=topic_findings.get("tfc", []),
-            tfc_customers_affected=len({f.get("_customer_safe_name") for f in topic_findings.get("tfc", [])}),
-            coc_customers_affected=len({f.get("_customer_safe_name") for f in topic_findings.get("coc", [])}),
-            consent_required_customers=len(
+            tfc_subjects_affected=len({f.get("_subject_safe_name") for f in topic_findings.get("tfc", [])}),
+            coc_subjects_affected=len({f.get("_subject_safe_name") for f in topic_findings.get("coc", [])}),
+            consent_required_subjects=len(
                 {
-                    f.get("_customer_safe_name")
+                    f.get("_subject_safe_name")
                     for f in topic_findings.get("coc", [])
                     if "consent" in str(f.get("title", "")).lower()
                     or "consent" in str(f.get("description", "")).lower()
                 }
             ),
-            tier1_customers=tier1,
-            tier2_customers=tier2,
-            tier3_customers=tier3,
+            tier1_subjects=tier1,
+            tier2_subjects=tier2,
+            tier3_subjects=tier3,
             extracted_amounts=extracted_amounts,
             total_arr_mentioned=total_arr,
             recommendations=recommendations,
             section_rag=section_rag,
-            customer_p0_summary=customer_p0_summary,
-            customer_p1_summary=customer_p1_summary,
+            subject_p0_summary=subject_p0_summary,
+            subject_p1_summary=subject_p1_summary,
             # Rendering overhaul fields
             material_findings=material_findings,
             noise_findings=noise_findings_list,
@@ -1582,7 +1582,7 @@ class ReportDataComputer:
             noise_gaps=noise_gaps_list,
             executive_synthesis=executive_synthesis,
             # Issue #102: Revenue-at-Risk
-            revenue_by_customer=revenue_by_customer,
+            revenue_by_subject=revenue_by_subject,
             total_contracted_arr=total_contracted_arr,
             risk_adjusted_arr=risk_adjusted_arr,
             revenue_data_coverage=revenue_data_coverage,
@@ -1676,8 +1676,8 @@ class ReportDataComputer:
             for amt in amounts:
                 extracted.append(
                     {
-                        "customer": f.get("_customer", ""),
-                        "customer_safe_name": f.get("_customer_safe_name", ""),
+                        "subject": f.get("_subject", ""),
+                        "subject_safe_name": f.get("_subject_safe_name", ""),
                         "amount": amt,
                         "source_finding": f.get("title", ""),
                         "severity": f.get("severity", "P3"),
@@ -1706,11 +1706,11 @@ class ReportDataComputer:
     def _extract_revenue_from_cross_refs(
         merged_data: dict[str, Any],
     ) -> dict[str, float]:
-        """Extract per-customer revenue from cross-reference data points.
+        """Extract per-subject revenue from cross-reference data points.
 
         Looks for data_point fields containing revenue keywords.
         Prefers reference_value (authoritative) over contract_value.
-        Returns ``{customer_safe_name: best_revenue_estimate}``.
+        Returns ``{subject_safe_name: best_revenue_estimate}``.
         """
         revenue: dict[str, float] = {}
         for csn, data in merged_data.items():
@@ -1738,13 +1738,13 @@ class ReportDataComputer:
 
     @staticmethod
     def _compute_risk_waterfall(
-        revenue_by_customer: dict[str, float],
+        revenue_by_subject: dict[str, float],
         topic_findings: dict[str, list[dict[str, Any]]],
     ) -> dict[str, dict[str, Any]]:
         """Compute revenue-at-risk waterfall by risk category.
 
-        Each category maps affected customers (via findings) to their revenue.
-        Returns ``{category: {"amount": float, "contracts": int, "customers": [str]}}``.
+        Each category maps affected subjects (via findings) to their revenue.
+        Returns ``{category: {"amount": float, "contracts": int, "subjects": [str]}}``.
         """
         waterfall: dict[str, dict[str, Any]] = {}
 
@@ -1759,37 +1759,37 @@ class ReportDataComputer:
             findings = topic_findings.get(topic_key, [])
             affected_csns: set[str] = set()
             for f in findings:
-                csn = f.get("_customer_safe_name", "")
+                csn = f.get("_subject_safe_name", "")
                 if csn:
                     affected_csns.add(csn)
 
-            amount = sum(revenue_by_customer.get(csn, 0.0) for csn in affected_csns)
+            amount = sum(revenue_by_subject.get(csn, 0.0) for csn in affected_csns)
             if amount > 0 or affected_csns:
                 waterfall[waterfall_key] = {
                     "amount": amount,
                     "contracts": len(affected_csns),
-                    "customers": sorted(affected_csns),
+                    "subjects": sorted(affected_csns),
                 }
 
         return waterfall
 
     @staticmethod
     def _build_concentration_treemap(
-        revenue_by_customer: dict[str, float],
-        customer_risk_raw: dict[str, dict[str, int]],
+        revenue_by_subject: dict[str, float],
+        subject_risk_raw: dict[str, dict[str, int]],
         display_names: dict[str, str],
     ) -> list[dict[str, Any]]:
         """Build treemap data sorted by revenue descending.
 
-        Each entry: ``{customer_safe_name, display_name, revenue, pct, risk_level}``.
+        Each entry: ``{subject_safe_name, display_name, revenue, pct, risk_level}``.
         """
-        total = sum(revenue_by_customer.values())
+        total = sum(revenue_by_subject.values())
         if total <= 0:
             return []
 
         treemap: list[dict[str, Any]] = []
-        for csn, rev in revenue_by_customer.items():
-            sev = customer_risk_raw.get(csn, {})
+        for csn, rev in revenue_by_subject.items():
+            sev = subject_risk_raw.get(csn, {})
             if sev.get("P0", 0) > 0:
                 risk = "critical"
             elif sev.get("P1", 0) > 0:
@@ -1800,7 +1800,7 @@ class ReportDataComputer:
                 risk = "low"
             treemap.append(
                 {
-                    "customer_safe_name": csn,
+                    "subject_safe_name": csn,
                     "display_name": display_names.get(csn, csn),
                     "revenue": rev,
                     "pct": round(rev / total * 100, 1),
@@ -1813,28 +1813,28 @@ class ReportDataComputer:
 
     @staticmethod
     def _compute_saas_metrics(
-        revenue_by_customer: dict[str, float],
+        revenue_by_subject: dict[str, float],
         merged_data: dict[str, Any],
     ) -> dict[str, Any]:
-        """Compute SaaS health metrics from revenue and customer data.
+        """Compute SaaS health metrics from revenue and subject data.
 
-        Returns a dict with: total_customers, customers_with_revenue,
+        Returns a dict with: total_subjects, subjects_with_revenue,
         avg_contract_value, top_customer_pct, tier_distribution,
         nrr_estimate, grr_estimate, expansion_signals, contraction_signals, benchmarks.
         """
-        total_customers = len(merged_data)
-        customers_with_revenue = len(revenue_by_customer)
-        total_arr = sum(revenue_by_customer.values())
+        total_subjects = len(merged_data)
+        subjects_with_revenue = len(revenue_by_subject)
+        total_arr = sum(revenue_by_subject.values())
 
-        avg_cv = total_arr / customers_with_revenue if customers_with_revenue > 0 else 0.0
+        avg_cv = total_arr / subjects_with_revenue if subjects_with_revenue > 0 else 0.0
 
         # Top customer concentration
-        sorted_rev = sorted(revenue_by_customer.values(), reverse=True)
+        sorted_rev = sorted(revenue_by_subject.values(), reverse=True)
         top_pct = (sorted_rev[0] / total_arr * 100) if sorted_rev and total_arr > 0 else 0.0
 
         # Tier distribution: Enterprise (>$100K), Mid-Market ($25K-$100K), SMB (<$25K)
         tiers: dict[str, int] = {"Enterprise": 0, "Mid-Market": 0, "SMB": 0}
-        for rev in revenue_by_customer.values():
+        for rev in revenue_by_subject.values():
             if rev >= 100_000:
                 tiers["Enterprise"] += 1
             elif rev >= 25_000:
@@ -1869,13 +1869,13 @@ class ReportDataComputer:
         nrr_raw = 100.0 + (expansion_count - contraction_count) * 5.0
         nrr_estimate = max(70.0, min(150.0, nrr_raw))
 
-        # Heuristic GRR: 100 - contraction_count/total_customers * 20, capped 50-100
-        grr_raw = 100.0 - contraction_count / total_customers * 20.0 if total_customers > 0 else 100.0
+        # Heuristic GRR: 100 - contraction_count/total_subjects * 20, capped 50-100
+        grr_raw = 100.0 - contraction_count / total_subjects * 20.0 if total_subjects > 0 else 100.0
         grr_estimate = max(50.0, min(100.0, grr_raw))
 
         # --- Issue #115: Logo retention (heuristic) ---
         # Estimate from churn signals: each churn signal represents ~1 lost logo
-        churn_rate = contraction_count / total_customers if total_customers > 0 else 0.0
+        churn_rate = contraction_count / total_subjects if total_subjects > 0 else 0.0
         logo_retention_pct = max(50.0, min(100.0, round((1.0 - churn_rate) * 100, 1)))
 
         # --- Issue #115: CLV estimate ---
@@ -1897,8 +1897,8 @@ class ReportDataComputer:
         }
 
         return {
-            "total_customers": total_customers,
-            "customers_with_revenue": customers_with_revenue,
+            "total_subjects": total_subjects,
+            "subjects_with_revenue": subjects_with_revenue,
             "avg_contract_value": avg_cv,
             "top_customer_pct": round(top_pct, 1),
             "tier_distribution": tiers,
@@ -1914,14 +1914,14 @@ class ReportDataComputer:
 
     @staticmethod
     def _compute_health_tiers(
-        customer_risk_raw: dict[str, dict[str, int]],
+        subject_risk_raw: dict[str, dict[str, int]],
         merged_data: dict[str, Any],
     ) -> tuple[list[str], list[str], list[str]]:
-        """Classify customers into Tier 1/2/3 health tiers."""
+        """Classify subjects into Tier 1/2/3 health tiers."""
         tier1: list[str] = []
         tier2: list[str] = []
         tier3: list[str] = []
-        for csn, sev_dict in customer_risk_raw.items():
+        for csn, sev_dict in subject_risk_raw.items():
             display = _clean_display_name(csn)
             if sev_dict.get("P0", 0) > 0:
                 tier1.append(display)
@@ -1932,18 +1932,18 @@ class ReportDataComputer:
         return sorted(tier1), sorted(tier2), sorted(tier3)
 
     @staticmethod
-    def _build_customer_severity_tables(
+    def _build_subject_severity_tables(
         merged_data: dict[str, Any],
-        customer_risk_raw: dict[str, dict[str, int]],
+        subject_risk_raw: dict[str, dict[str, int]],
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        """Build customer-level P0/P1 summary tables for executive view."""
+        """Build subject-level P0/P1 summary tables for executive view."""
         p0_rows: list[dict[str, Any]] = []
         p1_rows: list[dict[str, Any]] = []
-        for csn, sev_dict in customer_risk_raw.items():
+        for csn, sev_dict in subject_risk_raw.items():
             data = merged_data.get(csn, {})
             if not isinstance(data, dict):
                 continue
-            display = data.get("customer", csn)
+            display = data.get("subject", csn)
             findings = data.get("findings", [])
             if not isinstance(findings, list):
                 findings = []
@@ -1952,7 +1952,7 @@ class ReportDataComputer:
             total = sum(sev_dict.values())
             # Collect first P0/P1 finding title as representative issue.
             # Apply recalibration so titles match the recalibrated counts in
-            # customer_risk_raw (which was built from recalibrated findings).
+            # subject_risk_raw (which was built from recalibrated findings).
             first_p0 = ""
             first_p1 = ""
             for f in findings:
@@ -1966,8 +1966,8 @@ class ReportDataComputer:
             if p0_count > 0:
                 p0_rows.append(
                     {
-                        "customer": display,
-                        "customer_safe_name": csn,
+                        "subject": display,
+                        "subject_safe_name": csn,
                         "p0_count": p0_count,
                         "total_findings": total,
                         "primary_issue": first_p0,
@@ -1976,8 +1976,8 @@ class ReportDataComputer:
             if p1_count > 0:
                 p1_rows.append(
                     {
-                        "customer": display,
-                        "customer_safe_name": csn,
+                        "subject": display,
+                        "subject_safe_name": csn,
                         "p1_count": p1_count,
                         "total_findings": total,
                         "primary_issue": first_p1,
@@ -1995,7 +1995,7 @@ class ReportDataComputer:
         total_findings: int,
         governance_scores: dict[str, float],
         concentration_hhi: float,
-        total_customers: int,
+        total_subjects: int,
     ) -> list[dict[str, str]]:
         """Generate prioritized recommendations from data patterns."""
         recs: list[dict[str, str]] = []
@@ -2022,7 +2022,7 @@ class ReportDataComputer:
 
         if coc_count > 0:
             coc_findings_list = topic_findings.get("coc", [])
-            coc_customers = len({f.get("_customer_safe_name") for f in coc_findings_list})
+            coc_subjects = len({f.get("_subject_safe_name") for f in coc_findings_list})
             consent_count = sum(
                 1
                 for f in coc_findings_list
@@ -2034,7 +2034,7 @@ class ReportDataComputer:
                 if "notification" in str(f.get("title", "")).lower()
                 or "notify" in str(f.get("description", "")).lower()
             )
-            desc_parts = [f"{coc_count} change-of-control findings across {coc_customers} entities."]
+            desc_parts = [f"{coc_count} change-of-control findings across {coc_subjects} entities."]
             if consent_count > 0:
                 desc_parts.append(
                     f"{consent_count} require consent — initiate outreach to key customers. "
@@ -2048,7 +2048,7 @@ class ReportDataComputer:
                 {
                     "timeline": "Pre-Close",
                     "priority": "High",
-                    "title": f"Obtain Assignment Consent from {coc_customers} Entities",
+                    "title": f"Obtain Assignment Consent from {coc_subjects} Entities",
                     "description": " ".join(desc_parts),
                 }
             )
@@ -2056,12 +2056,12 @@ class ReportDataComputer:
         # TfC recommendation — valuation concern, not deal-blocker
         tfc_count = len(topic_findings.get("tfc", []))
         if tfc_count > 0:
-            tfc_customers = len({f.get("_customer_safe_name") for f in topic_findings.get("tfc", [])})
+            tfc_subjects = len({f.get("_subject_safe_name") for f in topic_findings.get("tfc", [])})
             recs.append(
                 {
                     "timeline": "Valuation",
                     "priority": "Medium",
-                    "title": f"Model TfC Revenue Exposure for {tfc_customers} Entities",
+                    "title": f"Model TfC Revenue Exposure for {tfc_subjects} Entities",
                     "description": (
                         "Revenue from TfC contracts is non-committed. Model as at-risk ARR in valuation analysis."
                     ),
@@ -2139,22 +2139,22 @@ class ReportDataComputer:
             )
 
         # Positive finding
-        clean_customers = total_customers - len(
+        clean_subjects = total_subjects - len(
             {
-                f.get("_customer_safe_name")
+                f.get("_subject_safe_name")
                 for findings in topic_findings.values()
                 for f in findings
                 if f.get("severity") in ("P0", "P1")
             }
         )
-        if clean_customers > 0:
+        if clean_subjects > 0:
             recs.append(
                 {
                     "timeline": "Positive",
                     "priority": "Good",
-                    "title": f"{clean_customers} Entities Have No Critical/High Findings",
+                    "title": f"{clean_subjects} Entities Have No Critical/High Findings",
                     "description": (
-                        f"{clean_customers} of {total_customers} entities analyzed "
+                        f"{clean_subjects} of {total_subjects} entities analyzed "
                         "have no P0 or P1 findings, indicating a healthy base "
                         "of low-risk contracts."
                     ),
@@ -2288,7 +2288,7 @@ class ReportDataComputer:
     ) -> dict[str, Any]:
         """Extract discount and pricing analysis from findings."""
         pricing_findings: list[dict[str, Any]] = []
-        customers_with_discounts: set[str] = set()
+        subjects_with_discounts: set[str] = set()
         distribution: dict[str, int] = {"0-10%": 0, "10-25%": 0, "25-50%": 0, ">50%": 0}
         all_discount_pcts: list[float] = []
         entity_discounts: dict[str, float] = {}  # csn -> max discount pct
@@ -2317,9 +2317,9 @@ class ReportDataComputer:
                     except (ValueError, TypeError):
                         continue
                     all_discount_pcts.append(pct)
-                    csn = f.get("_customer_safe_name", "")
+                    csn = f.get("_subject_safe_name", "")
                     if csn:
-                        customers_with_discounts.add(csn)
+                        subjects_with_discounts.add(csn)
                         if pct > entity_discounts.get(csn, 0.0):
                             entity_discounts[csn] = pct
                     if pct <= 10:
@@ -2342,7 +2342,7 @@ class ReportDataComputer:
         top_discounted: list[dict[str, Any]] = _disc_list[:5]
 
         return {
-            "customers_with_discounts": len(customers_with_discounts),
+            "subjects_with_discounts": len(subjects_with_discounts),
             "total_pricing_findings": len(pricing_findings),
             "distribution": distribution,
             "findings": pricing_findings[:20],
@@ -2470,11 +2470,11 @@ class ReportDataComputer:
         dpa_entities: set[str] = set()
         total_entities: set[str] = set()
         for f in dpa_findings:
-            csn = f.get("_customer_safe_name", "")
+            csn = f.get("_subject_safe_name", "")
             if csn:
                 dpa_entities.add(csn)
         for f in all_findings:
-            csn = f.get("_customer_safe_name", "")
+            csn = f.get("_subject_safe_name", "")
             if csn:
                 total_entities.add(csn)
         dpa_coverage_pct = len(dpa_entities) / len(total_entities) * 100.0 if total_entities else 0.0
@@ -2648,11 +2648,11 @@ class ReportDataComputer:
                 or "corporate_struct" in cat
             ):
                 entity_findings.append(f)
-                csn = f.get("_customer_safe_name", "")
+                csn = f.get("_subject_safe_name", "")
                 if csn:
                     entities_mentioned.add(csn)
 
-        # Extract entity names from finding customer names
+        # Extract entity names from finding subject names
         entity_names: list[str] = sorted(entities_mentioned)
 
         # Migration risk scoring
@@ -3136,7 +3136,7 @@ class ReportDataComputer:
         """Compute product adoption matrix from findings and merged data."""
         prod_kw = ["product_scope", "platform", "module", "sku", "product_line", "product"]
         products_seen: set[str] = set()
-        customer_products: dict[str, set[str]] = {}
+        subject_products: dict[str, set[str]] = {}
 
         for f in all_findings:
             cat = str(f.get("category", "")).lower()
@@ -3146,7 +3146,7 @@ class ReportDataComputer:
             if not any(kw in combined for kw in prod_kw):
                 continue
 
-            csn = str(f.get("_customer_safe_name", ""))
+            csn = str(f.get("_subject_safe_name", ""))
             if not csn:
                 continue
 
@@ -3159,15 +3159,15 @@ class ReportDataComputer:
                     break
 
             products_seen.add(product_name)
-            if csn not in customer_products:
-                customer_products[csn] = set()
-            customer_products[csn].add(product_name)
+            if csn not in subject_products:
+                subject_products[csn] = set()
+            subject_products[csn].add(product_name)
 
-        if not products_seen or not customer_products:
+        if not products_seen or not subject_products:
             return {}
 
         sorted_products = sorted(products_seen)
-        matrix = {csn: sorted(prods) for csn, prods in customer_products.items()}
+        matrix = {csn: sorted(prods) for csn, prods in subject_products.items()}
 
         return {
             "products": sorted_products,

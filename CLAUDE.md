@@ -6,7 +6,7 @@ Python application for forensic M&A due diligence. Analyzes contract data rooms 
 
 **Package**: `dd-agents` on [PyPI](https://pypi.org/project/dd-agents/) / `dd_agents` under `src/dd_agents/`
 **Version**: see `pyproject.toml` (bump version there before tagging a release)
-**SDK**: `claude-agent-sdk` v0.1.39+ (Python 3.12+, tested on 3.12 and 3.13)
+**SDK**: `claude-agent-sdk>=0.1.56` (Python 3.12+, tested on 3.12 and 3.13)
 **Spec**: 24 plan docs in `docs/plan/`. Start with `docs/plan/PLAN.md`.
 
 ## Commands
@@ -57,8 +57,8 @@ dd-agents run path/to/deal-config.json
 - Pydantic v2 models with Field descriptions for every field
 - Async functions for pipeline steps
 - All JSON schemas validated via Pydantic `model_validate()`
-- `customer_safe_name`: lowercase, strip legal suffixes (Inc/Corp/LLC/Ltd), replace special chars with `_`, collapse underscores. Example: "Smith & Partners, Inc." → `smith_partners`
-- Reporting terminology: internal code uses "customer"; HTML/Excel report outputs use "Entity" for external-facing content
+- `subject_safe_name`: lowercase, strip legal suffixes (Inc/Corp/LLC/Ltd), replace special chars with `_`, collapse underscores. Example: "Smith & Partners, Inc." → `smith_partners`
+- Reporting terminology: internal code uses "subject"; HTML/Excel report outputs use "Entity" for external-facing content
 - Batch naming is 1-based: `batch_1`, `batch_2` (never `batch_0`)
 
 ## CI/CD
@@ -149,7 +149,7 @@ Update the phase status in IMPLEMENTATION_PLAN.md after completing each phase.
 
 - Don't implement a module without reading its spec doc first
 - Don't skip tests — write tests BEFORE implementation
-- Don't create aggregate files (e.g., `summary.json`, `all_findings.json`) — findings are always per-customer
+- Don't create aggregate files (e.g., `summary.json`, `all_findings.json`) — findings are always per-subject
 - Don't use `hookSpecificOutput` wrapper — PreToolUse hooks return flat `{"decision": ..., "reason": ...}`, Stop hooks use `{"continue_": ..., "stopReason": ...}`
 - Don't use 0-based batch naming — batches start at 1
 - Don't modify PERMANENT tier files during runs (only extraction creates them)
@@ -170,9 +170,9 @@ Update the phase status in IMPLEMENTATION_PLAN.md after completing each phase.
 ## Sensitive Data Policy
 
 - No real company names, people's names, financial data, or addresses in source code, tests, or documentation
-- Tests use generic placeholders (`"Customer A"`, `"file_1.pdf"`)
-- Example prompts use `"[CUSTOMER]"`, `"[DOCUMENT]"`
-- Commit messages must not reference real customer data
+- Tests use generic placeholders (`"Subject A"`, `"file_1.pdf"`)
+- Example prompts use `"[SUBJECT]"`, `"[DOCUMENT]"`
+- Commit messages must not reference real subject data
 - No data room content in source, tests, or commits
 
 ## Search Module Guidelines

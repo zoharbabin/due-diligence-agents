@@ -91,7 +91,7 @@ class GapRenderer(SectionRenderer):
                 )
                 for g in material_gaps:
                     display_name = self._resolve_display_name(g)
-                    customer = html.escape(display_name)
+                    entity_name = html.escape(display_name)
                     prio = html.escape(str(g.get("priority", "")))
                     gtype = html.escape(str(g.get("gap_type", "")))
                     item = html.escape(str(g.get("missing_item", "")))
@@ -100,7 +100,7 @@ class GapRenderer(SectionRenderer):
                     request = html.escape(str(g.get("request_to_company", "")))
                     agent = html.escape(str(g.get("agent", "")))
                     parts.append(
-                        f"<tr><td>{customer}</td><td>{prio}</td><td>{gtype}</td>"
+                        f"<tr><td>{entity_name}</td><td>{prio}</td><td>{gtype}</td>"
                         f"<td>{item}</td><td>{risk}</td><td>{why}</td><td>{request}</td><td>{agent}</td></tr>"
                     )
                 parts.append("</tbody></table>")
@@ -135,10 +135,10 @@ class GapRenderer(SectionRenderer):
                 )
                 for g in noise_gaps:
                     display_name = self._resolve_display_name(g)
-                    customer = html.escape(display_name)
+                    entity_name = html.escape(display_name)
                     item = html.escape(str(g.get("missing_item", "")))
                     risk = html.escape(str(g.get("risk_if_missing", "")))
-                    parts.append(f"<tr><td>{customer}</td><td>{item}</td><td>{risk}</td></tr>")
+                    parts.append(f"<tr><td>{entity_name}</td><td>{item}</td><td>{risk}</td></tr>")
                 parts.append("</tbody></table>")
 
             parts.append("</div></div>")

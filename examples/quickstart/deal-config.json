@@ -53,18 +53,18 @@
     "path": "examples/quickstart/sample_data_room",
     "groups": {
       "GroupA": {
-        "label": "Enterprise Customers",
-        "customers": ["Acme_Corp", "Beta_Inc"]
+        "label": "Enterprise Subjects",
+        "subjects": ["Acme_Corp", "Beta_Inc"]
       },
       "GroupB": {
-        "label": "SMB Customers",
-        "customers": ["Gamma_LLC"]
+        "label": "SMB Subjects",
+        "subjects": ["Gamma_LLC"]
       }
     },
     "reference_dir": "_reference"
   },
   "source_of_truth": {
-    "customer_database": null
+    "subject_database": null
   },
   "key_executives": [
     {

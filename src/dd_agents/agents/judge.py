@@ -134,7 +134,7 @@ class JudgeAgent(BaseAgentRunner):
         )
 
     def get_tools(self) -> list[str]:
-        return ["Read", "Write", "Glob", "Grep", "verify_citation", "get_customer_files"]
+        return ["Read", "Write", "Glob", "Grep", "verify_citation", "get_subject_files"]
 
     def build_prompt(self, state: dict[str, Any]) -> str:
         builder = PromptBuilder(self.project_dir, self.run_dir, self.run_id)

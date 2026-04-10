@@ -74,7 +74,7 @@ def _make_merged_data_rich() -> dict[str, object]:
     """Build a rich merged_data dict that exercises most report features."""
     return {
         "customer_a": {
-            "customer": "Customer A",
+            "subject": "Customer A",
             "findings": [
                 _make_finding(
                     severity="P0",
@@ -129,7 +129,7 @@ def _make_merged_data_rich() -> dict[str, object]:
             ],
         },
         "customer_b": {
-            "customer": "Customer B",
+            "subject": "Customer B",
             "findings": [
                 _make_finding(
                     severity="P1",
@@ -169,11 +169,11 @@ class TestHTMLReportGenerator:
         # Dashboard shows zero counts
         assert ">0</div>" in content  # At least one stat card with value 0
 
-    def test_single_customer_with_findings(self, tmp_path: Path) -> None:
-        """Customer name appears in output; finding title and description are rendered."""
+    def test_single_subject_with_findings(self, tmp_path: Path) -> None:
+        """Subject name appears in output; finding title and description are rendered."""
         merged = {
             "customer_a": {
-                "customer": "Customer A",
+                "subject": "Customer A",
                 "findings": [
                     _make_finding(
                         severity="P1",
@@ -207,7 +207,7 @@ class TestHTMLReportGenerator:
         ]
         merged = {
             "customer_a": {
-                "customer": "Customer A",
+                "subject": "Customer A",
                 "findings": findings,
                 "gaps": [],
             },
@@ -233,7 +233,7 @@ class TestHTMLReportGenerator:
         }
         merged = {
             "customer_a": {
-                "customer": "Customer A",
+                "subject": "Customer A",
                 "findings": [
                     _make_finding(
                         title="CoC clause",
@@ -258,7 +258,7 @@ class TestHTMLReportGenerator:
         """The output must not reference external resources via http/https src= or href=."""
         merged = {
             "customer_a": {
-                "customer": "Customer A",
+                "subject": "Customer A",
                 "findings": [_make_finding()],
                 "gaps": [_make_gap()],
             },
@@ -282,7 +282,7 @@ class TestHTMLReportGenerator:
         """Special characters in customer names and titles are HTML-escaped."""
         merged = {
             "customer_a": {
-                "customer": '<script>alert("XSS")</script> & "Customer A"',
+                "subject": '<script>alert("XSS")</script> & "Customer A"',
                 "findings": [
                     _make_finding(
                         title='Finding with <b>bold</b> & "quotes"',
@@ -307,7 +307,7 @@ class TestHTMLReportGenerator:
         # Escaped versions of finding title/description should be present
         assert "&amp;" in content  # from finding title '& "quotes"'
         assert "&lt;b&gt;" in content  # from finding title '<b>bold</b>'
-        # Customer name resolved from CSN ("customer_a" → "Customer A") — XSS string
+        # Subject name resolved from SSN ("customer_a" → "Customer A") — XSS string
         # never enters the output, which is stronger than escaping.
         assert "Customer A" in content
 
@@ -334,7 +334,7 @@ class TestHTMLReportGenerator:
         ]
         merged = {
             "customer_a": {
-                "customer": "Customer A",
+                "subject": "Customer A",
                 "findings": [],
                 "gaps": gaps,
             },
@@ -508,7 +508,7 @@ class TestHTMLReportGenerator:
 
         # Old-style call without run_metadata or deal_config
         gen.generate(
-            {"customer_a": {"customer": "Customer A", "findings": [_make_finding()], "gaps": []}},
+            {"customer_a": {"subject": "Customer A", "findings": [_make_finding()], "gaps": []}},
             out,
             run_id="run_old",
             title="Legacy Report",
@@ -558,7 +558,7 @@ class TestHTMLReportGenerator:
             "deal": {"type": "acquisition"},
         }
         gen.generate(
-            {"c1": {"customer": "C1", "findings": [], "gaps": []}},
+            {"c1": {"subject": "C1", "findings": [], "gaps": []}},
             out,
             deal_config=deal_config,
         )
@@ -582,7 +582,7 @@ class TestHTMLReportGenerator:
             },
         }
         gen.generate(
-            {"c1": {"customer": "C1", "findings": [], "gaps": []}},
+            {"c1": {"subject": "C1", "findings": [], "gaps": []}},
             out,
             run_metadata=run_metadata,
         )
@@ -603,7 +603,7 @@ class TestHTMLReportGenerator:
         assert "class='sidebar'" in content
         assert "href='#sec-heatmap'" in content
         assert "href='#sec-gaps'" in content
-        assert "href='#sec-customers'" in content
+        assert "href='#sec-subjects'" in content
 
     def test_print_mode_css(self, tmp_path: Path) -> None:
         """Print media query is present to expand all sections and hide nav."""
@@ -629,7 +629,7 @@ class TestHTMLReportGenerator:
         """Wolf pack shows empty message when no P0 or P1 findings exist."""
         merged = {
             "customer_a": {
-                "customer": "Customer A",
+                "subject": "Customer A",
                 "findings": [
                     _make_finding(severity="P2", title="Minor issue"),
                     _make_finding(severity="P3", title="Info only"),
@@ -648,7 +648,7 @@ class TestHTMLReportGenerator:
         """Single P0 → High risk (softened from Critical, Issue #113)."""
         merged = {
             "c": {
-                "customer": "C",
+                "subject": "C",
                 "findings": [_make_finding(severity="P0")],
                 "gaps": [],
             },
@@ -665,7 +665,7 @@ class TestHTMLReportGenerator:
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
         gen.generate(
-            {"c": {"customer": "C", "findings": [], "gaps": []}},
+            {"c": {"subject": "C", "findings": [], "gaps": []}},
             out,
         )
 

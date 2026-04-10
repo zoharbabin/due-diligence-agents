@@ -45,13 +45,13 @@ class TestOntologyModels:
         clause = ClauseNode(
             id="test:clause:1",
             document_path="contract.pdf",
-            customer_safe_name="acme",
+            subject_safe_name="acme",
             clause_type=ClauseType.CHANGE_OF_CONTROL,
             summary="CoC requires consent",
             exact_quote="Party shall obtain written consent...",
         )
         assert clause.clause_type == ClauseType.CHANGE_OF_CONTROL
-        assert clause.customer_safe_name == "acme"
+        assert clause.subject_safe_name == "acme"
 
     def test_document_relationship(self) -> None:
         rel = DocumentRelationship(
@@ -66,7 +66,7 @@ class TestOntologyModels:
         obl = Obligation(
             id="obl1",
             clause_id="clause1",
-            customer_safe_name="acme",
+            subject_safe_name="acme",
             obligor="Target Inc",
             obligee="Acme Corp",
             description="Provide 30-day notice before termination",
@@ -91,7 +91,7 @@ class TestContractKnowledgeGraph:
             ClauseNode(
                 id="acme:msa:coc",
                 document_path="acme_msa.pdf",
-                customer_safe_name="acme",
+                subject_safe_name="acme",
                 clause_type=ClauseType.CHANGE_OF_CONTROL,
                 summary="CoC requires written consent",
             )
@@ -100,7 +100,7 @@ class TestContractKnowledgeGraph:
             ClauseNode(
                 id="acme:msa:term",
                 document_path="acme_msa.pdf",
-                customer_safe_name="acme",
+                subject_safe_name="acme",
                 clause_type=ClauseType.TERMINATION,
                 summary="30-day termination for convenience",
             )
@@ -109,7 +109,7 @@ class TestContractKnowledgeGraph:
             ClauseNode(
                 id="acme:sow:obligation",
                 document_path="acme_sow.pdf",
-                customer_safe_name="acme",
+                subject_safe_name="acme",
                 clause_type=ClauseType.OBLIGATION,
                 summary="Monthly reporting requirement",
             )
@@ -118,7 +118,7 @@ class TestContractKnowledgeGraph:
             ClauseNode(
                 id="beta:msa:coc",
                 document_path="beta_msa.pdf",
-                customer_safe_name="beta",
+                subject_safe_name="beta",
                 clause_type=ClauseType.CHANGE_OF_CONTROL,
                 summary="CoC triggers automatic termination",
             )
@@ -142,11 +142,11 @@ class TestContractKnowledgeGraph:
     def test_get_clauses_by_type(self, graph: ContractKnowledgeGraph) -> None:
         coc = graph.get_clauses_by_type(ClauseType.CHANGE_OF_CONTROL)
         assert len(coc) == 2
-        customers = {c.customer_safe_name for c in coc}
+        customers = {c.subject_safe_name for c in coc}
         assert customers == {"acme", "beta"}
 
-    def test_get_clauses_by_customer(self, graph: ContractKnowledgeGraph) -> None:
-        acme_clauses = graph.get_clauses_by_customer("acme")
+    def test_get_clauses_by_subject(self, graph: ContractKnowledgeGraph) -> None:
+        acme_clauses = graph.get_clauses_by_subject("acme")
         assert len(acme_clauses) == 3
 
     def test_get_affected_documents(self, graph: ContractKnowledgeGraph) -> None:
@@ -161,7 +161,7 @@ class TestContractKnowledgeGraph:
         impacts = graph.coc_impact_analysis()
         assert len(impacts) == 2
         # Acme has an affected document, beta doesn't
-        acme_impact = next(i for i in impacts if i["customer"] == "acme")
+        acme_impact = next(i for i in impacts if i["subject"] == "acme")
         assert acme_impact["affected_count"] == 1
 
     def test_to_serializable(self, graph: ContractKnowledgeGraph) -> None:
@@ -222,7 +222,7 @@ class TestConflictDetection:
             ClauseNode(
                 id="acme:gov1",
                 document_path="a.pdf",
-                customer_safe_name="acme",
+                subject_safe_name="acme",
                 clause_type=ClauseType.GOVERNING_LAW,
                 summary="New York law",
             )
@@ -231,7 +231,7 @@ class TestConflictDetection:
             ClauseNode(
                 id="acme:gov2",
                 document_path="b.pdf",
-                customer_safe_name="acme",
+                subject_safe_name="acme",
                 clause_type=ClauseType.GOVERNING_LAW,
                 summary="California law",
             )
@@ -239,7 +239,7 @@ class TestConflictDetection:
         conflicts = g.find_conflicts()
         gov_conflicts = [c for c in conflicts if c.get("type") == "governing_law_conflict"]
         assert len(gov_conflicts) == 1
-        assert "acme" in gov_conflicts[0]["customer"]
+        assert "acme" in gov_conflicts[0]["subject"]
 
     def test_no_conflict_same_law(self) -> None:
         g = ContractKnowledgeGraph()
@@ -247,7 +247,7 @@ class TestConflictDetection:
             ClauseNode(
                 id="acme:gov1",
                 document_path="a.pdf",
-                customer_safe_name="acme",
+                subject_safe_name="acme",
                 clause_type=ClauseType.GOVERNING_LAW,
                 summary="New York law",
             )
@@ -256,7 +256,7 @@ class TestConflictDetection:
             ClauseNode(
                 id="acme:gov2",
                 document_path="b.pdf",
-                customer_safe_name="acme",
+                subject_safe_name="acme",
                 clause_type=ClauseType.GOVERNING_LAW,
                 summary="New York law",
             )
@@ -276,7 +276,7 @@ class TestObligationTracking:
             Obligation(
                 id="obl1",
                 clause_id="clause1",
-                customer_safe_name="acme",
+                subject_safe_name="acme",
                 obligor="Target",
                 obligee="Acme",
                 description="Monthly report",
@@ -293,7 +293,7 @@ class TestObligationTracking:
             Obligation(
                 id="obl2",
                 clause_id="c1",
-                customer_safe_name="acme",
+                subject_safe_name="acme",
                 obligor="T",
                 obligee="A",
                 description="Later",
@@ -304,7 +304,7 @@ class TestObligationTracking:
             Obligation(
                 id="obl1",
                 clause_id="c1",
-                customer_safe_name="acme",
+                subject_safe_name="acme",
                 obligor="T",
                 obligee="A",
                 description="Earlier",
@@ -338,7 +338,7 @@ class TestFromFindings:
     def _make_merged(self) -> dict[str, Any]:
         return {
             "acme": {
-                "customer": "Acme",
+                "subject": "Acme",
                 "findings": [
                     {
                         "title": "CoC clause requires consent",
@@ -380,7 +380,7 @@ class TestFromFindings:
         assert graph.total_nodes >= 2
         coc = graph.get_clauses_by_type(ClauseType.CHANGE_OF_CONTROL)
         assert len(coc) == 1
-        assert coc[0].customer_safe_name == "acme"
+        assert coc[0].subject_safe_name == "acme"
 
     def test_from_findings_builds_relationships(self) -> None:
         graph = ContractKnowledgeGraph.from_findings(self._make_merged())

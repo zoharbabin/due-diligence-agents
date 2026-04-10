@@ -10,21 +10,21 @@ from dd_agents.reporting.computed_metrics import ReportDataComputer
 
 
 def _make_merged(
-    customers: dict[str, dict[str, Any]] | None = None,
+    subjects: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Build a minimal merged_data dict for testing."""
-    return customers or {}
+    return subjects or {}
 
 
-def _customer(
+def _subject(
     name: str,
     findings: list[dict[str, Any]] | None = None,
     cross_references: list[dict[str, Any]] | None = None,
     gaps: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     return {
-        "customer": name,
-        "customer_safe_name": name.lower().replace(" ", "_"),
+        "subject": name,
+        "subject_safe_name": name.lower().replace(" ", "_"),
         "findings": findings or [],
         "gaps": gaps or [],
         "cross_references": cross_references or [],
@@ -38,7 +38,7 @@ class TestRevenueExtraction:
 
     def test_extracts_arr_from_cross_refs(self) -> None:
         merged = {
-            "acme": _customer(
+            "acme": _subject(
                 "Acme",
                 cross_references=[
                     {
@@ -52,11 +52,11 @@ class TestRevenueExtraction:
         }
         computer = ReportDataComputer()
         result = computer.compute(merged)
-        assert result.revenue_by_customer.get("acme", 0.0) == pytest.approx(500_000.0)
+        assert result.revenue_by_subject.get("acme", 0.0) == pytest.approx(500_000.0)
 
     def test_extracts_contract_value_from_cross_refs(self) -> None:
         merged = {
-            "beta": _customer(
+            "beta": _subject(
                 "Beta",
                 cross_references=[
                     {
@@ -70,12 +70,12 @@ class TestRevenueExtraction:
         }
         computer = ReportDataComputer()
         result = computer.compute(merged)
-        assert result.revenue_by_customer.get("beta", 0.0) == pytest.approx(1_200_000.0)
+        assert result.revenue_by_subject.get("beta", 0.0) == pytest.approx(1_200_000.0)
 
     def test_prefers_reference_value_over_contract_value(self) -> None:
         """When both are present, reference_value is authoritative."""
         merged = {
-            "gamma": _customer(
+            "gamma": _subject(
                 "Gamma",
                 cross_references=[
                     {
@@ -89,11 +89,11 @@ class TestRevenueExtraction:
         }
         computer = ReportDataComputer()
         result = computer.compute(merged)
-        assert result.revenue_by_customer.get("gamma", 0.0) == pytest.approx(120_000.0)
+        assert result.revenue_by_subject.get("gamma", 0.0) == pytest.approx(120_000.0)
 
     def test_skips_non_revenue_cross_refs(self) -> None:
         merged = {
-            "delta": _customer(
+            "delta": _subject(
                 "Delta",
                 cross_references=[
                     {
@@ -107,17 +107,17 @@ class TestRevenueExtraction:
         }
         computer = ReportDataComputer()
         result = computer.compute(merged)
-        assert result.revenue_by_customer.get("delta", 0.0) == 0.0
+        assert result.revenue_by_subject.get("delta", 0.0) == 0.0
 
     def test_total_contracted_arr(self) -> None:
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 cross_references=[
                     {"data_point": "ARR", "contract_value": "$300,000", "reference_value": "", "match_status": "match"},
                 ],
             ),
-            "b": _customer(
+            "b": _subject(
                 "B",
                 cross_references=[
                     {"data_point": "ACV", "contract_value": "$200,000", "reference_value": "", "match_status": "match"},
@@ -129,15 +129,15 @@ class TestRevenueExtraction:
         assert result.total_contracted_arr == pytest.approx(500_000.0)
 
     def test_no_cross_refs_yields_zero(self) -> None:
-        merged = {"x": _customer("X")}
+        merged = {"x": _subject("X")}
         computer = ReportDataComputer()
         result = computer.compute(merged)
         assert result.total_contracted_arr == 0.0
-        assert result.revenue_by_customer == {}
+        assert result.revenue_by_subject == {}
 
     def test_handles_malformed_values(self) -> None:
         merged = {
-            "bad": _customer(
+            "bad": _subject(
                 "Bad",
                 cross_references=[
                     {"data_point": "ARR", "contract_value": "N/A", "reference_value": "TBD", "match_status": "match"},
@@ -146,7 +146,7 @@ class TestRevenueExtraction:
         }
         computer = ReportDataComputer()
         result = computer.compute(merged)
-        assert result.revenue_by_customer.get("bad", 0.0) == 0.0
+        assert result.revenue_by_subject.get("bad", 0.0) == 0.0
 
 
 class TestRevenueAtRisk:
@@ -154,7 +154,7 @@ class TestRevenueAtRisk:
 
     def _merged_with_revenue_and_findings(self) -> dict[str, Any]:
         return {
-            "acme": _customer(
+            "acme": _subject(
                 "Acme",
                 findings=[
                     {
@@ -176,7 +176,7 @@ class TestRevenueAtRisk:
                     },
                 ],
             ),
-            "beta": _customer(
+            "beta": _subject(
                 "Beta",
                 findings=[
                     {
@@ -193,7 +193,7 @@ class TestRevenueAtRisk:
                     {"data_point": "ARR", "contract_value": "$300,000", "reference_value": "", "match_status": "match"},
                 ],
             ),
-            "gamma": _customer(
+            "gamma": _subject(
                 "Gamma",
                 findings=[],
                 cross_references=[
@@ -240,7 +240,7 @@ class TestRevenueAtRisk:
     def test_no_double_counting_across_categories(self) -> None:
         """When one customer has findings in multiple categories, revenue counted once."""
         merged = {
-            "multi": _customer(
+            "multi": _subject(
                 "Multi",
                 findings=[
                     {
@@ -281,13 +281,13 @@ class TestRevenueAtRisk:
     def test_partial_coverage(self) -> None:
         """When some customers lack revenue data, coverage < 1.0."""
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 cross_references=[
                     {"data_point": "ARR", "contract_value": "$100,000", "reference_value": "", "match_status": "match"},
                 ],
             ),
-            "b": _customer("B"),  # no cross-refs
+            "b": _subject("B"),  # no cross-refs
         }
         computer = ReportDataComputer()
         result = computer.compute(merged)
@@ -299,13 +299,13 @@ class TestConcentrationTreemap:
 
     def test_treemap_data_sorted_by_revenue(self) -> None:
         merged = {
-            "small": _customer(
+            "small": _subject(
                 "Small",
                 cross_references=[
                     {"data_point": "ARR", "contract_value": "$50,000", "reference_value": "", "match_status": "match"},
                 ],
             ),
-            "large": _customer(
+            "large": _subject(
                 "Large",
                 cross_references=[
                     {"data_point": "ARR", "contract_value": "$500,000", "reference_value": "", "match_status": "match"},
@@ -315,11 +315,11 @@ class TestConcentrationTreemap:
         computer = ReportDataComputer()
         result = computer.compute(merged)
         if result.concentration_treemap:
-            assert result.concentration_treemap[0]["customer_safe_name"] == "large"
+            assert result.concentration_treemap[0]["subject_safe_name"] == "large"
 
     def test_treemap_includes_pct(self) -> None:
         merged = {
-            "only": _customer(
+            "only": _subject(
                 "Only",
                 cross_references=[
                     {"data_point": "ARR", "contract_value": "$100,000", "reference_value": "", "match_status": "match"},
@@ -332,7 +332,7 @@ class TestConcentrationTreemap:
             assert result.concentration_treemap[0]["pct"] == pytest.approx(100.0)
 
     def test_treemap_empty_when_no_revenue(self) -> None:
-        merged = {"x": _customer("X")}
+        merged = {"x": _subject("X")}
         computer = ReportDataComputer()
         result = computer.compute(merged)
         assert result.concentration_treemap == []
@@ -349,15 +349,15 @@ class TestFinancialImpactRenderer:
             total_contracted_arr=1_000_000.0,
             risk_adjusted_arr=600_000.0,
             revenue_data_coverage=1.0,
-            revenue_by_customer={"a": 500_000, "b": 500_000},
+            revenue_by_subject={"a": 500_000, "b": 500_000},
             risk_waterfall={
                 "change_of_control": {"amount": 400_000.0, "contracts": 1, "customers": ["a"]},
             },
             concentration_treemap=[
-                {"customer_safe_name": "a", "display_name": "A", "revenue": 500_000, "pct": 50.0, "risk_level": "high"},
-                {"customer_safe_name": "b", "display_name": "B", "revenue": 500_000, "pct": 50.0, "risk_level": "low"},
+                {"subject_safe_name": "a", "display_name": "A", "revenue": 500_000, "pct": 50.0, "risk_level": "high"},
+                {"subject_safe_name": "b", "display_name": "B", "revenue": 500_000, "pct": 50.0, "risk_level": "low"},
             ],
-            total_customers=2,
+            total_subjects=2,
         )
         renderer = FinancialImpactRenderer(data, {}, {})
         result = renderer.render()
@@ -382,17 +382,17 @@ class TestFinancialImpactRenderer:
             total_contracted_arr=100_000.0,
             risk_adjusted_arr=100_000.0,
             revenue_data_coverage=1.0,
-            revenue_by_customer={"x": 100_000},
+            revenue_by_subject={"x": 100_000},
             concentration_treemap=[
                 {
-                    "customer_safe_name": "x",
+                    "subject_safe_name": "x",
                     "display_name": "<script>alert(1)</script>",
                     "revenue": 100_000,
                     "pct": 100.0,
                     "risk_level": "low",
                 },
             ],
-            total_customers=1,
+            total_subjects=1,
         )
         renderer = FinancialImpactRenderer(data, {}, {})
         result = renderer.render()

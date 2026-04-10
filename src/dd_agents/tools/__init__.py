@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dd_agents.tools.get_customer_files import get_customer_files
+from dd_agents.tools.get_subject_files import get_subject_files
 from dd_agents.tools.mcp_server import build_mcp_server
 from dd_agents.tools.read_office import read_office
 from dd_agents.tools.report_progress import report_progress
@@ -30,7 +30,7 @@ __all__ = [
     "validate_gap",
     "validate_manifest",
     "verify_citation",
-    "get_customer_files",
+    "get_subject_files",
     "resolve_entity",
     "read_office",
     "report_progress",

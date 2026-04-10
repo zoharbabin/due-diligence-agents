@@ -43,7 +43,7 @@ def _make_computed_data(**overrides: Any) -> Any:
         "xref_match_pct": 0.0,
         "xref_mismatch_count": 0,
         "saas_metrics": {},
-        "revenue_by_customer": {},
+        "revenue_by_subject": {},
         "total_contracted_arr": 0.0,
         "risk_adjusted_arr": 0.0,
         "revenue_data_coverage": 0.0,
@@ -83,8 +83,8 @@ def _make_finding(
         "severity": severity,
         "category": category,
         "agent": agent,
-        "_customer_safe_name": customer,
-        "_customer": customer,
+        "_subject_safe_name": customer,
+        "_subject": customer,
         "description": description,
     }
 
@@ -292,9 +292,9 @@ class TestProgressDashboard:
         from dd_agents.orchestrator.progress import PipelineProgressTracker
 
         tracker = PipelineProgressTracker()
-        tracker.update_agent_progress("legal", 5, 20, "customer_a")
+        tracker.update_agent_progress("legal", 5, 20, "subject_a")
         snap = tracker.snapshot
-        assert snap["agent_progress"]["legal"]["customers_processed"] == 5
+        assert snap["agent_progress"]["legal"]["subjects_processed"] == 5
         assert snap["agent_progress"]["legal"]["pct"] == pytest.approx(25.0)
 
     def test_finding_count_update(self) -> None:

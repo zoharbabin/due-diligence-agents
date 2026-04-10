@@ -74,7 +74,7 @@ class BaseAgentRunner(ABC):
 
     # Batch sizing -- subclasses may override for agents that need
     # smaller batches (e.g., FinanceAgent processes dense spreadsheets).
-    max_customers_per_batch: int = 20
+    max_subjects_per_batch: int = 20
     max_tokens_per_batch: int = 40_000
 
     # Minimum SDK message buffer (bytes).  The actual value is computed
@@ -195,11 +195,11 @@ class BaseAgentRunner(ABC):
             # Fall back to build_prompt() for tests / standalone invocations.
             prompt = state.get("prompt") or self.build_prompt(state)
 
-            customers = state.get("customers", [])
+            subjects = state.get("subjects", [])
             raw_output = await self._spawn_agent(
                 prompt,
                 on_turn=on_turn,
-                expected_customers=len(customers),
+                expected_subjects=len(subjects),
             )
 
             # Persist raw output for diagnostics (always, not just on failure).
@@ -261,7 +261,7 @@ class BaseAgentRunner(ABC):
         )
         return builder.build_specialist_prompt(
             agent_name=self.get_agent_name(),
-            customers=state.get("customers", []),
+            subjects=state.get("subjects", []),
             reference_files=state.get("reference_files"),
             deal_config=state.get("deal_config") or self.deal_config,
         )
@@ -283,7 +283,7 @@ class BaseAgentRunner(ABC):
         prompt: str,
         *,
         on_turn: Any | None = None,
-        expected_customers: int = 0,
+        expected_subjects: int = 0,
     ) -> str:
         """Spawn the agent via ``claude_agent_sdk.query()`` and return raw text.
 
@@ -300,8 +300,8 @@ class BaseAgentRunner(ABC):
             Optional callback ``(agent_name: str, turn: int) -> None`` invoked
             every 5 SDK messages.  Used by the orchestrator to track per-batch
             progress for the live monitor.
-        expected_customers:
-            Number of customer JSONs the agent should produce.  Used to
+        expected_subjects:
+            Number of subject JSONs the agent should produce.  Used to
             configure stop hooks.
 
         Returns
@@ -327,12 +327,12 @@ class BaseAgentRunner(ABC):
             "CRITICAL CONSTRAINTS (NEVER VIOLATE):\n"
             "1. You do NOT have access to the Agent tool. NEVER attempt to spawn "
             "sub-agents, background agents, or parallel agents. You are a single "
-            "agent — process all customers yourself, sequentially, in this session.\n"
+            "agent — process all subjects yourself, sequentially, in this session.\n"
             "2. You do NOT have access to the Bash tool. Do not attempt shell commands.\n"
             "3. Do NOT read or validate existing output files before writing. Write "
             "fresh output directly. If a file exists at the output path, overwrite it.\n"
             "4. Do NOT summarize progress or produce status reports. Write JSON files "
-            "and move to the next customer immediately.\n"
+            "and move to the next subject immediately.\n"
             "5. Your final output message MUST be a single valid JSON object. Do not "
             "wrap it in markdown fences (no ```json). Do not include explanatory text "
             "before or after the JSON. Output ONLY the JSON object."
@@ -346,7 +346,7 @@ class BaseAgentRunner(ABC):
             agent_name=self.get_agent_name(),
             run_dir=self.run_dir,
             project_dir=self.project_dir,
-            expected_customers=expected_customers,
+            expected_subjects=expected_subjects,
         )
 
         runtime_ctx = _build_runtime_context(

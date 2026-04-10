@@ -36,8 +36,8 @@ from dd_agents.reporting.html_base import render_nav_bar
 # ---------------------------------------------------------------------------
 
 
-def _make_customer(name: str = "Customer A") -> Any:
-    """Build a minimal CustomerEntry-like object."""
+def _make_subject(name: str = "Subject A") -> Any:
+    """Build a minimal SubjectEntry-like object."""
     m = MagicMock()
     m.name = name
     m.safe_name = name.lower().replace(" ", "_")
@@ -63,7 +63,7 @@ def _build_prompt(agent_name: str = "legal", deal_type: str = "acquisition") -> 
     )
     return builder.build_specialist_prompt(
         agent_name=agent_name,
-        customers=[_make_customer()],
+        subjects=[_make_subject()],
         deal_config=_make_deal_config(deal_type),
     )
 
@@ -80,13 +80,13 @@ def _make_finding(
         "agent": agent,
         "title": title,
         "description": description,
-        "_customer": customer,
-        "_customer_safe_name": customer,
+        "_subject": customer,
+        "_subject_safe_name": customer,
     }
 
 
 def _make_data(computed: ReportComputedData) -> dict[str, Any]:
-    return {"customer_a": {"customer": "Customer A", "findings": [], "gaps": []}}
+    return {"customer_a": {"subject": "Customer A", "findings": [], "gaps": []}}
 
 
 # ===========================================================================
@@ -233,8 +233,8 @@ class TestCoCRendererSubtype:
             coc_findings=[
                 _make_finding(title="Change of Control — consent required", severity="P1"),
             ],
-            coc_customers_affected=1,
-            consent_required_customers=1,
+            coc_subjects_affected=1,
+            consent_required_subjects=1,
         )
         renderer = CoCAnalysisRenderer(data, _make_data(data), {})
         html = renderer.render()
@@ -251,7 +251,7 @@ class TestCoCRendererSubtype:
                     severity="P3",
                 ),
             ],
-            coc_customers_affected=1,
+            coc_subjects_affected=1,
         )
         renderer = CoCAnalysisRenderer(data, _make_data(data), {})
         html = renderer.render()
@@ -267,7 +267,7 @@ class TestTfCRenderer:
             tfc_findings=[
                 _make_finding(title="Termination for Convenience — 30 day notice"),
             ],
-            tfc_customers_affected=1,
+            tfc_subjects_affected=1,
         )
         renderer = TfCAnalysisRenderer(data, _make_data(data), {})
         html = renderer.render()
@@ -276,7 +276,7 @@ class TestTfCRenderer:
 
     def test_tfc_renderer_empty_no_render(self) -> None:
         """No TfC findings means no section rendered."""
-        data = ReportComputedData(tfc_findings=[], tfc_customers_affected=0)
+        data = ReportComputedData(tfc_findings=[], tfc_subjects_affected=0)
         renderer = TfCAnalysisRenderer(data, _make_data(data), {})
         html = renderer.render()
         assert html == ""
@@ -294,7 +294,7 @@ class TestTfCRAGAndRecommendations:
         """TfC RAG is amber when present, never red — even with high-severity findings."""
         merged = {
             "customer_a": {
-                "customer": "Customer A",
+                "subject": "Customer A",
                 "findings": [
                     {
                         "severity": "P2",
@@ -319,7 +319,7 @@ class TestTfCRAGAndRecommendations:
         """TfC recommendation uses 'Valuation' timeline."""
         merged = {
             "customer_a": {
-                "customer": "Customer A",
+                "subject": "Customer A",
                 "findings": [
                     {
                         "severity": "P2",
@@ -342,7 +342,7 @@ class TestTfCRAGAndRecommendations:
         """CoC recommendation differentiates consent vs notification."""
         merged = {
             "customer_a": {
-                "customer": "Customer A",
+                "subject": "Customer A",
                 "findings": [
                     {
                         "severity": "P1",
@@ -355,7 +355,7 @@ class TestTfCRAGAndRecommendations:
                 "gaps": [],
             },
             "customer_b": {
-                "customer": "Customer B",
+                "subject": "Customer B",
                 "findings": [
                     {
                         "severity": "P2",
@@ -399,8 +399,8 @@ class TestSubtypeSeparation:
                 _make_finding(title="CoC — consent-required", description="Requires prior consent"),
                 _make_finding(title="CoC — auto-termination", description="Auto-terminates on acquisition"),
             ],
-            coc_customers_affected=3,
-            consent_required_customers=1,
+            coc_subjects_affected=3,
+            consent_required_subjects=1,
         )
         renderer = CoCAnalysisRenderer(data, _make_data(data), {})
         html = renderer.render()

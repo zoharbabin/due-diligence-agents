@@ -34,7 +34,7 @@ class MethodologyRenderer(SectionRenderer):
         # Key stats
         parts.append(
             "<div class='metrics-strip'>"
-            f"<div class='metric-card'><div class='value'>{d.customers_analyzed}</div>"
+            f"<div class='metric-card'><div class='value'>{d.subjects_analyzed}</div>"
             "<div class='label'>Entities Analyzed</div></div>"
             f"<div class='metric-card'><div class='value'>{d.total_findings}</div>"
             "<div class='label'>Findings Extracted</div></div>"

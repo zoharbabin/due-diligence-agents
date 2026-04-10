@@ -32,7 +32,7 @@ def _make_finding(
     category: str = "uncategorized",
     title: str = "Test finding",
     description: str = "Description",
-    customer_safe_name: str = "",
+    subject_safe_name: str = "",
     customer: str = "",
 ) -> dict[str, Any]:
     f: dict[str, Any] = {
@@ -43,10 +43,10 @@ def _make_finding(
         "description": description,
         "citations": [],
     }
-    if customer_safe_name:
-        f["_customer_safe_name"] = customer_safe_name
+    if subject_safe_name:
+        f["_subject_safe_name"] = subject_safe_name
     if customer:
-        f["_customer"] = customer
+        f["_subject"] = customer
     return f
 
 
@@ -57,7 +57,7 @@ def _make_merged(
         return customers
     return {
         "customer_a": {
-            "customer": "Customer A",
+            "subject": "Customer A",
             "findings": [_make_finding(severity="P1", agent="legal")],
             "gaps": [],
         }
@@ -74,7 +74,7 @@ class TestSaaSMetricsEnhanced:
 
     def test_nrr_grr_defaults_no_signals(self) -> None:
         """With no expansion/contraction signals, NRR should be 100 and GRR 100."""
-        merged = {"a": {"customer": "A", "findings": [], "gaps": []}}
+        merged = {"a": {"subject": "A", "findings": [], "gaps": []}}
         result = ReportDataComputer().compute(merged)
         assert result.saas_metrics["nrr_estimate"] == 100.0
         assert result.saas_metrics["grr_estimate"] == 100.0
@@ -83,7 +83,7 @@ class TestSaaSMetricsEnhanced:
         """Expansion keywords should increase NRR estimate."""
         merged = {
             "a": {
-                "customer": "A",
+                "subject": "A",
                 "findings": [
                     _make_finding(title="Customer upsell opportunity"),
                     _make_finding(title="Cross-sell motion identified"),
@@ -100,7 +100,7 @@ class TestSaaSMetricsEnhanced:
         """Contraction keywords should decrease NRR and GRR."""
         merged = {
             "a": {
-                "customer": "A",
+                "subject": "A",
                 "findings": [
                     _make_finding(title="Customer churn risk identified"),
                     _make_finding(title="Downgrade to lower tier"),
@@ -118,7 +118,7 @@ class TestSaaSMetricsEnhanced:
         # Many contraction signals to push below 70
         merged = {
             "a": {
-                "customer": "A",
+                "subject": "A",
                 "findings": [
                     _make_finding(title=f"Churn risk {i}", description="cancellation likely") for i in range(20)
                 ],
@@ -130,7 +130,7 @@ class TestSaaSMetricsEnhanced:
 
     def test_benchmarks_present(self) -> None:
         """Benchmarks dict should contain top_quartile, median, concerning."""
-        merged = {"a": {"customer": "A", "findings": [], "gaps": []}}
+        merged = {"a": {"subject": "A", "findings": [], "gaps": []}}
         result = ReportDataComputer().compute(merged)
         benchmarks = result.saas_metrics["benchmarks"]
         assert "top_quartile" in benchmarks
@@ -139,20 +139,20 @@ class TestSaaSMetricsEnhanced:
 
     def test_rule_of_40_present(self) -> None:
         """Rule of 40 score should be computed from NRR."""
-        merged = {"a": {"customer": "A", "findings": [], "gaps": []}}
+        merged = {"a": {"subject": "A", "findings": [], "gaps": []}}
         result = ReportDataComputer().compute(merged)
         # NRR=100 → growth=0 → Rule of 40 = 0
         assert result.saas_metrics["rule_of_40_score"] == 0.0
 
     def test_logo_retention_defaults_100(self) -> None:
         """With no churn signals, logo retention should be 100%."""
-        merged = {"a": {"customer": "A", "findings": [], "gaps": []}}
+        merged = {"a": {"subject": "A", "findings": [], "gaps": []}}
         result = ReportDataComputer().compute(merged)
         assert result.saas_metrics["logo_retention_pct"] == 100.0
 
     def test_clv_estimate_present(self) -> None:
         """CLV estimate should be computed when revenue data exists."""
-        merged = {"a": {"customer": "A", "findings": [], "gaps": []}}
+        merged = {"a": {"subject": "A", "findings": [], "gaps": []}}
         result = ReportDataComputer().compute(merged)
         assert "clv_estimate" in result.saas_metrics
 
@@ -160,7 +160,7 @@ class TestSaaSMetricsEnhanced:
         """Churn signals should decrease logo retention below 100%."""
         merged = {
             "a": {
-                "customer": "A",
+                "subject": "A",
                 "findings": [
                     _make_finding(title=f"Churn risk {i}", description="cancellation likely") for i in range(5)
                 ],
@@ -179,7 +179,7 @@ class TestDiscountEnhanced:
         findings = [
             _make_finding(
                 title="7.5% discount off list price",
-                customer_safe_name="cust_a",
+                subject_safe_name="cust_a",
             ),
         ]
         result = ReportDataComputer._compute_discount_analysis(findings)
@@ -189,8 +189,8 @@ class TestDiscountEnhanced:
     def test_avg_and_max_discount(self) -> None:
         """Average and max discount should be computed correctly."""
         findings = [
-            _make_finding(title="10% discount off", customer_safe_name="a"),
-            _make_finding(title="30% discount below list", customer_safe_name="b"),
+            _make_finding(title="10% discount off", subject_safe_name="a"),
+            _make_finding(title="30% discount below list", subject_safe_name="b"),
         ]
         result = ReportDataComputer._compute_discount_analysis(findings)
         assert result["avg_discount_pct"] == pytest.approx(20.0)
@@ -199,9 +199,9 @@ class TestDiscountEnhanced:
     def test_top_discounted_entities(self) -> None:
         """Top discounted should return entities sorted by discount %."""
         findings = [
-            _make_finding(title="15% discount off", customer_safe_name="low"),
-            _make_finding(title="40% discount below", customer_safe_name="high"),
-            _make_finding(title="25% discount off", customer_safe_name="mid"),
+            _make_finding(title="15% discount off", subject_safe_name="low"),
+            _make_finding(title="40% discount below", subject_safe_name="high"),
+            _make_finding(title="25% discount off", subject_safe_name="mid"),
         ]
         result = ReportDataComputer._compute_discount_analysis(findings)
         top = result["top_discounted"]
@@ -260,11 +260,11 @@ class TestComplianceEnhanced:
         findings = [
             _make_finding(
                 title="DPA in place",
-                customer_safe_name="a",
+                subject_safe_name="a",
             ),
             _make_finding(
                 title="No compliance issue",
-                customer_safe_name="b",
+                subject_safe_name="b",
             ),
         ]
         result = ReportDataComputer._compute_compliance_analysis(findings)
@@ -333,8 +333,8 @@ class TestEntityEnhanced:
     def test_entity_names_extracted(self) -> None:
         """Entity names from findings should be collected."""
         findings = [
-            _make_finding(title="Legal entity mismatch", customer_safe_name="acme_corp"),
-            _make_finding(title="Subsidiary issue", customer_safe_name="beta_inc"),
+            _make_finding(title="Legal entity mismatch", subject_safe_name="acme_corp"),
+            _make_finding(title="Subsidiary issue", subject_safe_name="beta_inc"),
         ]
         result = ReportDataComputer._compute_entity_distribution(findings)
         assert "acme_corp" in result["entity_names"]
@@ -342,22 +342,22 @@ class TestEntityEnhanced:
 
     def test_migration_risk_low(self) -> None:
         """0-1 entities = low risk."""
-        findings = [_make_finding(title="Legal entity issue", customer_safe_name="one")]
+        findings = [_make_finding(title="Legal entity issue", subject_safe_name="one")]
         result = ReportDataComputer._compute_entity_distribution(findings)
         assert result["migration_risk_score"] == "low"
 
     def test_migration_risk_medium(self) -> None:
         """2-3 entities = medium risk."""
         findings = [
-            _make_finding(title="Legal entity mismatch", customer_safe_name="a"),
-            _make_finding(title="Subsidiary issue", customer_safe_name="b"),
+            _make_finding(title="Legal entity mismatch", subject_safe_name="a"),
+            _make_finding(title="Subsidiary issue", subject_safe_name="b"),
         ]
         result = ReportDataComputer._compute_entity_distribution(findings)
         assert result["migration_risk_score"] == "medium"
 
     def test_migration_risk_critical(self) -> None:
         """6+ entities = critical risk."""
-        findings = [_make_finding(title="Legal entity mismatch", customer_safe_name=f"ent_{i}") for i in range(7)]
+        findings = [_make_finding(title="Legal entity mismatch", subject_safe_name=f"ent_{i}") for i in range(7)]
         result = ReportDataComputer._compute_entity_distribution(findings)
         assert result["migration_risk_score"] == "critical"
 
@@ -411,8 +411,8 @@ class TestLiabilityAnalysis:
     def test_insurance_count(self) -> None:
         """Insurance findings should be counted."""
         findings = [
-            _make_finding(title="Insurance coverage required", customer_safe_name="a"),
-            _make_finding(title="Liability cap at $1M", customer_safe_name="b"),
+            _make_finding(title="Insurance coverage required", subject_safe_name="a"),
+            _make_finding(title="Liability cap at $1M", subject_safe_name="b"),
         ]
         result = ReportDataComputer._compute_liability_analysis(findings)
         assert result["insurance_count"] == 1
@@ -421,8 +421,8 @@ class TestLiabilityAnalysis:
     def test_uncapped_detection(self) -> None:
         """Findings with 'uncapped' or 'unlimited' should be flagged."""
         findings = [
-            _make_finding(title="Uncapped liability exposure", customer_safe_name="a"),
-            _make_finding(title="Unlimited liability clause", customer_safe_name="b"),
+            _make_finding(title="Uncapped liability exposure", subject_safe_name="a"),
+            _make_finding(title="Unlimited liability clause", subject_safe_name="b"),
         ]
         result = ReportDataComputer._compute_liability_analysis(findings)
         assert result["uncapped_count"] == 2
@@ -433,7 +433,7 @@ class TestLiabilityAnalysis:
             _make_finding(
                 title="Limitation of liability capped at $5M",
                 description="Cap on liability set at $5 million",
-                customer_safe_name="a",
+                subject_safe_name="a",
             ),
         ]
         result = ReportDataComputer._compute_liability_analysis(findings)
@@ -497,7 +497,7 @@ class TestCrossDomainRisks:
         """Entity with findings in 3+ domains should appear in cross_domain_risks."""
         merged: dict[str, Any] = {
             "multi_risk": {
-                "customer": "Multi Risk",
+                "subject": "Multi Risk",
                 "findings": [
                     _make_finding(agent="legal", severity="P1"),
                     _make_finding(agent="finance", severity="P2"),
@@ -516,7 +516,7 @@ class TestCrossDomainRisks:
         """Entity with findings in only 1 domain should not appear."""
         merged: dict[str, Any] = {
             "single": {
-                "customer": "Single",
+                "subject": "Single",
                 "findings": [
                     _make_finding(agent="legal", severity="P1"),
                     _make_finding(agent="legal", severity="P2"),
@@ -531,7 +531,7 @@ class TestCrossDomainRisks:
         """Risk score should use severity weights (P0=10, P1=5, P2=2, P3=1)."""
         merged: dict[str, Any] = {
             "entity_a": {
-                "customer": "Entity A",
+                "subject": "Entity A",
                 "findings": [
                     _make_finding(agent="legal", severity="P0"),
                     _make_finding(agent="finance", severity="P1"),
@@ -550,7 +550,7 @@ class TestCrossDomainRisks:
         """Cross-domain RAG should be red if any entity has P0."""
         merged: dict[str, Any] = {
             "risky": {
-                "customer": "Risky",
+                "subject": "Risky",
                 "findings": [
                     _make_finding(agent="legal", severity="P0"),
                     _make_finding(agent="finance", severity="P2"),
@@ -643,7 +643,7 @@ class TestRagIndicators:
         """Liability RAG should be red if uncapped count > 0."""
         merged: dict[str, Any] = {
             "a": {
-                "customer": "A",
+                "subject": "A",
                 "findings": [
                     _make_finding(title="Uncapped liability clause", agent="legal"),
                 ],
@@ -657,7 +657,7 @@ class TestRagIndicators:
         """IP RAG should be amber when IP findings exist but gaps <= 3."""
         merged: dict[str, Any] = {
             "a": {
-                "customer": "A",
+                "subject": "A",
                 "findings": [
                     _make_finding(title="Patent review needed", agent="legal"),
                 ],
@@ -675,7 +675,7 @@ class TestRendererKeyAlignment:
         """Liability analysis keys must match what LiabilityRenderer reads."""
         merged: dict[str, Any] = {
             "a": {
-                "customer": "A",
+                "subject": "A",
                 "findings": [
                     _make_finding(title="Insurance requirement gap", agent="legal"),
                     _make_finding(title="Uncapped liability in MSA", agent="legal"),
@@ -697,7 +697,7 @@ class TestRendererKeyAlignment:
         """IP risk keys must match what IPRiskRenderer reads."""
         merged: dict[str, Any] = {
             "a": {
-                "customer": "A",
+                "subject": "A",
                 "findings": [
                     _make_finding(title="Open source GPL dependency", agent="producttech"),
                 ],
@@ -716,7 +716,7 @@ class TestRendererKeyAlignment:
         """Discount analysis keys must match what DiscountAnalysisRenderer reads."""
         merged: dict[str, Any] = {
             "a": {
-                "customer": "A",
+                "subject": "A",
                 "findings": [
                     _make_finding(title="15% discount below list price", agent="commercial"),
                 ],
@@ -733,7 +733,7 @@ class TestRendererKeyAlignment:
         """Timeline cliff_risk must be a bool, not a count."""
         merged: dict[str, Any] = {
             "a": {
-                "customer": "A",
+                "subject": "A",
                 "findings": [
                     _make_finding(title="Contract expires 2026-03-15", agent="legal"),
                 ],
@@ -749,7 +749,7 @@ class TestRendererKeyAlignment:
         """Entity migration_risk_score must be a string label."""
         merged: dict[str, Any] = {
             "a": {
-                "customer": "A",
+                "subject": "A",
                 "findings": [
                     _make_finding(title="Legal entity migration required", agent="legal"),
                 ],

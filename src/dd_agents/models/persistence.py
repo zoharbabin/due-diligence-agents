@@ -1,4 +1,4 @@
-"""Pydantic models for run metadata, customer classifications, and incremental state."""
+"""Pydantic models for run metadata, subject classifications, and incremental state."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from pydantic import BaseModel, Field, field_validator
 
 from dd_agents.models.enums import (
     CompletionStatus,
-    CustomerClassificationStatus,  # noqa: TC001
     ExecutionMode,
+    SubjectClassificationStatus,  # noqa: TC001
 )
 
 
@@ -29,9 +29,9 @@ class RunMetadata(BaseModel):
         default_factory=dict, description="Map of skill name to run_id for cross-skill data"
     )
     # Finalization fields (added at step 32):
-    file_checksums: dict[str, str] = Field(default_factory=dict, description="Per-customer SHA-256 map")
-    customer_assignments: dict[str, list[str]] = Field(
-        default_factory=dict, description="Agent name to list of assigned customer safe names"
+    file_checksums: dict[str, str] = Field(default_factory=dict, description="Per-subject SHA-256 map")
+    subject_assignments: dict[str, list[str]] = Field(
+        default_factory=dict, description="Agent name to list of assigned subject safe names"
     )
     finding_counts: dict[str, int] = Field(default_factory=dict, description="Finding counts keyed by severity level")
     gap_counts: dict[str, int] = Field(default_factory=dict, description="Gap counts keyed by priority level")
@@ -60,15 +60,15 @@ class RunMetadata(BaseModel):
         return v  # type: ignore[no-any-return]
 
 
-class CustomerClassEntry(BaseModel):
+class SubjectClassEntry(BaseModel):
     """
-    Per-customer classification for incremental mode.
+    Per-subject classification for incremental mode.
     From SKILL.md section 0e.
     """
 
-    customer: str = Field(description="Customer display name")
-    customer_safe_name: str = Field(description="Normalized customer_safe_name")
-    classification: CustomerClassificationStatus = Field(description="Classification status for this customer")
+    subject: str = Field(description="Subject display name")
+    subject_safe_name: str = Field(description="Normalized subject_safe_name")
+    classification: SubjectClassificationStatus = Field(description="Classification status for this subject")
     reason: str = Field(description="Human-readable reason for the classification")
     files_added: list[str] = Field(default_factory=list, description="New files since the prior run")
     files_removed: list[str] = Field(default_factory=list, description="Files removed since the prior run")
@@ -83,16 +83,16 @@ class CustomerClassEntry(BaseModel):
 class ClassificationSummary(BaseModel):
     """Summary counts by classification status."""
 
-    new: int = Field(default=0, description="Customers classified as new")
-    changed: int = Field(default=0, description="Customers with changed files")
-    stale_refresh: int = Field(default=0, description="Unchanged customers due for stale refresh")
-    unchanged: int = Field(default=0, description="Customers with no changes (carried forward)")
-    deleted: int = Field(default=0, description="Customers removed from the data room")
+    new: int = Field(default=0, description="Subjects classified as new")
+    changed: int = Field(default=0, description="Subjects with changed files")
+    stale_refresh: int = Field(default=0, description="Unchanged subjects due for stale refresh")
+    unchanged: int = Field(default=0, description="Subjects with no changes (carried forward)")
+    deleted: int = Field(default=0, description="Subjects removed from the data room")
 
 
 class Classification(BaseModel):
     """
-    Customer classification document for incremental mode.
+    Subject classification document for incremental mode.
     Written to {RUN_DIR}/classification.json.
     From SKILL.md section 0e.
     """
@@ -103,7 +103,7 @@ class Classification(BaseModel):
     classification_summary: ClassificationSummary = Field(
         default_factory=ClassificationSummary, description="Aggregate counts by status"
     )
-    customers: list[CustomerClassEntry] = Field(default_factory=list, description="Per-customer classification entries")
+    subjects: list[SubjectClassEntry] = Field(default_factory=list, description="Per-subject classification entries")
 
     @field_validator("execution_mode", mode="before")
     @classmethod
@@ -117,7 +117,7 @@ class Classification(BaseModel):
 class AnalysisUnitCounts(BaseModel):
     """Analysis unit counts for run history."""
 
-    total: int = Field(default=0, description="Total analysis units (customers)")
+    total: int = Field(default=0, description="Total analysis units (subjects)")
     analyzed: int = Field(default=0, description="Units analyzed in this run")
     carried_forward: int = Field(default=0, description="Units carried from prior run (unchanged)")
     new: int = Field(default=0, description="New units added in this run")
@@ -172,7 +172,7 @@ class RunHistoryEntry(BaseModel):
     timestamp: str = Field(description="ISO-8601 timestamp of run completion")
     execution_mode: ExecutionMode = Field(description="Execution mode: 'full' or 'incremental'")
     analysis_unit_counts: AnalysisUnitCounts = Field(
-        default_factory=AnalysisUnitCounts, description="Customer-level analysis counts"
+        default_factory=AnalysisUnitCounts, description="Subject-level analysis counts"
     )
     finding_counts: FindingCounts = Field(default_factory=FindingCounts, description="Finding counts by severity")
     agent_scores: dict[str, int] = Field(default_factory=dict, description="Quality scores keyed by agent name")

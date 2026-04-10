@@ -26,7 +26,7 @@ pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/ && ruff
 ### 1.2 Utility Modules
 **Status**: Complete
 - [x] Write `tests/unit/test_naming.py` — 43 parametrized tests
-- [x] Implement `src/dd_agents/utils/naming.py` — `customer_safe_name()`, `preprocess_name()`
+- [x] Implement `src/dd_agents/utils/naming.py` — `subject_safe_name()`, `preprocess_name()`
 - [x] Write `tests/unit/test_constants.py` — 10 tests
 - [x] Implement `src/dd_agents/utils/constants.py` — tier names, agent names, severity levels, paths
 
@@ -89,15 +89,15 @@ pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/ && ruff
 **Status**: Complete — 27 tests
 - [x] Implement `src/dd_agents/persistence/tiers.py` — PERMANENT, VERSIONED, FRESH management
 - [x] Implement `src/dd_agents/persistence/run_manager.py` — run init, finalize, history
-- [x] Implement `src/dd_agents/persistence/incremental.py` — customer classification
+- [x] Implement `src/dd_agents/persistence/incremental.py` — subject classification
 - [x] Write `tests/unit/test_persistence.py` — 27 tests
 
 ### 2.2 Inventory
 **Status**: Complete — 38 tests
 - [x] Implement `src/dd_agents/inventory/discovery.py` — tree.txt, files.txt
-- [x] Implement `src/dd_agents/inventory/customers.py` — customers.csv, counts.json
+- [x] Implement `src/dd_agents/inventory/subjects.py` — subjects.csv, counts.json
 - [x] Implement `src/dd_agents/inventory/reference_files.py` — reference_files.json
-- [x] Implement `src/dd_agents/inventory/mentions.py` — customer_mentions.json
+- [x] Implement `src/dd_agents/inventory/mentions.py` — subject_mentions.json
 - [x] Implement `src/dd_agents/inventory/integrity.py` — InventoryIntegrityVerifier
 - [x] Write `tests/unit/test_inventory.py` — 38 tests
 
@@ -111,7 +111,7 @@ pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/ && ruff
 ### 2.4 MCP Tools
 **Status**: Complete — 39 tests
 - [x] Implement `src/dd_agents/tools/server.py` — tool definitions + per-agent routing
-- [x] Implement 7 tool files: validate_finding, validate_gap, validate_manifest, verify_citation, get_customer_files, resolve_entity, report_progress
+- [x] Implement 7 tool files: validate_finding, validate_gap, validate_manifest, verify_citation, get_subject_files, resolve_entity, report_progress
 - [x] Write `tests/unit/test_tools.py` — 39 tests
 
 ### Phase 2 Acceptance
@@ -184,7 +184,7 @@ pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/ && ruff
 - [x] Implement `src/dd_agents/reporting/html_risk.py` — RiskRenderer (heat map, concentration)
 - [x] Implement `src/dd_agents/reporting/html_domains.py` — DomainRenderer (per-domain deep-dive)
 - [x] Implement `src/dd_agents/reporting/html_cross.py` — CrossRefRenderer (3-way match status)
-- [x] Implement `src/dd_agents/reporting/html_customers.py` — CustomerRenderer (entity profiles)
+- [x] Implement `src/dd_agents/reporting/html_entity.py` — EntityRenderer (entity profiles)
 - [x] Implement `src/dd_agents/reporting/html_gaps.py` — GapRenderer (7-column table)
 - [x] Implement `src/dd_agents/reporting/html_quality.py` — QualityRenderer (governance + audit checks)
 - [x] Implement `src/dd_agents/reporting/html_strategy.py` — StrategyRenderer (buyer context, conditional)
@@ -385,7 +385,7 @@ Features shipped after the core 8 phases were complete. See [CHANGELOG.md](CHANG
 - QA audit DoD #11 now enforced (no more deferred pass-through)
 - BatchScheduler complexity scoring wired into step 14 (simple-first ordering)
 - E2E local validation tests (15 tests with `@pytest.mark.local`)
-- Enriched E2E data room (7 files, 3 customers, Judge enabled)
+- Enriched E2E data room (7 files, 3 subjects, Judge enabled)
 - Bedrock authentication support in E2E fixtures
 
 ---
@@ -394,7 +394,7 @@ Features shipped after the core 8 phases were complete. See [CHANGELOG.md](CHANG
 
 The project is complete when ALL of the following are true:
 - [x] All 8 phases have status "Complete"
-- [x] `pytest tests/ -x` passes — 3289 unit tests, 17 integration, 24 E2E
+- [x] `pytest tests/ -x` passes — 3304 unit tests, 17 integration, 24 E2E
 - [x] `mypy src/ --strict` passes — 0 errors across 181 source files
 - [x] `ruff check src/ tests/` is clean
 - [x] `ruff format --check src/ tests/` is clean
@@ -405,9 +405,9 @@ The project is complete when ALL of the following are true:
 
 | Category | Count |
 |----------|-------|
-| Unit tests | 3289 |
+| Unit tests | 3304 |
 | Integration tests (pipeline steps 1-11) | 17 |
 | E2E tests (pre-agent: config, tiers, discovery, registry, run manager, cache, Bedrock auth) | 7 |
 | E2E tests (API-dependent: dry run, full pipeline, incremental) | 2 |
 | E2E tests (local-only: 15 live agent validation tests, `@pytest.mark.local`) | 15 |
-| **Total** | **3289 unit + 17 integration + 24 E2E** |
+| **Total** | **3304 unit + 17 integration + 24 E2E** |

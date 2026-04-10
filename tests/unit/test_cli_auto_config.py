@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 
 
 def _create_data_room(tmp_path: Path) -> Path:
-    """Create a minimal data room with groups and customers."""
+    """Create a minimal data room with groups and subjects."""
     dr = tmp_path / "data_room"
     dr.mkdir()
 
@@ -65,7 +65,7 @@ def _create_empty_data_room(tmp_path: Path) -> Path:
 
 
 def _make_scan_result(
-    customer_names: list[str] | None = None,
+    subject_names: list[str] | None = None,
     groups: list[str] | None = None,
     file_count: int = 5,
 ) -> dict:
@@ -73,7 +73,7 @@ def _make_scan_result(
     return {
         "groups": groups or ["GroupA", "GroupB"],
         "customers": [],
-        "customer_names": customer_names or ["Acme_Corp", "Beta_Inc", "Gamma_LLC"],
+        "subject_names": subject_names or ["Acme_Corp", "Beta_Inc", "Gamma_LLC"],
         "file_count": file_count,
         "counts": None,
     }
@@ -246,7 +246,7 @@ class TestBuildReferenceFileSummary:
         assert "overview.pdf" in filenames
         assert "cap_table.xlsx" in filenames
 
-    def test_excludes_customer_folder_files(self, tmp_path: Path) -> None:
+    def test_excludes_subject_folder_files(self, tmp_path: Path) -> None:
         dr = _create_data_room(tmp_path)
         result = build_reference_file_summary(dr)
         # Should only have root-level files, not files inside customer folders
@@ -600,7 +600,7 @@ class TestDataRoomAnalyzer:
         scan_result = _make_scan_result()
 
         mock_call = AsyncMock(return_value="not valid json {{{")
-        with patch.object(analyzer, "_call_claude", mock_call), pytest.raises(ValueError, match="Failed to parse"):
+        with patch.object(analyzer, "_call_claude", mock_call), pytest.raises(ValueError, match="JSON"):
             await analyzer.analyze(
                 tree_output="tree",
                 scan_result=scan_result,
@@ -1015,9 +1015,9 @@ class TestValidateAndFixConfig:
         with pytest.raises(ValueError, match="target.name is empty"):
             validate_and_fix_config(config, scan_result)
 
-    def test_customer_names_merged_into_entity_aliases(self) -> None:
+    def test_subject_names_merged_into_entity_aliases(self) -> None:
         config = _make_valid_claude_response()
-        scan_result = _make_scan_result(customer_names=["Acme_Corp", "Beta_Inc"])
+        scan_result = _make_scan_result(subject_names=["Acme_Corp", "Beta_Inc"])
         result = validate_and_fix_config(config, scan_result)
         c2v = result["entity_aliases"]["canonical_to_variants"]
         assert "Acme Corp" in c2v
@@ -1200,7 +1200,7 @@ class TestBuyerContextClassification:
             FileEntry(path="_buyer/10-k-business.md", text_path="_buyer/10-k-business.md"),
         ]
 
-        result = classifier.classify(files, customer_dirs=[])
+        result = classifier.classify(files, subject_dirs=[])
         assert len(result) == 1
         assert result[0].category == ReferenceFileCategory.BUYER_CONTEXT.value
 
@@ -1222,7 +1222,7 @@ class TestBuyerContextClassification:
             FileEntry(path="ref/annual-report-2024.pdf", text_path="ref/annual-report-2024.txt"),
         ]
 
-        result = classifier.classify(files, customer_dirs=[])
+        result = classifier.classify(files, subject_dirs=[])
         assert len(result) == 1
         assert result[0].category == "Buyer Context"
 
@@ -1236,7 +1236,7 @@ class TestBuyerContextClassification:
             FileEntry(path="_buyer/revenue-summary.md", text_path="_buyer/revenue-summary.md"),
         ]
 
-        result = classifier.classify(files, customer_dirs=[])
+        result = classifier.classify(files, subject_dirs=[])
         assert len(result) == 1
         assert result[0].category == "Buyer Context"
 
@@ -1244,8 +1244,8 @@ class TestBuyerContextClassification:
 class TestDDOutputClassification:
     """Tests for DD output / buyer work product exclusion from specialist analysis."""
 
-    def test_readout_deck_excluded_from_reference_files(self) -> None:
-        """DD readout decks must not be routed to any specialist agent."""
+    def test_readout_deck_classified_with_no_agent_routing(self) -> None:
+        """DD readout decks are classified as DD Output with no agent routing."""
         from dd_agents.inventory.reference_files import ReferenceFileClassifier
         from dd_agents.models.inventory import FileEntry
 
@@ -1256,8 +1256,10 @@ class TestDDOutputClassification:
                 text_path="DD readout decks/draft_readout.pptx",
             ),
         ]
-        result = classifier.classify(files, customer_dirs=[])
-        assert len(result) == 0, "DD readout deck should be excluded from reference files"
+        result = classifier.classify(files, subject_dirs=[])
+        assert len(result) == 1, "DD readout deck should be included in reference files"
+        assert result[0].category == "DD Output"
+        assert result[0].assigned_to_agents == []
 
     def test_dd_output_routed_to_no_agents(self) -> None:
         from dd_agents.inventory.reference_files import ReferenceFileClassifier
@@ -1267,7 +1269,7 @@ class TestDDOutputClassification:
         agents = classifier.route_to_agents(ReferenceFileCategory.DD_OUTPUT)
         assert agents == []
 
-    def test_internal_analysis_excluded_from_reference_files(self) -> None:
+    def test_internal_analysis_classified_with_no_agent_routing(self) -> None:
         from dd_agents.inventory.reference_files import ReferenceFileClassifier
         from dd_agents.models.inventory import FileEntry
 
@@ -1278,10 +1280,12 @@ class TestDDOutputClassification:
                 text_path="3. Internal analysis/synergy_model.xlsx",
             ),
         ]
-        result = classifier.classify(files, customer_dirs=[])
-        assert len(result) == 0, "Internal analysis should be excluded from reference files"
+        result = classifier.classify(files, subject_dirs=[])
+        assert len(result) == 1, "Internal analysis should be classified as DD Output"
+        assert result[0].category == "DD Output"
+        assert result[0].assigned_to_agents == []
 
-    def test_dd_report_excluded_from_reference_files(self) -> None:
+    def test_dd_report_classified_with_no_agent_routing(self) -> None:
         from dd_agents.inventory.reference_files import ReferenceFileClassifier
         from dd_agents.models.inventory import FileEntry
 
@@ -1289,10 +1293,12 @@ class TestDDOutputClassification:
         files = [
             FileEntry(path="dd-report-draft.docx", text_path="dd-report-draft.docx"),
         ]
-        result = classifier.classify(files, customer_dirs=[])
-        assert len(result) == 0, "DD report draft should be excluded from reference files"
+        result = classifier.classify(files, subject_dirs=[])
+        assert len(result) == 1, "DD report draft should be classified as DD Output"
+        assert result[0].category == "DD Output"
+        assert result[0].assigned_to_agents == []
 
-    def test_synergy_model_excluded_from_reference_files(self) -> None:
+    def test_synergy_model_classified_with_no_agent_routing(self) -> None:
         from dd_agents.inventory.reference_files import ReferenceFileClassifier
         from dd_agents.models.inventory import FileEntry
 
@@ -1300,11 +1306,13 @@ class TestDDOutputClassification:
         files = [
             FileEntry(path="synergy_model_v2.xlsx", text_path="synergy_model_v2.xlsx"),
         ]
-        result = classifier.classify(files, customer_dirs=[])
-        assert len(result) == 0, "Synergy model should be excluded from reference files"
+        result = classifier.classify(files, subject_dirs=[])
+        assert len(result) == 1, "Synergy model should be classified as DD Output"
+        assert result[0].category == "DD Output"
+        assert result[0].assigned_to_agents == []
 
     def test_internal_analysis_takes_precedence_over_financial(self) -> None:
-        """Files in 'internal analysis' dirs should be excluded even if they match financial patterns."""
+        """Files in 'internal analysis' dirs are classified as DD Output, not Financial."""
         from dd_agents.inventory.reference_files import ReferenceFileClassifier
         from dd_agents.models.inventory import FileEntry
 
@@ -1315,11 +1323,13 @@ class TestDDOutputClassification:
                 text_path="3. Internal analysis/Long-term income statement/financial_model.xlsx",
             ),
         ]
-        result = classifier.classify(files, customer_dirs=[])
-        assert len(result) == 0, "Financial model in internal analysis dir should be excluded"
+        result = classifier.classify(files, subject_dirs=[])
+        assert len(result) == 1, "Financial model in internal analysis dir should be classified as DD Output"
+        assert result[0].category == "DD Output"
+        assert result[0].assigned_to_agents == []
 
     def test_non_dd_output_still_classified(self) -> None:
-        """Ensure normal reference files are still classified when DD output files are excluded."""
+        """Ensure normal reference files are still classified alongside DD output files."""
         from dd_agents.inventory.reference_files import ReferenceFileClassifier
         from dd_agents.models.inventory import FileEntry
 
@@ -1331,9 +1341,11 @@ class TestDDOutputClassification:
             ),
             FileEntry(path="revenue_summary.xlsx", text_path="revenue_summary.xlsx"),
         ]
-        result = classifier.classify(files, customer_dirs=[])
-        assert len(result) == 1, "Only the revenue file should remain"
-        assert result[0].category == "Financial"
+        result = classifier.classify(files, subject_dirs=[])
+        assert len(result) == 2, "Both DD output and revenue file should be classified"
+        categories = {r.category for r in result}
+        assert "DD Output" in categories
+        assert "Financial" in categories
 
 
 # =========================================================================

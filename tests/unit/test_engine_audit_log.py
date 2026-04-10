@@ -161,7 +161,7 @@ class TestQAAuditLogValidation:
                 "16_spawn_specialists",
             )
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=run_dir, customer_safe_names=["acme"])
+        auditor = QAAuditor(run_dir=run_dir, inventory_dir=run_dir, subject_safe_names=["acme"])
         name, check = auditor.check_audit_logs()
 
         assert name == "audit_logs"
@@ -182,7 +182,7 @@ class TestQAAuditLogValidation:
                 "16_spawn_specialists",
             )
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=run_dir, customer_safe_names=["acme"])
+        auditor = QAAuditor(run_dir=run_dir, inventory_dir=run_dir, subject_safe_names=["acme"])
         name, check = auditor.check_audit_logs()
 
         assert name == "audit_logs"
@@ -191,30 +191,103 @@ class TestQAAuditLogValidation:
 
 
 # ---------------------------------------------------------------------------
+# Manifest backfill tests
+# ---------------------------------------------------------------------------
+
+
+class TestBackfillCoverageManifests:
+    """Tests for PipelineEngine._backfill_coverage_manifests."""
+
+    def test_backfill_populates_empty_manifest(self, tmp_path: Path) -> None:
+        """Manifest with no files_read gets backfilled from subject JSONs."""
+        run_dir = tmp_path / "run"
+        agent_dir = run_dir / "findings" / "legal"
+        agent_dir.mkdir(parents=True)
+
+        # Write a minimal manifest
+        manifest = {"agent": "legal", "run_id": "r1", "coverage_pct": 1.0}
+        (agent_dir / "coverage_manifest.json").write_text(json.dumps(manifest))
+
+        # Write a subject JSON with file_headers
+        subject = {
+            "file_headers": [
+                {"file_path": "contracts/msa.pdf"},
+                {"file_path": "contracts/sow.pdf"},
+            ]
+        }
+        (agent_dir / "acme.json").write_text(json.dumps(subject))
+
+        PipelineEngine._backfill_coverage_manifests(run_dir, ["acme"])
+
+        updated = json.loads((agent_dir / "coverage_manifest.json").read_text())
+        assert len(updated["files_read"]) == 2
+        assert updated["files_read"][0]["path"] == "contracts/msa.pdf"
+        assert len(updated["subjects"]) == 1
+        assert updated["subjects"][0]["name"] == "acme"
+        assert updated["analysis_units_completed"] == 1
+
+    def test_backfill_skips_manifest_with_existing_data(self, tmp_path: Path) -> None:
+        """Manifest that already has files_read is not modified."""
+        run_dir = tmp_path / "run"
+        agent_dir = run_dir / "findings" / "legal"
+        agent_dir.mkdir(parents=True)
+
+        manifest = {
+            "agent": "legal",
+            "files_read": [{"path": "existing.pdf", "extraction_quality": "primary"}],
+        }
+        (agent_dir / "coverage_manifest.json").write_text(json.dumps(manifest))
+        (agent_dir / "acme.json").write_text(json.dumps({"file_headers": [{"file_path": "new.pdf"}]}))
+
+        PipelineEngine._backfill_coverage_manifests(run_dir, ["acme"])
+
+        updated = json.loads((agent_dir / "coverage_manifest.json").read_text())
+        assert len(updated["files_read"]) == 1
+        assert updated["files_read"][0]["path"] == "existing.pdf"
+
+    def test_backfill_deduplicates_files_across_subjects(self, tmp_path: Path) -> None:
+        """Same file in two subjects is only listed once."""
+        run_dir = tmp_path / "run"
+        agent_dir = run_dir / "findings" / "finance"
+        agent_dir.mkdir(parents=True)
+
+        manifest = {"agent": "finance", "run_id": "r1", "coverage_pct": 1.0}
+        (agent_dir / "coverage_manifest.json").write_text(json.dumps(manifest))
+
+        for ssn in ("acme", "globex"):
+            (agent_dir / f"{ssn}.json").write_text(json.dumps({"file_headers": [{"file_path": "shared.pdf"}]}))
+
+        PipelineEngine._backfill_coverage_manifests(run_dir, ["acme", "globex"])
+
+        updated = json.loads((agent_dir / "coverage_manifest.json").read_text())
+        assert len(updated["files_read"]) == 1
+
+
+# ---------------------------------------------------------------------------
 # Batch scheduler integration in step 14
 # ---------------------------------------------------------------------------
 
 
 class TestBatchSchedulerIntegration:
-    """Test that score_customer_complexity is usable for step 14 ordering."""
+    """Test that score_subject_complexity is usable for step 14 ordering."""
 
     def test_ordering_simple_first(self) -> None:
-        from dd_agents.orchestrator.batch_scheduler import score_customer_complexity
+        from dd_agents.orchestrator.batch_scheduler import score_subject_complexity
 
         scores = [
-            score_customer_complexity("complex_co", file_count=20, total_bytes=5_000_000),
-            score_customer_complexity("simple_co", file_count=1, total_bytes=500),
-            score_customer_complexity("medium_co", file_count=5, total_bytes=200_000),
+            score_subject_complexity("complex_co", file_count=20, total_bytes=5_000_000),
+            score_subject_complexity("simple_co", file_count=1, total_bytes=500),
+            score_subject_complexity("medium_co", file_count=5, total_bytes=200_000),
         ]
 
         sorted_scores = sorted(scores, key=lambda s: s.score)
-        assert sorted_scores[0].customer_safe_name == "simple_co"
-        assert sorted_scores[-1].customer_safe_name == "complex_co"
+        assert sorted_scores[0].subject_safe_name == "simple_co"
+        assert sorted_scores[-1].subject_safe_name == "complex_co"
 
     def test_zero_files_zero_score(self) -> None:
-        from dd_agents.orchestrator.batch_scheduler import score_customer_complexity
+        from dd_agents.orchestrator.batch_scheduler import score_subject_complexity
 
-        result = score_customer_complexity("empty", file_count=0, total_bytes=0)
+        result = score_subject_complexity("empty", file_count=0, total_bytes=0)
         assert result.score == 0.0
         assert result.tier == "simple"
         assert result.estimated_tokens == 0

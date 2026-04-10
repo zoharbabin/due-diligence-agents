@@ -1,6 +1,6 @@
 """Reference file classifier and agent router.
 
-Reference files are files NOT under a customer directory.  They are classified
+Reference files are files NOT under a subject directory.  They are classified
 by category based on filename/path patterns and routed to the appropriate
 specialist agents.
 """
@@ -102,12 +102,12 @@ _ROUTING_TABLE: dict[ReferenceFileCategory, list[str]] = {
 
 
 class ReferenceFileClassifier:
-    """Identifies and classifies non-customer (reference) files."""
+    """Identifies and classifies non-subject (reference) files."""
 
     def classify(
         self,
         files: list[FileEntry],
-        customer_dirs: list[str],
+        subject_dirs: list[str],
     ) -> list[ReferenceFile]:
         """Identify reference files and classify each by category.
 
@@ -115,30 +115,31 @@ class ReferenceFileClassifier:
         ----------
         files:
             All discovered files in the data room.
-        customer_dirs:
-            List of customer directory prefixes (e.g. ``["GroupA/Acme", "GroupA/Globex"]``).
+        subject_dirs:
+            List of subject directory prefixes (e.g. ``["GroupA/Acme", "GroupA/Globex"]``).
 
         Returns
         -------
         list[ReferenceFile]
             Classified reference files with routing assignments.
         """
-        customer_prefixes = [d.rstrip("/") + "/" for d in customer_dirs]
+        subject_prefixes = [d.rstrip("/") + "/" for d in subject_dirs]
         ref_files: list[ReferenceFile] = []
 
         for entry in files:
-            # Check if file is under any customer directory
-            is_customer_file = any(entry.path.startswith(prefix) for prefix in customer_prefixes)
-            if is_customer_file:
+            # Check if file is under any subject directory
+            is_subject_file = any(entry.path.startswith(prefix) for prefix in subject_prefixes)
+            if is_subject_file:
                 continue
 
             category, subcategory, description = self._classify_single(entry.path)
             agents = self.route_to_agents(category)
 
             # DD output / buyer work products are not routed to any agent
+            # but are still included in the reference file list for inventory
+            # integrity (prevents false-positive orphan warnings).
             if not agents:
-                logger.debug("Skipping DD output file: %s", entry.path)
-                continue
+                logger.debug("DD output file (no agent routing): %s", entry.path)
 
             ref_file = ReferenceFile(
                 file_path=entry.path,

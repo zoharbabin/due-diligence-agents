@@ -45,9 +45,9 @@ class QualityRenderer(SectionRenderer):
             if gov is not None:
                 with contextlib.suppress(ValueError, TypeError):
                     name = (
-                        self.data.display_names.get(csn, str(data.get("customer", csn)))
+                        self.data.display_names.get(csn, str(data.get("subject", csn)))
                         if self.data
-                        else str(data.get("customer", csn))
+                        else str(data.get("subject", csn))
                     )
                     scores.append((name, float(gov)))
 

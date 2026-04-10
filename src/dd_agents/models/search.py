@@ -1,6 +1,6 @@
 """Pydantic models for the ``dd-agents search`` command.
 
-Defines the prompts file schema, per-customer results, and citation records.
+Defines the prompts file schema, per-subject results, and citation records.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ class SearchPrompts(BaseModel, extra="forbid"):
     name: str = Field(..., min_length=1, max_length=200, description="Name of the search prompts configuration")
     description: str = Field(default="", description="Human-readable description of the search purpose")
     columns: list[SearchColumn] = Field(
-        ..., min_length=1, max_length=20, description="Question columns (1-20) to evaluate per customer"
+        ..., min_length=1, max_length=20, description="Question columns (1-20) to evaluate per subject"
     )
 
 
@@ -55,7 +55,7 @@ class SearchCitation(BaseModel):
 
 
 class SearchColumnResult(BaseModel):
-    """Result for one column (question) for one customer."""
+    """Result for one column (question) for one subject."""
 
     answer: str = Field(default="", description="Answer text (YES/NO/NOT_ADDRESSED or free-form)")
     citations: list[SearchCitation] = Field(default_factory=list, description="Citations backing this answer")
@@ -76,19 +76,19 @@ class SearchColumnResult(BaseModel):
         return ""
 
 
-class SearchCustomerResult(BaseModel):
-    """Aggregated search results for one customer."""
+class SearchSubjectResult(BaseModel):
+    """Aggregated search results for one subject."""
 
-    customer_name: str = Field(description="Customer display name")
-    group: str = Field(default="", description="Group folder this customer belongs to")
-    files_analyzed: int = Field(default=0, description="Number of files analyzed for this customer")
-    total_files: int = Field(default=0, description="Total files available for this customer")
+    subject_name: str = Field(description="Subject display name")
+    group: str = Field(default="", description="Group folder this subject belongs to")
+    files_analyzed: int = Field(default=0, description="Number of files analyzed for this subject")
+    total_files: int = Field(default=0, description="Total files available for this subject")
     skipped_files: list[str] = Field(default_factory=list, description="File paths that were skipped")
     columns: dict[str, SearchColumnResult] = Field(default_factory=dict, description="Results keyed by column name")
     incomplete_columns: list[str] = Field(
         default_factory=list, description="Column names where analysis was incomplete"
     )
-    error: str | None = Field(default=None, description="Error message if analysis failed for this customer")
+    error: str | None = Field(default=None, description="Error message if analysis failed for this subject")
     chunks_analyzed: int = Field(default=0, description="Number of text chunks processed")
 
 
@@ -154,7 +154,7 @@ def _normalize_answer(answer: str) -> str:
 def dedup_citations(citations: list[SearchCitation]) -> list[SearchCitation]:
     """Deduplicate citations by (file_path, page, section_ref, exact_quote).
 
-    Applied at parse time so both single-chunk and multi-chunk customers
+    Applied at parse time so both single-chunk and multi-chunk subjects
     get consistent dedup.  The same 4-tuple key is used in the merge phase
     for cross-chunk dedup.  Issue #24.
     """

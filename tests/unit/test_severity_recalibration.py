@@ -37,7 +37,7 @@ def _make_finding(
 def _make_merged_data(findings: list[dict[str, object]]) -> dict[str, object]:
     return {
         "customer_a": {
-            "customer": "Customer A",
+            "subject": "Customer A",
             "findings": findings,
             "gaps": [],
         }

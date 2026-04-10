@@ -105,7 +105,7 @@ class DashboardRenderer(SectionRenderer):
                 f"</div>"
             )
 
-        cards.append(_card(self.data.total_customers, "Entities"))
+        cards.append(_card(self.data.total_subjects, "Entities"))
         cards.append(_card(self.data.material_count, "Findings"))
         cards.append(_card(self.data.total_gaps, "Gaps"))
         for sev in ("P0", "P1", "P2", "P3"):
@@ -225,7 +225,7 @@ class DashboardRenderer(SectionRenderer):
         color = SEVERITY_COLORS.get(sev, "#ccc")
         title = html.escape(str(f.get("title", "Untitled")))
         display_name = self._resolve_display_name(f)
-        customer = html.escape(display_name)
+        entity_name = html.escape(display_name)
         agent = html.escape(str(f.get("agent", "")))
         desc = html.escape(str(f.get("description", "")))
 
@@ -248,7 +248,7 @@ class DashboardRenderer(SectionRenderer):
             f"<div class='wolf-card' style='border-left-color:{color}' "
             f"data-severity='{html.escape(sev)}'>"
             f"<div class='wolf-title'>{self.severity_badge(sev)} {title}{similar_badge}</div>"
-            f"<div class='wolf-meta'>Source: {customer} | Agent: {agent}</div>"
+            f"<div class='wolf-meta'>Source: {entity_name} | Agent: {agent}</div>"
         ]
         if desc:
             parts.append(f"<div class='text-small mt-8'>{desc}</div>")

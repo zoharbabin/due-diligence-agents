@@ -8,6 +8,33 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 > The first public release was **v0.4.0** (2026-03-30). Tagged releases on PyPI and
 > GitHub begin at **v0.4.1**.
 
+## [1.0.1] — 2026-04-10
+
+### Fixed
+
+- **Pipeline crash at step 28 (QA audit)** — `'int' object is not iterable` when agent writes `files_read` as integer count instead of list in coverage manifest. Added type guards in `qa_audit.py` and `dod.py`.
+- **DoD check [2] false failure** — file coverage check now defers gracefully when manifests lack file-level data (only subject-level summaries), matching `qa_audit.py` behavior.
+- **Executive synthesis and acquirer intelligence producing zero output** — `max_turns` increased from 15 to 75; agents were burning all turns on file reads before generating JSON. Budget for acquirer intelligence raised from $1 to $3.
+- **CLI exit hang on `auto-config` and `query` commands** — added `_terminate_child_processes()` to kill orphaned SDK Bun subprocesses that survive normal Python exit.
+- **Auto-config asset-sale focus areas** — added `purchased_assets_schedule`, `excluded_liabilities`, `employee_transfer`, `cure_costs` to deal-type-specific focus areas.
+- **JSON parser robustness** — improved extraction of structured JSON from agent text output containing narration.
+
+## [1.0.0] — 2026-04-08
+
+### Breaking
+
+- **`customer` → `subject` rename** (Issue #187) — complete codebase-wide rename across all modules, tests, and configuration.
+- **Data file renames** — `customers.csv` → `subjects.csv`, `customer_mentions.json` → `subject_mentions.json`.
+- **Checkpoint file renames** — sub-files renamed from `customer_*.json` → `subject_*.json`.
+- **Backward-compat aliases removed** — no shim modules, no class aliases; all code must use `subject` directly.
+- **Pydantic model fields renamed** — `.customer` → `.subject`, `Classification.customers` → `.subjects`, `CoverageManifest.customers` → `.subjects`.
+- **CSS class renames** — `customer-*` → `subject-*` in all HTML report templates and renderers.
+
+### Changed
+
+- HTML report displays "Entity" instead of "Customer" for external-facing content.
+- Version bump from 0.5.13 → 1.0.0.
+
 ## [0.5.4] — 2026-04-07
 
 ### Security

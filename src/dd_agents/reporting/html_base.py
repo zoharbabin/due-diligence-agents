@@ -161,11 +161,11 @@ class SectionRenderer(ABC):
     def _resolve_display_name(self, item: dict[str, Any]) -> str:
         """Resolve the display name for a finding/gap using CSN-first lookup.
 
-        Looks up ``_customer_safe_name`` first (canonical key in display_names),
-        then falls back to ``_customer``/``customer`` raw value.
+        Looks up ``_subject_safe_name`` first (canonical key in display_names),
+        then falls back to ``_subject``/``subject`` raw value.
         """
-        csn = str(item.get("_customer_safe_name", ""))
-        raw = str(item.get("_customer", item.get("customer", "")))
+        csn = str(item.get("_subject_safe_name", ""))
+        raw = str(item.get("_subject", item.get("subject", "")))
         if self.data:
             return self.data.display_names.get(csn, self.data.display_names.get(raw, raw))
         return raw
@@ -220,7 +220,7 @@ class SectionRenderer(ABC):
         color = SEVERITY_COLORS.get(severity, "#ccc")
         title = self.escape(str(finding.get("title", "Untitled")))
         display_name = self._resolve_display_name(finding)
-        customer = self.escape(display_name)
+        entity_name = self.escape(display_name)
         agent = self.escape(str(finding.get("agent", "")))
         confidence = str(finding.get("confidence", "")).lower()
 
@@ -235,7 +235,7 @@ class SectionRenderer(ABC):
             f"tabindex='0' role='button' aria-expanded='false'>"
             f"<div class='fc-title'>{self.severity_badge(severity)} {title}{conf_html} "
             f"<span class='arrow'>&#9654;</span></div>"
-            f"<div class='fc-meta'>Source: {customer} | Agent: {agent}</div>"
+            f"<div class='fc-meta'>Source: {entity_name} | Agent: {agent}</div>"
             f"</div>"
         )
 
@@ -345,7 +345,7 @@ class SectionRenderer(ABC):
         return "".join(parts)
 
     def render_category_group(self, category: str, findings: list[dict[str, Any]]) -> str:
-        """Render a collapsible category group with findings grouped by customer."""
+        """Render a collapsible category group with findings grouped by subject."""
         sev_counts: dict[str, int] = defaultdict(int)
         for f in findings:
             sev_counts[f.get("severity", "P3")] += 1
@@ -359,11 +359,11 @@ class SectionRenderer(ABC):
             "<div class='category-body'>",
         ]
 
-        by_customer: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        by_subject: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for f in findings:
-            by_customer[str(f.get("_customer_safe_name", f.get("_customer", "Unknown")))].append(f)
+            by_subject[str(f.get("_subject_safe_name", f.get("_subject", "Unknown")))].append(f)
 
-        for cust, cust_findings in sorted(by_customer.items()):
+        for cust, cust_findings in sorted(by_subject.items()):
             display = self.data.display_names.get(cust, cust) if self.data else cust
             parts.append(f"<h3>{self.escape(display)}</h3>")
             for f in cust_findings:
@@ -568,15 +568,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .category-body { padding: 12px 16px; display: none; }
 .category-body.open { display: block; }
 
-/* Customer sections */
-.customer-section { background: var(--bg-secondary); border-radius: 8px; margin: 12px 0;
+/* Subject sections */
+.subject-section { background: var(--bg-secondary); border-radius: 8px; margin: 12px 0;
                     box-shadow: var(--shadow-sm); overflow: hidden; }
-.customer-header { padding: 12px 20px; cursor: pointer; display: flex;
+.subject-header { padding: 12px 20px; cursor: pointer; display: flex;
                    justify-content: space-between; align-items: center;
                    background: var(--bg-tertiary); transition: background 0.15s; }
-.customer-header:hover { background: var(--border-medium); }
-.customer-body { padding: 16px 20px; display: none; }
-.customer-body.open { display: block; }
+.subject-header:hover { background: var(--border-medium); }
+.subject-body { padding: 16px 20px; display: none; }
+.subject-body.open { display: block; }
 
 /* Finding cards */
 .finding-card { border-left: 4px solid #ccc; padding: 10px 14px; margin: 8px 0;
@@ -622,13 +622,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .rec-title { font-weight: 700; font-size: 1em; margin: 4px 0; }
 .rec-desc { font-size: 0.9em; color: var(--text-secondary); line-height: 1.5; }
 
-/* Customer summary table */
-.customer-table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 0.9em; }
-.customer-table th, .customer-table td { padding: 10px 14px; border-bottom: 1px solid var(--border-medium);
+/* Subject summary table */
+.subject-table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 0.9em; }
+.subject-table th, .subject-table td { padding: 10px 14px; border-bottom: 1px solid var(--border-medium);
                                           text-align: left; }
-.customer-table th { background: var(--bg-tertiary); font-weight: 600; font-size: 0.85em;
+.subject-table th { background: var(--bg-tertiary); font-weight: 600; font-size: 0.85em;
                      text-transform: uppercase; letter-spacing: 0.3px; }
-.customer-table tr:hover { background: var(--bg-hover); }
+.subject-table tr:hover { background: var(--bg-hover); }
 
 /* Health tier badges */
 .tier-badge { display: inline-block; padding: 2px 10px; border-radius: 12px;
@@ -712,7 +712,7 @@ table.sortable th::after { content: ' \\2195'; color: #aaa; font-size: 0.8em; }
 @media print {
     .sidebar, .skip-link { display: none !important; }
     .main-wrapper { margin-left: 0 !important; }
-    .domain-body, .customer-body, .category-body, .finding-detail { display: block !important; }
+    .domain-body, .subject-body, .category-body, .finding-detail { display: block !important; }
     body { background: white; font-size: 11pt; orphans: 3; widows: 3; }
     .deal-header { background: var(--navy) !important; -webkit-print-color-adjust: exact;
                    print-color-adjust: exact; }
@@ -721,7 +721,7 @@ table.sortable th::after { content: ' \\2195'; color: #aaa; font-size: 0.8em; }
     .rag-dot { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .alert { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .content { max-width: 100%; padding: 0; }
-    .heatmap-cell, .metric-card, .finding-card, .wolf-card, .customer-section,
+    .heatmap-cell, .metric-card, .finding-card, .wolf-card, .subject-section,
     .domain-section, .category-group, .citation, table.sortable,
     .alert, .rec-card { break-inside: avoid; }
     .report-section > h2 { break-after: avoid; }
@@ -743,7 +743,7 @@ table.sortable th::after { content: ' \\2195'; color: #aaa; font-size: 0.8em; }
 *:focus:not(:focus-visible) { outline: none; }
 *:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 .finding-card:focus-visible, .category-header:focus-visible,
-.domain-header:focus-visible, .customer-header:focus-visible {
+.domain-header:focus-visible, .subject-header:focus-visible {
     outline: 2px solid var(--blue); outline-offset: -2px;
     box-shadow: 0 0 0 3px rgba(74,144,217,0.3); }
 
@@ -769,7 +769,7 @@ table.sortable th::after { content: ' \\2195'; color: #aaa; font-size: 0.8em; }
 .presentation-mode .report-section { page-break-before: always; }
 .presentation-mode .category-body,
 .presentation-mode .domain-body,
-.presentation-mode .customer-body { display: block !important; max-height: none !important; }
+.presentation-mode .subject-body { display: block !important; max-height: none !important; }
 .presentation-mode .arrow { display: none; }
 .presentation-mode h2 { font-size: 2em; }
 .presentation-mode .metric-card .value { font-size: 2.5em; }
@@ -780,7 +780,7 @@ table.sortable th::after { content: ' \\2195'; color: #aaa; font-size: 0.8em; }
     .main-wrapper { margin-left: 0 !important; }
     .content { max-width: 100% !important; padding: 20px !important; }
     .report-section { page-break-before: always; page-break-inside: avoid; }
-    .category-body, .domain-body, .customer-body { display: block !important; max-height: none !important; }
+    .category-body, .domain-body, .subject-body { display: block !important; max-height: none !important; }
     .finding-detail { display: block !important; }
     table { page-break-inside: avoid; }
     @page { margin: 2cm; size: A4; }
@@ -824,7 +824,7 @@ def render_js() -> str:
             });
         });
     }
-    setupToggles('.customer-header', '.customer-body');
+    setupToggles('.subject-header', '.subject-body');
     setupToggles('.domain-header', '.domain-body');
     setupToggles('.category-header', '.category-body');
 
@@ -988,7 +988,7 @@ def render_nav_bar(section_rag: dict[str, str] | None = None) -> str:
         "<div class='toc-group'>"
         "<div class='toc-group-label'>Appendix</div>"
         f"<a href='#sec-gaps'>{_rag('gaps')} Incomplete Data</a>"
-        "<a href='#sec-customers'>Entity Detail</a>"
+        "<a href='#sec-subjects'>Entity Detail</a>"
         "<a href='#sec-methodology'>Methodology</a>"
         f"<a href='#sec-governance'>{_rag('governance')} Data Quality</a>"
         "<a href='#sec-quality'>Quality Audit</a>"

@@ -14,7 +14,7 @@ import pytest
 from dd_agents.orchestrator.team import (
     BASE_TIMEOUT_S,
     MAX_TIMEOUT_S,
-    PER_CUSTOMER_TIMEOUT_S,
+    PER_SUBJECT_TIMEOUT_S,
     AgentTeam,
 )
 
@@ -26,7 +26,7 @@ from dd_agents.orchestrator.team import (
 def _make_state(
     tmp_path: Path,
     *,
-    customer_names: list[str] | None = None,
+    subject_names: list[str] | None = None,
     agent_prompts: dict[str, list[str]] | None = None,
 ) -> Any:
     """Build a minimal PipelineState-like object for tests."""
@@ -36,7 +36,7 @@ def _make_state(
     state.run_dir = tmp_path / "run"
     state.run_dir.mkdir(parents=True, exist_ok=True)
     state.run_id = "test_run_001"
-    state.customer_safe_names = customer_names or ["acme", "globex"]
+    state.subject_safe_names = subject_names or ["acme", "globex"]
     state.agent_prompts = agent_prompts or {}
     state.deal_config = {}
     return state
@@ -71,17 +71,17 @@ class TestAgentTeamInit:
 class TestAdaptiveTimeoutEdgeCases:
     """Additional adaptive timeout edge cases."""
 
-    def test_zero_customers_returns_base(self) -> None:
+    def test_zero_subjects_returns_base(self) -> None:
         result = AgentTeam.calculate_adaptive_timeout(0)
         assert result == BASE_TIMEOUT_S
 
-    def test_large_customer_count_capped(self) -> None:
+    def test_large_subject_count_capped(self) -> None:
         result = AgentTeam.calculate_adaptive_timeout(10000)
         assert result == MAX_TIMEOUT_S
 
-    def test_single_customer(self) -> None:
+    def test_single_subject(self) -> None:
         result = AgentTeam.calculate_adaptive_timeout(1)
-        assert result == BASE_TIMEOUT_S + PER_CUSTOMER_TIMEOUT_S
+        assert result == BASE_TIMEOUT_S + PER_SUBJECT_TIMEOUT_S
 
     def test_result_is_integer(self) -> None:
         result = AgentTeam.calculate_adaptive_timeout(5)

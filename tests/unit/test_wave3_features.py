@@ -122,7 +122,7 @@ class TestGovernanceGraphRenderer:
 
         merged = {
             "acme": {
-                "customer": "Acme",
+                "subject": "Acme",
                 "governance_graph": {
                     "edges": [
                         {"from_file": "order.pdf", "to_file": "msa.pdf", "relationship": "governs"},
@@ -131,7 +131,7 @@ class TestGovernanceGraphRenderer:
                 },
             }
         }
-        computed = self._make_computed(total_customers=1)
+        computed = self._make_computed(total_subjects=1)
         renderer = GovernanceGraphRenderer(computed, merged)
         html = renderer.render()
         assert "mermaid" in html
@@ -144,7 +144,7 @@ class TestGovernanceGraphRenderer:
 
         merged = {
             "acme": {
-                "customer": "Acme",
+                "subject": "Acme",
                 "governance_graph": {
                     "edges": [
                         {"from_file": "a.pdf", "to_file": "b.pdf", "relationship": "governs"},
@@ -153,7 +153,7 @@ class TestGovernanceGraphRenderer:
                 },
             }
         }
-        computed = self._make_computed(total_customers=1)
+        computed = self._make_computed(total_subjects=1)
         renderer = GovernanceGraphRenderer(computed, merged)
         html = renderer.render()
         assert "cycle" in html.lower() or "Cycle" in html
@@ -163,7 +163,7 @@ class TestGovernanceGraphRenderer:
 
         merged = {
             "acme": {
-                "customer": "Acme",
+                "subject": "Acme",
                 "governance_graph": {
                     "edges": [
                         {
@@ -175,7 +175,7 @@ class TestGovernanceGraphRenderer:
                 },
             }
         }
-        computed = self._make_computed(total_customers=1)
+        computed = self._make_computed(total_subjects=1)
         renderer = GovernanceGraphRenderer(computed, merged)
         html = renderer.render()
         # The user-provided filename should be escaped; mermaid script tag is legitimate
@@ -187,11 +187,11 @@ class TestGovernanceGraphRenderer:
 
         merged = {
             "acme": {
-                "customer": "Acme",
+                "subject": "Acme",
                 "governance_graph": {"edges": []},
             }
         }
-        computed = self._make_computed(total_customers=1)
+        computed = self._make_computed(total_subjects=1)
         renderer = GovernanceGraphRenderer(computed, merged)
         assert renderer.render() == ""
 
@@ -201,7 +201,7 @@ class TestGovernanceGraphRenderer:
         merged = {
             "acme": "not a dict",
             "beta": {
-                "customer": "Beta",
+                "subject": "Beta",
                 "governance_graph": {
                     "edges": [
                         {"from_file": "a.pdf", "to_file": "b.pdf", "relationship": "governs"},
@@ -209,7 +209,7 @@ class TestGovernanceGraphRenderer:
                 },
             },
         }
-        computed = self._make_computed(total_customers=2)
+        computed = self._make_computed(total_subjects=2)
         renderer = GovernanceGraphRenderer(computed, merged)
         html = renderer.render()
         assert "Beta" in html
@@ -218,8 +218,8 @@ class TestGovernanceGraphRenderer:
     def test_missing_governance_graph_key_ignored(self) -> None:
         from dd_agents.reporting.html_governance import GovernanceGraphRenderer
 
-        merged = {"acme": {"customer": "Acme"}}
-        computed = self._make_computed(total_customers=1)
+        merged = {"acme": {"subject": "Acme"}}
+        computed = self._make_computed(total_subjects=1)
         renderer = GovernanceGraphRenderer(computed, merged)
         assert renderer.render() == ""
 
@@ -228,7 +228,7 @@ class TestGovernanceGraphRenderer:
 
         merged = {
             "acme": {
-                "customer": "Acme",
+                "subject": "Acme",
                 "governance_graph": {
                     "edges": [
                         {"from_file": "a.pdf", "to_file": "b.pdf", "relationship": "governs"},
@@ -236,7 +236,7 @@ class TestGovernanceGraphRenderer:
                 },
             }
         }
-        computed = self._make_computed(total_customers=1)
+        computed = self._make_computed(total_subjects=1)
         renderer = GovernanceGraphRenderer(computed, merged)
         html = renderer.render()
         assert "governs" in html.lower()

@@ -115,7 +115,7 @@ class MatchStatus(StrEnum):
     UNVERIFIED = "unverified"
 
 
-class CustomerClassificationStatus(StrEnum):
+class SubjectClassificationStatus(StrEnum):
     """Incremental mode classification. From SKILL.md section 0e."""
 
     NEW = "NEW"

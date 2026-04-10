@@ -28,8 +28,8 @@ def _make_finding(
         "severity": severity,
         "category": category,
         "agent": agent,
-        "_customer_safe_name": customer,
-        "_customer": customer,
+        "_subject_safe_name": customer,
+        "_subject": customer,
         "description": description,
     }
 
@@ -66,7 +66,7 @@ class TestSearchSimilarTool:
         mock_store = MagicMock()
         mock_store.is_available = True
         mock_store.search.return_value = [
-            {"text": "CoC clause text", "metadata": {"customer_safe_name": "acme"}, "distance": 0.2, "id": "1"},
+            {"text": "CoC clause text", "metadata": {"subject_safe_name": "acme"}, "distance": 0.2, "id": "1"},
         ]
 
         with patch("dd_agents.tools.search_similar._VECTOR_STORE", mock_store):
@@ -76,21 +76,21 @@ class TestSearchSimilarTool:
         assert len(result["results"]) == 1
         assert result["results"][0]["score"] == 0.8  # 1.0 - 0.2
 
-    def test_customer_filter(self) -> None:
+    def test_subject_filter(self) -> None:
         from dd_agents.tools.search_similar import search_similar
 
         mock_store = MagicMock()
         mock_store.is_available = True
         mock_store.search.return_value = [
-            {"text": "result A", "metadata": {"customer_safe_name": "acme"}, "distance": 0.1, "id": "1"},
-            {"text": "result B", "metadata": {"customer_safe_name": "beta"}, "distance": 0.2, "id": "2"},
+            {"text": "result A", "metadata": {"subject_safe_name": "acme"}, "distance": 0.1, "id": "1"},
+            {"text": "result B", "metadata": {"subject_safe_name": "beta"}, "distance": 0.2, "id": "2"},
         ]
 
         with patch("dd_agents.tools.search_similar._VECTOR_STORE", mock_store):
-            result = search_similar("test", customer="acme")
+            result = search_similar("test", subject="acme")
 
         assert len(result["results"]) == 1
-        assert result["results"][0]["metadata"]["customer_safe_name"] == "acme"
+        assert result["results"][0]["metadata"]["subject_safe_name"] == "acme"
 
     def test_top_k_capped_at_20(self) -> None:
         from dd_agents.tools.search_similar import search_similar
@@ -228,7 +228,7 @@ class TestFindingIndexer:
         assert len(index.by_severity["P0"]) == 2
         assert len(index.by_severity["P2"]) == 1
 
-    def test_index_findings_by_customer(self) -> None:
+    def test_index_findings_by_subject(self) -> None:
         from dd_agents.query.indexer import FindingIndexer
 
         findings = [
@@ -238,8 +238,8 @@ class TestFindingIndexer:
         ]
         indexer = FindingIndexer()
         index = indexer.index_findings(findings)
-        assert len(index.by_customer["acme"]) == 2
-        assert len(index.by_customer["beta"]) == 1
+        assert len(index.by_subject["acme"]) == 2
+        assert len(index.by_subject["beta"]) == 1
 
     def test_index_findings_by_category(self) -> None:
         from dd_agents.query.indexer import FindingIndexer
@@ -330,7 +330,7 @@ class TestQueryEngine:
         assert "5" in result.answer
         assert result.query_type == "keyword"
 
-    def test_count_customers(self) -> None:
+    def test_count_subjects(self) -> None:
         engine = self._make_engine()
         result = asyncio.run(engine.query("How many customers?"))
         assert "3" in result.answer

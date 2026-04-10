@@ -33,7 +33,7 @@ class TestProjectModels:
             created_at="2026-01-01T00:00:00Z",
             status="completed",
             total_runs=3,
-            total_customers=50,
+            total_subjects=50,
             total_findings=200,
             finding_counts={"P0": 5, "P1": 20, "P2": 75, "P3": 100},
             deal_type="acquisition",
@@ -155,14 +155,14 @@ class TestProjectRegistryManager:
         result = manager.sync_project_from_run(
             slug="active_deal",
             run_id="run_20260101_120000",
-            total_customers=50,
+            total_subjects=50,
             total_findings=200,
             finding_counts={"P0": 5, "P1": 20, "P2": 75, "P3": 100},
             risk_score=65.0,
         )
         assert result is not None
         assert result.total_runs == 1
-        assert result.total_customers == 50
+        assert result.total_subjects == 50
         assert result.total_findings == 200
         assert result.risk_score == 65.0
         assert result.status == "completed"

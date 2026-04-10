@@ -139,9 +139,9 @@ class ReportDiffChange(BaseModel):
 
     change_type: str = Field(
         description="Type of change: new_finding, resolved_finding, changed_severity, "
-        "new_gap, resolved_gap, new_customer, removed_customer"
+        "new_gap, resolved_gap, new_subject, removed_subject"
     )
-    customer: str = Field(description="Customer name affected by the change")
+    subject: str = Field(description="Subject name affected by the change")
     finding_summary: str = Field(default="", description="Brief description of the finding")
     prior_severity: str | None = Field(default=None, description="Severity in the prior run (None if new)")
     current_severity: str | None = Field(default=None, description="Severity in the current run (None if resolved)")
@@ -156,8 +156,8 @@ class ReportDiffSummary(BaseModel):
     changed_severity: int = Field(default=0, description="Number of findings with changed severity")
     new_gaps: int = Field(default=0, description="Number of gaps added since prior run")
     resolved_gaps: int = Field(default=0, description="Number of gaps resolved since prior run")
-    new_customers: int = Field(default=0, description="Number of customers added since prior run")
-    removed_customers: int = Field(default=0, description="Number of customers removed since prior run")
+    new_subjects: int = Field(default=0, description="Number of subjects added since prior run")
+    removed_subjects: int = Field(default=0, description="Number of subjects removed since prior run")
 
 
 class ReportDiff(BaseModel):
@@ -178,14 +178,14 @@ class ReportDiff(BaseModel):
 
 class ContractDateReconciliationEntry(BaseModel):
     """
-    Single customer entry in contract date reconciliation.
+    Single subject entry in contract date reconciliation.
     From reporting-protocol.md section 5.
     """
 
-    customer: str = Field(description="Customer name")
-    database_end_date: str = Field(default="", description="Contract end date from customer database (YYYY-MM-DD)")
+    subject: str = Field(description="Subject name")
+    database_end_date: str = Field(default="", description="Contract end date from subject database (YYYY-MM-DD)")
     actual_end_date: str = Field(default="", description="Actual end date found in contracts (YYYY-MM-DD)")
-    arr: float = Field(default=0.0, description="Annual recurring revenue for this customer")
+    arr: float = Field(default=0.0, description="Annual recurring revenue for this subject")
     status: str = Field(
         default="",
         description="Reconciliation status: Active-Database Stale, Active-Auto-Renewal, "
@@ -205,9 +205,9 @@ class ContractDateReconciliation(BaseModel):
     run_id: str = Field(description="Unique run identifier")
     generated_at: str = Field(description="ISO-8601 timestamp of document generation")
     entries: list[ContractDateReconciliationEntry] = Field(
-        default_factory=list, description="Per-customer reconciliation entries"
+        default_factory=list, description="Per-subject reconciliation entries"
     )
     total_reclassified_arr: float = Field(
-        default=0.0, description="Total ARR of customers whose status was reclassified"
+        default=0.0, description="Total ARR of subjects whose status was reclassified"
     )
-    total_expired_arr: float = Field(default=0.0, description="Total ARR of customers confirmed as expired")
+    total_expired_arr: float = Field(default=0.0, description="Total ARR of subjects confirmed as expired")

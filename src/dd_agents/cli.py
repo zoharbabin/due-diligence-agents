@@ -566,9 +566,9 @@ def init(
             _print_error(
                 "Missing Input",
                 "Data room path is required.\n"
-                "  Point to a folder containing contracts organized by customer:\n"
-                "    ./data_room/Customer_A/contract.pdf\n"
-                "    ./data_room/Customer_B/agreement.docx",
+                "  Point to a folder containing contracts organized by subject:\n"
+                "    ./data_room/Subject_A/contract.pdf\n"
+                "    ./data_room/Subject_B/agreement.docx",
             )
             raise SystemExit(1)
         data_room = Path(raw_path)
@@ -867,6 +867,9 @@ def auto_config(
     console.print()
     print_auto_config_summary(console, config, scan_result)
 
+    # Kill orphaned SDK JS (Bun) subprocesses that survive normal exit.
+    _terminate_child_processes()
+
 
 # ---------------------------------------------------------------------------
 # search command
@@ -898,9 +901,9 @@ def auto_config(
     help="Comma-separated group names to include (case-insensitive partial match). E.g. --groups Commercial",
 )
 @click.option(
-    "--customers",
+    "--subjects",
     default=None,
-    help="Comma-separated customer names to filter (case-insensitive partial match).",
+    help="Comma-separated subject names to filter (case-insensitive partial match).",
 )
 @click.option(
     "--concurrency",
@@ -935,22 +938,22 @@ def search(
     data_room: Path,
     output_path: Path | None,
     groups: str | None,
-    customers: str | None,
+    subjects: str | None,
     concurrency: int,
     yes: bool,
     no_file: bool,
     verbose: bool,
 ) -> None:
-    """Search customer contracts using custom prompts.
+    """Search subject contracts using custom prompts.
 
-    Analyze all (or selected) customers' contracts with the questions
+    Analyze all (or selected) subjects' contracts with the questions
     in PROMPTS_PATH. Produces an Excel report with answers and citations.
 
     \b
     Example:
         dd-agents search prompts.json --data-room ./data_room
         dd-agents search prompts.json --data-room ./data_room --groups Commercial
-        dd-agents search prompts.json --data-room ./data_room --customers "Acme,Beta" -y
+        dd-agents search prompts.json --data-room ./data_room --subjects "Acme,Beta" -y
     """
     if verbose:
         logging.basicConfig(level=logging.WARNING, format="%(name)s: %(message)s")
@@ -965,7 +968,7 @@ def search(
         data_room_path=data_room,
         output_path=output_path,
         group_filter=groups,
-        customer_filter=customers,
+        subject_filter=subjects,
         concurrency=concurrency,
         auto_confirm=yes,
         verbose=verbose,
@@ -1028,7 +1031,7 @@ def _print_assessment_report(report: dict[str, Any]) -> None:
             f"Total files: {report.get('total_files', 0)}\n"
             f"Supported files: {report.get('supported_files', 0)}\n"
             f"Unsupported files: {report.get('unsupported_files', 0)}\n"
-            f"Estimated customers: {report.get('estimated_customers', 0)}",
+            f"Estimated subjects: {report.get('estimated_subjects', 0)}",
             title="Data Room Assessment",
             border_style=score_color,
         )
@@ -1210,6 +1213,9 @@ def query(report_dir: Path, question: str | None, verbose: bool) -> None:
             _print_query_result(user_input, result)
             console.print()
 
+    # Kill orphaned SDK JS (Bun) subprocesses that survive normal exit.
+    _terminate_child_processes()
+
 
 def _print_query_result(question: str, result: Any) -> None:
     """Print a query result as a rich panel."""
@@ -1235,7 +1241,7 @@ def _print_query_result(question: str, result: Any) -> None:
             sev_color = {"P0": "red", "P1": "bright_red", "P2": "yellow"}.get(sev, "white")
             table.add_row(
                 f"[{sev_color}]{sev}[/{sev_color}]",
-                src.get("customer", ""),
+                src.get("subject", ""),
                 src.get("title", ""),
                 src.get("category", ""),
             )
@@ -1293,7 +1299,7 @@ def portfolio_list() -> None:
     table.add_column("Name", style="bold")
     table.add_column("Status", width=12)
     table.add_column("Type", width=14)
-    table.add_column("Customers", justify="right")
+    table.add_column("Subjects", justify="right")
     table.add_column("Findings", justify="right")
     table.add_column("Risk", justify="right")
     table.add_column("Last Run")
@@ -1306,7 +1312,7 @@ def portfolio_list() -> None:
             p.name,
             f"[{status_color}]{p.status}[/{status_color}]",
             p.deal_type or "-",
-            str(p.total_customers) if p.total_customers else "-",
+            str(p.total_subjects) if p.total_subjects else "-",
             str(p.total_findings) if p.total_findings else "-",
             f"{p.risk_score:.0f}" if p.risk_score else "-",
             p.last_run_at or "-",
@@ -1827,7 +1833,7 @@ def _print_dry_run(deal_config: object, resume_from: int) -> None:
             will_skip = False
             if isinstance(deal_config, DealConfig):
                 if step == PipelineStep.CONTRACT_DATE_RECONCILIATION:
-                    has_db = bool(deal_config.model_dump().get("source_of_truth", {}).get("customer_database"))
+                    has_db = bool(deal_config.model_dump().get("source_of_truth", {}).get("subject_database"))
                     if not has_db:
                         will_skip = True
 

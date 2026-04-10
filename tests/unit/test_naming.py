@@ -1,10 +1,10 @@
-"""Tests for customer_safe_name and preprocess_name utilities."""
+"""Tests for subject_safe_name and preprocess_name utilities."""
 
 from __future__ import annotations
 
 import pytest
 
-from dd_agents.utils.naming import customer_safe_name, preprocess_name
+from dd_agents.utils.naming import preprocess_name, subject_safe_name
 
 # ---------------------------------------------------------------------------
 # preprocess_name tests
@@ -64,7 +64,7 @@ class TestPreprocessName:
 
 
 # ---------------------------------------------------------------------------
-# customer_safe_name tests
+# subject_safe_name tests
 # ---------------------------------------------------------------------------
 
 
@@ -91,31 +91,31 @@ class TestCustomerSafeName:
         ],
     )
     def test_safe_name_convention(self, input_name: str, expected: str) -> None:
-        assert customer_safe_name(input_name) == expected
+        assert subject_safe_name(input_name) == expected
 
     def test_safe_name_empty_string(self) -> None:
         with pytest.raises(ValueError, match="cannot be empty"):
-            customer_safe_name("")
+            subject_safe_name("")
 
     def test_safe_name_whitespace_only(self) -> None:
         with pytest.raises(ValueError, match="cannot be empty"):
-            customer_safe_name("   ")
+            subject_safe_name("   ")
 
     def test_safe_name_only_legal_suffix(self) -> None:
         with pytest.raises(ValueError, match="resolves to empty"):
-            customer_safe_name("Inc.")
+            subject_safe_name("Inc.")
 
     def test_no_leading_trailing_underscores(self) -> None:
-        result = customer_safe_name("_underscored_")
+        result = subject_safe_name("_underscored_")
         assert not result.startswith("_")
         assert not result.endswith("_")
 
     def test_no_consecutive_underscores(self) -> None:
-        result = customer_safe_name("A & B   Corp.")
+        result = subject_safe_name("A & B   Corp.")
         assert "__" not in result
 
     def test_dash_replaced(self) -> None:
-        result = customer_safe_name("Smith-Jones Partners")
+        result = subject_safe_name("Smith-Jones Partners")
         assert "-" not in result
         assert result == "smith_jones_partners"
 
@@ -132,4 +132,4 @@ class TestCustomerSafeName:
         ],
     )
     def test_unicode_transliterated_to_ascii(self, input_name: str, expected: str) -> None:
-        assert customer_safe_name(input_name) == expected
+        assert subject_safe_name(input_name) == expected

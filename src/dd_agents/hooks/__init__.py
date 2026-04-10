@@ -5,8 +5,8 @@ from __future__ import annotations
 from dd_agents.hooks.factory import build_hooks_for_agent
 from dd_agents.hooks.post_tool import (
     validate_audit_entry,
-    validate_customer_json,
     validate_manifest_json,
+    validate_subject_json,
 )
 from dd_agents.hooks.pre_tool import (
     BASH_BLOCKLIST,
@@ -31,7 +31,7 @@ __all__ = [
     "path_guard",
     "file_size_guard",
     # PostToolUse
-    "validate_customer_json",
+    "validate_subject_json",
     "validate_manifest_json",
     "validate_audit_entry",
     # Stop

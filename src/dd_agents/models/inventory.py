@@ -1,8 +1,8 @@
-"""Pydantic models for data room inventory: files, customers, mentions, and counts."""
+"""Pydantic models for data room inventory: files, subjects, mentions, and counts."""
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class FileEntry(BaseModel):
@@ -26,20 +26,22 @@ class FileEntry(BaseModel):
     is_latest_version: bool = Field(default=True, description="False if superseded by another file")
 
 
-class CustomerEntry(BaseModel):
-    """One customer in the customer registry (customers.csv row)."""
+class SubjectEntry(BaseModel):
+    """One subject in the subject registry (subjects.csv row)."""
 
-    group: str = Field(description="Group folder name containing this customer")
-    name: str = Field(description="Customer display name")
-    safe_name: str = Field(description="Normalized customer_safe_name for file naming")
-    path: str = Field(description="Customer directory path relative to data room root")
-    file_count: int = Field(default=0, description="Number of files belonging to this customer")
-    files: list[str] = Field(default_factory=list, description="List of file paths for this customer")
+    model_config = ConfigDict(populate_by_name=True)
+
+    group: str = Field(description="Group folder name containing this subject")
+    name: str = Field(description="Subject display name")
+    safe_name: str = Field(description="Normalized subject_safe_name for file naming")
+    path: str = Field(description="Subject directory path relative to data room root")
+    file_count: int = Field(default=0, description="Number of files belonging to this subject")
+    files: list[str] = Field(default_factory=list, description="List of file paths for this subject")
 
 
 class ReferenceFile(BaseModel):
     """
-    Global reference file (not under a customer directory).
+    Global reference file (not under a subject directory).
     From SKILL.md section 2b.
     """
 
@@ -48,15 +50,16 @@ class ReferenceFile(BaseModel):
     category: str = Field(description="High-level category (Financial, Pricing, Corporate/Legal, etc.)")
     subcategory: str = Field(description="Finer classification within the category")
     description: str = Field(description="1-2 sentence description of the file contents")
-    customers_mentioned: list[str] = Field(
-        default_factory=list, description="Customer names mentioned in this reference file"
+    subjects_mentioned: list[str] = Field(
+        default_factory=list, description="Subject names mentioned in this reference file"
     )
-    customers_mentioned_count: int = Field(default=0, description="Number of distinct customers mentioned")
+    subjects_mentioned_count: int = Field(default=0, description="Number of distinct subjects mentioned")
     data_points_extractable: list[str] = Field(
         default_factory=list, description="Types of data points that can be extracted from this file"
     )
     assigned_to_agents: list[str] = Field(
-        min_length=1, description="Every reference file must be assigned to at least one agent"
+        default_factory=list,
+        description="Agents assigned to process this file (empty for DD Output files excluded from analysis)",
     )
 
 
@@ -64,40 +67,41 @@ class CountsJson(BaseModel):
     """Aggregate inventory counts. From SKILL.md section 2a."""
 
     total_files: int = Field(default=0, description="Total number of files in the data room")
-    total_customers: int = Field(default=0, description="Total number of distinct customers")
+    total_subjects: int = Field(default=0, description="Total number of distinct subjects")
     total_reference_files: int = Field(default=0, description="Number of global reference files")
     files_by_extension: dict[str, int] = Field(
         default_factory=dict, description="File counts keyed by extension (e.g. '.pdf': 42)"
     )
     files_by_group: dict[str, int] = Field(default_factory=dict, description="File counts keyed by group folder name")
-    customers_by_group: dict[str, int] = Field(
-        default_factory=dict, description="Customer counts keyed by group folder name"
+    subjects_by_group: dict[str, int] = Field(
+        default_factory=dict,
+        description="Subject counts keyed by group folder name",
     )
 
 
-class CustomerMention(BaseModel):
+class SubjectMention(BaseModel):
     """
-    Customer-mention index entry. From SKILL.md section 2c.
-    Records which customers are mentioned in which reference files.
+    Subject-mention index entry. From SKILL.md section 2c.
+    Records which subjects are mentioned in which reference files.
     """
 
-    customer_name: str = Field(description="Customer display name")
-    customer_safe_name: str = Field(description="Normalized customer_safe_name")
+    subject_name: str = Field(description="Subject display name")
+    subject_safe_name: str = Field(description="Normalized subject_safe_name")
     reference_files: list[str] = Field(
-        default_factory=list, description="Reference file paths that mention this customer"
+        default_factory=list, description="Reference file paths that mention this subject"
     )
     mention_count: int = Field(default=0, description="Total number of mentions across reference files")
 
 
-class CustomerMentionIndex(BaseModel):
-    """Complete customer-mention index. Written to customer_mentions.json."""
+class SubjectMentionIndex(BaseModel):
+    """Complete subject-mention index. Written to subject_mentions.json."""
 
-    matches: list[CustomerMention] = Field(default_factory=list, description="Customers with reference file mentions")
+    matches: list[SubjectMention] = Field(default_factory=list, description="Subjects with reference file mentions")
     unmatched_in_reference: list[str] = Field(
-        default_factory=list, description="Names in reference files not matching any customer folder (ghost customers)"
+        default_factory=list, description="Names in reference files not matching any subject folder (ghost subjects)"
     )
-    customers_without_reference_data: list[str] = Field(
-        default_factory=list, description="Customer folders with no mentions in any reference file (phantom contracts)"
+    subjects_without_reference_data: list[str] = Field(
+        default_factory=list, description="Subject folders with no mentions in any reference file (phantom contracts)"
     )
 
 

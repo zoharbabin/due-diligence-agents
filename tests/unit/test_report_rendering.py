@@ -75,7 +75,7 @@ def _make_merged_data_with_model_xrefs() -> dict[str, Any]:
     """Build merged data using CrossReference model field names."""
     return {
         "customer_a": {
-            "customer": "Customer A",
+            "subject": "Customer A",
             "findings": [_make_finding(severity="P1", title="Revenue mismatch", agent="finance")],
             "gaps": [],
             "cross_references": [
@@ -113,7 +113,7 @@ class TestCategoryNormalization:
         """Freeform legal categories are mapped to canonical categories."""
         merged: dict[str, Any] = {
             "cust_a": {
-                "customer": "Customer A",
+                "subject": "Customer A",
                 "findings": [
                     _make_finding(category="change_of_control_clauses", agent="legal"),
                     _make_finding(category="termination_provisions_and_exit_clauses", agent="legal"),
@@ -135,7 +135,7 @@ class TestCategoryNormalization:
         """Categories that don't match any canonical pattern pass through as-is."""
         merged: dict[str, Any] = {
             "cust_a": {
-                "customer": "Customer A",
+                "subject": "Customer A",
                 "findings": [
                     _make_finding(category="very_unusual_unique_category_xyz", agent="legal"),
                 ],
@@ -163,7 +163,7 @@ class TestWolfPackOverhaul:
         """wolf_pack_p0 contains only P0 findings."""
         merged: dict[str, Any] = {
             "cust_a": {
-                "customer": "Customer A",
+                "subject": "Customer A",
                 "findings": [
                     _make_finding(severity="P0", title="Critical issue"),
                     _make_finding(severity="P1", title="High issue"),
@@ -183,7 +183,7 @@ class TestWolfPackOverhaul:
         findings = [_make_finding(severity="P0", title=f"Critical issue {i}") for i in range(20)]
         merged: dict[str, Any] = {
             "cust_a": {
-                "customer": "Customer A",
+                "subject": "Customer A",
                 "findings": findings,
                 "gaps": [],
             },
@@ -197,7 +197,7 @@ class TestWolfPackOverhaul:
         """Findings with >0.7 title similarity are grouped with 'N similar' badge."""
         merged: dict[str, Any] = {
             "cust_a": {
-                "customer": "Customer A",
+                "subject": "Customer A",
                 "findings": [
                     _make_finding(severity="P0", title="Change of control clause terminates agreement"),
                     _make_finding(severity="P0", title="Change of control clause terminates contract"),
@@ -278,7 +278,7 @@ class TestGapTableColumns:
         """Gap table renders why_needed, request_to_company, and agent columns."""
         merged: dict[str, Any] = {
             "customer_a": {
-                "customer": "Customer A",
+                "subject": "Customer A",
                 "findings": [],
                 "gaps": [
                     _make_gap(
@@ -317,7 +317,7 @@ class TestExecutiveSummary:
         """deal_risk_score maps to a Go/No-Go signal label."""
         merged: dict[str, Any] = {
             "cust_a": {
-                "customer": "Customer A",
+                "subject": "Customer A",
                 "findings": [
                     _make_finding(severity="P0", title="Critical deal issue"),
                 ],
@@ -340,7 +340,7 @@ class TestExecutiveSummary:
         """Executive summary renders a domain x severity data visualization."""
         merged: dict[str, Any] = {
             "cust_a": {
-                "customer": "Customer A",
+                "subject": "Customer A",
                 "findings": [
                     _make_finding(severity="P0", agent="legal"),
                     _make_finding(severity="P1", agent="finance"),
@@ -384,17 +384,17 @@ class TestDiffRenderer:
             "changes": [
                 {
                     "change_type": "new_finding",
-                    "customer": "Customer A",
+                    "subject": "Customer A",
                     "finding_summary": "New compliance issue found",
                 },
                 {
                     "change_type": "new_finding",
-                    "customer": "Customer B",
+                    "subject": "Customer B",
                     "finding_summary": "New IP risk identified",
                 },
                 {
                     "change_type": "resolved_finding",
-                    "customer": "Customer A",
+                    "subject": "Customer A",
                     "finding_summary": "Prior revenue issue resolved",
                 },
             ],
@@ -404,7 +404,7 @@ class TestDiffRenderer:
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
         gen.generate(
-            {"c1": {"customer": "C1", "findings": [], "gaps": []}},
+            {"c1": {"subject": "C1", "findings": [], "gaps": []}},
             out,
             run_dir=run_dir,
         )
@@ -422,7 +422,7 @@ class TestDiffRenderer:
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
         gen.generate(
-            {"c1": {"customer": "C1", "findings": [], "gaps": []}},
+            {"c1": {"subject": "C1", "findings": [], "gaps": []}},
             out,
         )
 
@@ -458,7 +458,7 @@ class TestQualityAuditChecks:
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
         gen.generate(
-            {"c1": {"customer": "C1", "findings": [], "gaps": []}},
+            {"c1": {"subject": "C1", "findings": [], "gaps": []}},
             out,
             run_metadata={"quality_scores": {"agent_scores": {"legal": {"score": 90, "details": "Good"}}}},
             run_dir=run_dir,
@@ -489,7 +489,7 @@ class TestTerminology:
         """Report uses 'Entity' instead of 'Customer' in section headers and metric labels."""
         merged: dict[str, Any] = {
             "cust_a": {
-                "customer": "Customer A",
+                "subject": "Customer A",
                 "findings": [_make_finding()],
                 "gaps": [_make_gap()],
                 "governance_resolution_pct": 85.0,
@@ -602,7 +602,7 @@ class TestWolfPackExtended:
         """wolf_pack_p0 is empty when there are no P0 findings."""
         merged: dict[str, Any] = {
             "c": {
-                "customer": "C",
+                "subject": "C",
                 "findings": [_make_finding(severity="P1"), _make_finding(severity="P2")],
                 "gaps": [],
             },
@@ -613,7 +613,7 @@ class TestWolfPackExtended:
     def test_wolf_pack_p0_exactly_15(self) -> None:
         """wolf_pack_p0 returns exactly 15 when there are exactly 15 P0 findings."""
         findings = [_make_finding(severity="P0", title=f"Issue {i}") for i in range(15)]
-        merged: dict[str, Any] = {"c": {"customer": "C", "findings": findings, "gaps": []}}
+        merged: dict[str, Any] = {"c": {"subject": "C", "findings": findings, "gaps": []}}
         data = ReportDataComputer().compute(merged)
         assert len(data.wolf_pack_p0) == 15
 
@@ -621,7 +621,7 @@ class TestWolfPackExtended:
         """wolf_pack_p0 contains strictly P0, no P1 findings."""
         merged: dict[str, Any] = {
             "c": {
-                "customer": "C",
+                "subject": "C",
                 "findings": [
                     _make_finding(severity="P0", title="Critical"),
                     _make_finding(severity="P1", title="High"),
@@ -709,7 +709,7 @@ class TestCrossRef3WayStatus:
         """Cross-references with 'unverified' or 'partial' status show as Unverified."""
         merged: dict[str, Any] = {
             "c": {
-                "customer": "C",
+                "subject": "C",
                 "findings": [],
                 "gaps": [],
                 "cross_references": [
@@ -736,7 +736,7 @@ class TestCrossRef3WayStatus:
         """Empty match_status should NOT be treated as a match."""
         merged: dict[str, Any] = {
             "c": {
-                "customer": "C",
+                "subject": "C",
                 "findings": [],
                 "gaps": [],
                 "cross_references": [
@@ -765,7 +765,7 @@ class TestExecutiveSummaryExtended:
         """Critical risk (3+ P0) shows No-Go."""
         merged: dict[str, Any] = {
             "c": {
-                "customer": "C",
+                "subject": "C",
                 "findings": [_make_finding(severity="P0", title=f"Issue {i}") for i in range(3)],
                 "gaps": [],
             },
@@ -777,7 +777,7 @@ class TestExecutiveSummaryExtended:
 
     def test_go_no_go_single_p0_proceed_with_caution(self, tmp_path: Path) -> None:
         """Single P0 (softened) shows Proceed with Caution, not No-Go."""
-        merged: dict[str, Any] = {"c": {"customer": "C", "findings": [_make_finding(severity="P0")], "gaps": []}}
+        merged: dict[str, Any] = {"c": {"subject": "C", "findings": [_make_finding(severity="P0")], "gaps": []}}
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
         gen.generate(merged, out)
@@ -786,7 +786,7 @@ class TestExecutiveSummaryExtended:
     def test_go_no_go_high(self, tmp_path: Path) -> None:
         """High risk shows Proceed with Caution."""
         findings = [_make_finding(severity="P1") for _ in range(3)]
-        merged: dict[str, Any] = {"c": {"customer": "C", "findings": findings, "gaps": []}}
+        merged: dict[str, Any] = {"c": {"subject": "C", "findings": findings, "gaps": []}}
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
         gen.generate(merged, out)
@@ -794,7 +794,7 @@ class TestExecutiveSummaryExtended:
 
     def test_go_no_go_medium(self, tmp_path: Path) -> None:
         """Medium risk shows Conditional Go."""
-        merged: dict[str, Any] = {"c": {"customer": "C", "findings": [_make_finding(severity="P1")], "gaps": []}}
+        merged: dict[str, Any] = {"c": {"subject": "C", "findings": [_make_finding(severity="P1")], "gaps": []}}
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
         gen.generate(merged, out)
@@ -802,7 +802,7 @@ class TestExecutiveSummaryExtended:
 
     def test_go_no_go_clean(self, tmp_path: Path) -> None:
         """Clean risk shows Go."""
-        merged: dict[str, Any] = {"c": {"customer": "C", "findings": [], "gaps": []}}
+        merged: dict[str, Any] = {"c": {"subject": "C", "findings": [], "gaps": []}}
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
         gen.generate(merged, out)
@@ -857,7 +857,7 @@ class TestDiffRendererExtended:
 
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
-        gen.generate({"c": {"customer": "C", "findings": [], "gaps": []}}, out, run_dir=run_dir)
+        gen.generate({"c": {"subject": "C", "findings": [], "gaps": []}}, out, run_dir=run_dir)
         content = out.read_text(encoding="utf-8")
         # Should not crash; diff section should be absent
         assert "Run-over-Run" not in content
@@ -871,7 +871,7 @@ class TestDiffRendererExtended:
 
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
-        gen.generate({"c": {"customer": "C", "findings": [], "gaps": []}}, out, run_dir=run_dir)
+        gen.generate({"c": {"subject": "C", "findings": [], "gaps": []}}, out, run_dir=run_dir)
         content = out.read_text(encoding="utf-8")
         assert "Run-over-Run" in content
         assert ">0</div>" in content
@@ -886,7 +886,7 @@ class TestDiffRendererExtended:
             "changes": [
                 {
                     "change_type": "changed_severity",
-                    "customer": "C",
+                    "subject": "C",
                     "finding_summary": "Issue upgraded",
                     "prior_severity": "P2",
                     "current_severity": "P1",
@@ -897,7 +897,7 @@ class TestDiffRendererExtended:
 
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
-        gen.generate({"c": {"customer": "C", "findings": [], "gaps": []}}, out, run_dir=run_dir)
+        gen.generate({"c": {"subject": "C", "findings": [], "gaps": []}}, out, run_dir=run_dir)
         content = out.read_text(encoding="utf-8")
         assert "Severity Changes" in content
         assert "Prior</th>" in content
@@ -922,7 +922,7 @@ class TestQualityAuditExtended:
 
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
-        gen.generate({"c": {"customer": "C", "findings": [], "gaps": []}}, out, run_dir=run_dir)
+        gen.generate({"c": {"subject": "C", "findings": [], "gaps": []}}, out, run_dir=run_dir)
         content = out.read_text(encoding="utf-8")
         assert "QA Audit Checks" not in content  # Section skipped
 
@@ -935,7 +935,7 @@ class TestQualityAuditExtended:
 
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
-        gen.generate({"c": {"customer": "C", "findings": [], "gaps": []}}, out, run_dir=run_dir)
+        gen.generate({"c": {"subject": "C", "findings": [], "gaps": []}}, out, run_dir=run_dir)
         content = out.read_text(encoding="utf-8")
         assert "QA Audit Checks" not in content
 
@@ -950,7 +950,7 @@ class TestQualityAuditExtended:
 
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
-        gen.generate({"c": {"customer": "C", "findings": [], "gaps": []}}, out, run_dir=run_dir)
+        gen.generate({"c": {"subject": "C", "findings": [], "gaps": []}}, out, run_dir=run_dir)
         content = out.read_text(encoding="utf-8")
         assert "vb-unchecked" in content
 
@@ -996,7 +996,7 @@ class TestFocusAreaNormalization:
         """Focus area 'ip_ownership' matches canonical category 'IP & Ownership'."""
         merged: dict[str, Any] = {
             "c": {
-                "customer": "C",
+                "subject": "C",
                 "findings": [_make_finding(severity="P0", agent="legal", category="ip_assignment_and_ownership")],
                 "gaps": [],
             },

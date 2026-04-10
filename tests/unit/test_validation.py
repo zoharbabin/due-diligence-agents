@@ -1,7 +1,7 @@
 """Unit tests for the dd_agents.validation module.
 
 Tests cover:
-- CoverageValidator: correct count passes, missing customer fails, empty dir
+- CoverageValidator: correct count passes, missing subject fails, empty dir
 - NumericalAuditor: source traceability, cross-source consistency, semantic reasonableness
 - NumericalManifest: generated_at field validation
 - NumericalAuditor._rederive: N003-N010 rederivation from source files
@@ -32,22 +32,22 @@ if TYPE_CHECKING:
 # Helpers for building sample data
 # ===================================================================== #
 
-CUSTOMERS = ["acme_corp", "globex", "initech"]
+SUBJECTS = ["acme_corp", "globex", "initech"]
 AGENTS = ["legal", "finance", "commercial", "producttech"]
 
 
-def _make_customer_json(customer: str, agent: str) -> dict:
-    """Minimal valid per-customer agent output."""
+def _make_subject_json(subject: str, agent: str) -> dict:
+    """Minimal valid per-subject agent output."""
     return {
-        "customer": customer,
-        "customer_safe_name": customer,
+        "subject": subject,
+        "subject_safe_name": subject,
         "agent": agent,
         "run_id": "run_001",
         "timestamp": "2025-02-18T00:00:00Z",
         "files_analyzed": 1,
         "findings": [
             {
-                "id": f"forensic-dd_{agent}_{customer}_0001",
+                "id": f"forensic-dd_{agent}_{subject}_0001",
                 "severity": "P2",
                 "category": "test_category",
                 "title": "Test finding",
@@ -55,7 +55,7 @@ def _make_customer_json(customer: str, agent: str) -> dict:
                 "citations": [
                     {
                         "source_type": "file",
-                        "source_path": f"{customer}/contract.pdf",
+                        "source_path": f"{subject}/contract.pdf",
                         "exact_quote": "test quote",
                     }
                 ],
@@ -67,14 +67,14 @@ def _make_customer_json(customer: str, agent: str) -> dict:
     }
 
 
-def _make_merged_json(customer: str) -> dict:
-    """Minimal merged per-customer output."""
+def _make_merged_json(subject: str) -> dict:
+    """Minimal merged per-subject output."""
     return {
-        "customer": customer,
-        "customer_safe_name": customer,
+        "subject": subject,
+        "subject_safe_name": subject,
         "findings": [
             {
-                "id": f"forensic-dd_legal_{customer}_0001",
+                "id": f"forensic-dd_legal_{subject}_0001",
                 "severity": "P2",
                 "category": "test_category",
                 "title": "Test finding",
@@ -82,7 +82,7 @@ def _make_merged_json(customer: str) -> dict:
                 "citations": [
                     {
                         "source_type": "file",
-                        "source_path": f"{customer}/contract.pdf",
+                        "source_path": f"{subject}/contract.pdf",
                         "exact_quote": "test quote",
                     }
                 ],
@@ -96,27 +96,27 @@ def _make_merged_json(customer: str) -> dict:
     }
 
 
-def _make_coverage_manifest(agent: str, customers: list[str]) -> dict:
+def _make_coverage_manifest(agent: str, subjects: list[str]) -> dict:
     """Minimal coverage manifest."""
     return {
         "agent": agent,
         "skill": "forensic-dd",
         "run_id": "run_001",
-        "files_assigned": [f"{c}/contract.pdf" for c in customers],
-        "files_read": [{"path": f"{c}/contract.pdf"} for c in customers],
+        "files_assigned": [f"{c}/contract.pdf" for c in subjects],
+        "files_read": [{"path": f"{c}/contract.pdf"} for c in subjects],
         "files_skipped": [],
         "files_failed": [],
         "coverage_pct": 1.0,
-        "analysis_units_assigned": len(customers),
-        "analysis_units_completed": len(customers),
-        "customers": [
+        "analysis_units_assigned": len(subjects),
+        "analysis_units_completed": len(subjects),
+        "subjects": [
             {
                 "name": c,
                 "files_assigned": [f"{c}/contract.pdf"],
                 "files_processed": [f"{c}/contract.pdf"],
                 "status": "complete",
             }
-            for c in customers
+            for c in subjects
         ],
     }
 
@@ -136,7 +136,7 @@ def _make_manifest(
         generated_at="2025-02-18T00:00:00Z",
         numbers=[
             ManifestEntry(
-                id="N001", label="total_customers", value=n001, source_file="customers.csv", derivation="COUNT(rows)"
+                id="N001", label="total_subjects", value=n001, source_file="subjects.csv", derivation="COUNT(rows)"
             ),
             ManifestEntry(id="N002", label="total_files", value=20, source_file="files.txt", derivation="wc -l"),
             ManifestEntry(
@@ -178,20 +178,20 @@ def _make_manifest(
 def _populate_run_dir(
     run_dir: Path,
     inventory_dir: Path,
-    customers: list[str] | None = None,
+    subjects: list[str] | None = None,
 ) -> None:
     """Populate a run directory with minimal valid data for QA checks."""
-    customers = customers or CUSTOMERS
+    subjects = subjects or SUBJECTS
 
     # Inventory files
     inventory_dir.mkdir(parents=True, exist_ok=True)
-    files_list = [f"{c}/contract.pdf" for c in customers]
+    files_list = [f"{c}/contract.pdf" for c in subjects]
     (inventory_dir / "files.txt").write_text("\n".join(files_list) + "\n")
-    (inventory_dir / "customers.csv").write_text(
-        "group,name,safe_name,path,file_count\n" + "\n".join(f"group1,{c},{c},/data/{c},1" for c in customers) + "\n"
+    (inventory_dir / "subjects.csv").write_text(
+        "group,name,safe_name,path,file_count\n" + "\n".join(f"group1,{c},{c},/data/{c},1" for c in subjects) + "\n"
     )
     (inventory_dir / "counts.json").write_text(
-        json.dumps({"total_customers": len(customers), "total_files": len(files_list)})
+        json.dumps({"total_subjects": len(subjects), "total_files": len(files_list)})
     )
     (inventory_dir / "extraction_quality.json").write_text("[]")
 
@@ -199,15 +199,15 @@ def _populate_run_dir(
     for agent in AGENTS:
         agent_dir = run_dir / "findings" / agent
         agent_dir.mkdir(parents=True, exist_ok=True)
-        for customer in customers:
-            (agent_dir / f"{customer}.json").write_text(json.dumps(_make_customer_json(customer, agent)))
-        (agent_dir / "coverage_manifest.json").write_text(json.dumps(_make_coverage_manifest(agent, customers)))
+        for subject in subjects:
+            (agent_dir / f"{subject}.json").write_text(json.dumps(_make_subject_json(subject, agent)))
+        (agent_dir / "coverage_manifest.json").write_text(json.dumps(_make_coverage_manifest(agent, subjects)))
 
     # Merged output
     merged_dir = run_dir / "findings" / "merged"
     merged_dir.mkdir(parents=True, exist_ok=True)
-    for customer in customers:
-        (merged_dir / f"{customer}.json").write_text(json.dumps(_make_merged_json(customer)))
+    for subject in subjects:
+        (merged_dir / f"{subject}.json").write_text(json.dumps(_make_merged_json(subject)))
 
     # Audit logs
     for agent in AGENTS:
@@ -241,17 +241,17 @@ class TestCoverageValidator:
     """Tests for CoverageValidator."""
 
     def test_correct_count_passes(self, tmp_path: Path) -> None:
-        """When every customer has output from every agent, all checks pass."""
+        """When every subject has output from every agent, all checks pass."""
         agent_dirs: dict[str, Path] = {}
         for agent in AGENTS:
             d = tmp_path / agent
             d.mkdir()
-            for customer in CUSTOMERS:
-                (d / f"{customer}.json").write_text(json.dumps(_make_customer_json(customer, agent)))
+            for subject in SUBJECTS:
+                (d / f"{subject}.json").write_text(json.dumps(_make_subject_json(subject, agent)))
             agent_dirs[agent] = d
 
         validator = CoverageValidator()
-        results = validator.validate(agent_dirs, CUSTOMERS)
+        results = validator.validate(agent_dirs, SUBJECTS)
 
         # 4 per-agent checks + 1 aggregate = 5
         assert len(results) == 5
@@ -259,32 +259,32 @@ class TestCoverageValidator:
             assert isinstance(check, AuditCheck)
             assert check.passed is True
 
-    def test_missing_customer_fails(self, tmp_path: Path) -> None:
-        """Missing a customer JSON for one agent causes failure."""
+    def test_missing_subject_fails(self, tmp_path: Path) -> None:
+        """Missing a subject JSON for one agent causes failure."""
         agent_dirs: dict[str, Path] = {}
         for agent in AGENTS:
             d = tmp_path / agent
             d.mkdir()
-            for customer in CUSTOMERS:
-                if agent == "legal" and customer == "initech":
+            for subject in SUBJECTS:
+                if agent == "legal" and subject == "initech":
                     continue  # skip one
-                (d / f"{customer}.json").write_text(json.dumps(_make_customer_json(customer, agent)))
+                (d / f"{subject}.json").write_text(json.dumps(_make_subject_json(subject, agent)))
             agent_dirs[agent] = d
 
         validator = CoverageValidator()
-        results = validator.validate(agent_dirs, CUSTOMERS)
+        results = validator.validate(agent_dirs, SUBJECTS)
 
         # The legal agent check should fail
         legal_check = next(r for r in results if r.details.get("agent") == "legal")
         assert legal_check.passed is False
-        assert "initech" in legal_check.details["missing_customers"]
+        assert "initech" in legal_check.details["missing_subjects"]
 
         # Aggregate should also fail
         aggregate = next(r for r in results if r.details.get("aggregate"))
         assert aggregate.passed is False
 
     def test_empty_dir_fails(self, tmp_path: Path) -> None:
-        """An empty agent output directory means all customers are missing."""
+        """An empty agent output directory means all subjects are missing."""
         agent_dirs: dict[str, Path] = {}
         for agent in AGENTS:
             d = tmp_path / agent
@@ -293,14 +293,14 @@ class TestCoverageValidator:
             agent_dirs[agent] = d
 
         validator = CoverageValidator()
-        results = validator.validate(agent_dirs, CUSTOMERS)
+        results = validator.validate(agent_dirs, SUBJECTS)
 
         for check in results:
             if check.details.get("aggregate"):
                 assert check.passed is False
             elif "agent" in check.details:
                 assert check.passed is False
-                assert len(check.details["missing_customers"]) == len(CUSTOMERS)
+                assert len(check.details["missing_subjects"]) == len(SUBJECTS)
 
     def test_missing_agent_dir(self, tmp_path: Path) -> None:
         """When an agent directory does not exist, check fails."""
@@ -311,12 +311,12 @@ class TestCoverageValidator:
             else:
                 d = tmp_path / agent
                 d.mkdir()
-                for customer in CUSTOMERS:
-                    (d / f"{customer}.json").write_text(json.dumps(_make_customer_json(customer, agent)))
+                for subject in SUBJECTS:
+                    (d / f"{subject}.json").write_text(json.dumps(_make_subject_json(subject, agent)))
                 agent_dirs[agent] = d
 
         validator = CoverageValidator()
-        results = validator.validate(agent_dirs, CUSTOMERS)
+        results = validator.validate(agent_dirs, SUBJECTS)
 
         finance_check = next(r for r in results if r.details.get("agent") == "finance")
         assert finance_check.passed is False
@@ -326,17 +326,17 @@ class TestCoverageValidator:
         """A JSON file with no findings/gaps is flagged as empty."""
         d = tmp_path / "legal"
         d.mkdir()
-        for customer in CUSTOMERS:
-            data = {"customer": customer, "findings": [], "gaps": []}
-            (d / f"{customer}.json").write_text(json.dumps(data))
+        for subject in SUBJECTS:
+            data = {"subject": subject, "findings": [], "gaps": []}
+            (d / f"{subject}.json").write_text(json.dumps(data))
 
         agent_dirs = {"legal": d}
         # Only check legal to isolate the test
         validator = CoverageValidator()
-        results = validator.validate(agent_dirs, CUSTOMERS)
+        results = validator.validate(agent_dirs, SUBJECTS)
 
         legal_check = next(r for r in results if r.details.get("agent") == "legal")
-        assert len(legal_check.details["empty_files"]) == len(CUSTOMERS)
+        assert len(legal_check.details["empty_files"]) == len(SUBJECTS)
 
 
 # ===================================================================== #
@@ -350,7 +350,7 @@ class TestNumericalAuditor:
     def test_source_traceability_passes_with_existing_files(self, tmp_path: Path) -> None:
         """Layer 1 passes when all source files exist."""
         # Create source files that the manifest entries reference
-        (tmp_path / "customers.csv").write_text("header\nrow1\nrow2\nrow3\n")
+        (tmp_path / "subjects.csv").write_text("header\nrow1\nrow2\nrow3\n")
         (tmp_path / "files.txt").write_text("file1\nfile2\n")
         (tmp_path / "reference_files.json").write_text("[]")
         # Create directories with JSON files for glob patterns
@@ -399,7 +399,7 @@ class TestNumericalAuditor:
     def test_source_traceability_accepts_empty_glob_for_zero_value(self, tmp_path: Path) -> None:
         """Layer 1 accepts a glob matching 0 files when the entry value is 0."""
         # Create all non-glob source files so only the glob entry is tested
-        (tmp_path / "customers.csv").write_text("header\nrow1\nrow2\nrow3\n")
+        (tmp_path / "subjects.csv").write_text("header\nrow1\nrow2\nrow3\n")
         (tmp_path / "files.txt").write_text("file1\nfile2\n")
         (tmp_path / "reference_files.json").write_text("[]")
         findings_dir = tmp_path / "findings"
@@ -433,8 +433,8 @@ class TestNumericalAuditor:
     def test_cross_source_consistency_passes(self, tmp_path: Path) -> None:
         """Layer 3 passes when severity sum equals total findings."""
         manifest = _make_manifest(n003=10, n004=1, n005=2, n006=3, n007=4)
-        (tmp_path / "customers.csv").write_text("header\n" + "\n".join(f"row{i}" for i in range(3)) + "\n")
-        (tmp_path / "counts.json").write_text(json.dumps({"total_customers": 3}))
+        (tmp_path / "subjects.csv").write_text("header\n" + "\n".join(f"row{i}" for i in range(3)) + "\n")
+        (tmp_path / "counts.json").write_text(json.dumps({"total_subjects": 3}))
 
         auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
         check = auditor.check_cross_source_consistency(manifest)
@@ -444,8 +444,8 @@ class TestNumericalAuditor:
         """Layer 3 fails when severity sum does not equal total findings."""
         # N003=10 but N004+N005+N006+N007 = 1+2+3+5 = 11
         manifest = _make_manifest(n003=10, n004=1, n005=2, n006=3, n007=5)
-        (tmp_path / "customers.csv").write_text("header\n" + "\n".join(f"row{i}" for i in range(3)) + "\n")
-        (tmp_path / "counts.json").write_text(json.dumps({"total_customers": 3}))
+        (tmp_path / "subjects.csv").write_text("header\n" + "\n".join(f"row{i}" for i in range(3)) + "\n")
+        (tmp_path / "counts.json").write_text(json.dumps({"total_subjects": 3}))
 
         auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
         check = auditor.check_cross_source_consistency(manifest)
@@ -453,13 +453,13 @@ class TestNumericalAuditor:
         assert any("N004+N005+N006+N007" in f for f in check.details["failures"])
 
     def test_cross_source_csv_vs_counts_mismatch(self, tmp_path: Path) -> None:
-        """Layer 3 catches customers.csv vs counts.json mismatch."""
+        """Layer 3 catches subjects.csv vs counts.json mismatch."""
         manifest = _make_manifest(n001=5)
-        (tmp_path / "customers.csv").write_text(
+        (tmp_path / "subjects.csv").write_text(
             "header\nrow1\nrow2\nrow3\n"  # 3 data rows
         )
         (tmp_path / "counts.json").write_text(
-            json.dumps({"total_customers": 5})  # different from CSV
+            json.dumps({"total_subjects": 5})  # different from CSV
         )
 
         auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
@@ -491,8 +491,8 @@ class TestNumericalAuditor:
         assert check.passed is False
         assert any("P0 findings count > total findings" in f for f in check.details["failures"])
 
-    def test_semantic_reasonableness_customer_count_spike(self, tmp_path: Path) -> None:
-        """Layer 5 flags >20% customer count change between runs."""
+    def test_semantic_reasonableness_subject_count_spike(self, tmp_path: Path) -> None:
+        """Layer 5 flags >20% subject count change between runs."""
         prior = _make_manifest(n001=100)
         current = _make_manifest(n001=150)  # 50% change
 
@@ -503,13 +503,13 @@ class TestNumericalAuditor:
         )
         check = auditor.check_semantic_reasonableness(current)
         assert check.passed is False
-        assert any("Customer count changed" in f for f in check.details["failures"])
+        assert any("Subject count changed" in f for f in check.details["failures"])
 
     def test_run_full_audit(self, tmp_path: Path) -> None:
         """Full audit returns 5 checks (layers 1, 2, 3, 5, 6)."""
         manifest = _make_manifest(n003=10, n004=1, n005=2, n006=3, n007=4)
-        (tmp_path / "customers.csv").write_text("header\n" + "\n".join(f"row{i}" for i in range(3)) + "\n")
-        (tmp_path / "counts.json").write_text(json.dumps({"total_customers": 3}))
+        (tmp_path / "subjects.csv").write_text("header\n" + "\n".join(f"row{i}" for i in range(3)) + "\n")
+        (tmp_path / "counts.json").write_text(json.dumps({"total_subjects": 3}))
 
         auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
         checks = auditor.run_full_audit(manifest)
@@ -743,7 +743,7 @@ class TestQAAuditor:
         auditor = QAAuditor(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
         report = auditor.run_full_audit(run_id="test_run")
 
@@ -752,23 +752,23 @@ class TestQAAuditor:
         # Should have 18 check entries (17 original + p0_p1_citation_quality)
         assert len(report.checks) == 18
 
-    def test_customer_coverage_fails_when_missing(self, tmp_path: Path) -> None:
-        """Customer coverage check fails when a customer file is missing."""
+    def test_subject_coverage_fails_when_missing(self, tmp_path: Path) -> None:
+        """Subject coverage check fails when a subject file is missing."""
         run_dir = tmp_path / "run"
         inventory_dir = tmp_path / "inventory"
         _populate_run_dir(run_dir, inventory_dir)
 
-        # Remove one customer file from one agent
+        # Remove one subject file from one agent
         (run_dir / "findings" / "legal" / "initech.json").unlink()
 
         auditor = QAAuditor(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
         report = auditor.run_full_audit()
 
-        cov = report.checks.get("customer_coverage")
+        cov = report.checks.get("subject_coverage")
         assert cov is not None
         assert cov.passed is False
 
@@ -784,7 +784,7 @@ class TestQAAuditor:
         auditor = QAAuditor(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
         report = auditor.run_full_audit(run_id="test_run")
 
@@ -809,12 +809,12 @@ class TestQAAuditor:
         auditor = QAAuditor(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
         report = auditor.run_full_audit()
 
-        assert report.summary.total_customers == len(CUSTOMERS)
-        assert report.summary.total_findings == len(CUSTOMERS)
+        assert report.summary.total_subjects == len(SUBJECTS)
+        assert report.summary.total_findings == len(SUBJECTS)
 
 
 class TestQAAuditorDeferredChecks:
@@ -827,17 +827,15 @@ class TestQAAuditorDeferredChecks:
         No coverage manifests, no report_schema.json.
         Includes per-agent audit logs (pipeline writes them in step 16).
         """
-        customers = CUSTOMERS
+        subjects = SUBJECTS
         inventory_dir.mkdir(parents=True, exist_ok=True)
-        files_list = [f"{c}/contract.pdf" for c in customers]
+        files_list = [f"{c}/contract.pdf" for c in subjects]
         (inventory_dir / "files.txt").write_text("\n".join(files_list) + "\n")
-        (inventory_dir / "customers.csv").write_text(
-            "group,name,safe_name,path,file_count\n"
-            + "\n".join(f"group1,{c},{c},/data/{c},1" for c in customers)
-            + "\n"
+        (inventory_dir / "subjects.csv").write_text(
+            "group,name,safe_name,path,file_count\n" + "\n".join(f"group1,{c},{c},/data/{c},1" for c in subjects) + "\n"
         )
         (inventory_dir / "counts.json").write_text(
-            json.dumps({"total_customers": len(customers), "total_files": len(files_list)})
+            json.dumps({"total_subjects": len(subjects), "total_files": len(files_list)})
         )
         (inventory_dir / "extraction_quality.json").write_text("[]")
 
@@ -845,8 +843,8 @@ class TestQAAuditorDeferredChecks:
         for agent in AGENTS:
             agent_dir = run_dir / "findings" / agent
             agent_dir.mkdir(parents=True, exist_ok=True)
-            for customer in customers:
-                (agent_dir / f"{customer}.json").write_text(json.dumps(_make_customer_json(customer, agent)))
+            for subject in subjects:
+                (agent_dir / f"{subject}.json").write_text(json.dumps(_make_subject_json(subject, agent)))
 
         # Per-agent audit logs (pipeline writes these in step 16)
         for agent in AGENTS:
@@ -859,14 +857,14 @@ class TestQAAuditorDeferredChecks:
         # Merged output with ALL agents represented
         merged_dir = run_dir / "findings" / "merged"
         merged_dir.mkdir(parents=True, exist_ok=True)
-        for customer in customers:
-            merged = _make_merged_json(customer)
+        for subject in subjects:
+            merged = _make_merged_json(subject)
             # Add findings from all 4 agents so domain_coverage passes
             merged["findings"] = []
             for agent in AGENTS:
                 merged["findings"].append(
                     {
-                        "id": f"forensic-dd_{agent}_{customer}_0001",
+                        "id": f"forensic-dd_{agent}_{subject}_0001",
                         "severity": "P2",
                         "category": "test_category",
                         "title": "Test finding",
@@ -874,7 +872,7 @@ class TestQAAuditorDeferredChecks:
                         "citations": [
                             {
                                 "source_type": "file",
-                                "source_path": f"{customer}/contract.pdf",
+                                "source_path": f"{subject}/contract.pdf",
                                 "exact_quote": "test quote",
                             }
                         ],
@@ -882,7 +880,7 @@ class TestQAAuditorDeferredChecks:
                         "agent": agent,
                     }
                 )
-            (merged_dir / f"{customer}.json").write_text(json.dumps(merged))
+            (merged_dir / f"{subject}.json").write_text(json.dumps(merged))
 
         # Numerical manifest
         manifest = _make_manifest()
@@ -897,10 +895,10 @@ class TestQAAuditorDeferredChecks:
         inventory_dir = tmp_path / "inventory"
         self._populate_minimal(run_dir, inventory_dir)
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, customer_safe_names=CUSTOMERS)
+        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
         name, check = auditor.check_agent_manifest_reconciliation()
         assert check.passed is True
-        # No manifests, but file-counting fallback finds all customer files.
+        # No manifests, but file-counting fallback finds all subject files.
         for agent_detail in check.details.values():
             if isinstance(agent_detail, dict):
                 assert agent_detail.get("match") is True
@@ -911,7 +909,7 @@ class TestQAAuditorDeferredChecks:
         inventory_dir = tmp_path / "inventory"
         self._populate_minimal(run_dir, inventory_dir)
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, customer_safe_names=CUSTOMERS)
+        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
         name, check = auditor.check_file_coverage()
         assert check.passed is True
         assert "deferred" in check.details.get("note", "").lower()
@@ -923,7 +921,7 @@ class TestQAAuditorDeferredChecks:
         inventory_dir = tmp_path / "inventory"
         inventory_dir.mkdir(parents=True, exist_ok=True)
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, customer_safe_names=CUSTOMERS)
+        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
         name, check = auditor.check_audit_logs()
         assert check.passed is False
         assert len(check.details["missing_logs"]) == 4
@@ -934,7 +932,7 @@ class TestQAAuditorDeferredChecks:
         inventory_dir = tmp_path / "inventory"
         self._populate_minimal(run_dir, inventory_dir)
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, customer_safe_names=CUSTOMERS)
+        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
         name, check = auditor.check_report_consistency()
         assert check.passed is True
         assert "deferred" in check.details.get("note", "").lower()
@@ -948,7 +946,7 @@ class TestQAAuditorDeferredChecks:
         # Overwrite merged with citation using full path (different prefix)
         merged_dir = run_dir / "findings" / "merged"
         merged = {
-            "customer": "acme_corp",
+            "subject": "acme_corp",
             "findings": [
                 {
                     "id": "test_1",
@@ -972,7 +970,7 @@ class TestQAAuditorDeferredChecks:
         }
         (merged_dir / "acme_corp.json").write_text(json.dumps(merged))
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, customer_safe_names=CUSTOMERS)
+        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
         name, check = auditor.check_citation_integrity()
         assert check.passed is True
 
@@ -984,7 +982,7 @@ class TestQAAuditorDeferredChecks:
 
         merged_dir = run_dir / "findings" / "merged"
         merged = {
-            "customer": "acme_corp",
+            "subject": "acme_corp",
             "findings": [
                 {
                     "id": "test_1",
@@ -1008,7 +1006,7 @@ class TestQAAuditorDeferredChecks:
         }
         (merged_dir / "acme_corp.json").write_text(json.dumps(merged))
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, customer_safe_names=CUSTOMERS)
+        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
         name, check = auditor.check_citation_integrity()
         assert check.passed is True
 
@@ -1020,7 +1018,7 @@ class TestQAAuditorDeferredChecks:
 
         merged_dir = run_dir / "findings" / "merged"
         merged = {
-            "customer": "acme_corp",
+            "subject": "acme_corp",
             "findings": [
                 {
                     "id": "test_dir",
@@ -1054,7 +1052,7 @@ class TestQAAuditorDeferredChecks:
         }
         (merged_dir / "acme_corp.json").write_text(json.dumps(merged))
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, customer_safe_names=CUSTOMERS)
+        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
         name, check = auditor.check_citation_integrity()
         assert check.passed is True
 
@@ -1067,7 +1065,7 @@ class TestQAAuditorDeferredChecks:
         # Remove one merged file (simulating a skipped customer)
         (run_dir / "findings" / "merged" / "initech.json").unlink()
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, customer_safe_names=CUSTOMERS)
+        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
         name, check = auditor.check_merge_dedup()
         # 2/3 = 0.667 < 0.90 threshold, so this should fail
         assert check.passed is False
@@ -1078,7 +1076,7 @@ class TestQAAuditorDeferredChecks:
         inventory_dir = tmp_path / "inventory"
         self._populate_minimal(run_dir, inventory_dir)
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, customer_safe_names=CUSTOMERS)
+        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
         name, check = auditor.check_merge_dedup()
         assert check.passed is True
 
@@ -1092,7 +1090,7 @@ class TestQAAuditorDeferredChecks:
         for jf in (run_dir / "findings" / "merged").glob("*.json"):
             jf.unlink()
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, customer_safe_names=CUSTOMERS)
+        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
         name, check = auditor.check_domain_coverage()
         assert check.passed is False
 
@@ -1102,7 +1100,7 @@ class TestQAAuditorDeferredChecks:
         inventory_dir = tmp_path / "inventory"
         self._populate_minimal(run_dir, inventory_dir)
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, customer_safe_names=CUSTOMERS)
+        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
         report = auditor.run_full_audit(run_id="test_minimal")
 
         failed = [name for name, check in report.checks.items() if not check.passed]
@@ -1123,7 +1121,7 @@ class TestQAAuditorDeferredChecks:
         }
         (agent_dir / "coverage_manifest.json").write_text(json.dumps(manifest))
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, customer_safe_names=CUSTOMERS)
+        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
         name, check = auditor.check_agent_manifest_reconciliation()
         # File-counting fallback finds all customer files → passes
         assert check.passed is True
@@ -1175,7 +1173,7 @@ class TestQAAuditorDeferredChecks:
             }
         )
         merged = {
-            "customer": "acme_corp",
+            "subject": "acme_corp",
             "findings": findings,
             "gaps": [],
             "cross_references": [],
@@ -1183,7 +1181,7 @@ class TestQAAuditorDeferredChecks:
         }
         (merged_dir / "acme_corp.json").write_text(json.dumps(merged))
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, customer_safe_names=CUSTOMERS)
+        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
         name, check = auditor.check_citation_integrity()
         assert check.passed is True
         assert check.details.get("failure_ratio", 1.0) <= 0.10
@@ -1204,7 +1202,7 @@ class TestQAAuditorDeferredChecks:
         report_dir.mkdir(parents=True, exist_ok=True)
         wb.save(report_dir / "stale_report.xlsx")
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, customer_safe_names=CUSTOMERS)
+        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
         name, check = auditor.check_report_sheets()
         assert check.passed is True
         assert "deferred" in check.details.get("note", "").lower()
@@ -1256,7 +1254,7 @@ class TestQAAuditorDeferredChecks:
             }
         )
         merged = {
-            "customer": "acme_corp",
+            "subject": "acme_corp",
             "findings": findings,
             "gaps": [],
             "cross_references": [],
@@ -1264,7 +1262,7 @@ class TestQAAuditorDeferredChecks:
         }
         (merged_dir / "acme_corp.json").write_text(json.dumps(merged))
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, customer_safe_names=CUSTOMERS)
+        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
         name, check = auditor.check_p0_p1_citation_quality()
         assert check.passed is True
         assert check.details.get("violation_ratio", 1.0) <= 0.10
@@ -1287,7 +1285,7 @@ class TestDefinitionOfDoneChecker:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
             deal_config={},
         )
         results = checker.check_all()
@@ -1305,7 +1303,7 @@ class TestDefinitionOfDoneChecker:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
             deal_config={"judge": {"enabled": True, "threshold": 70}},
         )
         results = checker.check_all()
@@ -1320,7 +1318,7 @@ class TestDefinitionOfDoneChecker:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
             deal_config={"execution": {"execution_mode": "incremental"}},
         )
         results = checker.check_all()
@@ -1335,7 +1333,7 @@ class TestDefinitionOfDoneChecker:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
             deal_config={
                 "judge": {"enabled": True, "threshold": 70},
                 "execution": {"execution_mode": "incremental"},
@@ -1353,7 +1351,7 @@ class TestDefinitionOfDoneChecker:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
         results = checker.check_all()
         for check in results:
@@ -1361,8 +1359,8 @@ class TestDefinitionOfDoneChecker:
             assert isinstance(check.dod_checks, list)
             assert len(check.dod_checks) >= 1
 
-    def test_customer_outputs_pass_with_full_data(self, tmp_path: Path) -> None:
-        """DoD check 1 passes when all customer outputs exist."""
+    def test_subject_outputs_pass_with_full_data(self, tmp_path: Path) -> None:
+        """DoD check 1 passes when all subject outputs exist."""
         run_dir = tmp_path / "run"
         inventory_dir = tmp_path / "inventory"
         _populate_run_dir(run_dir, inventory_dir)
@@ -1370,14 +1368,14 @@ class TestDefinitionOfDoneChecker:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
-        check = checker.check_1_customer_outputs_complete()
+        check = checker.check_1_subject_outputs_complete()
         assert check.passed is True
         assert 1 in check.dod_checks
 
-    def test_customer_outputs_fail_missing_file(self, tmp_path: Path) -> None:
-        """DoD check 1 fails when a customer file is missing."""
+    def test_subject_outputs_fail_missing_file(self, tmp_path: Path) -> None:
+        """DoD check 1 fails when a subject file is missing."""
         run_dir = tmp_path / "run"
         inventory_dir = tmp_path / "inventory"
         _populate_run_dir(run_dir, inventory_dir)
@@ -1386,9 +1384,9 @@ class TestDefinitionOfDoneChecker:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
-        check = checker.check_1_customer_outputs_complete()
+        check = checker.check_1_subject_outputs_complete()
         assert check.passed is False
 
     def test_dod_groups_cover_all_30(self) -> None:
@@ -1726,7 +1724,7 @@ class TestDoDHardcodedPassesRemoved:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
         check = checker.check_4_governance_resolved()
         assert check.passed is False
@@ -1741,7 +1739,7 @@ class TestDoDHardcodedPassesRemoved:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
         check = checker.check_5_citations_valid()
         assert check.passed is False
@@ -1756,7 +1754,7 @@ class TestDoDHardcodedPassesRemoved:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
         check = checker.check_6_gaps_tracked()
         assert check.passed is False
@@ -1773,7 +1771,7 @@ class TestDoDHardcodedPassesRemoved:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
         check = checker.check_10_reference_files_processed()
         assert check.passed is False
@@ -1788,7 +1786,7 @@ class TestDoDHardcodedPassesRemoved:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
         check = checker.check_10_reference_files_processed()
         assert check.passed is True
@@ -1803,7 +1801,7 @@ class TestDoDHardcodedPassesRemoved:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
         check = checker.check_16_entity_resolution_log()
         assert check.passed is False
@@ -1824,7 +1822,7 @@ class TestDoDHardcodedPassesRemoved:
                 }
             )
         )
-        checker = DefinitionOfDoneChecker(run_dir=run_dir, inventory_dir=inventory_dir, customer_safe_names=CUSTOMERS)
+        checker = DefinitionOfDoneChecker(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
         check = checker.check_16_entity_resolution_log()
         assert check.passed is False
         assert check.details["unmatched_with_aliases"] == 1
@@ -1836,7 +1834,7 @@ class TestDoDHardcodedPassesRemoved:
         inventory_dir = tmp_path / "inventory"
         inventory_dir.mkdir(parents=True)
         (run_dir / "entity_matches.json").write_text(json.dumps({"entries": [{"name": "Customer A", "matched": True}]}))
-        checker = DefinitionOfDoneChecker(run_dir=run_dir, inventory_dir=inventory_dir, customer_safe_names=CUSTOMERS)
+        checker = DefinitionOfDoneChecker(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
         check = checker.check_16_entity_resolution_log()
         assert check.passed is True
 
@@ -1850,7 +1848,7 @@ class TestDoDHardcodedPassesRemoved:
         agents_dir = run_dir / "findings" / "agents" / "legal"
         agents_dir.mkdir(parents=True)
         (agents_dir / "reference_files_processed.json").write_text(json.dumps(["ref_a.pdf", "ref_b.pdf"]))
-        checker = DefinitionOfDoneChecker(run_dir=run_dir, inventory_dir=inventory_dir, customer_safe_names=CUSTOMERS)
+        checker = DefinitionOfDoneChecker(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
         check = checker.check_10_reference_files_processed()
         assert check.passed is True
 
@@ -1866,7 +1864,7 @@ class TestDoDHardcodedPassesRemoved:
         agents_dir = run_dir / "findings" / "agents" / "finance"
         agents_dir.mkdir(parents=True)
         (agents_dir / "reference_files_processed.json").write_text(json.dumps(["ref_a.pdf"]))
-        checker = DefinitionOfDoneChecker(run_dir=run_dir, inventory_dir=inventory_dir, customer_safe_names=CUSTOMERS)
+        checker = DefinitionOfDoneChecker(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
         check = checker.check_10_reference_files_processed()
         assert check.passed is True
 
@@ -1880,7 +1878,7 @@ class TestDoDHardcodedPassesRemoved:
         agents_dir = run_dir / "findings" / "agents" / "legal"
         agents_dir.mkdir(parents=True)
         (agents_dir / "reference_files_processed.json").write_text(json.dumps(["ref_a.pdf"]))
-        checker = DefinitionOfDoneChecker(run_dir=run_dir, inventory_dir=inventory_dir, customer_safe_names=CUSTOMERS)
+        checker = DefinitionOfDoneChecker(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
         check = checker.check_10_reference_files_processed()
         assert check.passed is False
         assert check.details["unprocessed_count"] == 1
@@ -1894,7 +1892,7 @@ class TestDoDHardcodedPassesRemoved:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
             deal_config={"execution": {"execution_mode": "incremental"}},
         )
         check = checker.check_25_carried_forward_metadata()
@@ -1910,7 +1908,7 @@ class TestDoDHardcodedPassesRemoved:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
             deal_config={"execution": {"prior_run_id": "run_previous"}},
         )
         check = checker.check_30_report_diff()
@@ -1926,7 +1924,7 @@ class TestDoDHardcodedPassesRemoved:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
             deal_config={},
         )
         check = checker.check_30_report_diff()
@@ -1949,15 +1947,15 @@ class TestP0P1CitationQuality:
 
         # Overwrite merged files with P1 findings that have real citations
         merged_dir = run_dir / "findings" / "merged"
-        for customer in CUSTOMERS:
-            data = _make_merged_json(customer)
+        for subject in SUBJECTS:
+            data = _make_merged_json(subject)
             data["findings"][0]["severity"] = "P1"
-            (merged_dir / f"{customer}.json").write_text(json.dumps(data))
+            (merged_dir / f"{subject}.json").write_text(json.dumps(data))
 
         auditor = QAAuditor(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
         _name, check = auditor.check_p0_p1_citation_quality()
         assert check.passed is True
@@ -1983,7 +1981,7 @@ class TestP0P1CitationQuality:
         auditor = QAAuditor(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
         _name, check = auditor.check_p0_p1_citation_quality()
         assert check.passed is False
@@ -2010,7 +2008,7 @@ class TestP0P1CitationQuality:
         auditor = QAAuditor(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
         _name, check = auditor.check_p0_p1_citation_quality()
         assert check.passed is False
@@ -2092,12 +2090,12 @@ class TestGapsMerge:
 
         agent_outputs = {
             "legal": {
-                "customer": "Customer A",
-                "customer_safe_name": "customer_a",
+                "subject": "Subject A",
+                "subject_safe_name": "subject_a",
                 "findings": [],
                 "gaps": [
                     {
-                        "customer": "Customer A",
+                        "subject": "Subject A",
                         "priority": "P1",
                         "gap_type": "Missing_Doc",
                         "missing_item": "Renewal terms",
@@ -2110,12 +2108,12 @@ class TestGapsMerge:
                 ],
             },
             "finance": {
-                "customer": "Customer A",
-                "customer_safe_name": "customer_a",
+                "subject": "Subject A",
+                "subject_safe_name": "subject_a",
                 "findings": [],
                 "gaps": [
                     {
-                        "customer": "Customer A",
+                        "subject": "Subject A",
                         "priority": "P2",
                         "gap_type": "Missing_Data",
                         "missing_item": "Revenue schedule",
@@ -2130,10 +2128,10 @@ class TestGapsMerge:
         }
 
         merger = FindingMerger(run_id="test_run", timestamp="2025-01-01T00:00:00Z")
-        result = merger.merge_customer(
+        result = merger.merge_subject(
             agent_outputs,
-            customer_name="Customer A",
-            customer_safe_name="customer_a",
+            subject_name="Customer A",
+            subject_safe_name="customer_a",
         )
 
         assert len(result.gaps) == 2, "Both gaps should be collected"
@@ -2142,12 +2140,12 @@ class TestGapsMerge:
         assert "Revenue schedule" in gap_items
 
     def test_merged_output_model_has_gaps_field(self) -> None:
-        """MergedCustomerOutput should have a gaps field."""
-        from dd_agents.models.finding import MergedCustomerOutput
+        """MergedSubjectOutput should have a gaps field."""
+        from dd_agents.models.finding import MergedSubjectOutput
 
-        mco = MergedCustomerOutput(
-            customer="Test",
-            customer_safe_name="test",
+        mco = MergedSubjectOutput(
+            subject="Test",
+            subject_safe_name="test",
         )
         assert hasattr(mco, "gaps")
         assert mco.gaps == []
@@ -2158,8 +2156,8 @@ class TestGapsMerge:
 # ===================================================================== #
 
 
-class TestDoDCheck7CrossCustomerPatterns:
-    """Tests for DoD check 7 (cross-customer pattern check)."""
+class TestDoDCheck7CrossSubjectPatterns:
+    """Tests for DoD check 7 (cross-subject pattern check)."""
 
     def test_check_7_passes_when_audit_json_has_passing_cross_reference(self, tmp_path: Path) -> None:
         """check_7 should pass when audit.json has a passing cross_reference_completeness check."""
@@ -2178,9 +2176,9 @@ class TestDoDCheck7CrossCustomerPatterns:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
-        check = checker.check_7_cross_customer_patterns()
+        check = checker.check_7_cross_subject_patterns()
         assert check.passed is True
         assert 7 in check.dod_checks
 
@@ -2194,11 +2192,11 @@ class TestDoDCheck7CrossCustomerPatterns:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
-        check = checker.check_7_cross_customer_patterns()
+        check = checker.check_7_cross_subject_patterns()
         assert check.passed is False
-        assert check.details.get("cross_customer_check") == "qa_audit_not_run_yet"
+        assert check.details.get("cross_subject_check") == "qa_audit_not_run_yet"
 
     def test_check_7_fails_when_cross_reference_not_passed(self, tmp_path: Path) -> None:
         """check_7 should fail when cross_reference_completeness is false."""
@@ -2217,9 +2215,9 @@ class TestDoDCheck7CrossCustomerPatterns:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
-        check = checker.check_7_cross_customer_patterns()
+        check = checker.check_7_cross_subject_patterns()
         assert check.passed is False
 
     def test_check_7_fails_on_malformed_audit_json(self, tmp_path: Path) -> None:
@@ -2234,9 +2232,9 @@ class TestDoDCheck7CrossCustomerPatterns:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
-        check = checker.check_7_cross_customer_patterns()
+        check = checker.check_7_cross_subject_patterns()
         assert check.passed is False
 
 
@@ -2263,7 +2261,7 @@ class TestDoDCheck8CrossReferenceReconciliation:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
         check = checker.check_8_cross_reference_reconciliation()
         assert check.passed is True
@@ -2279,11 +2277,37 @@ class TestDoDCheck8CrossReferenceReconciliation:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
         check = checker.check_8_cross_reference_reconciliation()
         assert check.passed is False
         assert check.details.get("reconciliation_check") == "qa_audit_not_run_yet"
+
+    def test_check_8_passes_when_xref_passed_but_reconciliation_absent(self, tmp_path: Path) -> None:
+        """check_8 should pass when cross_reference_completeness passed but reconciliation file absent."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        inventory_dir = tmp_path / "inventory"
+        inventory_dir.mkdir(parents=True)
+
+        audit_data = {
+            "checks": {
+                "cross_reference_completeness": {
+                    "passed": True,
+                    "details": {"reconciliation_complete": False},
+                },
+            }
+        }
+        (run_dir / "audit.json").write_text(json.dumps(audit_data))
+
+        checker = DefinitionOfDoneChecker(
+            run_dir=run_dir,
+            inventory_dir=inventory_dir,
+            subject_safe_names=SUBJECTS,
+        )
+        check = checker.check_8_cross_reference_reconciliation()
+        assert check.passed is True
+        assert 8 in check.dod_checks
 
     def test_check_8_fails_when_reconciliation_not_passed(self, tmp_path: Path) -> None:
         """check_8 should fail when cross_reference_completeness is false."""
@@ -2302,14 +2326,14 @@ class TestDoDCheck8CrossReferenceReconciliation:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
         check = checker.check_8_cross_reference_reconciliation()
         assert check.passed is False
 
 
-class TestDoDCheck9GhostCustomers:
-    """Tests for DoD check 9 (ghost customers logged as P0 gaps)."""
+class TestDoDCheck9GhostSubjects:
+    """Tests for DoD check 9 (ghost subjects logged as P0 gaps)."""
 
     def test_check_9_passes_when_gap_completeness_passes(self, tmp_path: Path) -> None:
         """check_9 should pass when audit.json gap_completeness is true."""
@@ -2328,9 +2352,9 @@ class TestDoDCheck9GhostCustomers:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
-        check = checker.check_9_ghost_customers()
+        check = checker.check_9_ghost_subjects()
         assert check.passed is True
         assert 9 in check.dod_checks
 
@@ -2344,9 +2368,9 @@ class TestDoDCheck9GhostCustomers:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
-        check = checker.check_9_ghost_customers()
+        check = checker.check_9_ghost_subjects()
         assert check.passed is False
         assert check.details.get("ghost_check") == "qa_audit_not_run_yet"
 
@@ -2367,9 +2391,9 @@ class TestDoDCheck9GhostCustomers:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
-        check = checker.check_9_ghost_customers()
+        check = checker.check_9_ghost_subjects()
         assert check.passed is False
 
 
@@ -2393,7 +2417,7 @@ class TestDoDCheck12DomainCoverage:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
         check = checker.check_12_domain_coverage()
         assert check.passed is True
@@ -2409,7 +2433,7 @@ class TestDoDCheck12DomainCoverage:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
         check = checker.check_12_domain_coverage()
         assert check.passed is False
@@ -2432,7 +2456,7 @@ class TestDoDCheck12DomainCoverage:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
         check = checker.check_12_domain_coverage()
         assert check.passed is False
@@ -2463,7 +2487,7 @@ class TestDoDCheck21P0SpotChecked:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
             deal_config={"judge": {"enabled": True}},
         )
         check = checker.check_21_p0_spot_checked()
@@ -2492,7 +2516,7 @@ class TestDoDCheck21P0SpotChecked:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
             deal_config={"judge": {"enabled": True}},
         )
         check = checker.check_21_p0_spot_checked()
@@ -2508,7 +2532,7 @@ class TestDoDCheck21P0SpotChecked:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
             deal_config={"judge": {"enabled": True}},
         )
         check = checker.check_21_p0_spot_checked()
@@ -2528,7 +2552,7 @@ class TestDoDCheck21P0SpotChecked:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
             deal_config={"judge": {"enabled": True}},
         )
         check = checker.check_21_p0_spot_checked()
@@ -2551,7 +2575,7 @@ class TestDoDCheck30ReportDiff:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
             deal_config={"execution": {"prior_run_id": "run_prev"}},
         )
         check = checker.check_30_report_diff()
@@ -2569,7 +2593,7 @@ class TestDoDCheck30ReportDiff:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
             deal_config={"execution": {"prior_run_id": "run_prev"}},
         )
         check = checker.check_30_report_diff()
@@ -2586,7 +2610,7 @@ class TestDoDCheck30ReportDiff:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
             deal_config={},
         )
         check = checker.check_30_report_diff()
@@ -2603,7 +2627,7 @@ class TestDoDCheck30ReportDiff:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
             deal_config={"execution": {"prior_run_id": ""}},
         )
         check = checker.check_30_report_diff()
@@ -2613,15 +2637,15 @@ class TestDoDCheck30ReportDiff:
     # DoD [13] -- merged file count filters non-customer files
     # ------------------------------------------------------------------ #
 
-    def test_check_13_filters_non_customer_files(self, tmp_path: Path) -> None:
-        """check_13 passes when customer files exist even with extra non-customer files."""
+    def test_check_13_filters_non_subject_files(self, tmp_path: Path) -> None:
+        """check_13 passes when subject files exist even with extra non-subject files."""
         run_dir = tmp_path / "run"
         inventory_dir = tmp_path / "inventory"
         inventory_dir.mkdir(parents=True)
         merged_dir = run_dir / "findings" / "merged"
         merged_dir.mkdir(parents=True)
         # Write customer files
-        for c in CUSTOMERS:
+        for c in SUBJECTS:
             (merged_dir / f"{c}.json").write_text(json.dumps(_make_merged_json(c)))
         # Write non-customer files (pipeline artefacts that should be excluded)
         (merged_dir / "coverage_manifest.json").write_text("{}")
@@ -2631,28 +2655,28 @@ class TestDoDCheck30ReportDiff:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
         check = checker.check_13_merge_dedup_complete()
         assert check.passed is True
         assert check.details["merged_count"] == 3
         assert check.details["expected_count"] == 3
 
-    def test_check_13_fails_when_customer_missing(self, tmp_path: Path) -> None:
-        """check_13 fails when a customer file is missing."""
+    def test_check_13_fails_when_subject_missing(self, tmp_path: Path) -> None:
+        """check_13 fails when a subject file is missing."""
         run_dir = tmp_path / "run"
         inventory_dir = tmp_path / "inventory"
         inventory_dir.mkdir(parents=True)
         merged_dir = run_dir / "findings" / "merged"
         merged_dir.mkdir(parents=True)
         # Only write 2 of 3 customers
-        for c in CUSTOMERS[:2]:
+        for c in SUBJECTS[:2]:
             (merged_dir / f"{c}.json").write_text(json.dumps(_make_merged_json(c)))
 
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
         check = checker.check_13_merge_dedup_complete()
         assert check.passed is False
@@ -2675,7 +2699,7 @@ class TestDoDCheck30ReportDiff:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
         check = checker.check_11_audit_logs_exist()
         assert check.passed is True
@@ -2691,7 +2715,7 @@ class TestDoDCheck30ReportDiff:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
         check = checker.check_11_audit_logs_exist()
         assert check.passed is False
@@ -2716,7 +2740,7 @@ class TestDoDCheck30ReportDiff:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
         check = checker.check_19_extraction_quality()
         assert check.passed is True
@@ -2754,7 +2778,7 @@ class TestDoDCheck30ReportDiff:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
         check = checker.check_19_extraction_quality()
         assert check.passed is True
@@ -2783,7 +2807,7 @@ class TestDoDCheck30ReportDiff:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
         check = checker.check_10_reference_files_processed()
         assert check.passed is True
@@ -2804,7 +2828,7 @@ class TestDoDCheck30ReportDiff:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
         check = checker.check_16_entity_resolution_log()
         assert check.passed is True
@@ -2821,7 +2845,7 @@ class TestDoDCheck30ReportDiff:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
         )
         check = checker.check_16_entity_resolution_log()
         assert check.passed is True
@@ -2955,7 +2979,7 @@ class TestNumericalAuditLayer2Fixes:
 class TestN009GapCountFromMergedFiles:
     """N009 should count gaps from merged customer JSON, not gaps/ dir."""
 
-    def test_n009_counts_gaps_from_merged_customer_files(self, tmp_path: Path) -> None:
+    def test_n009_counts_gaps_from_merged_subject_files(self, tmp_path: Path) -> None:
         merged_dir = tmp_path / "findings" / "merged"
         merged_dir.mkdir(parents=True)
         # Two customers with gaps inside their merged JSON
@@ -3069,7 +3093,7 @@ class TestAuditSummaryGapPopulation:
         auditor = QAAuditor(
             run_dir=run_dir,
             inventory_dir=run_dir,
-            customer_safe_names=["acme_corp", "globex"],
+            subject_safe_names=["acme_corp", "globex"],
         )
         summary = auditor._build_summary()
         assert summary.total_gaps == 3
@@ -3082,7 +3106,7 @@ class TestAuditSummaryGapPopulation:
         auditor = QAAuditor(
             run_dir=run_dir,
             inventory_dir=run_dir,
-            customer_safe_names=["acme_corp", "globex"],
+            subject_safe_names=["acme_corp", "globex"],
         )
         summary = auditor._build_summary()
         assert summary.clean_result_count == 1
@@ -3092,7 +3116,7 @@ class TestAuditSummaryGapPopulation:
         auditor = QAAuditor(
             run_dir=run_dir,
             inventory_dir=run_dir,
-            customer_safe_names=["acme_corp", "globex"],
+            subject_safe_names=["acme_corp", "globex"],
         )
         summary = auditor._build_summary()
         assert sorted(summary.agents_producing_gaps) == ["finance", "legal"]
@@ -3112,7 +3136,7 @@ class TestAuditSummaryGapPopulation:
         auditor = QAAuditor(
             run_dir=tmp_path,
             inventory_dir=tmp_path,
-            customer_safe_names=["acme_corp"],
+            subject_safe_names=["acme_corp"],
         )
         summary = auditor._build_summary()
         assert summary.total_gaps == 0
@@ -3127,7 +3151,7 @@ class TestAuditSummaryGapPopulation:
 class TestCoverageManifestExclusion:
     """merge_all should not treat coverage_manifest.json as a customer."""
 
-    def test_coverage_manifest_excluded_from_customers(self, tmp_path: Path) -> None:
+    def test_coverage_manifest_excluded_from_subjects(self, tmp_path: Path) -> None:
         from dd_agents.reporting.merge import FindingMerger
 
         findings_dir = tmp_path / "findings"
@@ -3135,7 +3159,7 @@ class TestCoverageManifestExclusion:
             agent_dir = findings_dir / agent
             agent_dir.mkdir(parents=True)
             # Real customer
-            (agent_dir / "acme_corp.json").write_text(json.dumps(_make_customer_json("acme_corp", agent)))
+            (agent_dir / "acme_corp.json").write_text(json.dumps(_make_subject_json("acme_corp", agent)))
             # Non-customer files that agents sometimes write
             (agent_dir / "coverage_manifest.json").write_text(json.dumps({"agent": agent, "customers_processed": 1}))
 
@@ -3146,13 +3170,13 @@ class TestCoverageManifestExclusion:
         assert "coverage_manifest" not in result
         assert len(result) == 1
 
-    def test_other_non_customer_stems_excluded(self, tmp_path: Path) -> None:
+    def test_other_non_subject_stems_excluded(self, tmp_path: Path) -> None:
         from dd_agents.reporting.merge import FindingMerger
 
         findings_dir = tmp_path / "findings"
         agent_dir = findings_dir / "legal"
         agent_dir.mkdir(parents=True)
-        (agent_dir / "acme_corp.json").write_text(json.dumps(_make_customer_json("acme_corp", "legal")))
+        (agent_dir / "acme_corp.json").write_text(json.dumps(_make_subject_json("acme_corp", "legal")))
         # All known non-customer stems
         for stem in ("coverage_manifest", "numerical_manifest", "report_diff", "quality_scores", "metadata"):
             (agent_dir / f"{stem}.json").write_text("{}")
@@ -3171,13 +3195,13 @@ class TestDoDCheck12bAgentCoverage:
     """Tests for check_12b_agent_coverage_in_merged (#85)."""
 
     @staticmethod
-    def _write_merged_json(merged_dir: Path, customer: str, agents: list[str]) -> None:
+    def _write_merged_json(merged_dir: Path, subject: str, agents: list[str]) -> None:
         """Write a minimal merged JSON with findings from the given agents."""
         findings = []
         for agent in agents:
             findings.append(
                 {
-                    "id": f"forensic-dd_{agent}_{customer}_0001",
+                    "id": f"forensic-dd_{agent}_{subject}_0001",
                     "severity": "P2",
                     "category": "test",
                     "title": f"Finding from {agent}",
@@ -3194,19 +3218,19 @@ class TestDoDCheck12bAgentCoverage:
                     "agent": agent,
                     "run_id": "test",
                     "timestamp": "2026-01-01T00:00:00Z",
-                    "analysis_unit": customer,
+                    "analysis_unit": subject,
                 }
             )
         data = {
-            "customer": customer,
-            "customer_safe_name": customer,
+            "subject": subject,
+            "subject_safe_name": subject,
             "findings": findings,
             "gaps": [],
             "cross_references": [],
             "governance_graph": {"edges": []},
         }
         merged_dir.mkdir(parents=True, exist_ok=True)
-        (merged_dir / f"{customer}.json").write_text(json.dumps(data))
+        (merged_dir / f"{subject}.json").write_text(json.dumps(data))
 
     def test_full_coverage_passes(self, tmp_path: Path) -> None:
         run_dir = tmp_path / "run"
@@ -3218,11 +3242,11 @@ class TestDoDCheck12bAgentCoverage:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=["acme"],
+            subject_safe_names=["acme"],
         )
         result = checker.check_12b_agent_coverage_in_merged()
         assert result.passed is True
-        assert result.details["customers_missing_agents"] == 0
+        assert result.details["subjects_missing_agents"] == 0
 
     def test_missing_agent_fails(self, tmp_path: Path) -> None:
         run_dir = tmp_path / "run"
@@ -3234,11 +3258,11 @@ class TestDoDCheck12bAgentCoverage:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=["acme"],
+            subject_safe_names=["acme"],
         )
         result = checker.check_12b_agent_coverage_in_merged()
         assert result.passed is False
-        assert result.details["customers_missing_agents"] == 1
+        assert result.details["subjects_missing_agents"] == 1
 
     def test_no_merged_dir_fails(self, tmp_path: Path) -> None:
         run_dir = tmp_path / "run"
@@ -3249,7 +3273,7 @@ class TestDoDCheck12bAgentCoverage:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=inventory_dir,
-            customer_safe_names=["acme"],
+            subject_safe_names=["acme"],
         )
         result = checker.check_12b_agent_coverage_in_merged()
         assert result.passed is False

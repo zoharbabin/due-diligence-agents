@@ -9,8 +9,8 @@ from dd_agents.models.search import (
     SearchCitation,
     SearchColumn,
     SearchColumnResult,
-    SearchCustomerResult,
     SearchPrompts,
+    SearchSubjectResult,
 )
 
 
@@ -81,8 +81,8 @@ class TestSearchResults:
     """Tests for result models."""
 
     def test_success_result(self) -> None:
-        result = SearchCustomerResult(
-            customer_name="Acme Corp",
+        result = SearchSubjectResult(
+            subject_name="Acme Corp",
             group="GroupA",
             files_analyzed=3,
             columns={
@@ -105,8 +105,8 @@ class TestSearchResults:
         assert len(result.columns["Q1"].citations) == 1
 
     def test_error_result(self) -> None:
-        result = SearchCustomerResult(
-            customer_name="Globex",
+        result = SearchSubjectResult(
+            subject_name="Globex",
             group="GroupA",
             error="API error",
         )

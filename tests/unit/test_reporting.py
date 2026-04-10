@@ -63,13 +63,13 @@ def _make_finding(
 
 
 def _make_gap(
-    customer: str = "Acme Corp",
+    subject: str = "Acme Corp",
     priority: str = "P1",
     gap_type: str = "Missing_Doc",
     missing_item: str = "MSA",
 ) -> dict:
     return {
-        "customer": customer,
+        "subject": subject,
         "priority": priority,
         "gap_type": gap_type,
         "missing_item": missing_item,
@@ -97,11 +97,11 @@ def report_schema_model() -> ReportSchema:
 class TestFindingMerger:
     """Test the FindingMerger class."""
 
-    def test_merge_two_agents_for_one_customer(self) -> None:
+    def test_merge_two_agents_for_one_subject(self) -> None:
         """Merge findings from legal and finance for a single customer."""
         legal_output = {
-            "customer": "Acme Corp",
-            "customer_safe_name": "acme_corp",
+            "subject": "Acme Corp",
+            "subject_safe_name": "acme_corp",
             "findings": [
                 _make_finding(severity="P1", source_path="msa.pdf", location="Section 3"),
             ],
@@ -109,8 +109,8 @@ class TestFindingMerger:
             "cross_references": [],
         }
         finance_output = {
-            "customer": "Acme Corp",
-            "customer_safe_name": "acme_corp",
+            "subject": "Acme Corp",
+            "subject_safe_name": "acme_corp",
             "findings": [
                 _make_finding(severity="P2", source_path="sow.pdf", location="Section 1"),
             ],
@@ -119,20 +119,20 @@ class TestFindingMerger:
         }
 
         merger = FindingMerger(run_id="test_run", timestamp="2025-01-01T00:00:00Z")
-        result = merger.merge_customer(
+        result = merger.merge_subject(
             agent_outputs={"legal": legal_output, "finance": finance_output},
-            customer_name="Acme Corp",
-            customer_safe_name="acme_corp",
+            subject_name="Acme Corp",
+            subject_safe_name="acme_corp",
         )
 
-        assert result.customer == "Acme Corp"
-        assert result.customer_safe_name == "acme_corp"
+        assert result.subject == "Acme Corp"
+        assert result.subject_safe_name == "acme_corp"
         assert len(result.findings) == 2
 
     def test_dedup_by_match_key_keeps_highest_severity(self) -> None:
         """Two findings with same source_path + location should dedup; highest severity wins."""
         legal_output = {
-            "customer": "Acme Corp",
+            "subject": "Acme Corp",
             "findings": [
                 _make_finding(severity="P2", source_path="msa.pdf", location="Section 5"),
             ],
@@ -140,7 +140,7 @@ class TestFindingMerger:
             "cross_references": [],
         }
         finance_output = {
-            "customer": "Acme Corp",
+            "subject": "Acme Corp",
             "findings": [
                 _make_finding(severity="P1", source_path="msa.pdf", location="Section 5"),
             ],
@@ -149,9 +149,9 @@ class TestFindingMerger:
         }
 
         merger = FindingMerger(run_id="test_run", timestamp="2025-01-01T00:00:00Z")
-        result = merger.merge_customer(
+        result = merger.merge_subject(
             agent_outputs={"legal": legal_output, "finance": finance_output},
-            customer_name="Acme Corp",
+            subject_name="Acme Corp",
         )
 
         # Should be deduped to 1 finding
@@ -174,22 +174,22 @@ class TestFindingMerger:
         )
 
         legal_output = {
-            "customer": "Acme Corp",
+            "subject": "Acme Corp",
             "findings": [short_quote],
             "governance_graph": {"edges": []},
             "cross_references": [],
         }
         finance_output = {
-            "customer": "Acme Corp",
+            "subject": "Acme Corp",
             "findings": [long_quote],
             "governance_graph": {"edges": []},
             "cross_references": [],
         }
 
         merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
-        result = merger.merge_customer(
+        result = merger.merge_subject(
             agent_outputs={"legal": legal_output, "finance": finance_output},
-            customer_name="Acme Corp",
+            subject_name="Acme Corp",
         )
 
         assert len(result.findings) == 1
@@ -199,7 +199,7 @@ class TestFindingMerger:
     def test_finding_id_generation(self) -> None:
         """Auto-generated IDs follow the pattern forensic-dd_{agent}_{safe_name}_{seq}."""
         agent_output = {
-            "customer": "Acme Corp",
+            "subject": "Acme Corp",
             "findings": [
                 _make_finding(source_path="a.pdf", location="S1"),
                 _make_finding(source_path="b.pdf", location="S2"),
@@ -209,10 +209,10 @@ class TestFindingMerger:
         }
 
         merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
-        result = merger.merge_customer(
+        result = merger.merge_subject(
             agent_outputs={"legal": agent_output},
-            customer_name="Acme Corp",
-            customer_safe_name="acme_corp",
+            subject_name="Acme Corp",
+            subject_safe_name="acme_corp",
         )
 
         assert len(result.findings) == 2
@@ -222,7 +222,7 @@ class TestFindingMerger:
     def test_governance_merge_legal_primary(self) -> None:
         """Legal governance is primary; other agents add supplementary edges."""
         legal_output = {
-            "customer": "Acme Corp",
+            "subject": "Acme Corp",
             "findings": [],
             "governance_graph": {
                 "edges": [
@@ -232,7 +232,7 @@ class TestFindingMerger:
             "cross_references": [],
         }
         finance_output = {
-            "customer": "Acme Corp",
+            "subject": "Acme Corp",
             "findings": [],
             "governance_graph": {
                 "edges": [
@@ -246,9 +246,9 @@ class TestFindingMerger:
         }
 
         merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
-        result = merger.merge_customer(
+        result = merger.merge_subject(
             agent_outputs={"legal": legal_output, "finance": finance_output},
-            customer_name="Acme Corp",
+            subject_name="Acme Corp",
         )
 
         # 1 from legal + 1 new from finance (duplicate suppressed)
@@ -261,8 +261,8 @@ class TestFindingMerger:
         legal_dir.mkdir(parents=True)
 
         legal_output = {
-            "customer": "Beta Inc",
-            "customer_safe_name": "beta_inc",
+            "subject": "Beta Inc",
+            "subject_safe_name": "beta_inc",
             "findings": [
                 _make_finding(source_path="beta_msa.pdf", location="S1"),
             ],
@@ -282,16 +282,16 @@ class TestFindingMerger:
         merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
 
         agent_output = {
-            "customer": "Acme Corp",
+            "subject": "Acme Corp",
             "findings": [_make_finding(source_path="a.pdf", location="S1")],
             "governance_graph": {"edges": []},
             "cross_references": [],
         }
         merged = {
-            "acme_corp": merger.merge_customer(
+            "acme_corp": merger.merge_subject(
                 {"legal": agent_output},
-                customer_name="Acme Corp",
-                customer_safe_name="acme_corp",
+                subject_name="Acme Corp",
+                subject_safe_name="acme_corp",
             ),
         }
 
@@ -300,7 +300,7 @@ class TestFindingMerger:
 
         assert (out_dir / "acme_corp.json").exists()
         data = json.loads((out_dir / "acme_corp.json").read_text())
-        assert data["customer"] == "Acme Corp"
+        assert data["subject"] == "Acme Corp"
 
     # ------------------------------------------------------------------
     # Citation normalisation / resilient promotion
@@ -487,7 +487,7 @@ class TestFindingMerger:
                         "request_to_company": "Please provide",
                         "evidence": "Referenced in amendment",
                         "detection_method": "cross_reference",
-                        "customer": "Acme Corp",
+                        "subject": "Acme Corp",
                         "priority": "P2",
                     },
                 ],
@@ -502,7 +502,7 @@ class TestFindingMerger:
     def test_merge_skips_non_dict_findings(self) -> None:
         """Non-dict finding entries should be skipped without crashing."""
         agent_output = {
-            "customer": "Acme Corp",
+            "subject": "Acme Corp",
             "findings": [
                 "this is a string, not a finding",
                 _make_finding(source_path="a.pdf", location="S1"),
@@ -511,10 +511,10 @@ class TestFindingMerger:
             "cross_references": [],
         }
         merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
-        result = merger.merge_customer(
+        result = merger.merge_subject(
             agent_outputs={"legal": agent_output},
-            customer_name="Acme Corp",
-            customer_safe_name="acme_corp",
+            subject_name="Acme Corp",
+            subject_safe_name="acme_corp",
         )
         # Only the valid dict finding should survive
         assert len(result.findings) == 1
@@ -537,7 +537,7 @@ class TestMergeNormalization:
             "severity": "P1",
         }
         normalised = FindingMerger._normalize_gap(raw, "Acme Corp", "legal")
-        assert normalised["customer"] == "Acme Corp"
+        assert normalised["subject"] == "Acme Corp"
         assert normalised["agent"] == "legal"
         assert normalised["gap_type"] == "Missing_Doc"
         assert normalised["priority"] == "P1"
@@ -548,9 +548,9 @@ class TestMergeNormalization:
 
     def test_normalize_gap_preserves_full_fields(self) -> None:
         """When agent provides all Gap model fields, they are preserved."""
-        raw = _make_gap(customer="Beta Inc", priority="P0", gap_type="Missing_Doc", missing_item="NDA")
+        raw = _make_gap(subject="Beta Inc", priority="P0", gap_type="Missing_Doc", missing_item="NDA")
         normalised = FindingMerger._normalize_gap(raw, "Beta Inc", "legal")
-        assert normalised["customer"] == "Beta Inc"
+        assert normalised["subject"] == "Beta Inc"
         assert normalised["missing_item"] == "NDA"
         assert normalised["priority"] == "P0"
 
@@ -558,7 +558,7 @@ class TestMergeNormalization:
         """Gaps produced in agent-simplified format are accepted after normalization."""
         agent_outputs = {
             "legal": {
-                "customer": "Acme Corp",
+                "subject": "Acme Corp",
                 "findings": [],
                 "gaps": [
                     {
@@ -572,10 +572,10 @@ class TestMergeNormalization:
             }
         }
         merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
-        result = merger.merge_customer(agent_outputs, customer_name="Acme Corp", customer_safe_name="acme_corp")
+        result = merger.merge_subject(agent_outputs, subject_name="Acme Corp", subject_safe_name="acme_corp")
         assert len(result.gaps) == 1
         assert result.gaps[0].gap_type == "Missing_Doc"
-        assert result.gaps[0].customer == "Acme Corp"
+        assert result.gaps[0].subject == "Acme Corp"
 
     # -- _coerce_gap_type keyword classification --
 
@@ -675,7 +675,7 @@ class TestMergeNormalization:
         """Gaps with agent-produced types survive normalization + validation."""
         agent_outputs = {
             "producttech": {
-                "customer": "Acme Corp",
+                "subject": "Acme Corp",
                 "findings": [],
                 "gaps": [
                     {"gap_type": "Not_Found", "title": "Privacy Policy", "description": "Empty file"},
@@ -685,7 +685,7 @@ class TestMergeNormalization:
             }
         }
         merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
-        result = merger.merge_customer(agent_outputs, customer_name="Acme Corp", customer_safe_name="acme_corp")
+        result = merger.merge_subject(agent_outputs, subject_name="Acme Corp", subject_safe_name="acme_corp")
         assert len(result.gaps) == 3
         gap_types = {g.gap_type.value for g in result.gaps}
         assert "Missing_Doc" in gap_types
@@ -704,7 +704,7 @@ class TestMergeNormalization:
         """Governance edges using 'from'/'to' are accepted after normalization."""
         agent_outputs = {
             "legal": {
-                "customer": "Acme Corp",
+                "subject": "Acme Corp",
                 "findings": [],
                 "governance_graph": {
                     "edges": [
@@ -715,7 +715,7 @@ class TestMergeNormalization:
             }
         }
         merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
-        result = merger.merge_customer(agent_outputs, customer_name="Acme Corp", customer_safe_name="acme_corp")
+        result = merger.merge_subject(agent_outputs, subject_name="Acme Corp", subject_safe_name="acme_corp")
         assert len(result.governance_graph.edges) == 2
         assert result.governance_graph.edges[0].from_file == "sow.pdf"
         assert result.governance_graph.edges[0].to_file == "msa.pdf"
@@ -744,7 +744,7 @@ class TestMergeNormalization:
         """Cross-references with agent field names are accepted after normalization."""
         agent_outputs = {
             "finance": {
-                "customer": "Acme Corp",
+                "subject": "Acme Corp",
                 "findings": [],
                 "cross_references": [
                     {
@@ -759,7 +759,7 @@ class TestMergeNormalization:
             }
         }
         merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
-        result = merger.merge_customer(agent_outputs, customer_name="Acme Corp", customer_safe_name="acme_corp")
+        result = merger.merge_subject(agent_outputs, subject_name="Acme Corp", subject_safe_name="acme_corp")
         assert len(result.cross_references) == 1
         assert result.cross_references[0].data_point == "Contract Value"
         assert result.cross_references[0].match_status == "match"
@@ -768,7 +768,7 @@ class TestMergeNormalization:
         """String entries in cross_references should be auto-recovered, not dropped."""
         agent_outputs = {
             "finance": {
-                "customer": "Acme Corp",
+                "subject": "Acme Corp",
                 "findings": [],
                 "cross_references": [
                     "Revenue terms match between MSA and Order Form",
@@ -785,7 +785,7 @@ class TestMergeNormalization:
             }
         }
         merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
-        result = merger.merge_customer(agent_outputs, customer_name="Acme Corp", customer_safe_name="acme_corp")
+        result = merger.merge_subject(agent_outputs, subject_name="Acme Corp", subject_safe_name="acme_corp")
         # The string is recovered as a cross-reference; the int is dropped
         assert len(result.cross_references) == 2
         # Recovered entry should have the string as data_point
@@ -799,7 +799,7 @@ class TestMergeNormalization:
         """Bare string cross-refs with mismatch keywords get status='mismatch'."""
         agent_outputs = {
             "finance": {
-                "customer": "Acme Corp",
+                "subject": "Acme Corp",
                 "findings": [],
                 "cross_references": [
                     "ARR discrepancy between contract ($1.2M) and revenue cube ($1.0M)",
@@ -807,7 +807,7 @@ class TestMergeNormalization:
             }
         }
         merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
-        result = merger.merge_customer(agent_outputs, customer_name="Acme Corp", customer_safe_name="acme_corp")
+        result = merger.merge_subject(agent_outputs, subject_name="Acme Corp", subject_safe_name="acme_corp")
         assert len(result.cross_references) == 1
         assert result.cross_references[0].match_status == "mismatch"
         assert "ARR discrepancy" in result.cross_references[0].data_point
@@ -816,7 +816,7 @@ class TestMergeNormalization:
         """Bare string cross-refs without match/mismatch keywords get 'not_available'."""
         agent_outputs = {
             "finance": {
-                "customer": "Acme Corp",
+                "subject": "Acme Corp",
                 "findings": [],
                 "cross_references": [
                     "Payment terms reference Section 4.2 of the Order Form",
@@ -824,7 +824,7 @@ class TestMergeNormalization:
             }
         }
         merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
-        result = merger.merge_customer(agent_outputs, customer_name="Acme Corp", customer_safe_name="acme_corp")
+        result = merger.merge_subject(agent_outputs, subject_name="Acme Corp", subject_safe_name="acme_corp")
         assert len(result.cross_references) == 1
         assert result.cross_references[0].match_status == "not_available"
 
@@ -832,13 +832,13 @@ class TestMergeNormalization:
         """Empty or whitespace-only string cross-refs are dropped."""
         agent_outputs = {
             "finance": {
-                "customer": "Acme Corp",
+                "subject": "Acme Corp",
                 "findings": [],
                 "cross_references": ["", "   ", None],
             }
         }
         merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
-        result = merger.merge_customer(agent_outputs, customer_name="Acme Corp", customer_safe_name="acme_corp")
+        result = merger.merge_subject(agent_outputs, subject_name="Acme Corp", subject_safe_name="acme_corp")
         assert len(result.cross_references) == 0
 
     def test_gap_string_recovery_preserves_full_text(self) -> None:
@@ -981,6 +981,12 @@ class TestMatchStatusValidation:
         cr = CrossReference(data_point="ARR", match_status="unable_to_verify")
         assert cr.match_status == "not_available"
 
+    def test_requires_investigation_coerced_to_unverified(self) -> None:
+        from dd_agents.models.finding import CrossReference
+
+        cr = CrossReference(data_point="ARR", match_status="requires_investigation")
+        assert cr.match_status == "unverified"
+
     def test_unknown_status_coerced_to_unverified(self) -> None:
         from dd_agents.models.finding import CrossReference
 
@@ -1030,7 +1036,7 @@ class TestMergeNormalizationContinued:
             },
         }
         merger = FindingMerger(run_id="test_run")
-        result = merger.merge_customer(agent_outputs, "Test Co", "test_co")
+        result = merger.merge_subject(agent_outputs, "Test Co", "test_co")
         assert len(result.findings) == 1
         assert len(result.findings[0].citations) == 1
         assert result.findings[0].citations[0].source_path == "report.pdf"
@@ -1059,7 +1065,7 @@ class TestMergeNormalizationContinued:
             },
         }
         merger = FindingMerger(run_id="test_run")
-        result = merger.merge_customer(agent_outputs, "Test Co", "test_co")
+        result = merger.merge_subject(agent_outputs, "Test Co", "test_co")
         assert len(result.findings) == 1
         assert len(result.findings[0].citations) == 1
 
@@ -1093,7 +1099,7 @@ class TestMergeNormalizationContinued:
             },
         }
         merger = FindingMerger(run_id="test_run")
-        result = merger.merge_customer(agent_outputs, "Test Co", "test_co")
+        result = merger.merge_subject(agent_outputs, "Test Co", "test_co")
         assert len(result.findings) == 1
         # Should use the existing 'citations', not the singular 'citation'
         assert result.findings[0].citations[0].source_path == "msa.pdf"
@@ -1120,7 +1126,7 @@ class TestReportDiffBuilder:
         gaps_dir.mkdir(parents=True, exist_ok=True)
 
         for csn, f_list in findings.items():
-            data = {"customer": csn, "findings": f_list}
+            data = {"subject": csn, "findings": f_list}
             (merged_dir / f"{csn}.json").write_text(json.dumps(data))
 
         if gaps:
@@ -1205,7 +1211,7 @@ class TestReportDiffBuilder:
         assert change.prior_severity == "P2"
         assert change.current_severity == "P0"
 
-    def test_detect_new_and_removed_customer(self, tmp_path: Path) -> None:
+    def test_detect_new_and_removed_subject(self, tmp_path: Path) -> None:
         prior = self._setup_run_dir(
             tmp_path / "prior",
             findings={"acme": [], "removed_co": []},
@@ -1218,8 +1224,8 @@ class TestReportDiffBuilder:
         builder = ReportDiffBuilder()
         diff = builder.build_diff(current, prior)
 
-        assert diff.summary.new_customers == 1
-        assert diff.summary.removed_customers == 1
+        assert diff.summary.new_subjects == 1
+        assert diff.summary.removed_subjects == 1
 
     def test_detect_new_gap(self, tmp_path: Path) -> None:
         prior = self._setup_run_dir(
@@ -1231,7 +1237,7 @@ class TestReportDiffBuilder:
             tmp_path / "current",
             findings={"acme": []},
             gaps={
-                "acme": [_make_gap(customer="acme", missing_item="SOW")],
+                "acme": [_make_gap(subject="acme", missing_item="SOW")],
             },
         )
 
@@ -1244,7 +1250,7 @@ class TestReportDiffBuilder:
         prior = self._setup_run_dir(
             tmp_path / "prior",
             findings={"acme": []},
-            gaps={"acme": [_make_gap(customer="acme", missing_item="SOW")]},
+            gaps={"acme": [_make_gap(subject="acme", missing_item="SOW")]},
         )
         current = self._setup_run_dir(
             tmp_path / "current",
@@ -1302,8 +1308,8 @@ class TestExcelReportGenerator:
         # Build minimal merged data
         merged = {
             "acme_corp": {
-                "customer": "Acme Corp",
-                "customer_safe_name": "acme_corp",
+                "subject": "Acme Corp",
+                "subject_safe_name": "acme_corp",
                 "findings": [
                     {
                         "id": "forensic-dd_legal_acme_corp_0001",
@@ -1380,7 +1386,7 @@ class TestExcelReportGenerator:
         """Column headers in each sheet match the schema definition."""
         merged = {
             "acme": {
-                "customer": "Acme",
+                "subject": "Acme",
                 "findings": [],
                 "gaps": [],
                 "cross_references": [],
@@ -1419,7 +1425,7 @@ class TestExcelReportGenerator:
         """P0 findings in the Wolf_Pack sheet should have red background."""
         merged = {
             "acme": {
-                "customer": "Acme",
+                "subject": "Acme",
                 "findings": [
                     {
                         "id": "forensic-dd_legal_acme_0001",
@@ -1479,7 +1485,7 @@ class TestExcelReportGenerator:
         """When deal_config activates conditional sheets, they appear."""
         merged = {
             "acme": {
-                "customer": "Acme",
+                "subject": "Acme",
                 "findings": [],
                 "gaps": [],
                 "cross_references": [],
@@ -1494,7 +1500,7 @@ class TestExcelReportGenerator:
                 "include_diff_sheet": True,
             },
             "source_of_truth": {
-                "customer_database": {"path": "customers.csv"},
+                "subject_database": {"path": "subjects.csv"},
             },
         }
 
@@ -1519,7 +1525,7 @@ class TestExcelReportGenerator:
         """Verify freeze panes and auto-filter are applied."""
         merged = {
             "acme": {
-                "customer": "Acme",
+                "subject": "Acme",
                 "findings": [
                     {
                         "id": "forensic-dd_legal_acme_0001",
@@ -1569,7 +1575,7 @@ class TestExcelReportGenerator:
         """Summary row should contain computed totals."""
         merged = {
             "acme": {
-                "customer": "Acme",
+                "subject": "Acme",
                 "findings": [
                     {
                         "id": "f1",
@@ -1592,7 +1598,7 @@ class TestExcelReportGenerator:
                 "files_analyzed": 3,
             },
             "beta": {
-                "customer": "Beta",
+                "subject": "Beta",
                 "findings": [
                     {
                         "id": "f2",
@@ -1647,7 +1653,7 @@ class TestExcelRecalibration:
         """Competitor-only CoC finding (P0→P3) should NOT appear in Wolf_Pack sheet."""
         merged = {
             "acme": {
-                "customer": "Acme",
+                "subject": "Acme",
                 "findings": [
                     {
                         "id": "f1",
@@ -1700,7 +1706,7 @@ class TestExcelRecalibration:
         """Summary sheet P0 count should reflect recalibrated severity."""
         merged = {
             "acme": {
-                "customer": "Acme",
+                "subject": "Acme",
                 "findings": [
                     {
                         "id": "f1",
@@ -1769,7 +1775,7 @@ class TestRecalibrateMerged:
         """Standard dict-based merged data should be recalibrated."""
         merged: dict[str, dict[str, Any]] = {
             "acme": {
-                "customer": "Acme",
+                "subject": "Acme",
                 "findings": [
                     {
                         "severity": "P0",
@@ -1798,12 +1804,12 @@ class TestRecalibrateMerged:
         assert "_recalibrated_from" not in findings[1]
 
     def test_handles_pydantic_model_instances(self) -> None:
-        """MergedCustomerOutput Pydantic objects should be normalized and recalibrated."""
-        from dd_agents.models.finding import MergedCustomerOutput
+        """MergedSubjectOutput Pydantic objects should be normalized and recalibrated."""
+        from dd_agents.models.finding import MergedSubjectOutput
 
-        mco = MergedCustomerOutput(
-            customer="Acme",
-            customer_safe_name="acme",
+        mco = MergedSubjectOutput(
+            subject="Acme",
+            subject_safe_name="acme",
             findings=[],
             gaps=[],
         )
@@ -1812,13 +1818,13 @@ class TestRecalibrateMerged:
         result = _recalibrate_merged(merged)  # type: ignore[arg-type]
         # Should not raise and should produce a dict
         assert isinstance(result["acme"], dict)
-        assert result["acme"]["customer"] == "Acme"
+        assert result["acme"]["subject"] == "Acme"
 
     def test_preserves_non_finding_fields(self) -> None:
         """Non-finding fields like gaps and cross_references should be preserved."""
         merged: dict[str, dict[str, Any]] = {
             "acme": {
-                "customer": "Acme",
+                "subject": "Acme",
                 "findings": [{"severity": "P2", "title": "T", "description": "D", "category": "x"}],
                 "gaps": [{"priority": "P1", "gap_type": "Missing_Doc"}],
                 "cross_references": [{"data_point": "ARR"}],
@@ -1838,7 +1844,7 @@ class TestRecalibrateMerged:
             "description": "CoC",
             "category": "change_of_control",
         }
-        merged: dict[str, dict[str, Any]] = {"acme": {"customer": "Acme", "findings": [original_finding], "gaps": []}}
+        merged: dict[str, dict[str, Any]] = {"acme": {"subject": "Acme", "findings": [original_finding], "gaps": []}}
         _recalibrate_merged(merged)
         # Original should still be P0
         assert original_finding["severity"] == "P0"
@@ -2052,7 +2058,7 @@ class TestReportSchemaValidation:
 
         sheet = SheetDef(
             name="Summary",
-            columns=[ColumnDef(name="Customer", key="customer", type="string")],
+            columns=[ColumnDef(name="Customer", key="subject", type="string")],
         )
         schema = ReportSchema(schema_version="1.0.0", sheets=[sheet])
         assert len(schema.sheets) == 1
@@ -2072,7 +2078,7 @@ class TestExcelGeneratorGuards:
         # Build a schema with one sheet, then forcibly empty it
         sheet = SheetDef(
             name="Summary",
-            columns=[ColumnDef(name="Customer", key="customer", type="string")],
+            columns=[ColumnDef(name="Customer", key="subject", type="string")],
         )
         schema = ReportSchema(schema_version="1.0.0", sheets=[sheet])
         # Bypass the validator by mutating after construction
@@ -2096,7 +2102,7 @@ class TestExcelGeneratorGuards:
         sheet = SheetDef(
             name="Missing_Docs_Gaps",
             columns=[
-                ColumnDef(name="Customer", key="customer", type="string"),
+                ColumnDef(name="Customer", key="subject", type="string"),
                 ColumnDef(name="Evidence", key="evidence", type="string", width=30),
             ],
         )
@@ -2104,7 +2110,7 @@ class TestExcelGeneratorGuards:
 
         merged = {
             "acme": {
-                "customer": "Acme",
+                "subject": "Acme",
                 "findings": [],
                 "gaps": [
                     {
@@ -2151,7 +2157,7 @@ class TestExcelGeneratorGuards:
         sheets = [
             SheetDef(
                 name="Summary",
-                columns=[ColumnDef(name="Customer", key="customer", type="string")],
+                columns=[ColumnDef(name="Customer", key="subject", type="string")],
             ),
             SheetDef(
                 name="Wolf_Pack",
@@ -2162,7 +2168,7 @@ class TestExcelGeneratorGuards:
 
         merged: dict[str, dict] = {
             "acme": {
-                "customer": "Acme",
+                "subject": "Acme",
                 "findings": [],
                 "gaps": [],
                 "cross_references": [],
@@ -2208,7 +2214,7 @@ class TestStep30SchemaFallback:
             "sheets": [
                 {
                     "name": "Summary",
-                    "columns": [{"name": "Customer", "key": "customer", "type": "string"}],
+                    "columns": [{"name": "Customer", "key": "subject", "type": "string"}],
                 }
             ],
         }
@@ -2265,7 +2271,7 @@ class TestStep30SchemaFallback:
                             "required": True,
                             "activation_condition": "always",
                             "columns": [
-                                {"name": "Customer", "key": "customer", "type": "string", "width": 30},
+                                {"name": "Customer", "key": "subject", "type": "string", "width": 30},
                                 {
                                     "name": "Overall Risk Rating",
                                     "key": "overall_risk_rating",
@@ -2481,9 +2487,9 @@ class TestStaleFileCleanup:
         (merged_dir / "report_diff.json").write_text("{}")
 
         # Write merged output for one customer
-        from dd_agents.models.finding import MergedCustomerOutput
+        from dd_agents.models.finding import MergedSubjectOutput
 
-        mco = MergedCustomerOutput(customer="Acme Corp", customer_safe_name="acme_corp")
+        mco = MergedSubjectOutput(subject="Acme Corp", subject_safe_name="acme_corp")
         merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
         merger.write_merged({"acme_corp": mco}, merged_dir)
 
@@ -2494,15 +2500,15 @@ class TestStaleFileCleanup:
         assert not (merged_dir / "coverage_manifest.json").exists()
         assert not (merged_dir / "report_diff.json").exists()
 
-    def test_write_merged_preserves_customer_files(self, tmp_path: Path) -> None:
+    def test_write_merged_preserves_subject_files(self, tmp_path: Path) -> None:
         """Customer files from a previous run that are still valid should stay."""
-        from dd_agents.models.finding import MergedCustomerOutput
+        from dd_agents.models.finding import MergedSubjectOutput
 
         merged_dir = tmp_path / "merged"
         merged_dir.mkdir()
 
-        mco_a = MergedCustomerOutput(customer="A", customer_safe_name="a")
-        mco_b = MergedCustomerOutput(customer="B", customer_safe_name="b")
+        mco_a = MergedSubjectOutput(subject="A", subject_safe_name="a")
+        mco_b = MergedSubjectOutput(subject="B", subject_safe_name="b")
         merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
         merger.write_merged({"a": mco_a, "b": mco_b}, merged_dir)
 
@@ -2511,13 +2517,13 @@ class TestStaleFileCleanup:
 
     def test_write_merged_clean_stale_false_preserves_all(self, tmp_path: Path) -> None:
         """When clean_stale=False, no files are removed."""
-        from dd_agents.models.finding import MergedCustomerOutput
+        from dd_agents.models.finding import MergedSubjectOutput
 
         merged_dir = tmp_path / "merged"
         merged_dir.mkdir()
         (merged_dir / "stale.json").write_text("{}")
 
-        mco = MergedCustomerOutput(customer="X", customer_safe_name="x")
+        mco = MergedSubjectOutput(subject="X", subject_safe_name="x")
         merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
         merger.write_merged({"x": mco}, merged_dir, clean_stale=False)
 
@@ -3011,7 +3017,7 @@ class TestAgentCoverage:
 
     def test_full_coverage_returns_no_gaps(self) -> None:
         from dd_agents.models.enums import AgentName, Confidence, Severity, SourceType
-        from dd_agents.models.finding import Citation, Finding, MergedCustomerOutput
+        from dd_agents.models.finding import Citation, Finding, MergedSubjectOutput
 
         findings = []
         for agent in ("legal", "finance", "commercial", "producttech"):
@@ -3037,9 +3043,9 @@ class TestAgentCoverage:
                     analysis_unit="test",
                 )
             )
-        mco = MergedCustomerOutput(
-            customer="Test",
-            customer_safe_name="test",
+        mco = MergedSubjectOutput(
+            subject="Test",
+            subject_safe_name="test",
             findings=findings,
         )
         gaps = FindingMerger.check_agent_coverage({"test": mco})
@@ -3047,7 +3053,7 @@ class TestAgentCoverage:
 
     def test_missing_agent_detected(self) -> None:
         from dd_agents.models.enums import AgentName, Confidence, Severity, SourceType
-        from dd_agents.models.finding import Citation, Finding, MergedCustomerOutput
+        from dd_agents.models.finding import Citation, Finding, MergedSubjectOutput
 
         findings = []
         for agent in ("legal", "finance", "commercial"):  # Missing producttech
@@ -3073,12 +3079,12 @@ class TestAgentCoverage:
                     analysis_unit="test",
                 )
             )
-        mco = MergedCustomerOutput(
-            customer="Test",
-            customer_safe_name="test",
+        mco = MergedSubjectOutput(
+            subject="Test",
+            subject_safe_name="test",
             findings=findings,
         )
         gaps = FindingMerger.check_agent_coverage({"test": mco})
         assert len(gaps) == 1
-        assert gaps[0]["customer"] == "test"
+        assert gaps[0]["subject"] == "test"
         assert "producttech" in gaps[0]["missing_agents"]

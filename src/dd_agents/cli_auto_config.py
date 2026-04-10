@@ -128,7 +128,7 @@ def build_reference_file_summary(
     data_room_path: Path,
     files: list[Any] | None = None,
 ) -> list[dict[str, Any]]:
-    """Identify root-level reference files (not inside customer folders).
+    """Identify root-level reference files (not inside subject folders).
 
     Returns a list of ``{"filename": str, "size_kb": int}`` dicts.
     """
@@ -489,7 +489,7 @@ class DataRoomAnalyzer:
         deal_type_hint: str | None = None,
         spa_entities: str = "",
     ) -> str:
-        customer_names = scan_result.get("customer_names", [])
+        subject_names = scan_result.get("subject_names", [])
         groups = scan_result.get("groups", [])
         file_count = scan_result.get("file_count", 0)
         counts = scan_result.get("counts")
@@ -508,7 +508,7 @@ class DataRoomAnalyzer:
         stats_lines = [
             f"- Total files: {file_count}",
             f"- Groups: {len(groups)} ({', '.join(groups[:20])})",
-            f"- Customers: {len(customer_names)}",
+            f"- Subjects: {len(subject_names)}",
         ]
         if counts is not None:
             counts_dict = counts.model_dump() if hasattr(counts, "model_dump") else {}
@@ -523,11 +523,11 @@ class DataRoomAnalyzer:
             ref_lines = [f"- {rf['filename']} ({rf['size_kb']} KB)" for rf in reference_files]
             parts.append("## Reference Files (root-level)\n" + "\n".join(ref_lines) + "\n")
 
-        # Customer folder names (first 100)
-        if customer_names:
-            display = customer_names[:100]
-            suffix = f"\n... and {len(customer_names) - 100} more" if len(customer_names) > 100 else ""
-            parts.append("## Customer Folder Names (first 100)\n" + ", ".join(display) + suffix + "\n")
+        # Subject folder names (first 100)
+        if subject_names:
+            display = subject_names[:100]
+            suffix = f"\n... and {len(subject_names) - 100} more" if len(subject_names) > 100 else ""
+            parts.append("## Subject Folder Names (first 100)\n" + ", ".join(display) + suffix + "\n")
 
         # SPA entity hints (if available)
         if spa_entities:
@@ -571,7 +571,8 @@ class DataRoomAnalyzer:
             '    "notes": "<strategic context and file references for agents>"\n'
             "  }\n"
             "}\n\n"
-            "Respond with ONLY the JSON object."
+            "IMPORTANT: Do NOT use any tools. All information you need is provided "
+            "in the user message. Respond with ONLY the JSON object."
         )
 
     def _build_buyer_strategy_prompt(
@@ -644,7 +645,8 @@ class DataRoomAnalyzer:
             '  "additional_entity_variants": ["<entity1>", "<entity2>"],\n'
             '  "key_executives": [{"name": "<name>", "title": "<title>", "company": "<company>"}]\n'
             "}\n\n"
-            "Respond with ONLY the JSON object."
+            "IMPORTANT: Do NOT use any tools. All information you need is provided "
+            "in the user message. Respond with ONLY the JSON object."
         )
 
     def _build_spa_extraction_prompt(
@@ -739,13 +741,8 @@ class DataRoomAnalyzer:
 
         options = ClaudeAgentOptions(
             system_prompt=system_prompt,
-            max_turns=1,
+            max_turns=3,
             permission_mode="bypassPermissions",
-            # Disable all tools — we provide all data in the prompt and
-            # only need a text (JSON) response.  Without this, the agent
-            # uses Read/Glob/Bash to explore the data room itself, which
-            # is slow and never produces the JSON we need.
-            disallowed_tools=["Read", "Edit", "Write", "Bash", "Glob", "Grep", "WebFetch", "Task", "NotebookEdit"],
         )
 
         text_parts: list[str] = []
@@ -763,6 +760,11 @@ class DataRoomAnalyzer:
                     getattr(message, "result", "N/A"),
                 )
                 if message.is_error:
+                    # If we already captured text, use it despite the error
+                    # (model may have emitted JSON before attempting a tool).
+                    if text_parts:
+                        logger.warning("Claude returned error but text was captured; using partial response")
+                        break
                     raise RuntimeError(f"Claude returned error: {message.result}")
 
         result = "\n".join(text_parts)
@@ -783,6 +785,10 @@ class DataRoomAnalyzer:
             cleaned = cleaned[first_newline + 1 :]
         if cleaned.endswith("```"):
             cleaned = cleaned[: cleaned.rfind("```")]
+        # If there's a closing ``` in the middle (JSON followed by prose),
+        # take only the content before it.
+        elif "```" in cleaned:
+            cleaned = cleaned[: cleaned.index("```")]
         cleaned = cleaned.strip()
 
         if not cleaned:
@@ -790,8 +796,40 @@ class DataRoomAnalyzer:
 
         try:
             data = json.loads(cleaned)
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"Failed to parse Claude response as JSON: {exc}") from exc
+        except json.JSONDecodeError:
+            # The model may have appended prose after the JSON object.
+            # Try to find the outermost balanced braces.
+            start = cleaned.find("{")
+            if start == -1:
+                raise ValueError("No JSON object found in Claude response")  # noqa: B904
+            depth, end = 0, -1
+            in_string, escape_next = False, False
+            for i in range(start, len(cleaned)):
+                ch = cleaned[i]
+                if escape_next:
+                    escape_next = False
+                    continue
+                if ch == "\\":
+                    escape_next = True
+                    continue
+                if ch == '"' and not escape_next:
+                    in_string = not in_string
+                    continue
+                if in_string:
+                    continue
+                if ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        end = i
+                        break
+            if end == -1:
+                raise ValueError("No complete JSON object found in Claude response")  # noqa: B904
+            try:
+                data = json.loads(cleaned[start : end + 1])
+            except json.JSONDecodeError as exc2:
+                raise ValueError(f"Failed to parse Claude response as JSON: {exc2}") from exc2
 
         if not isinstance(data, dict):
             raise ValueError(f"Expected a JSON object, got {type(data).__name__}")
@@ -911,6 +949,19 @@ def validate_and_fix_config(
     if not deal.get("focus_areas") or not isinstance(deal["focus_areas"], list):
         deal["focus_areas"] = list(DEFAULT_FOCUS_AREAS[:4])
 
+    # Inject deal-type-specific focus areas that agents need to see.
+    if deal["type"] in ("asset_sale", "asset_purchase"):
+        _asset_sale_areas = [
+            "contract_assignability",
+            "purchased_assets_schedule",
+            "excluded_liabilities",
+            "employee_transfer",
+            "cure_costs",
+        ]
+        for area in _asset_sale_areas:
+            if area not in deal["focus_areas"]:
+                deal["focus_areas"].append(area)
+
     # Ensure entity_name_variants includes target name
     variants = config["target"].get("entity_name_variants_for_contract_matching")
     if not variants or not isinstance(variants, list):
@@ -935,16 +986,16 @@ def validate_and_fix_config(
                 item.setdefault("deal_type", "")
                 item.setdefault("notes", "")
 
-    # Merge customer folder names into entity_aliases.canonical_to_variants
+    # Merge subject folders names into entity_aliases.canonical_to_variants
     if not config.get("entity_aliases") or not isinstance(config["entity_aliases"], dict):
         config["entity_aliases"] = {}
     aliases = config["entity_aliases"]
     if "canonical_to_variants" not in aliases or not isinstance(aliases["canonical_to_variants"], dict):
         aliases["canonical_to_variants"] = {}
 
-    customer_names = scan_result.get("customer_names", [])
+    subject_names = scan_result.get("subject_names", [])
     c2v = aliases["canonical_to_variants"]
-    for folder_name in customer_names:
+    for folder_name in subject_names:
         clean_name = folder_name.replace("_", " ")
         if clean_name != folder_name:
             if clean_name not in c2v:
@@ -1029,9 +1080,9 @@ def print_auto_config_summary(
     table.add_row("Focus Areas", ", ".join(focus))
 
     # Stats
-    customer_count = len(scan_result.get("customer_names", []))
+    subject_count = len(scan_result.get("subject_names", []))
     file_count = scan_result.get("file_count", 0)
-    table.add_row("Customers", str(customer_count))
+    table.add_row("Subjects", str(subject_count))
     table.add_row("Files", str(file_count))
 
     # Buyer strategy summary

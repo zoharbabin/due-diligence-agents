@@ -71,7 +71,7 @@ class TestPipelineErrorRecord:
         assert record.recoverable is True
         assert record.recovery_action == "re-spawned once"
         assert record.timestamp  # auto-populated
-        assert record.customers_affected == []
+        assert record.subjects_affected == []
         assert record.details == {}
 
     def test_creation_with_all_fields(self) -> None:
@@ -85,14 +85,14 @@ class TestPipelineErrorRecord:
             category=ErrorCategory.EXTRACTION,
             severity=ErrorSeverity.FATAL,
             agent=None,
-            customers_affected=["alpha", "bravo"],
+            subjects_affected=["alpha", "bravo"],
             details={"failure_rate": 0.65},
             outcome="fatal",
         )
         assert record.category == ErrorCategory.EXTRACTION
         assert record.severity == ErrorSeverity.FATAL
         assert record.outcome == "fatal"
-        assert len(record.customers_affected) == 2
+        assert len(record.subjects_affected) == 2
 
     def test_default_timestamp_is_set(self) -> None:
         record = PipelineErrorRecord(

@@ -1,6 +1,6 @@
 """Specialist agent runners -- Legal, Finance, Commercial, ProductTech.
 
-Each specialist analyses ALL customers through its domain-specific lens.
+Each specialist analyses ALL subjects through its domain-specific lens.
 Specialists run in parallel during pipeline step 16.
 
 Domain-specific LLM robustness mitigations (Issue #52, spec doc 22) are
@@ -94,7 +94,7 @@ SPECIALIST_TOOLS: list[str] = [
     "validate_gap",
     "verify_citation",
     "resolve_entity",
-    "get_customer_files",
+    "get_subject_files",
     "search_similar",
     "read_office",
     "report_progress",
@@ -237,7 +237,7 @@ class FinanceAgent(BaseAgentRunner):
 
     # Finance batches are smaller because financial documents are dense
     # and context exhaustion degrades citation quality (Issue #92).
-    max_customers_per_batch: int = 10
+    max_subjects_per_batch: int = 10
     max_tokens_per_batch: int = 25_000
 
     def get_agent_name(self) -> str:
@@ -406,7 +406,20 @@ class ProductTechAgent(BaseAgentRunner):
             "- Encryption standards (at rest, in transit)\n"
             "- Incident response SLAs\n"
             "IF NOT FOUND: Write a gap. Do NOT assume security standards are met "
-            "without documentary evidence."
+            "without documentary evidence.\n\n"
+            #
+            "### Citation Requirements for ProductTech Findings\n\n"
+            "EVERY finding MUST cite the specific document, page, and section where "
+            "the evidence appears.  For P0 and P1 findings, `exact_quote` is MANDATORY — "
+            "copy the relevant text verbatim from the source document.\n\n"
+            "Examples of good ProductTech citations:\n"
+            "- SOC 2 report: cite the report title, date, scope section, and exact text\n"
+            "- Architecture docs: cite the specific diagram name, section heading, and text\n"
+            "- Pen test reports: cite the finding ID, severity, and remediation status text\n"
+            "- SLA commitments: cite the exact uptime percentage and response time from the doc\n"
+            "- DPA clauses: cite the section number and verbatim clause text\n\n"
+            "Findings without citations will be automatically downgraded in severity. "
+            "If you cannot find a verbatim quote to cite, downgrade the finding to P2 or P3."
         )
 
     def get_tools(self) -> list[str]:

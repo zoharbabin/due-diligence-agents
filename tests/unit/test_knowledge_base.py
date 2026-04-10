@@ -277,7 +277,7 @@ def _make_merged_findings_dir(run_dir: Path) -> None:
     (merged_dir / "customer_a.json").write_text(
         json.dumps(
             {
-                "customer_safe_name": "customer_a",
+                "subject_safe_name": "customer_a",
                 "findings": [
                     {
                         "severity": "P0",
@@ -319,7 +319,7 @@ def _make_merged_findings_dir(run_dir: Path) -> None:
     (merged_dir / "customer_b.json").write_text(
         json.dumps(
             {
-                "customer_safe_name": "customer_b",
+                "subject_safe_name": "customer_b",
                 "findings": [
                     {
                         "severity": "P2",
@@ -501,7 +501,7 @@ class TestContradictionDetection:
         (merged_dir / "customer_x.json").write_text(
             json.dumps(
                 {
-                    "customer_safe_name": "customer_x",
+                    "subject_safe_name": "customer_x",
                     "findings": [
                         {
                             "severity": "P0",
@@ -544,7 +544,7 @@ class TestContradictionDetection:
         (merged_dir / "customer_y.json").write_text(
             json.dumps(
                 {
-                    "customer_safe_name": "customer_y",
+                    "subject_safe_name": "customer_y",
                     "findings": [
                         {
                             "severity": "P1",

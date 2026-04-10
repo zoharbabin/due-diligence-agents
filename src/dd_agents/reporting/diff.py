@@ -25,12 +25,12 @@ logger = logging.getLogger(__name__)
 class ReportDiffBuilder:
     """Compare current run findings against a prior run.
 
-    Matching is done on ``customer + category + citation source_path``.
+    Matching is done on ``subject + category + citation source_path``.
     Detected change types:
     - new_finding / resolved_finding
     - changed_severity
     - new_gap / resolved_gap
-    - new_customer / removed_customer
+    - new_subject / removed_subject
     """
 
     # ------------------------------------------------------------------
@@ -46,7 +46,7 @@ class ReportDiffBuilder:
     ) -> ReportDiff:
         """Build a diff comparing two merged-findings directories.
 
-        Each directory is expected to contain per-customer JSON files under
+        Each directory is expected to contain per-subject JSON files under
         ``merged/`` and gap JSON files under ``merged/gaps/``.
         """
         current_findings = self._load_findings(current_findings_dir / "merged")
@@ -56,41 +56,41 @@ class ReportDiffBuilder:
 
         changes: list[ReportDiffChange] = []
 
-        current_customers = set(current_findings.keys())
-        prior_customers = set(prior_findings.keys())
+        current_subjects = set(current_findings.keys())
+        prior_subjects = set(prior_findings.keys())
 
-        # Customer-level changes
-        for c in sorted(current_customers - prior_customers):
+        # Subject-level changes
+        for c in sorted(current_subjects - prior_subjects):
             changes.append(
                 ReportDiffChange(
-                    change_type="new_customer",
-                    customer=c,
+                    change_type="new_subject",
+                    subject=c,
                     details="New entity in current run",
                 )
             )
-        for c in sorted(prior_customers - current_customers):
+        for c in sorted(prior_subjects - current_subjects):
             changes.append(
                 ReportDiffChange(
-                    change_type="removed_customer",
-                    customer=c,
+                    change_type="removed_subject",
+                    subject=c,
                     details="Entity removed from current run",
                 )
             )
 
-        # Finding + gap level changes for shared customers
-        for customer in sorted(current_customers & prior_customers):
+        # Finding + gap level changes for shared subjects
+        for subj in sorted(current_subjects & prior_subjects):
             changes.extend(
                 self._diff_findings(
-                    customer,
-                    current_findings[customer],
-                    prior_findings[customer],
+                    subj,
+                    current_findings[subj],
+                    prior_findings[subj],
                 )
             )
             changes.extend(
                 self._diff_gaps(
-                    customer,
-                    current_gaps.get(customer, []),
-                    prior_gaps.get(customer, []),
+                    subj,
+                    current_gaps.get(subj, []),
+                    prior_gaps.get(subj, []),
                 )
             )
 
@@ -127,7 +127,7 @@ class ReportDiffBuilder:
 
     def _diff_findings(
         self,
-        customer: str,
+        subject: str,
         current: list[dict[str, Any]],
         prior: list[dict[str, Any]],
     ) -> list[ReportDiffChange]:
@@ -140,7 +140,7 @@ class ReportDiffBuilder:
                 changes.append(
                     ReportDiffChange(
                         change_type="new_finding",
-                        customer=customer,
+                        subject=subject,
                         finding_summary=finding.get("title", ""),
                         current_severity=finding.get("severity"),
                         details="New finding in current run",
@@ -152,7 +152,7 @@ class ReportDiffBuilder:
                     changes.append(
                         ReportDiffChange(
                             change_type="changed_severity",
-                            customer=customer,
+                            subject=subject,
                             finding_summary=finding.get("title", ""),
                             prior_severity=prior_f.get("severity"),
                             current_severity=finding.get("severity"),
@@ -164,7 +164,7 @@ class ReportDiffBuilder:
                 changes.append(
                     ReportDiffChange(
                         change_type="resolved_finding",
-                        customer=customer,
+                        subject=subject,
                         finding_summary=finding.get("title", ""),
                         prior_severity=finding.get("severity"),
                     )
@@ -174,7 +174,7 @@ class ReportDiffBuilder:
 
     def _diff_gaps(
         self,
-        customer: str,
+        subject: str,
         current: list[dict[str, Any]],
         prior: list[dict[str, Any]],
     ) -> list[ReportDiffChange]:
@@ -187,7 +187,7 @@ class ReportDiffBuilder:
                 changes.append(
                     ReportDiffChange(
                         change_type="new_gap",
-                        customer=customer,
+                        subject=subject,
                         finding_summary=g.get("missing_item", ""),
                         details=f"gap_type={g.get('gap_type', '')}",
                     )
@@ -198,7 +198,7 @@ class ReportDiffBuilder:
                 changes.append(
                     ReportDiffChange(
                         change_type="resolved_gap",
-                        customer=customer,
+                        subject=subject,
                         finding_summary=g.get("missing_item", ""),
                         details=f"gap_type={g.get('gap_type', '')}",
                     )
@@ -214,8 +214,8 @@ class ReportDiffBuilder:
             "changed_severity": 0,
             "new_gaps": 0,
             "resolved_gaps": 0,
-            "new_customers": 0,
-            "removed_customers": 0,
+            "new_subjects": 0,
+            "removed_subjects": 0,
         }
         mapping = {
             "new_finding": "new_findings",
@@ -223,8 +223,8 @@ class ReportDiffBuilder:
             "changed_severity": "changed_severity",
             "new_gap": "new_gaps",
             "resolved_gap": "resolved_gaps",
-            "new_customer": "new_customers",
-            "removed_customer": "removed_customers",
+            "new_subject": "new_subjects",
+            "removed_subject": "removed_subjects",
         }
         for ch in changes:
             field = mapping.get(ch.change_type)
@@ -238,7 +238,7 @@ class ReportDiffBuilder:
 
     @staticmethod
     def _load_findings(merged_dir: Path) -> dict[str, list[dict[str, Any]]]:
-        """Load per-customer findings from ``merged/*.json``."""
+        """Load per-subject findings from ``merged/*.json``."""
         result: dict[str, list[dict[str, Any]]] = {}
         if not merged_dir.is_dir():
             return result
@@ -246,20 +246,20 @@ class ReportDiffBuilder:
             if fp.is_file():
                 try:
                     data = json.loads(fp.read_text(encoding="utf-8"))
-                    customer = data.get("customer", fp.stem)
+                    subj = data.get("subject", fp.stem)
                     findings_raw = data.get("findings", [])
                     # Normalise Finding models back to dicts if needed
                     findings: list[dict[str, Any]] = []
                     for f in findings_raw:
                         findings.append(f if isinstance(f, dict) else dict(f))
-                    result[customer] = findings
+                    result[subj] = findings
                 except Exception:  # noqa: BLE001
                     logger.warning("Failed to load findings from %s", fp)
         return result
 
     @staticmethod
     def _load_gaps(gaps_dir: Path) -> dict[str, list[dict[str, Any]]]:
-        """Load per-customer gaps from ``merged/gaps/*.json``."""
+        """Load per-subject gaps from ``merged/gaps/*.json``."""
         result: dict[str, list[dict[str, Any]]] = {}
         if not gaps_dir.is_dir():
             return result
@@ -268,8 +268,8 @@ class ReportDiffBuilder:
                 try:
                     data = json.loads(fp.read_text(encoding="utf-8"))
                     gaps = data if isinstance(data, list) else data.get("gaps", [])
-                    customer = fp.stem
-                    result[customer] = gaps
+                    subj = fp.stem
+                    result[subj] = gaps
                 except Exception:  # noqa: BLE001
                     logger.warning("Failed to load gaps from %s", fp)
         return result

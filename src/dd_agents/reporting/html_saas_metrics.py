@@ -21,8 +21,8 @@ class SaaSMetricsRenderer(SectionRenderer):
         if not metrics or total_arr <= 0:
             return ""
 
-        total_customers = metrics.get("total_customers", 0)
-        customers_with_rev = metrics.get("customers_with_revenue", 0)
+        total_subjects = metrics.get("total_subjects", 0)
+        subjects_with_rev = metrics.get("subjects_with_revenue", 0)
         avg_cv = metrics.get("avg_contract_value", 0.0)
         top_pct = metrics.get("top_customer_pct", 0.0)
         tiers = metrics.get("tier_distribution", {})
@@ -36,10 +36,10 @@ class SaaSMetricsRenderer(SectionRenderer):
         # KPI cards
         kpis = [
             ("Total ARR", _fmt_currency(total_arr)),
-            ("Customers", str(total_customers)),
-            ("With Revenue Data", f"{customers_with_rev}/{total_customers}"),
+            ("Entities", str(total_subjects)),
+            ("With Revenue Data", f"{subjects_with_rev}/{total_subjects}"),
             ("Avg Contract Value", _fmt_currency(avg_cv)),
-            ("Top Customer", f"{top_pct:.0f}% of ARR"),
+            ("Top Entity", f"{top_pct:.0f}% of ARR"),
         ]
         for label, value in kpis:
             parts.append(
@@ -52,16 +52,16 @@ class SaaSMetricsRenderer(SectionRenderer):
 
         # Tier distribution as a table (uses existing CSS)
         if tiers:
-            parts.append("<h3>Customer Tier Distribution</h3>")
+            parts.append("<h3>Entity Tier Distribution</h3>")
             parts.append(
-                "<table class='customer-table sortable'><thead><tr>"
+                "<table class='subject-table sortable'><thead><tr>"
                 "<th scope='col'>Tier</th>"
-                "<th scope='col'>Customers</th>"
+                "<th scope='col'>Entities</th>"
                 "<th scope='col'>%</th>"
                 "</tr></thead><tbody>"
             )
             for tier_name, count in tiers.items():
-                pct = (count / total_customers * 100) if total_customers > 0 else 0
+                pct = (count / total_subjects * 100) if total_subjects > 0 else 0
                 parts.append(f"<tr><td>{self.escape(str(tier_name))}</td><td>{count}</td><td>{pct:.0f}%</td></tr>")
             parts.append("</tbody></table>")
 

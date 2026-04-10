@@ -1,5 +1,5 @@
-"""Unit tests for the inventory module: FileDiscovery, CustomerRegistryBuilder,
-ReferenceFileClassifier, CustomerMentionBuilder, InventoryIntegrityVerifier.
+"""Unit tests for the inventory module: FileDiscovery, SubjectRegistryBuilder,
+ReferenceFileClassifier, SubjectMentionBuilder, InventoryIntegrityVerifier.
 """
 
 from __future__ import annotations
@@ -8,16 +8,16 @@ import csv
 import json
 from typing import TYPE_CHECKING
 
-from dd_agents.inventory.customers import CustomerRegistryBuilder
 from dd_agents.inventory.discovery import FileDiscovery
 from dd_agents.inventory.integrity import InventoryIntegrityVerifier
-from dd_agents.inventory.mentions import CustomerMentionBuilder
+from dd_agents.inventory.mentions import SubjectMentionBuilder
 from dd_agents.inventory.reference_files import ReferenceFileClassifier
+from dd_agents.inventory.subjects import SubjectRegistryBuilder
 from dd_agents.models.inventory import (
-    CustomerMention,
-    CustomerMentionIndex,
     FileEntry,
     ReferenceFile,
+    SubjectMention,
+    SubjectMentionIndex,
 )
 
 if TYPE_CHECKING:
@@ -197,58 +197,58 @@ class TestFileDiscovery:
 
 
 # =========================================================================
-# CustomerRegistryBuilder
+# SubjectRegistryBuilder
 # =========================================================================
 
 
-class TestCustomerRegistryBuilder:
-    """Tests for customer registry building."""
+class TestSubjectRegistryBuilder:
+    """Tests for subject registry building."""
 
-    def test_build_parses_group_customer_structure(self, tmp_path: Path) -> None:
-        """build should correctly identify groups and customers."""
+    def test_build_parses_group_subject_structure(self, tmp_path: Path) -> None:
+        """build should correctly identify groups and subjects."""
         dr = _create_data_room(tmp_path)
         disco = FileDiscovery()
         files = disco.discover(dr)
 
-        builder = CustomerRegistryBuilder()
-        customers, counts = builder.build(dr, files)
+        builder = SubjectRegistryBuilder()
+        subjects, counts = builder.build(dr, files)
 
-        names = {c.name for c in customers}
+        names = {c.name for c in subjects}
         assert "Acme Corp" in names
         assert "Globex Inc" in names
         assert "Alpine Systems" in names
-        assert len(customers) == 3
+        assert len(subjects) == 3
 
     def test_build_computes_safe_names(self, tmp_path: Path) -> None:
-        """build should generate customer_safe_name for each customer."""
+        """build should generate subject_safe_name for each subject."""
         dr = _create_data_room(tmp_path)
         disco = FileDiscovery()
         files = disco.discover(dr)
 
-        builder = CustomerRegistryBuilder()
-        customers, _ = builder.build(dr, files)
+        builder = SubjectRegistryBuilder()
+        subjects, _ = builder.build(dr, files)
 
-        safe_names = {c.safe_name for c in customers}
+        safe_names = {c.safe_name for c in subjects}
         assert "acme" in safe_names
         assert "globex" in safe_names
         assert "alpine_systems" in safe_names
 
-    def test_build_counts_files_per_customer(self, tmp_path: Path) -> None:
-        """Each customer should have the correct file count."""
+    def test_build_counts_files_per_subject(self, tmp_path: Path) -> None:
+        """Each subject should have the correct file count."""
         dr = _create_data_room(tmp_path)
         disco = FileDiscovery()
         files = disco.discover(dr)
 
-        builder = CustomerRegistryBuilder()
-        customers, _ = builder.build(dr, files)
+        builder = SubjectRegistryBuilder()
+        subjects, _ = builder.build(dr, files)
 
-        acme = next(c for c in customers if c.name == "Acme Corp")
+        acme = next(c for c in subjects if c.name == "Acme Corp")
         assert acme.file_count == 2  # msa.pdf, sow.docx
 
-        globex = next(c for c in customers if c.name == "Globex Inc")
+        globex = next(c for c in subjects if c.name == "Globex Inc")
         assert globex.file_count == 1  # contract.pdf
 
-        alpine = next(c for c in customers if c.name == "Alpine Systems")
+        alpine = next(c for c in subjects if c.name == "Alpine Systems")
         assert alpine.file_count == 3  # agreement.pdf, addendum.docx, financials.xlsx
 
     def test_build_produces_correct_counts(self, tmp_path: Path) -> None:
@@ -257,24 +257,24 @@ class TestCustomerRegistryBuilder:
         disco = FileDiscovery()
         files = disco.discover(dr)
 
-        builder = CustomerRegistryBuilder()
-        customers, counts = builder.build(dr, files)
+        builder = SubjectRegistryBuilder()
+        subjects, counts = builder.build(dr, files)
 
         assert counts.total_files == 9
-        assert counts.total_customers == 3
+        assert counts.total_subjects == 3
         assert counts.total_reference_files == 3  # root-level files
 
     def test_build_tracks_groups(self, tmp_path: Path) -> None:
-        """CountsJson should track customers_by_group."""
+        """CountsJson should track subjects_by_group."""
         dr = _create_data_room(tmp_path)
         disco = FileDiscovery()
         files = disco.discover(dr)
 
-        builder = CustomerRegistryBuilder()
+        builder = SubjectRegistryBuilder()
         _, counts = builder.build(dr, files)
 
-        assert counts.customers_by_group["GroupA"] == 2
-        assert counts.customers_by_group["GroupB"] == 1
+        assert counts.subjects_by_group["GroupA"] == 2
+        assert counts.subjects_by_group["GroupB"] == 1
 
     def test_build_tracks_extensions(self, tmp_path: Path) -> None:
         """CountsJson should track files_by_extension."""
@@ -282,7 +282,7 @@ class TestCustomerRegistryBuilder:
         disco = FileDiscovery()
         files = disco.discover(dr)
 
-        builder = CustomerRegistryBuilder()
+        builder = SubjectRegistryBuilder()
         _, counts = builder.build(dr, files)
 
         assert ".pdf" in counts.files_by_extension
@@ -295,11 +295,11 @@ class TestCustomerRegistryBuilder:
         disco = FileDiscovery()
         files = disco.discover(dr)
 
-        builder = CustomerRegistryBuilder()
-        customers, _ = builder.build(dr, files)
+        builder = SubjectRegistryBuilder()
+        subjects, _ = builder.build(dr, files)
 
-        csv_path = tmp_path / "output" / "customers.csv"
-        builder.write_csv(customers, csv_path)
+        csv_path = tmp_path / "output" / "subjects.csv"
+        builder.write_csv(subjects, csv_path)
 
         assert csv_path.exists()
         with open(csv_path) as f:
@@ -316,7 +316,7 @@ class TestCustomerRegistryBuilder:
         disco = FileDiscovery()
         files = disco.discover(dr)
 
-        builder = CustomerRegistryBuilder()
+        builder = SubjectRegistryBuilder()
         _, counts = builder.build(dr, files)
 
         counts_path = tmp_path / "output" / "counts.json"
@@ -325,21 +325,21 @@ class TestCustomerRegistryBuilder:
         assert counts_path.exists()
         data = json.loads(counts_path.read_text())
         assert data["total_files"] == 9
-        assert data["total_customers"] == 3
+        assert data["total_subjects"] == 3
 
     def test_single_target_groups_all_files(self, tmp_path: Path) -> None:
-        """single_target layout should produce one customer with all files."""
+        """single_target layout should produce one subject with all files."""
         dr = _create_data_room(tmp_path)
         disco = FileDiscovery()
         files = disco.discover(dr)
 
-        builder = CustomerRegistryBuilder()
-        customers, counts = builder.build(dr, files, layout="single_target", target_name="Target Corp")
+        builder = SubjectRegistryBuilder()
+        subjects, counts = builder.build(dr, files, layout="single_target", target_name="Target Corp")
 
-        assert len(customers) == 1
-        assert customers[0].name == "Target Corp"
-        assert customers[0].file_count == 9  # all files
-        assert counts.total_customers == 1
+        assert len(subjects) == 1
+        assert subjects[0].name == "Target Corp"
+        assert subjects[0].file_count == 9  # all files
+        assert counts.total_subjects == 1
         assert counts.total_reference_files == 0  # no reference files in single_target
 
     def test_single_target_safe_name(self, tmp_path: Path) -> None:
@@ -348,11 +348,11 @@ class TestCustomerRegistryBuilder:
         disco = FileDiscovery()
         files = disco.discover(dr)
 
-        builder = CustomerRegistryBuilder()
-        customers, _ = builder.build(dr, files, layout="single_target", target_name="NovaBridge Holdings ULC")
+        builder = SubjectRegistryBuilder()
+        subjects, _ = builder.build(dr, files, layout="single_target", target_name="NovaBridge Holdings ULC")
 
-        assert len(customers) == 1
-        assert customers[0].safe_name == "novabridge_holdings"
+        assert len(subjects) == 1
+        assert subjects[0].safe_name == "novabridge_holdings"
 
     def test_single_target_includes_nested_files(self, tmp_path: Path) -> None:
         """single_target layout should include files at all nesting levels."""
@@ -360,10 +360,10 @@ class TestCustomerRegistryBuilder:
         disco = FileDiscovery()
         files = disco.discover(dr)
 
-        builder = CustomerRegistryBuilder()
-        customers, _ = builder.build(dr, files, layout="single_target", target_name="Target Corp")
+        builder = SubjectRegistryBuilder()
+        subjects, _ = builder.build(dr, files, layout="single_target", target_name="Target Corp")
 
-        file_paths = set(customers[0].files)
+        file_paths = set(subjects[0].files)
         # Root-level file
         assert "revenue_summary.xlsx" in file_paths
         # Deeply nested file
@@ -375,12 +375,12 @@ class TestCustomerRegistryBuilder:
         disco = FileDiscovery()
         files = disco.discover(dr)
 
-        builder = CustomerRegistryBuilder()
-        customers_default, _ = builder.build(dr, files)
-        customers_auto, _ = builder.build(dr, files, layout="auto")
+        builder = SubjectRegistryBuilder()
+        subjects_default, _ = builder.build(dr, files)
+        subjects_auto, _ = builder.build(dr, files, layout="auto")
 
-        assert len(customers_default) == len(customers_auto)
-        assert {c.name for c in customers_default} == {c.name for c in customers_auto}
+        assert len(subjects_default) == len(subjects_auto)
+        assert {c.name for c in subjects_default} == {c.name for c in subjects_auto}
 
 
 # =========================================================================
@@ -391,8 +391,8 @@ class TestCustomerRegistryBuilder:
 class TestReferenceFileClassifier:
     """Tests for reference file classification and routing."""
 
-    def test_classify_identifies_non_customer_files(self, tmp_path: Path) -> None:
-        """classify should identify files not under customer directories."""
+    def test_classify_identifies_non_subject_files(self, tmp_path: Path) -> None:
+        """classify should identify files not under subject directories."""
         files = [
             FileEntry(path="GroupA/Acme Corp/msa.pdf"),
             FileEntry(path="GroupA/Globex Inc/contract.pdf"),
@@ -400,17 +400,17 @@ class TestReferenceFileClassifier:
             FileEntry(path="pricing_schedule.pdf"),
             FileEntry(path="corporate_bylaws.docx"),
         ]
-        customer_dirs = ["GroupA/Acme Corp", "GroupA/Globex Inc"]
+        subject_dirs = ["GroupA/Acme Corp", "GroupA/Globex Inc"]
 
         classifier = ReferenceFileClassifier()
-        refs = classifier.classify(files, customer_dirs)
+        refs = classifier.classify(files, subject_dirs)
 
         ref_paths = {r.file_path for r in refs}
         assert "revenue_summary.xlsx" in ref_paths
         assert "pricing_schedule.pdf" in ref_paths
         assert "corporate_bylaws.docx" in ref_paths
         assert len(refs) == 3
-        # Customer files should NOT be in reference list
+        # Subject files should NOT be in reference list
         assert "GroupA/Acme Corp/msa.pdf" not in ref_paths
 
     def test_classify_financial_category(self) -> None:
@@ -512,15 +512,15 @@ class TestReferenceFileClassifier:
 
 
 # =========================================================================
-# CustomerMentionBuilder
+# SubjectMentionBuilder
 # =========================================================================
 
 
-class TestCustomerMentionBuilder:
-    """Tests for customer-mention index building."""
+class TestSubjectMentionBuilder:
+    """Tests for subject-mention index building."""
 
     def test_build_detects_mentions(self, tmp_path: Path) -> None:
-        """build should detect customer names in reference file text."""
+        """build should detect subject names in reference file text."""
         text_dir = tmp_path / "text"
         text_dir.mkdir()
         (text_dir / "revenue.md").write_text("Revenue for Acme Corp is $1M. Globex has $500K.")
@@ -541,10 +541,10 @@ class TestCustomerMentionBuilder:
             "alpine_systems": "Alpine Systems",
         }
 
-        builder = CustomerMentionBuilder()
+        builder = SubjectMentionBuilder()
         index = builder.build(ref_files, names, text_dir=text_dir)
 
-        mentioned = {m.customer_safe_name for m in index.matches}
+        mentioned = {m.subject_safe_name for m in index.matches}
         assert "acme_corp" in mentioned
         assert "globex" in mentioned  # "Globex" appears in text (case-insensitive)
         assert "alpine_systems" not in mentioned  # Not in text
@@ -567,22 +567,22 @@ class TestCustomerMentionBuilder:
         ]
         names = {"acme_corp": "Acme Corp"}
 
-        builder = CustomerMentionBuilder()
+        builder = SubjectMentionBuilder()
         index = builder.build(ref_files, names, text_dir=text_dir)
         assert len(index.matches) == 1
 
     def test_build_detects_phantom_contracts(self, tmp_path: Path) -> None:
-        """Customers with no mentions should appear in phantom contracts."""
+        """Subjects with no mentions should appear in phantom contracts."""
         ref_files: list[ReferenceFile] = []
         names = {"lonely_corp": "Lonely Corp"}
 
-        builder = CustomerMentionBuilder()
+        builder = SubjectMentionBuilder()
         index = builder.build(ref_files, names)
 
-        assert "Lonely Corp" in index.customers_without_reference_data
+        assert "Lonely Corp" in index.subjects_without_reference_data
 
-    def test_build_detects_ghost_customers(self, tmp_path: Path) -> None:
-        """Names in reference file metadata but not in customer list are ghosts."""
+    def test_build_detects_ghost_subjects(self, tmp_path: Path) -> None:
+        """Names in reference file metadata but not in subject list are ghosts."""
         ref_files = [
             ReferenceFile(
                 file_path="data.xlsx",
@@ -590,29 +590,29 @@ class TestCustomerMentionBuilder:
                 subcategory="data",
                 description="Data",
                 assigned_to_agents=["finance"],
-                customers_mentioned=["Ghost LLC"],
+                subjects_mentioned=["Ghost LLC"],
             ),
         ]
         names = {"acme_corp": "Acme Corp"}
 
-        builder = CustomerMentionBuilder()
+        builder = SubjectMentionBuilder()
         index = builder.build(ref_files, names)
 
         assert "Ghost LLC" in index.unmatched_in_reference
 
     def test_write_json(self, tmp_path: Path) -> None:
         """write_json should produce valid JSON."""
-        index = CustomerMentionIndex(
+        index = SubjectMentionIndex(
             matches=[
-                CustomerMention(
-                    customer_name="Acme Corp",
-                    customer_safe_name="acme_corp",
+                SubjectMention(
+                    subject_name="Acme Corp",
+                    subject_safe_name="acme_corp",
                     reference_files=["rev.xlsx"],
                     mention_count=1,
                 )
             ],
         )
-        builder = CustomerMentionBuilder()
+        builder = SubjectMentionBuilder()
         out = tmp_path / "mentions.json"
         builder.write_json(index, out)
 
@@ -635,7 +635,7 @@ class TestInventoryIntegrityVerifier:
             FileEntry(path="GroupA/Acme/sow.docx"),
             FileEntry(path="revenue.xlsx"),
         ]
-        customer_files = [
+        subject_files = [
             FileEntry(path="GroupA/Acme/msa.pdf"),
             FileEntry(path="GroupA/Acme/sow.docx"),
         ]
@@ -650,17 +650,17 @@ class TestInventoryIntegrityVerifier:
         ]
 
         verifier = InventoryIntegrityVerifier()
-        issues = verifier.verify(all_files, customer_files, ref_files)
+        issues = verifier.verify(all_files, subject_files, ref_files)
         assert issues == []
 
     def test_catches_count_mismatch(self) -> None:
-        """verify should flag when total != customer + reference."""
+        """verify should flag when total != subject + reference."""
         all_files = [
             FileEntry(path="a.pdf"),
             FileEntry(path="b.pdf"),
             FileEntry(path="c.pdf"),
         ]
-        customer_files = [FileEntry(path="a.pdf")]
+        subject_files = [FileEntry(path="a.pdf")]
         ref_files = [
             ReferenceFile(
                 file_path="b.pdf",
@@ -672,17 +672,17 @@ class TestInventoryIntegrityVerifier:
         ]
 
         verifier = InventoryIntegrityVerifier()
-        issues = verifier.verify(all_files, customer_files, ref_files)
+        issues = verifier.verify(all_files, subject_files, ref_files)
         assert any("count mismatch" in i.lower() or "mismatch" in i.lower() for i in issues)
 
     def test_catches_orphan_files(self) -> None:
-        """verify should detect files not classified as customer or reference."""
+        """verify should detect files not classified as subject or reference."""
         all_files = [
             FileEntry(path="a.pdf"),
             FileEntry(path="b.pdf"),
             FileEntry(path="orphan.pdf"),
         ]
-        customer_files = [FileEntry(path="a.pdf")]
+        subject_files = [FileEntry(path="a.pdf")]
         ref_files = [
             ReferenceFile(
                 file_path="b.pdf",
@@ -694,13 +694,13 @@ class TestInventoryIntegrityVerifier:
         ]
 
         verifier = InventoryIntegrityVerifier()
-        issues = verifier.verify(all_files, customer_files, ref_files)
+        issues = verifier.verify(all_files, subject_files, ref_files)
         assert any("orphan" in i.lower() for i in issues)
 
     def test_catches_unclassified_reference(self) -> None:
         """verify should flag reference files with empty category."""
         all_files = [FileEntry(path="a.pdf")]
-        customer_files: list[FileEntry] = []
+        subject_files: list[FileEntry] = []
         ref_files = [
             ReferenceFile(
                 file_path="a.pdf",
@@ -712,18 +712,18 @@ class TestInventoryIntegrityVerifier:
         ]
 
         verifier = InventoryIntegrityVerifier()
-        issues = verifier.verify(all_files, customer_files, ref_files)
+        issues = verifier.verify(all_files, subject_files, ref_files)
         assert any("empty category" in i.lower() for i in issues)
 
-    def test_catches_extra_customer_files(self) -> None:
-        """verify should flag customer files not in all_files."""
+    def test_catches_extra_subject_files(self) -> None:
+        """verify should flag subject files not in all_files."""
         all_files = [FileEntry(path="a.pdf")]
-        customer_files = [
+        subject_files = [
             FileEntry(path="a.pdf"),
             FileEntry(path="ghost.pdf"),
         ]
         ref_files: list[ReferenceFile] = []
 
         verifier = InventoryIntegrityVerifier()
-        issues = verifier.verify(all_files, customer_files, ref_files)
-        assert any("customer file" in i.lower() for i in issues)
+        issues = verifier.verify(all_files, subject_files, ref_files)
+        assert any("subject file" in i.lower() for i in issues)

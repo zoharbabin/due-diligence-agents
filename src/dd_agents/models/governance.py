@@ -30,7 +30,7 @@ class GovernanceEdge(BaseModel):
 
 class GovernanceGraph(BaseModel):
     """
-    Structured governance graph for a customer.
+    Structured governance graph for a subject.
     From domain-definitions.md section 5b.
 
     IMPORTANT: This is a structured Pydantic model with an edges list,

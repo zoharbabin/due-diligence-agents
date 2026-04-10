@@ -1,8 +1,8 @@
 """Prompt builder -- assembles self-contained agent prompts.
 
-Constructs complete prompts from deal config, customer lists, reference files,
+Constructs complete prompts from deal config, subject lists, reference files,
 domain rules, and output format requirements.  Implements token estimation and
-customer batching when prompts exceed the context budget.
+subject batching when prompts exceed the context budget.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from dd_agents.models.config import DealConfig
-    from dd_agents.models.inventory import CustomerEntry, ReferenceFile
+    from dd_agents.models.inventory import ReferenceFile, SubjectEntry
 
 # ---------------------------------------------------------------------------
 # Agent type enumeration
@@ -43,10 +43,10 @@ class AgentType(StrEnum):
 
 SPECIALIST_FOCUS: dict[AgentType, str] = {
     AgentType.LEGAL: (
-        "Build the governance graph for each customer. Resolve governed_by for every file. "
+        "Build the governance graph for each subject. Resolve governed_by for every file. "
         "Flag entity mismatches against the corporate org chart. Flag change of control, "
         "assignment restrictions, and exclusivity clauses. Validate intercompany agreements "
-        "cover all signing entities. Gap detection: For each customer, check for missing MSAs, "
+        "cover all signing entities. Gap detection: For each subject, check for missing MSAs, "
         "missing DPAs, missing referenced amendments, missing signature pages. "
         "Write gap files for EVERY missing document detected.\n\n"
         "SEVERITY CALIBRATION (Legal):\n"
@@ -79,11 +79,11 @@ SPECIALIST_FOCUS: dict[AgentType, str] = {
         "- Map employment agreements against key_executives from deal config if available"
     ),
     AgentType.FINANCE: (
-        "Cross-reference every customer's contract values against the Revenue Cube and any "
+        "Cross-reference every subject's contract values against the Revenue Cube and any "
         "financial reference data. Flag ARR mismatches >5%. Check discount levels against "
         "Pricing Guidelines. Identify one-time fees incorrectly counted as recurring ARR. "
-        "Flag minimum commitment shortfalls. IMPORTANT: You MUST analyze ALL customers, not "
-        "just those with dedicated financial documents. For customers with only contract files, "
+        "Flag minimum commitment shortfalls. IMPORTANT: You MUST analyze ALL subjects, not "
+        "just those with dedicated financial documents. For subjects with only contract files, "
         "extract financial terms from their contracts and cross-reference against reference "
         "file data. "
         "VERIFICATION REQUIREMENT: For every financial value you cite (dollar amounts, "
@@ -156,8 +156,8 @@ SPECIALIST_FOCUS: dict[AgentType, str] = {
     AgentType.PRODUCTTECH: (
         "Validate DPA adequacy and subprocessor lists. Cross-reference security claims against "
         "SOC2/compliance evidence. Check technical SLA feasibility. Flag data residency "
-        "restrictions and migration obligations. IMPORTANT: You MUST analyze ALL customers, "
-        "not just those with dedicated tech/security documents. For every customer's contracts, "
+        "restrictions and migration obligations. IMPORTANT: You MUST analyze ALL subjects, "
+        "not just those with dedicated tech/security documents. For every subject's contracts, "
         "extract technology-related clauses. Gap detection: Check for missing DPAs, missing "
         "security addenda, missing SLA documentation, missing architecture/integration specs. "
         "Write gap files.\n\n"
@@ -236,25 +236,25 @@ class PromptBuilder:
         return None
 
     @staticmethod
-    def _coerce_customers(customers: list[CustomerEntry] | list[str] | list[Any]) -> list[CustomerEntry]:
-        """Ensure *customers* is a list of :class:`CustomerEntry` objects.
+    def _coerce_subjects(subjects: list[SubjectEntry] | list[str] | list[Any]) -> list[SubjectEntry]:
+        """Ensure *subjects* is a list of :class:`SubjectEntry` objects.
 
-        When ``_run_specialist`` falls back to ``build_prompt()``, customers
-        may be plain safe-name strings from ``PipelineState.customer_safe_names``.
-        This converts them to minimal :class:`CustomerEntry` instances so that
-        ``_build_customer_list`` can access ``.name`` / ``.safe_name`` etc.
+        When ``_run_specialist`` falls back to ``build_prompt()``, subjects
+        may be plain safe-name strings from ``PipelineState.subject_safe_names``.
+        This converts them to minimal :class:`SubjectEntry` instances so that
+        ``_build_subject_list`` can access ``.name`` / ``.safe_name`` etc.
         """
-        if not customers:
+        if not subjects:
             return []
 
-        first = customers[0]
+        first = subjects[0]
         if hasattr(first, "safe_name"):
-            return customers  # type: ignore[return-value]
+            return subjects  # type: ignore[return-value]
 
-        # Plain strings — convert to minimal CustomerEntry objects.
-        from dd_agents.models.inventory import CustomerEntry as _CustomerEntry
+        # Plain strings — convert to minimal SubjectEntry objects.
+        from dd_agents.models.inventory import SubjectEntry as _SubjectEntry
 
-        return [_CustomerEntry(group="", name=str(s), safe_name=str(s), path=str(s)) for s in customers]
+        return [_SubjectEntry(group="", name=str(s), safe_name=str(s), path=str(s)) for s in subjects]
 
     @staticmethod
     def _build_severity_rubric(deal_config: DealConfig | dict[str, Any] | None) -> str:
@@ -389,7 +389,7 @@ class PromptBuilder:
     def build_specialist_prompt(
         self,
         agent_name: str,
-        customers: list[CustomerEntry] | list[str],
+        subjects: list[SubjectEntry] | list[str],
         reference_files: list[ReferenceFile] | None = None,
         deal_config: DealConfig | dict[str, Any] | None = None,
         file_precedence: dict[str, Any] | None = None,
@@ -400,10 +400,10 @@ class PromptBuilder:
         ----------
         agent_name:
             One of ``legal``, ``finance``, ``commercial``, ``producttech``.
-        customers:
-            List of :class:`CustomerEntry` objects -- every customer the agent
+        subjects:
+            List of :class:`SubjectEntry` objects -- every subject the agent
             must analyse.  Plain strings (safe_names) are also accepted and
-            automatically coerced to minimal :class:`CustomerEntry` objects.
+            automatically coerced to minimal :class:`SubjectEntry` objects.
         reference_files:
             Reference files routed to this agent.  May be ``None``.
         deal_config:
@@ -416,14 +416,14 @@ class PromptBuilder:
         """
         raw_deal_config = deal_config
         deal_config = self._coerce_deal_config(deal_config)
-        customers = self._coerce_customers(customers)
+        subjects = self._coerce_subjects(subjects)
         sections: list[str] = []
 
         # 1. Role & deal context
         sections.append(self._build_role_section(agent_name, deal_config))
 
-        # 2. Customer list (with optional precedence annotations)
-        sections.append(self._build_customer_list(agent_name, customers, file_precedence))
+        # 2. Subject list (with optional precedence annotations)
+        sections.append(self._build_subject_list(agent_name, subjects, file_precedence))
 
         # 2b. Document precedence rules (Issue #163)
         if file_precedence:
@@ -450,7 +450,7 @@ class PromptBuilder:
         sections.append(self._build_output_format(agent_name))
 
         # 7. Manifest requirement
-        sections.append(self._build_manifest_requirement(agent_name, customers))
+        sections.append(self._build_manifest_requirement(agent_name, subjects))
 
         # 8. Robustness instructions (Issue #52 -- spec doc 22)
         sections.append(self.robustness_instructions())
@@ -458,7 +458,7 @@ class PromptBuilder:
         prompt = "\n\n---\n\n".join(sections)
 
         # Safety guard: if the assembled prompt exceeds the model context
-        # (200K tokens ≈ 800K chars), truncate the customer file listing.
+        # (200K tokens ≈ 800K chars), truncate the subject file listing.
         # This protects against very large single-target data rooms with
         # long cloud-storage paths (e.g. OneDrive).
         max_prompt_chars = 600_000  # ~150K tokens, leaving room for agent turns
@@ -473,7 +473,7 @@ class PromptBuilder:
                 self.max_listed_files // 2,
             )
             self.max_listed_files = max(50, self.max_listed_files // 2)
-            sections[1] = self._build_customer_list(agent_name, customers, file_precedence)
+            sections[1] = self._build_subject_list(agent_name, subjects, file_precedence)
             prompt = "\n\n---\n\n".join(sections)
 
         return prompt
@@ -543,7 +543,69 @@ class PromptBuilder:
         if findings_dir:
             sections.append(f"## FINDINGS DIRECTORY\n\nRead specialist outputs from: {findings_dir}")
 
-        sections.append(f"## OUTPUT\n\nWrite quality_scores.json to: {self.run_dir}/judge/quality_scores.json\n")
+        sections.append(
+            f"## OUTPUT\n\n"
+            f"Write quality_scores.json to: {self.run_dir}/judge/quality_scores.json\n\n"
+            "You MUST output valid JSON matching this exact schema:\n\n"
+            "```json\n"
+            "{\n"
+            f'  "run_id": "{self.run_id}",\n'
+            '  "skill": "forensic-dd",\n'
+            '  "agent_scores": {\n'
+            '    "legal": {\n'
+            '      "score": 85,\n'
+            '      "findings_reviewed": 10,\n'
+            '      "findings_total": 25,\n'
+            '      "pass": 8,\n'
+            '      "partial": 1,\n'
+            '      "fail": 1,\n'
+            '      "dimensions": {\n'
+            '        "citation_verification": 90,\n'
+            '        "contextual_validation": 85,\n'
+            '        "financial_accuracy": 80,\n'
+            '        "cross_agent_consistency": 75,\n'
+            '        "completeness": 95\n'
+            "      },\n"
+            '      "quality_tier": "full_pass"\n'
+            "    }\n"
+            "    // ... repeat for finance, commercial, producttech\n"
+            "  },\n"
+            '  "unit_scores": {\n'
+            '    "subject_name": { "score": 80, "agents_reviewed": 4, "contradictions": 0 }\n'
+            "  },\n"
+            '  "overall_quality": 82,\n'
+            '  "iteration_round": 1,\n'
+            '  "agents_below_threshold": [],\n'
+            '  "spot_checks": [\n'
+            "    {\n"
+            '      "finding_id": "forensic-dd_legal_subject_0001",\n'
+            '      "agent": "legal",\n'
+            '      "analysis_unit": "subject_name",\n'
+            '      "severity": "P1",\n'
+            '      "dimension": "citation_verification",\n'
+            '      "result": "pass",\n'
+            '      "notes": "Citation verified in source document"\n'
+            "    }\n"
+            "  ],\n"
+            '  "contradictions": [\n'
+            "    {\n"
+            '      "analysis_unit": "subject_name",\n'
+            '      "agents": ["legal", "finance"],\n'
+            '      "fact_in_dispute": "Contract expiration date",\n'
+            '      "resolution": "Legal agent version is correct per MSA §4.2",\n'
+            '      "winning_agent": "legal"\n'
+            "    }\n"
+            "  ]\n"
+            "}\n"
+            "```\n\n"
+            "CRITICAL RULES:\n"
+            "- agent_scores MUST contain an entry for EACH of: legal, finance, commercial, producttech\n"
+            "- Each score is 0-100; quality_tier is one of: full_pass, advisory, conditional, fail\n"
+            "- spot_checks dimension is one of: citation_verification, contextual_validation, "
+            "financial_accuracy, cross_agent_consistency, completeness\n"
+            "- spot_checks result is one of: pass, partial, fail\n"
+            "- Do NOT output prose — output ONLY the JSON object"
+        )
 
         return "\n\n---\n\n".join(sections)
 
@@ -664,7 +726,7 @@ class PromptBuilder:
             "- Standard change-of-control notifications are routine, not deal-breaking.\n\n"
             "CRITICAL EVALUATION FRAMEWORK FOR CoC/TERMINATION:\n"
             "- Competitor-only CoC: Assess whether the buyer actually competes with the "
-            "customer. In most deals this is P3.\n"
+            "subject. In most deals this is P3.\n"
             "- Notification-only CoC: Routine administrative step — never above P2.\n"
             "- Consent-required CoC: Assess cure period and revenue at risk.\n"
             "- TfC clauses: VALUATION concerns, not deal-blockers. Reclassify any P0/P1 "
@@ -694,7 +756,7 @@ class PromptBuilder:
         if p0_findings:
             for i, f in enumerate(p0_findings, 1):
                 title = f.get("title", "Untitled")
-                entity = f.get("entity", f.get("_customer", ""))
+                entity = f.get("entity", f.get("_subject", ""))
                 desc = f.get("description", "")
                 p0_lines.append(f"\n{i}. **{title}**")
                 if entity:
@@ -710,7 +772,7 @@ class PromptBuilder:
         if p1_findings:
             for i, f in enumerate(p1_findings[:20], 1):
                 title = f.get("title", "Untitled")
-                entity = f.get("entity", f.get("_customer", ""))
+                entity = f.get("entity", f.get("_subject", ""))
                 p1_lines.append(f"{i}. {title}" + (f" ({entity})" if entity else ""))
             if len(p1_findings) > 20:
                 p1_lines.append(f"... and {len(p1_findings) - 20} more P1 findings")
@@ -778,11 +840,11 @@ class PromptBuilder:
         return len(prompt) // 4
 
     @staticmethod
-    def _estimate_customer_tokens(
-        customer: CustomerEntry,
+    def _estimate_subject_tokens(
+        subject: SubjectEntry,
         text_dir: Path | None = None,
     ) -> int:
-        """Estimate the prompt tokens one customer entry will occupy.
+        """Estimate the prompt tokens one subject entry will occupy.
 
         When *text_dir* is provided, measures actual extracted text sizes
         from ``<text_dir>/<filename>.md`` files.  This produces accurate
@@ -791,9 +853,9 @@ class PromptBuilder:
 
         Without *text_dir*, falls back to header + path-length estimation.
         """
-        # Fixed header: "### Customer: ...", safe_name, path, "Files (N):"
+        # Fixed header: "### Subject: ...", safe_name, path, "Files (N):"
         chars = 160
-        files = customer.files or []
+        files = subject.files or []
 
         if text_dir is not None:
             # Measure actual extracted text sizes
@@ -819,31 +881,31 @@ class PromptBuilder:
         return max(1, chars // 4)
 
     @staticmethod
-    def batch_customers(
-        customers: list[CustomerEntry],
+    def batch_subjects(
+        subjects: list[SubjectEntry],
         max_tokens: int = 40_000,
-        tokens_per_customer: int | None = None,
+        tokens_per_subject: int | None = None,
         overhead_tokens: int = 5_000,
         max_per_batch: int = 20,
         text_dir: Path | None = None,
-    ) -> list[list[CustomerEntry]]:
-        """Split *customers* into batches that each fit within *max_tokens*.
+    ) -> list[list[SubjectEntry]]:
+        """Split *subjects* into batches that each fit within *max_tokens*.
 
         Parameters
         ----------
-        customers:
-            Full customer list.
+        subjects:
+            Full subject list.
         max_tokens:
             Maximum tokens per batch (default 40 000 -- ~20 % of 200k context,
             leaving ample room for agent tool calls and file reads).
-        tokens_per_customer:
-            Estimated tokens per customer entry in the prompt.  When ``None``
+        tokens_per_subject:
+            Estimated tokens per subject entry in the prompt.  When ``None``
             (default), computed automatically from the actual file listings
-            in each customer entry.
+            in each subject entry.
         overhead_tokens:
             Fixed token overhead for prompt preamble, rules, etc.
         max_per_batch:
-            Hard cap on customers per batch (default 20).  Prevents
+            Hard cap on subjects per batch (default 20).  Prevents
             oversized batches when file listings are unavailable and
             the token estimation underestimates prompt size.
         text_dir:
@@ -853,37 +915,37 @@ class PromptBuilder:
 
         Returns
         -------
-        A list of customer batches.  If all customers fit in one batch, returns
+        A list of subject batches.  If all subjects fit in one batch, returns
         a single-element list.
         """
-        if not customers:
+        if not subjects:
             return []
 
         available = max_tokens - overhead_tokens
         if available <= 0:
             available = max_tokens
 
-        # When tokens_per_customer is explicit, use uniform splitting.
-        if tokens_per_customer is not None:
-            cap = max(1, available // max(1, tokens_per_customer))
+        # When tokens_per_subject is explicit, use uniform splitting.
+        if tokens_per_subject is not None:
+            cap = max(1, available // max(1, tokens_per_subject))
             cap = min(cap, max_per_batch)
-            batches: list[list[CustomerEntry]] = []
-            for i in range(0, len(customers), cap):
-                batches.append(customers[i : i + cap])
+            batches: list[list[SubjectEntry]] = []
+            for i in range(0, len(subjects), cap):
+                batches.append(subjects[i : i + cap])
             return batches
 
-        # Data-driven greedy batching: pack customers until the batch is full.
+        # Data-driven greedy batching: pack subjects until the batch is full.
         batches = []
-        current_batch: list[CustomerEntry] = []
+        current_batch: list[SubjectEntry] = []
         current_tokens = 0
 
-        for customer in customers:
-            est = PromptBuilder._estimate_customer_tokens(customer, text_dir=text_dir)
+        for subject in subjects:
+            est = PromptBuilder._estimate_subject_tokens(subject, text_dir=text_dir)
             if current_batch and (current_tokens + est > available or len(current_batch) >= max_per_batch):
                 batches.append(current_batch)
                 current_batch = []
                 current_tokens = 0
-            current_batch.append(customer)
+            current_batch.append(subject)
             current_tokens += est
 
         if current_batch:
@@ -923,28 +985,28 @@ class PromptBuilder:
                     lines.append(f"Buyer risk focus: {', '.join(bs.focus_areas[:5])}")
         return "\n".join(lines)
 
-    # Maximum files to list inline per customer.  Beyond this, the agent
+    # Maximum files to list inline per subject.  Beyond this, the agent
     # discovers remaining files via directory traversal.  Keeps prompts
     # within the model's context window for large single-target data rooms
     # (e.g. 4K files with long OneDrive/cloud-storage paths).
     MAX_LISTED_FILES: int = 200
 
-    def _build_customer_list(
+    def _build_subject_list(
         self,
         agent_name: str,
-        customers: list[CustomerEntry],
+        subjects: list[SubjectEntry],
         file_precedence: dict[str, Any] | None = None,
     ) -> str:
         lines = [
-            "## ALL CUSTOMERS (you MUST process every one, every file)",
+            "## ALL SUBJECTS (you MUST process every one, every file)",
             "",
         ]
-        for idx, cust in enumerate(customers, 1):
-            lines.append(f"Customer {idx}: {cust.name} (safe_name: {cust.safe_name})")
-            lines.append(f"  Path: {cust.path}")
-            if cust.files:
+        for idx, subj in enumerate(subjects, 1):
+            lines.append(f"Subject {idx}: {subj.name} (safe_name: {subj.safe_name})")
+            lines.append(f"  Path: {subj.path}")
+            if subj.files:
                 # Sort files by precedence score (highest first) if available
-                sorted_files = list(cust.files)
+                sorted_files = list(subj.files)
                 if file_precedence:
                     sorted_files.sort(
                         key=lambda fp: (
@@ -956,14 +1018,14 @@ class PromptBuilder:
                         )
                     )
 
-                # Cap inline listing for very large customers.
+                # Cap inline listing for very large subjects.
                 truncated = len(sorted_files) > self.max_listed_files
                 display_files = sorted_files[: self.max_listed_files] if truncated else sorted_files
 
                 if file_precedence:
-                    lines.append(f"  Files ({cust.file_count}) — ordered by precedence:")
+                    lines.append(f"  Files ({subj.file_count}) — ordered by precedence:")
                 else:
-                    lines.append(f"  Files ({cust.file_count}):")
+                    lines.append(f"  Files ({subj.file_count}):")
 
                 for fp in display_files:
                     annotation = self._file_annotation(fp, file_precedence)
@@ -973,7 +1035,7 @@ class PromptBuilder:
                     omitted = len(sorted_files) - self.max_listed_files
                     lines.append(
                         f'    ... and {omitted} more files. Use `Glob(pattern="**/*")` on the '
-                        f"customer's directory to discover all files. You MUST analyze every file."
+                        f"subject's directory to discover all files. You MUST analyze every file."
                     )
             lines.append("")
 
@@ -983,21 +1045,21 @@ class PromptBuilder:
             f"Copy the safe_name character-for-character from above. Do NOT normalize, "
             f"transform, or recompute it. The safe_name is pre-computed and authoritative.\n"
             f"Write to: {self.run_dir}/findings/{agent_name}/{{safe_name}}.json\n\n"
-            f"TOTAL: {len(customers)} customers. You must process every single one.\n\n"
+            f"TOTAL: {len(subjects)} subjects. You must process every single one.\n\n"
             f"SPEED RULES (MANDATORY — violating these wastes budget and causes failures):\n"
             f"1. Do NOT read or validate existing output files in the findings "
             f"directory. Always write fresh output by analyzing source documents directly. "
             f"If a file already exists at the output path, overwrite it without reading it first.\n"
             f"2. Do NOT spawn sub-agents, background agents, or parallel agents. "
-            f"You are a single agent processing customers one at a time IN THIS SESSION. "
+            f"You are a single agent processing subjects one at a time IN THIS SESSION. "
             f"Never use the Agent tool or launch child processes. "
-            f"Process each customer sequentially: read files → analyze → write JSON → next customer.\n"
-            f"3. Write each customer's JSON file IMMEDIATELY after analyzing it. "
-            f"Do NOT accumulate findings in memory across customers. "
+            f"Process each subject sequentially: read files → analyze → write JSON → next subject.\n"
+            f"3. Write each subject's JSON file IMMEDIATELY after analyzing it. "
+            f"Do NOT accumulate findings in memory across subjects. "
             f"Write → move on → write → move on.\n"
             f"4. Do NOT summarize your progress, reflect on what you did, or produce final "
-            f"status reports. Just write the JSON files and move to the next customer.\n"
-            f"5. Do NOT re-read a customer's output file after writing it. Write it once correctly."
+            f"status reports. Just write the JSON files and move to the next subject.\n"
+            f"5. Do NOT re-read a subject's output file after writing it. Write it once correctly."
         )
         return "\n".join(lines)
 
@@ -1056,12 +1118,12 @@ class PromptBuilder:
             "The Read tool CANNOT read binary Office files — it returns garbled content. "
             'Always use `read_office(file_path="...")` for these formats. '
             "For Excel files you can optionally pass `sheet_name` to read a specific sheet.\n\n"
-            "Read the EXACT paths shown in the customer file lists — do not "
+            "Read the EXACT paths shown in the subject file lists — do not "
             "construct alternative paths or look for converted versions.\n"
             "For large files (>100KB), use Grep to search for specific terms "
             "instead of reading the entire file.\n\n"
             "If the file list says '... and N more files', use `Glob(pattern=\"**/*\")` on the "
-            "customer's directory (shown as 'Path:') to discover ALL files. "
+            "subject's directory (shown as 'Path:') to discover ALL files. "
             "You MUST analyze every file in the data room, not just those "
             "listed inline."
         )
@@ -1080,8 +1142,8 @@ class PromptBuilder:
             )
             if ref.text_path:
                 lines.append(f"  Pre-extracted at: {ref.text_path}")
-            if ref.customers_mentioned:
-                lines.append(f"  Customers mentioned: {', '.join(ref.customers_mentioned)}")
+            if ref.subjects_mentioned:
+                lines.append(f"  Subjects mentioned: {', '.join(ref.subjects_mentioned)}")
             lines.append("")
         return "\n".join(lines)
 
@@ -1089,11 +1151,11 @@ class PromptBuilder:
     def _build_output_format(agent_name: str) -> str:
         return (
             "## OUTPUT FORMAT\n\n"
-            "Write one JSON file per customer with the following structure:\n"
+            "Write one JSON file per subject with the following structure:\n"
             "```json\n"
             "{\n"
-            '  "customer": "Canonical customer name",\n'
-            '  "customer_safe_name": "safe_name",\n'
+            '  "subject": "Canonical subject name",\n'
+            '  "subject_safe_name": "safe_name",\n'
             f'  "agent": "{agent_name}",\n'
             '  "run_id": "...",\n'
             '  "timestamp": "ISO-8601",\n'
@@ -1186,12 +1248,12 @@ class PromptBuilder:
             "`missing_item` and `gap_type`."
         )
 
-    def _build_manifest_requirement(self, agent_name: str, customers: list[CustomerEntry]) -> str:
+    def _build_manifest_requirement(self, agent_name: str, subjects: list[SubjectEntry]) -> str:
         return (
             "## COVERAGE MANIFEST\n\n"
             f"You MUST write: {self.run_dir}/findings/{agent_name}/"
             "coverage_manifest.json\n\n"
-            f"Expected customers: {len(customers)}\n"
+            f"Expected subjects: {len(subjects)}\n"
             "coverage_pct must be >= 0.90\n"
             "Every failed file must have fallback_attempted: true"
         )
@@ -1282,7 +1344,7 @@ class PromptBuilder:
             "note this in your finding with: 'WARNING: document appears truncated at page N'.\n"
             "- For large files (>120KB extracted text), use Grep to search for specific "
             "terms rather than reading the entire file.\n"
-            "- Do NOT attempt to read all files into memory at once. Process one customer "
+            "- Do NOT attempt to read all files into memory at once. Process one subject "
             "at a time.\n\n"
             #
             # 6. Conflict handling
@@ -1300,8 +1362,8 @@ class PromptBuilder:
             #
             "### Completeness Checklist\n\n"
             "BEFORE writing your coverage manifest, verify:\n"
-            "1. ALL customers in your assigned list have been analyzed.\n"
-            "2. ALL files for each customer have been read or searched.\n"
+            "1. ALL subjects in your assigned list have been analyzed.\n"
+            "2. ALL files for each subject have been read or searched.\n"
             "3. ALL required fields in every finding and gap are populated.\n"
             "4. EVERY finding has a non-empty `citations` array with at least one "
             "citation that includes `source_path`.\n"
@@ -1313,7 +1375,7 @@ class PromptBuilder:
             "Before finalizing, review your P0 and P1 findings critically:\n"
             "1. For each P0: Would an experienced M&A partner present this as a genuine deal-stopper?\n"
             "2. For each P1: Is this truly material? Does it require pre-close negotiation?\n"
-            "3. Zero findings for a clean customer is acceptable. Do NOT manufacture findings.\n"
+            "3. Zero findings for a clean subject is acceptable. Do NOT manufacture findings.\n"
             "4. Fewer, well-calibrated findings > many poorly-calibrated ones.\n\n"
             #
             # 7b. Follow-up verification loop for P0/P1 (Issue #140)
@@ -1321,7 +1383,7 @@ class PromptBuilder:
             # mandatory follow-up prompts for high-value provisions.
             #
             "### MANDATORY P0/P1 Self-Verification Loop (CRITICAL)\n\n"
-            "After drafting ALL findings for a customer, you MUST perform a "
+            "After drafting ALL findings for a subject, you MUST perform a "
             "structured self-verification for EVERY P0 and P1 finding before "
             "writing the output file. This step is NOT optional.\n\n"
             "For each P0/P1 finding, execute this 4-step verification:\n\n"
@@ -1337,7 +1399,7 @@ class PromptBuilder:
             "- P1: Does this require pre-close negotiation or price adjustment? If it's "
             "merely an observation, downgrade to P2.\n"
             "- Could there be mitigating factors (carve-outs, amendments, side letters) "
-            "in other documents for this customer? If you haven't checked, search for them.\n\n"
+            "in other documents for this subject? If you haven't checked, search for them.\n\n"
             "**Step 4 — Context Check**: Re-read the 2 paragraphs before and after your "
             "cited quote. Check for:\n"
             "- Exceptions or carve-outs that modify the clause\n"
@@ -1362,7 +1424,7 @@ class PromptBuilder:
             #
             "### Not-Found Protocol\n\n"
             "If you search for a specific clause or document and it genuinely does not "
-            "exist in the customer's files, you MUST record this as a gap, NOT as a finding.\n\n"
+            "exist in the subject's files, you MUST record this as a gap, NOT as a finding.\n\n"
             "DO NOT:\n"
             "- Fabricate clauses that you cannot find\n"
             "- Infer terms from general legal principles\n"
@@ -1406,7 +1468,7 @@ class PromptBuilder:
     @staticmethod
     def build_follow_up_prompt(
         findings: list[dict[str, Any]],
-        customer_name: str,
+        subject_name: str,
         agent_name: str,
     ) -> str:
         """Build a follow-up verification prompt for P0/P1 findings.
@@ -1422,8 +1484,8 @@ class PromptBuilder:
             return ""
 
         lines: list[str] = [
-            f"## FOLLOW-UP VERIFICATION — {customer_name} ({agent_name})\n",
-            "You previously analyzed this customer and produced the following "
+            f"## FOLLOW-UP VERIFICATION — {subject_name} ({agent_name})\n",
+            "You previously analyzed this subject and produced the following "
             "critical findings. For EACH finding below, you MUST:\n",
             "1. Re-read the cited source document using the Read tool.",
             "2. Verify the exact_quote appears verbatim in the document.",

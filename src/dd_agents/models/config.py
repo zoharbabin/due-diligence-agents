@@ -77,19 +77,19 @@ class EntityAliases(BaseModel):
 
 
 class ActiveFilter(BaseModel):
-    """Filter criteria for identifying active customers in the database."""
+    """Filter criteria for identifying active subjects in the database."""
 
     arr_column: int | None = Field(default=None, description="Column index for ARR values")
     arr_condition: str = Field(default="", description="Filter condition for ARR (e.g. '> 0')")
     end_date_condition: str = Field(default="", description="Filter condition for end date")
 
 
-class CustomerDatabaseColumns(BaseModel):
-    """Column index mapping for the customer database spreadsheet."""
+class SubjectDatabaseColumns(BaseModel):
+    """Column index mapping for the subject database spreadsheet."""
 
     model_config = ConfigDict(extra="allow")
 
-    customer_name: int = Field(ge=1, description="1-based column index for customer name")
+    subject_name: int = Field(ge=1, description="1-based column index for subject name")
     parent_account: int | None = Field(default=None, description="Column index for parent account")
     entity: int | None = Field(default=None, description="Column index for legal entity")
     platform: int | None = Field(default=None, description="Column index for platform/product")
@@ -98,14 +98,14 @@ class CustomerDatabaseColumns(BaseModel):
     arr: int | None = Field(default=None, description="Column index for annual recurring revenue")
 
 
-class CustomerDatabase(BaseModel):
-    """Customer database reference for contract date reconciliation."""
+class SubjectDatabase(BaseModel):
+    """Subject database reference for contract date reconciliation."""
 
-    file: str = Field(min_length=1, description="Path to the customer database spreadsheet")
+    file: str = Field(min_length=1, description="Path to the subject database spreadsheet")
     sheet: str = Field(default="", description="Sheet name to read (empty for first sheet)")
     header_row: int = Field(default=1, ge=1, description="1-based row number containing column headers")
-    columns: CustomerDatabaseColumns = Field(description="Column index mapping")
-    active_filter: ActiveFilter | None = Field(default=None, description="Filter criteria for active customers")
+    columns: SubjectDatabaseColumns = Field(description="Column index mapping")
+    active_filter: ActiveFilter | None = Field(default=None, description="Filter criteria for active subjects")
 
 
 class SourceOfTruth(BaseModel):
@@ -113,8 +113,8 @@ class SourceOfTruth(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
-    customer_database: CustomerDatabase | None = Field(
-        default=None, description="Customer database spreadsheet configuration"
+    subject_database: SubjectDatabase | None = Field(
+        default=None, description="Subject database spreadsheet configuration"
     )
 
 
@@ -196,7 +196,7 @@ class ExecutionConfig(BaseModel):
         le=10,
         description="Max concurrent batches per agent in step 16. "
         "Each batch is an independent SDK session processing different "
-        "customers, so parallelism is safe. Default 6.",
+        "subjects, so parallelism is safe. Default 6.",
     )
 
 

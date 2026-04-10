@@ -46,7 +46,7 @@ class MatchLogger:
                 "source_name": source_name,
                 "source": source_type,
                 "matched_name": matched_name,
-                "target": "customers.csv",
+                "target": "subjects.csv",
                 "match_pass": pass_num,
                 "match_method": method,
                 "confidence": confidence,

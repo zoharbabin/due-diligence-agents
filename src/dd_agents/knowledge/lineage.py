@@ -100,7 +100,7 @@ def compute_finding_fingerprint(finding: dict[str, Any]) -> str:
         Dict with keys like ``analysis_unit``, ``agent``, ``category``,
         ``title``, and optionally ``citations`` list.
     """
-    analysis_unit = finding.get("analysis_unit", finding.get("_customer", ""))
+    analysis_unit = finding.get("analysis_unit", finding.get("_subject", ""))
     agent = finding.get("agent", "")
     category = finding.get("category", "")
 
@@ -199,7 +199,7 @@ class FindingLineageTracker:
             if len(description) > 200:
                 description = description[:200]
             severity = finding.get("severity", "medium")
-            entity = finding.get("analysis_unit", finding.get("_customer", ""))
+            entity = finding.get("analysis_unit", finding.get("_subject", ""))
             agent = finding.get("agent", "")
             category = finding.get("category", "")
 

@@ -58,7 +58,7 @@ class KeyEmployeeRenderer(SectionRenderer):
         # Findings table
         if findings:
             parts.append(
-                "<table class='customer-table sortable'><thead><tr>"
+                "<table class='subject-table sortable'><thead><tr>"
                 "<th scope='col'>Entity</th><th scope='col'>Severity</th>"
                 "<th scope='col'>Finding</th><th scope='col'>Category</th>"
                 "</tr></thead><tbody>"

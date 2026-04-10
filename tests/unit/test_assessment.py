@@ -40,7 +40,7 @@ class TestDataRoomAssessor:
         assert report["overall_score"] >= 80
         assert report["total_files"] == 7
         assert report["supported_files"] == 7
-        assert report["estimated_customers"] == 3
+        assert report["estimated_subjects"] == 3
 
     def test_detects_empty_files(self, tmp_path: Path) -> None:
         """Empty files generate a warning."""
@@ -77,7 +77,7 @@ class TestDataRoomAssessor:
         critical = [i for i in report["issues"] if i["severity"] == "critical"]
         assert len(critical) >= 1
 
-    def test_customer_detection(self, tmp_path: Path) -> None:
+    def test_subject_detection(self, tmp_path: Path) -> None:
         """Customer folders are detected from directory structure."""
         for name in ["AlphaCo", "BetaInc", "GammaCorp"]:
             d = tmp_path / name
@@ -87,8 +87,8 @@ class TestDataRoomAssessor:
 
         assessor = DataRoomAssessor(tmp_path)
         report = assessor.assess()
-        assert report["estimated_customers"] == 3
-        assert set(report["customer_folders"]) == {"AlphaCo", "BetaInc", "GammaCorp"}
+        assert report["estimated_subjects"] == 3
+        assert set(report["subject_folders"]) == {"AlphaCo", "BetaInc", "GammaCorp"}
 
     def test_recommendations_for_archives(self, tmp_path: Path) -> None:
         """Compressed archives trigger extraction recommendation."""

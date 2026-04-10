@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from openpyxl.cell.cell import Cell
     from openpyxl.worksheet.worksheet import Worksheet
 
-    from dd_agents.models.search import SearchCitation, SearchCustomerResult, SearchPrompts
+    from dd_agents.models.search import SearchCitation, SearchPrompts, SearchSubjectResult
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ class SearchExcelWriter:
 
     def write(
         self,
-        results: list[SearchCustomerResult],
+        results: list[SearchSubjectResult],
         prompts: SearchPrompts,
         output_path: Path,
     ) -> Path:
@@ -66,13 +66,13 @@ class SearchExcelWriter:
     def _write_summary(
         self,
         wb: Workbook,
-        results: list[SearchCustomerResult],
+        results: list[SearchSubjectResult],
         prompts: SearchPrompts,
     ) -> None:
         ws: Worksheet = wb.create_sheet(title="Summary")
 
         # Build header row.
-        headers = ["Customer", "Group", "Files Analyzed", "Chunks", "Files Skipped"]
+        headers = ["Entity", "Group", "Files Analyzed", "Chunks", "Files Skipped"]
         headers.extend(col.name for col in prompts.columns)
         headers.append("Error")
 
@@ -83,7 +83,7 @@ class SearchExcelWriter:
 
         # Data rows.
         for row_idx, result in enumerate(results, start=2):
-            ws.cell(row=row_idx, column=1, value=result.customer_name).font = _BODY_FONT
+            ws.cell(row=row_idx, column=1, value=result.subject_name).font = _BODY_FONT
             ws.cell(row=row_idx, column=2, value=result.group).font = _BODY_FONT
             files_cell = ws.cell(
                 row=row_idx,
@@ -153,13 +153,13 @@ class SearchExcelWriter:
     def _write_details(
         self,
         wb: Workbook,
-        results: list[SearchCustomerResult],
+        results: list[SearchSubjectResult],
         prompts: SearchPrompts,
     ) -> None:
         ws: Worksheet = wb.create_sheet(title="Details")
 
         headers = [
-            "Customer",
+            "Entity",
             "Group",
             "Question",
             "Answer",
@@ -181,8 +181,8 @@ class SearchExcelWriter:
             for search_col in prompts.columns:
                 col_result = result.columns.get(search_col.name)
                 if col_result is None:
-                    # Write a single row for error/missing customers.
-                    ws.cell(row=row_idx, column=1, value=result.customer_name).font = _BODY_FONT
+                    # Write a single row for error/missing subjects.
+                    ws.cell(row=row_idx, column=1, value=result.subject_name).font = _BODY_FONT
                     ws.cell(row=row_idx, column=2, value=result.group).font = _BODY_FONT
                     ws.cell(row=row_idx, column=3, value=search_col.name).font = _BODY_FONT
                     error_val = result.error or "[NO DATA — column missing from response]"
@@ -198,7 +198,7 @@ class SearchExcelWriter:
                 citations = col_result.citations or []
                 if not citations:
                     # Write answer row even without citations.
-                    ws.cell(row=row_idx, column=1, value=result.customer_name).font = _BODY_FONT
+                    ws.cell(row=row_idx, column=1, value=result.subject_name).font = _BODY_FONT
                     ws.cell(row=row_idx, column=2, value=result.group).font = _BODY_FONT
                     ws.cell(row=row_idx, column=3, value=search_col.name).font = _BODY_FONT
                     answer_cell = ws.cell(row=row_idx, column=4, value=col_result.answer)
@@ -212,7 +212,7 @@ class SearchExcelWriter:
                     row_idx += 1
                 else:
                     for cit in citations:
-                        ws.cell(row=row_idx, column=1, value=result.customer_name).font = _BODY_FONT
+                        ws.cell(row=row_idx, column=1, value=result.subject_name).font = _BODY_FONT
                         ws.cell(row=row_idx, column=2, value=result.group).font = _BODY_FONT
                         ws.cell(row=row_idx, column=3, value=search_col.name).font = _BODY_FONT
                         answer_cell = ws.cell(row=row_idx, column=4, value=col_result.answer)

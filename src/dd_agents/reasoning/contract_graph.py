@@ -52,7 +52,7 @@ class ContractKnowledgeGraph:
             node_type="clause",
             clause_type=clause.clause_type.value,
             document_path=clause.document_path,
-            customer=clause.customer_safe_name,
+            subject=clause.subject_safe_name,
             summary=clause.summary,
             effective_date=clause.effective_date,
             expiry_date=clause.expiry_date,
@@ -96,9 +96,9 @@ class ContractKnowledgeGraph:
         """Find all clauses of a given type."""
         return [c for c in self._clauses.values() if c.clause_type == clause_type]
 
-    def get_clauses_by_customer(self, customer_safe_name: str) -> list[ClauseNode]:
-        """Find all clauses for a specific customer."""
-        return [c for c in self._clauses.values() if c.customer_safe_name == customer_safe_name]
+    def get_clauses_by_subject(self, subject_safe_name: str) -> list[ClauseNode]:
+        """Find all clauses for a specific subject."""
+        return [c for c in self._clauses.values() if c.subject_safe_name == subject_safe_name]
 
     def get_affected_documents(self, document_id: str) -> list[str]:
         """Find all documents affected by changes to a given document.
@@ -144,19 +144,19 @@ class ContractKnowledgeGraph:
                     }
                 )
 
-        # Check governing law conflicts within same customer
+        # Check governing law conflicts within same subject
         gov_law_clauses = self.get_clauses_by_type(ClauseType.GOVERNING_LAW)
-        by_customer: dict[str, list[ClauseNode]] = {}
+        by_subject: dict[str, list[ClauseNode]] = {}
         for c in gov_law_clauses:
-            by_customer.setdefault(c.customer_safe_name, []).append(c)
+            by_subject.setdefault(c.subject_safe_name, []).append(c)
 
-        for customer, clauses in by_customer.items():
+        for subj, clauses in by_subject.items():
             if len(clauses) > 1:
                 summaries = {c.summary.lower().strip() for c in clauses if c.summary}
                 if len(summaries) > 1:
                     conflicts.append(
                         {
-                            "customer": customer,
+                            "subject": subj,
                             "type": "governing_law_conflict",
                             "clauses": [c.id for c in clauses],
                             "description": f"Multiple governing law provisions: {', '.join(summaries)}",
@@ -165,9 +165,9 @@ class ContractKnowledgeGraph:
 
         return conflicts
 
-    def get_obligation_chain(self, customer_safe_name: str) -> list[Obligation]:
-        """Get all obligations for a customer, ordered by due date."""
-        obligations = [o for o in self._obligations.values() if o.customer_safe_name == customer_safe_name]
+    def get_obligation_chain(self, subject_safe_name: str) -> list[Obligation]:
+        """Get all obligations for a subject, ordered by due date."""
+        obligations = [o for o in self._obligations.values() if o.subject_safe_name == subject_safe_name]
         return sorted(obligations, key=lambda o: o.due_date or "9999")
 
     def get_amendment_chain(self, document_id: str) -> list[str]:
@@ -218,7 +218,7 @@ class ContractKnowledgeGraph:
             impacts.append(
                 {
                     "clause_id": clause.id,
-                    "customer": clause.customer_safe_name,
+                    "subject": clause.subject_safe_name,
                     "document": clause.document_path,
                     "summary": clause.summary,
                     "notice_period_days": clause.notice_period_days,
@@ -267,11 +267,11 @@ class ContractKnowledgeGraph:
         """
         graph = cls()
 
-        for customer_key, customer_data in merged_data.items():
-            if not isinstance(customer_data, dict):
+        for subject_key, subject_data in merged_data.items():
+            if not isinstance(subject_data, dict):
                 continue
 
-            findings = customer_data.get("findings", [])
+            findings = subject_data.get("findings", [])
             for finding in findings:
                 category = str(finding.get("category", "")).lower()
                 title = str(finding.get("title", ""))
@@ -288,11 +288,11 @@ class ContractKnowledgeGraph:
                     exact_quote = citation.get("exact_quote", "")
                     section_ref = citation.get("section_ref", "")
 
-                    clause_id = f"{customer_key}:{source_path}:{clause_type.value}:{hash(title) & 0xFFFF:04x}"
+                    clause_id = f"{subject_key}:{source_path}:{clause_type.value}:{hash(title) & 0xFFFF:04x}"
                     clause = ClauseNode(
                         id=clause_id,
                         document_path=source_path,
-                        customer_safe_name=customer_key,
+                        subject_safe_name=subject_key,
                         clause_type=clause_type,
                         section_ref=section_ref,
                         summary=title,
@@ -301,7 +301,7 @@ class ContractKnowledgeGraph:
                     graph.add_clause(clause)
 
             # Build relationships from governance graph if available
-            gov_graph = customer_data.get("governance_graph", {})
+            gov_graph = subject_data.get("governance_graph", {})
             for edge in gov_graph.get("edges", []):
                 source = edge.get("source", "")
                 target = edge.get("target", "")
@@ -313,8 +313,8 @@ class ContractKnowledgeGraph:
 
                 graph.add_relationship(
                     DocumentRelationship(
-                        source_id=f"{customer_key}:{source}",
-                        target_id=f"{customer_key}:{target}",
+                        source_id=f"{subject_key}:{source}",
+                        target_id=f"{subject_key}:{target}",
                         relationship=rel_type,
                     )
                 )

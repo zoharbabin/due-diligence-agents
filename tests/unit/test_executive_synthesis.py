@@ -215,7 +215,7 @@ class TestRiskScoringWithSynthesis:
         """Single P0 → 'High' not 'Critical' with softened mechanical scoring."""
         merged: dict[str, Any] = {
             "c": {
-                "customer": "C",
+                "subject": "C",
                 "findings": [_make_finding(severity="P0")],
                 "gaps": [],
             },
@@ -227,7 +227,7 @@ class TestRiskScoringWithSynthesis:
         """Three P0 findings → 'Critical' with softened scoring."""
         merged: dict[str, Any] = {
             "c": {
-                "customer": "C",
+                "subject": "C",
                 "findings": [_make_finding(severity="P0", title=f"Issue {i}") for i in range(3)],
                 "gaps": [],
             },
@@ -239,7 +239,7 @@ class TestRiskScoringWithSynthesis:
         """Two P0 findings → 'High' with softened scoring."""
         merged: dict[str, Any] = {
             "c": {
-                "customer": "C",
+                "subject": "C",
                 "findings": [
                     _make_finding(severity="P0", title="Issue 1"),
                     _make_finding(severity="P0", title="Issue 2"),
@@ -264,7 +264,7 @@ class TestRiskScoringWithSynthesis:
         """P1 >= 3 → 'High' (unchanged from before)."""
         merged: dict[str, Any] = {
             "c": {
-                "customer": "C",
+                "subject": "C",
                 "findings": [_make_finding(severity="P1") for _ in range(3)],
                 "gaps": [],
             },
@@ -287,7 +287,7 @@ class TestGoNoGoWithSynthesis:
 
         merged: dict[str, Any] = {
             "c": {
-                "customer": "C",
+                "subject": "C",
                 "findings": [_make_finding(severity="P0")],
                 "gaps": [],
             },
@@ -313,7 +313,7 @@ class TestGoNoGoWithSynthesis:
 
         merged: dict[str, Any] = {
             "c": {
-                "customer": "C",
+                "subject": "C",
                 "findings": [_make_finding(severity="P0") for _ in range(3)],
                 "gaps": [],
             },
@@ -330,7 +330,7 @@ class TestGoNoGoWithSynthesis:
 
         merged: dict[str, Any] = {
             "c": {
-                "customer": "C",
+                "subject": "C",
                 "findings": [_make_finding(severity="P0", title="Mechanical finding")],
                 "gaps": [],
             },
@@ -363,7 +363,7 @@ class TestGoNoGoWithSynthesis:
 
         merged: dict[str, Any] = {
             "c": {
-                "customer": "C",
+                "subject": "C",
                 "findings": [],
                 "gaps": [],
             },
@@ -387,7 +387,7 @@ class TestGoNoGoWithSynthesis:
 
         merged: dict[str, Any] = {
             "c": {
-                "customer": "C",
+                "subject": "C",
                 "findings": [_make_finding(severity="P0")],
                 "gaps": [],
             },
@@ -411,7 +411,7 @@ class TestGoNoGoWithSynthesis:
 
         merged: dict[str, Any] = {
             "c": {
-                "customer": "C",
+                "subject": "C",
                 "findings": [_make_finding(severity="P0", title="Mechanical P0 issue")],
                 "gaps": [],
             },
@@ -438,7 +438,7 @@ class TestGoNoGoWithSynthesis:
 
         merged: dict[str, Any] = {
             "c": {
-                "customer": "C",
+                "subject": "C",
                 "findings": [],
                 "gaps": [],
             },
@@ -463,7 +463,7 @@ class TestGoNoGoWithSynthesis:
 
         merged: dict[str, Any] = {
             "c": {
-                "customer": "C",
+                "subject": "C",
                 "findings": [_make_finding(severity="P0")],
                 "gaps": [],
             },

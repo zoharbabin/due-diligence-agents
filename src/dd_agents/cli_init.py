@@ -32,6 +32,11 @@ _FOCUS_AREA_LABELS: dict[str, str] = {
     "data_privacy_compliance": "Data privacy compliance",
     "liability_caps": "Liability caps",
     "non_compete_agreements": "Non-compete agreements",
+    "contract_assignability": "Contract assignability (asset sale)",
+    "purchased_assets_schedule": "Purchased assets schedule completeness",
+    "excluded_liabilities": "Excluded vs. assumed liabilities",
+    "employee_transfer": "Employee transfer / key-person risk",
+    "cure_costs": "Cure costs for defaulted contracts",
 }
 
 VALID_DEAL_TYPES = [
@@ -46,26 +51,26 @@ VALID_DEAL_TYPES = [
 
 
 def scan_data_room(path: Path) -> dict[str, Any]:
-    """Scan a data room directory using FileDiscovery and CustomerRegistryBuilder.
+    """Scan a data room directory using FileDiscovery and SubjectRegistryBuilder.
 
-    Returns a dict with keys: groups, customers, customer_names, file_count, counts.
+    Returns a dict with keys: groups, subjects, subject_names, file_count, counts.
     """
-    from dd_agents.inventory.customers import CustomerRegistryBuilder
     from dd_agents.inventory.discovery import FileDiscovery
+    from dd_agents.inventory.subjects import SubjectRegistryBuilder
 
     discovery = FileDiscovery()
     files = discovery.discover(path)
 
-    builder = CustomerRegistryBuilder()
-    customers, counts = builder.build(path, files)
+    builder = SubjectRegistryBuilder()
+    subjects, counts = builder.build(path, files)
 
-    groups = sorted({c.group for c in customers})
-    customer_names = [c.name for c in customers]
+    groups = sorted({c.group for c in subjects})
+    subject_names = [c.name for c in subjects]
 
     return {
         "groups": groups,
-        "customers": customers,
-        "customer_names": customer_names,
+        "subjects": subjects,
+        "subject_names": subject_names,
         "file_count": counts.total_files,
         "counts": counts,
     }
@@ -108,12 +113,12 @@ def build_config_dict(
     if name_variants:
         config["target"]["entity_name_variants_for_contract_matching"] = name_variants
 
-    # Seed entity_aliases from detected customer folder names
+    # Seed entity_aliases from detected subject folders names
     canonical_to_variants: dict[str, list[str]] = {}
-    if scan_result and scan_result.get("customers"):
-        for customer in scan_result["customers"]:
+    if scan_result and scan_result.get("subjects"):
+        for subject_entry in scan_result["subjects"]:
             # Use folder name as canonical; add underscore-replaced variant if different
-            folder_name: str = customer.name
+            folder_name: str = subject_entry.name
             clean_name = folder_name.replace("_", " ")
             if clean_name != folder_name:
                 canonical_to_variants[clean_name] = [folder_name]
@@ -166,24 +171,24 @@ def prompt_focus_areas(console: Console) -> list[str]:
 def print_scan_summary(console: Console, scan_result: dict[str, Any]) -> None:
     """Print a Rich panel summarising the data room scan."""
     groups = scan_result.get("groups", [])
-    customer_names = scan_result.get("customer_names", [])
+    subject_names = scan_result.get("subject_names", [])
     file_count = scan_result.get("file_count", 0)
 
     n_groups = len(groups)
-    n_customers = len(customer_names)
+    n_subjects = len(subject_names)
 
-    lines = [f"Found {n_groups} group(s), {n_customers} customer(s), {file_count} file(s)"]
+    lines = [f"Found {n_groups} group(s), {n_subjects} subject(s), {file_count} file(s)"]
     if groups:
         lines.append(f"Groups: {', '.join(groups)}")
-    if customer_names:
-        display_names = customer_names[:10]
-        suffix = f", ... (+{n_customers - 10} more)" if n_customers > 10 else ""
-        lines.append(f"Customers: {', '.join(display_names)}{suffix}")
+    if subject_names:
+        display_names = subject_names[:10]
+        suffix = f", ... (+{n_subjects - 10} more)" if n_subjects > 10 else ""
+        lines.append(f"Subjects: {', '.join(display_names)}{suffix}")
 
-    if n_customers == 0:
+    if n_subjects == 0:
         lines.append("")
-        lines.append("Tip: No customers detected. The data room should be organized as:")
-        lines.append("  data_room/GroupName/CustomerName/files...")
+        lines.append("Tip: No subjects detected. The data room should be organized as:")
+        lines.append("  data_room/GroupName/SubjectName/files...")
         lines.append("Example: data_room/NorthAmerica/Acme_Corp/contract.pdf")
 
     console.print(Panel("\n".join(lines), title="Data Room Scan", border_style="cyan"))

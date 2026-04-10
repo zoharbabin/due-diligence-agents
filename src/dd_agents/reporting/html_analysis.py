@@ -1,4 +1,4 @@
-"""Business analysis renderers — CoC, Privacy, Customer Health (Issue #113 B4, B10).
+"""Business analysis renderers — CoC, Privacy, Subject Health (Issue #113 B4, B10).
 
 These sections synthesize findings into business-level insights with
 alert boxes providing executive context.
@@ -40,8 +40,8 @@ class CoCAnalysisRenderer(SectionRenderer):
         if not coc:
             return ""
 
-        customers_affected = self.data.coc_customers_affected
-        consent_required = self.data.consent_required_customers
+        subjects_affected = self.data.coc_subjects_affected
+        consent_required = self.data.consent_required_subjects
 
         # Count subtypes for summary
         subtype_counts: dict[str, int] = {}
@@ -66,23 +66,23 @@ class CoCAnalysisRenderer(SectionRenderer):
 
         parts.append(
             self.render_alert(
-                "high" if customers_affected > 5 else "info",
-                f"{customers_affected} entities with change-of-control provisions",
+                "high" if subjects_affected > 5 else "info",
+                f"{subjects_affected} entities with change-of-control provisions",
                 f"{len(coc)} change-of-control findings identified across "
-                f"{customers_affected} entities ({subtype_summary}). "
+                f"{subjects_affected} entities ({subtype_summary}). "
                 f"{consent_required} entities may require assignment consent. "
                 f"{guidance}",
             )
         )
 
-        # CoC findings by customer with Type column
-        by_customer: dict[str, list[dict[str, Any]]] = {}
+        # CoC findings by subject with Type column
+        by_subject: dict[str, list[dict[str, Any]]] = {}
         for f in coc:
-            cust = str(f.get("_customer_safe_name", f.get("_customer", "Unknown")))
-            by_customer.setdefault(cust, []).append(f)
+            cust = str(f.get("_subject_safe_name", f.get("_subject", "Unknown")))
+            by_subject.setdefault(cust, []).append(f)
 
         parts.append(
-            "<table class='customer-table sortable'><thead><tr>"
+            "<table class='subject-table sortable'><thead><tr>"
             "<th scope='col'>Entity</th>"
             "<th scope='col'>Type</th>"
             "<th scope='col'>Findings</th>"
@@ -91,8 +91,8 @@ class CoCAnalysisRenderer(SectionRenderer):
             "</tr></thead><tbody>"
         )
 
-        for customer_csn, findings in sorted(by_customer.items(), key=lambda x: -len(x[1])):
-            display_name = self.data.display_names.get(customer_csn, customer_csn) if self.data else customer_csn
+        for subject_csn, findings in sorted(by_subject.items(), key=lambda x: -len(x[1])):
+            display_name = self.data.display_names.get(subject_csn, subject_csn) if self.data else subject_csn
             count = len(findings)
             max_sev = "P3"
             for f in findings:
@@ -122,7 +122,7 @@ class TfCAnalysisRenderer(SectionRenderer):
         if not tfc:
             return ""
 
-        customers_affected = self.data.tfc_customers_affected
+        subjects_affected = self.data.tfc_subjects_affected
 
         parts: list[str] = [
             "<section class='report-section' id='sec-tfc'>",
@@ -133,22 +133,22 @@ class TfCAnalysisRenderer(SectionRenderer):
         parts.append(
             self.render_alert(
                 "info",
-                f"{customers_affected} entities with TfC clauses (valuation input)",
+                f"{subjects_affected} entities with TfC clauses (valuation input)",
                 f"{len(tfc)} termination-for-convenience findings across "
-                f"{customers_affected} entities. "
+                f"{subjects_affected} entities. "
                 "TfC revenue is non-committed (at-risk ARR). "
                 "Model as a valuation/RPO input — this is not a deal-blocker.",
             )
         )
 
         # TfC findings table
-        by_customer: dict[str, list[dict[str, Any]]] = {}
+        by_subject: dict[str, list[dict[str, Any]]] = {}
         for f in tfc:
-            cust = str(f.get("_customer_safe_name", f.get("_customer", "Unknown")))
-            by_customer.setdefault(cust, []).append(f)
+            cust = str(f.get("_subject_safe_name", f.get("_subject", "Unknown")))
+            by_subject.setdefault(cust, []).append(f)
 
         parts.append(
-            "<table class='customer-table sortable'><thead><tr>"
+            "<table class='subject-table sortable'><thead><tr>"
             "<th scope='col'>Entity</th>"
             "<th scope='col'>Notice Period</th>"
             "<th scope='col'>Revenue Impact</th>"
@@ -156,8 +156,8 @@ class TfCAnalysisRenderer(SectionRenderer):
             "</tr></thead><tbody>"
         )
 
-        for customer_csn, findings in sorted(by_customer.items(), key=lambda x: -len(x[1])):
-            display_name = self.data.display_names.get(customer_csn, customer_csn) if self.data else customer_csn
+        for subject_csn, findings in sorted(by_subject.items(), key=lambda x: -len(x[1])):
+            display_name = self.data.display_names.get(subject_csn, subject_csn) if self.data else subject_csn
             primary = findings[0]
             desc = str(primary.get("description", ""))
             # Best-effort notice period extraction
@@ -190,10 +190,10 @@ class PrivacyAnalysisRenderer(SectionRenderer):
         if not privacy:
             return ""
 
-        by_customer: dict[str, list[dict[str, Any]]] = {}
+        by_subject: dict[str, list[dict[str, Any]]] = {}
         for f in privacy:
-            cust = str(f.get("_customer_safe_name", f.get("_customer", "Unknown")))
-            by_customer.setdefault(cust, []).append(f)
+            cust = str(f.get("_subject_safe_name", f.get("_subject", "Unknown")))
+            by_subject.setdefault(cust, []).append(f)
 
         parts: list[str] = [
             "<section class='report-section' id='sec-privacy'>",
@@ -206,14 +206,14 @@ class PrivacyAnalysisRenderer(SectionRenderer):
         parts.append(
             self.render_alert(
                 level,
-                f"{len(privacy)} privacy findings across {len(by_customer)} entities",
+                f"{len(privacy)} privacy findings across {len(by_subject)} entities",
                 f"Data privacy analysis identified {len(privacy)} findings. "
                 f"Review GDPR/CCPA compliance status and DPA coverage for each entity.",
             )
         )
 
         parts.append(
-            "<table class='customer-table sortable'><thead><tr>"
+            "<table class='subject-table sortable'><thead><tr>"
             "<th scope='col'>Entity</th>"
             "<th scope='col'>Findings</th>"
             "<th scope='col'>Max Severity</th>"
@@ -221,8 +221,8 @@ class PrivacyAnalysisRenderer(SectionRenderer):
             "</tr></thead><tbody>"
         )
 
-        for customer_csn, findings in sorted(by_customer.items(), key=lambda x: -len(x[1])):
-            display_name = self.data.display_names.get(customer_csn, customer_csn) if self.data else customer_csn
+        for subject_csn, findings in sorted(by_subject.items(), key=lambda x: -len(x[1])):
+            display_name = self.data.display_names.get(subject_csn, subject_csn) if self.data else subject_csn
             max_sev = min((f.get("severity", "P3") for f in findings), key=lambda s: _SEV_RANK.get(s, 3), default="P3")
             primary = html.escape(str(findings[0].get("title", "")))
             parts.append(
@@ -237,13 +237,13 @@ class PrivacyAnalysisRenderer(SectionRenderer):
         return "\n".join(parts)
 
 
-class CustomerHealthRenderer(SectionRenderer):
-    """Render the Customer Health Tiers section (G2)."""
+class SubjectHealthRenderer(SectionRenderer):
+    """Render the Subject Health Tiers section (G2)."""
 
     def render(self) -> str:
-        tier1 = self.data.tier1_customers
-        tier2 = self.data.tier2_customers
-        tier3 = self.data.tier3_customers
+        tier1 = self.data.tier1_subjects
+        tier2 = self.data.tier2_subjects
+        tier3 = self.data.tier3_subjects
 
         if not tier1 and not tier2 and not tier3:
             return ""

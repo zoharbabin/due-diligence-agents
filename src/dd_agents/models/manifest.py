@@ -1,4 +1,4 @@
-"""Pydantic models for coverage manifests (files read, skipped, and failed per customer)."""
+"""Pydantic models for coverage manifests (files read, skipped, and failed per subject)."""
 
 from __future__ import annotations
 
@@ -31,11 +31,11 @@ class FileFailed(BaseModel):
     fallback_result: str = Field(default="", description="Outcome of the fallback attempt")
 
 
-class ManifestCustomer(BaseModel):
-    """Per-customer tracking within the coverage manifest."""
+class ManifestSubject(BaseModel):
+    """Per-subject tracking within the coverage manifest."""
 
-    name: str = Field(description="Customer safe name")
-    files_assigned: list[str] = Field(default_factory=list, description="Files assigned to this customer")
+    name: str = Field(description="Subject safe name")
+    files_assigned: list[str] = Field(default_factory=list, description="Files assigned to this subject")
     files_processed: list[str] = Field(default_factory=list, description="Files successfully processed")
     files_skipped: list[str] = Field(default_factory=list, description="Files skipped during processing")
     status: str = Field(default="complete", description="Processing status: 'complete' or 'partial'")
@@ -45,7 +45,7 @@ class CoverageManifest(BaseModel):
     """
     Agent coverage manifest. From agent-prompts.md section 4.
     Conforms to dd-framework/schemas/coverage-manifest.schema.json
-    with forensic-dd customer-centric extensions.
+    with forensic-dd subject-centric extensions.
     """
 
     agent: str = Field(description="AgentName value identifying the producing agent")
@@ -58,9 +58,9 @@ class CoverageManifest(BaseModel):
         default_factory=list, description="Files that failed the full fallback chain"
     )
     coverage_pct: float = Field(ge=0.0, le=1.0, description="Fraction of assigned files successfully processed")
-    analysis_units_assigned: int = Field(default=0, description="Number of customers assigned to this agent")
-    analysis_units_completed: int = Field(default=0, description="Number of customers fully analyzed")
-    customers: list[ManifestCustomer] = Field(default_factory=list, description="Per-customer processing details")
+    analysis_units_assigned: int = Field(default=0, description="Number of subjects assigned to this agent")
+    analysis_units_completed: int = Field(default=0, description="Number of subjects fully analyzed")
+    subjects: list[ManifestSubject] = Field(default_factory=list, description="Per-subject processing details")
     reference_files_processed: list[str] = Field(
         default_factory=list, description="Forensic-dd extension: reference file paths the agent analyzed"
     )

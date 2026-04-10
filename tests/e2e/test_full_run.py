@@ -23,8 +23,8 @@ import pytest
 
 from dd_agents.config import load_deal_config
 from dd_agents.extraction.cache import ExtractionCache
-from dd_agents.inventory.customers import CustomerRegistryBuilder
 from dd_agents.inventory.discovery import FileDiscovery
+from dd_agents.inventory.subjects import SubjectRegistryBuilder
 from dd_agents.persistence.run_manager import RunManager
 from dd_agents.persistence.tiers import TierManager
 from dd_agents.utils.constants import DD_DIR, INDEX_DIR
@@ -61,26 +61,26 @@ class TestPreAgentPipeline:
         discovery = FileDiscovery()
         files = discovery.discover(e2e_project_dir)
 
-        # Should find at least 6 customer files + 1 reference
+        # Should find at least 6 subject files + 1 reference
         assert len(files) >= 6
         paths = [f.path for f in files]
         assert any("acme" in p.lower() for p in paths)
 
-    def test_customer_registry(self, e2e_project_dir: Path) -> None:
-        """Step 5: Customer registry builds correctly."""
+    def test_subject_registry(self, e2e_project_dir: Path) -> None:
+        """Step 5: Subject registry builds correctly."""
         discovery = FileDiscovery()
         files = discovery.discover(e2e_project_dir)
 
-        builder = CustomerRegistryBuilder()
-        customers, counts = builder.build(e2e_project_dir, files)
+        builder = SubjectRegistryBuilder()
+        subjects, counts = builder.build(e2e_project_dir, files)
 
-        # Should find 3 customers: Acme, Beta, Gamma
-        assert len(customers) >= 3
-        customer_names = [c.name for c in customers]
-        assert any("Acme" in n for n in customer_names)
-        assert any("Beta" in n for n in customer_names)
-        assert any("Gamma" in n for n in customer_names)
-        assert counts.total_customers >= 3
+        # Should find 3 subjects: Acme, Beta, Gamma
+        assert len(subjects) >= 3
+        subject_names = [s.name for s in subjects]
+        assert any("Acme" in n for n in subject_names)
+        assert any("Beta" in n for n in subject_names)
+        assert any("Gamma" in n for n in subject_names)
+        assert counts.total_subjects >= 3
 
     def test_run_manager_lifecycle(self, e2e_project_dir: Path) -> None:
         """Run manager creates and finalizes runs correctly."""
@@ -152,7 +152,7 @@ class TestFullPipeline:
         This test runs the complete pipeline and verifies:
         1. Pipeline completes without errors
         2. _dd directory structure is correct
-        3. Findings are produced for each customer
+        3. Findings are produced for each subject
         4. Audit report is generated
         5. Excel report is created
         """
@@ -345,7 +345,7 @@ class TestLiveAgentValidation:
 
     @skip_no_api_key
     def test_merged_findings_exist(self, live_pipeline_result: tuple[object, Path]) -> None:
-        """Merged findings directory has files for all 3 customers."""
+        """Merged findings directory has files for all 3 subjects."""
         _, project_dir = live_pipeline_result
         run_dir = _get_run_dir(project_dir)
         if run_dir is None:
@@ -415,7 +415,7 @@ class TestLiveAgentValidation:
         assert html_path.exists(), "dd_report.html not found"
         content = html_path.read_text(encoding="utf-8")
         assert "<html" in content.lower()
-        # Check that customer names appear
+        # Check that subject names appear
         content_lower = content.lower()
         assert "acme" in content_lower, "Acme Corp not in HTML report"
         assert "beta" in content_lower, "Beta Inc not in HTML report"
@@ -477,8 +477,8 @@ class TestLiveAgentValidation:
         assert len(content_files) >= 1, "Knowledge dir is empty"
 
     @skip_no_api_key
-    def test_all_customers_covered(self, live_pipeline_result: tuple[object, Path]) -> None:
-        """All 3 customers (Acme, Beta, Gamma) appear in merged output."""
+    def test_all_subjects_covered(self, live_pipeline_result: tuple[object, Path]) -> None:
+        """All 3 subjects (Acme, Beta, Gamma) appear in merged output."""
         _, project_dir = live_pipeline_result
         run_dir = _get_run_dir(project_dir)
         if run_dir is None:

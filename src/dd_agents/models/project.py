@@ -17,7 +17,7 @@ class ProjectEntry(BaseModel):
     last_run_id: str | None = Field(default=None, description="Most recent run ID")
     status: str = Field(default="created", description="created | running | completed | failed | archived")
     total_runs: int = Field(default=0, ge=0, description="Total pipeline runs completed")
-    total_customers: int = Field(default=0, ge=0, description="Total customers in the data room")
+    total_subjects: int = Field(default=0, ge=0, description="Total subjects in the data room")
     total_findings: int = Field(default=0, ge=0, description="Total findings across all runs")
     finding_counts: dict[str, int] = Field(default_factory=dict, description="Finding counts by severity")
     deal_type: str = Field(default="", description="acquisition, merger, etc.")

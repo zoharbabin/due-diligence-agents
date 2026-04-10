@@ -28,7 +28,7 @@ class TestFindingsJsonExport:
                     "severity": "P0",
                     "category": "coc",
                     "_domain": "legal",
-                    "_customer_safe_name": "a",
+                    "_subject_safe_name": "a",
                     "agent": "legal",
                 },
             ],
@@ -63,7 +63,7 @@ class TestFindingsCsvExport:
                     "severity": "P1",
                     "category": "test",
                     "_domain": "legal",
-                    "_customer_safe_name": "a",
+                    "_subject_safe_name": "a",
                     "agent": "legal",
                     "description": "desc",
                 },
@@ -83,7 +83,7 @@ class TestFindingsCsvExport:
                     "severity": "P1",
                     "category": "+malicious",
                     "_domain": "legal",
-                    "_customer_safe_name": "@evil",
+                    "_subject_safe_name": "@evil",
                     "agent": "legal",
                     "description": "-formula injection",
                 },
@@ -153,7 +153,7 @@ class TestFindingProvenanceModel:
         merger = FindingMerger(run_id="test-run", timestamp="2026-01-01T00:00:00Z")
         agent_outputs = {
             "legal": {
-                "customer": "Test Corp",
+                "subject": "Test Corp",
                 "findings": [
                     {
                         "severity": "P1",
@@ -172,7 +172,7 @@ class TestFindingProvenanceModel:
                 ],
             },
         }
-        result = merger.merge_customer(agent_outputs, "Test Corp", "test_corp")
+        result = merger.merge_subject(agent_outputs, "Test Corp", "test_corp")
         assert len(result.findings) == 1
         meta = result.findings[0].metadata
         assert "provenance" in meta

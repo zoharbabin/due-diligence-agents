@@ -4,51 +4,51 @@ from __future__ import annotations
 
 from dd_agents.orchestrator.batch_scheduler import (
     BatchScheduler,
-    CustomerComplexity,
-    score_customer_complexity,
+    SubjectComplexity,
+    score_subject_complexity,
 )
 
 # ---------------------------------------------------------------------------
-# Customer complexity scoring tests
+# Subject complexity scoring tests
 # ---------------------------------------------------------------------------
 
 
-class TestCustomerComplexity:
-    """Test customer complexity scoring."""
+class TestSubjectComplexity:
+    """Test subject complexity scoring."""
 
-    def test_empty_customer(self) -> None:
-        result = score_customer_complexity("test", file_count=0, total_bytes=0)
+    def test_empty_subject(self) -> None:
+        result = score_subject_complexity("test", file_count=0, total_bytes=0)
         assert result.score == 0.0
         assert result.tier == "simple"
 
-    def test_simple_customer(self) -> None:
-        result = score_customer_complexity("test", file_count=2, total_bytes=5_000)
+    def test_simple_subject(self) -> None:
+        result = score_subject_complexity("test", file_count=2, total_bytes=5_000)
         assert result.tier == "simple"
         assert result.score < 10.0
 
-    def test_medium_customer(self) -> None:
-        result = score_customer_complexity("test", file_count=5, total_bytes=200_000)
+    def test_medium_subject(self) -> None:
+        result = score_subject_complexity("test", file_count=5, total_bytes=200_000)
         assert result.tier == "medium"
         assert 10.0 <= result.score < 50.0
 
-    def test_complex_customer(self) -> None:
-        result = score_customer_complexity("test", file_count=15, total_bytes=2_000_000)
+    def test_complex_subject(self) -> None:
+        result = score_subject_complexity("test", file_count=15, total_bytes=2_000_000)
         assert result.tier == "complex"
         assert result.score >= 50.0
 
     def test_score_increases_with_files(self) -> None:
-        small = score_customer_complexity("a", file_count=1, total_bytes=1_000)
-        large = score_customer_complexity("b", file_count=10, total_bytes=1_000)
+        small = score_subject_complexity("a", file_count=1, total_bytes=1_000)
+        large = score_subject_complexity("b", file_count=10, total_bytes=1_000)
         assert large.score > small.score
 
     def test_score_increases_with_size(self) -> None:
-        small = score_customer_complexity("a", file_count=1, total_bytes=1_000)
-        large = score_customer_complexity("b", file_count=1, total_bytes=1_000_000)
+        small = score_subject_complexity("a", file_count=1, total_bytes=1_000)
+        large = score_subject_complexity("b", file_count=1, total_bytes=1_000_000)
         assert large.score > small.score
 
     def test_model_fields(self) -> None:
-        result = score_customer_complexity("acme", file_count=3, total_bytes=50_000)
-        assert result.customer_safe_name == "acme"
+        result = score_subject_complexity("acme", file_count=3, total_bytes=50_000)
+        assert result.subject_safe_name == "acme"
         assert result.file_count == 3
         assert result.total_bytes == 50_000
 
@@ -61,8 +61,8 @@ class TestCustomerComplexity:
 class TestBatchScheduler:
     """Test the batch scheduling algorithm."""
 
-    def _make_complexities(self, names_and_scores: list[tuple[str, int, int]]) -> list[CustomerComplexity]:
-        return [score_customer_complexity(name, file_count=fc, total_bytes=tb) for name, fc, tb in names_and_scores]
+    def _make_complexities(self, names_and_scores: list[tuple[str, int, int]]) -> list[SubjectComplexity]:
+        return [score_subject_complexity(name, file_count=fc, total_bytes=tb) for name, fc, tb in names_and_scores]
 
     def test_empty_input(self) -> None:
         scheduler = BatchScheduler(max_batch_size=5)
@@ -96,8 +96,8 @@ class TestBatchScheduler:
         assert len(batches) == 2
         assert all(len(b) <= 2 for b in batches)
 
-    def test_simple_customers_first(self) -> None:
-        """Simple customers should be scheduled first for fast wins."""
+    def test_simple_subjects_first(self) -> None:
+        """Simple subjects should be scheduled first for fast wins."""
         complexities = self._make_complexities(
             [
                 ("complex", 15, 2_000_000),
@@ -107,14 +107,14 @@ class TestBatchScheduler:
         )
         scheduler = BatchScheduler(max_batch_size=10)
         batches = scheduler.schedule(complexities)
-        names = [c.customer_safe_name for c in batches[0]]
+        names = [c.subject_safe_name for c in batches[0]]
         assert names[0] == "simple"
 
-    def test_preserves_all_customers(self) -> None:
+    def test_preserves_all_subjects(self) -> None:
         complexities = self._make_complexities([(f"c{i}", i + 1, (i + 1) * 1_000) for i in range(15)])
         scheduler = BatchScheduler(max_batch_size=4)
         batches = scheduler.schedule(complexities)
-        all_names = [c.customer_safe_name for batch in batches for c in batch]
+        all_names = [c.subject_safe_name for batch in batches for c in batch]
         assert len(all_names) == 15
         assert set(all_names) == {f"c{i}" for i in range(15)}
 

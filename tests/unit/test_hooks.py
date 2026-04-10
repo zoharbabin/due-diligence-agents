@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 
 from dd_agents.hooks.post_tool import (
     validate_audit_entry,
-    validate_customer_json,
     validate_manifest_json,
+    validate_subject_json,
 )
 from dd_agents.hooks.pre_tool import bash_guard, file_size_guard, path_guard
 from dd_agents.hooks.stop import check_audit_log, check_coverage, check_manifest
@@ -265,17 +265,17 @@ class TestFileSizeGuard:
 
 
 # ===================================================================
-# PostToolUse: validate_customer_json
+# PostToolUse: validate_subject_json
 # ===================================================================
 
 
-class TestValidateCustomerJson:
-    """Tests for validate_customer_json."""
+class TestValidateSubjectJson:
+    """Tests for validate_subject_json."""
 
-    def test_valid_customer_json(self) -> None:
+    def test_valid_subject_json(self) -> None:
         data = {
-            "customer": "Acme Corp",
-            "customer_safe_name": "acme_corp",
+            "subject": "Acme Corp",
+            "subject_safe_name": "acme_corp",
             "findings": [
                 {
                     "severity": "P2",
@@ -301,25 +301,25 @@ class TestValidateCustomerJson:
             ],
         }
         content = json.dumps(data)
-        errors = validate_customer_json("acme_corp.json", content)
+        errors = validate_subject_json("acme_corp.json", content)
         assert errors == []
 
     def test_invalid_json(self) -> None:
-        errors = validate_customer_json("bad.json", "{not valid json")
+        errors = validate_subject_json("bad.json", "{not valid json")
         assert len(errors) == 1
         assert "Invalid JSON" in errors[0]
 
     def test_missing_required_keys(self) -> None:
         data = {"findings": [], "file_headers": []}
         content = json.dumps(data)
-        errors = validate_customer_json("test.json", content)
-        assert any("customer" in e for e in errors)
-        assert any("customer_safe_name" in e for e in errors)
+        errors = validate_subject_json("test.json", content)
+        assert any("subject" in e for e in errors)
+        assert any("subject_safe_name" in e for e in errors)
 
     def test_invalid_finding_in_array(self) -> None:
         data = {
             "customer": "Test Corp",
-            "customer_safe_name": "test_corp",
+            "subject_safe_name": "test_corp",
             "findings": [
                 {
                     "severity": "INVALID",
@@ -333,18 +333,18 @@ class TestValidateCustomerJson:
             "file_headers": [],
         }
         content = json.dumps(data)
-        errors = validate_customer_json("test.json", content)
+        errors = validate_subject_json("test.json", content)
         assert len(errors) > 0
 
     def test_findings_not_array(self) -> None:
         data = {
             "customer": "Test",
-            "customer_safe_name": "test",
+            "subject_safe_name": "test",
             "findings": "not an array",
             "file_headers": [],
         }
         content = json.dumps(data)
-        errors = validate_customer_json("test.json", content)
+        errors = validate_subject_json("test.json", content)
         assert any("array" in e for e in errors)
 
 
@@ -431,7 +431,7 @@ class TestCheckCoverage:
         # Write only 1 of 3 expected customer files
         (output_dir / "acme_corp.json").write_text("{}")
 
-        result = check_coverage(output_dir, expected_customer_count=3)
+        result = check_coverage(output_dir, expected_subject_count=3)
         assert result["decision"] == "block"
         assert "1/3" in result["reason"]
 
@@ -442,7 +442,7 @@ class TestCheckCoverage:
         for name in ["acme_corp.json", "globex.json", "alpine.json"]:
             (output_dir / name).write_text("{}")
 
-        result = check_coverage(output_dir, expected_customer_count=3)
+        result = check_coverage(output_dir, expected_subject_count=3)
         assert result["decision"] == "allow"
         assert result["reason"] == ""
 
@@ -453,12 +453,12 @@ class TestCheckCoverage:
         (output_dir / "acme_corp.json").write_text("{}")
         (output_dir / "coverage_manifest.json").write_text("{}")
 
-        result = check_coverage(output_dir, expected_customer_count=1)
+        result = check_coverage(output_dir, expected_subject_count=1)
         assert result["decision"] == "allow"
 
     def test_blocks_when_dir_missing(self, tmp_path: Path) -> None:
         output_dir = tmp_path / "findings" / "legal"
-        result = check_coverage(output_dir, expected_customer_count=5)
+        result = check_coverage(output_dir, expected_subject_count=5)
         assert result["decision"] == "block"
         assert "does not exist" in result["reason"]
 
@@ -469,7 +469,7 @@ class TestCheckCoverage:
         for name in ["a.json", "b.json", "c.json"]:
             (output_dir / name).write_text("{}")
 
-        result = check_coverage(output_dir, expected_customer_count=2)
+        result = check_coverage(output_dir, expected_subject_count=2)
         assert result["decision"] == "allow"
 
 

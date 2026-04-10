@@ -62,7 +62,7 @@ def _make_agent_finding(**overrides: object) -> dict[str, object]:
 
 def _make_gap(**overrides: object) -> dict[str, object]:
     base = {
-        "customer": "Customer A",
+        "subject": "Customer A",
         "priority": "P2",
         "gap_type": "Missing_Doc",
         "missing_item": "NDA",
@@ -124,12 +124,56 @@ class TestAgentFindingCoercion:
     def test_string_severity_coerced(self) -> None:
         af = AgentFinding(**_make_agent_finding(severity="P1"))
         assert isinstance(af.severity, Severity)
+        # P1 with exact_quote stays P1
         assert af.severity is Severity.P1
 
     def test_string_confidence_coerced(self) -> None:
         af = AgentFinding(**_make_agent_finding(confidence="low"))
         assert isinstance(af.confidence, Confidence)
         assert af.confidence is Confidence.LOW
+
+    def test_p0_without_exact_quote_downgraded(self) -> None:
+        """P0 finding missing exact_quote is auto-downgraded to P2."""
+        af = AgentFinding(
+            **_make_agent_finding(
+                severity="P0",
+                citations=[_make_citation(exact_quote="")],
+            )
+        )
+        assert af.severity is Severity.P2
+        assert af.verification_note is not None
+        assert "Auto-downgraded from P0" in af.verification_note
+
+    def test_p1_without_exact_quote_downgraded(self) -> None:
+        """P1 finding missing exact_quote is auto-downgraded to P2."""
+        af = AgentFinding(
+            **_make_agent_finding(
+                severity="P1",
+                citations=[_make_citation(exact_quote="")],
+            )
+        )
+        assert af.severity is Severity.P2
+
+    def test_p1_with_exact_quote_stays_p1(self) -> None:
+        """P1 finding with exact_quote is NOT downgraded."""
+        af = AgentFinding(
+            **_make_agent_finding(
+                severity="P1",
+                citations=[_make_citation(exact_quote="verbatim text")],
+            )
+        )
+        assert af.severity is Severity.P1
+
+    def test_p2_without_exact_quote_not_downgraded(self) -> None:
+        """P2 finding missing exact_quote is NOT affected by the validator."""
+        af = AgentFinding(
+            **_make_agent_finding(
+                severity="P2",
+                citations=[_make_citation(exact_quote="")],
+            )
+        )
+        assert af.severity is Severity.P2
+        assert af.verification_note is None
 
 
 # ---------------------------------------------------------------------------

@@ -113,7 +113,7 @@ class GovernanceGraphRenderer(SectionRenderer):
                 continue
             edges = gov.get("edges", [])
             if edges:
-                display = cust_data.get("customer", csn)
+                display = cust_data.get("subject", csn)
                 result[display] = edges
         return result
 

@@ -9,7 +9,7 @@ Covers:
 - Severity disagreement detection (2+ level gap flagged / adjacent not flagged)
 - Summary matrix correctness
 - Report serialization (writes valid JSON)
-- Non-customer files excluded (coverage_manifest.json)
+- Non-subject files excluded (coverage_manifest.json)
 - Empty findings array handled
 """
 
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 AGENTS = ["legal", "finance", "commercial", "producttech"]
-CUSTOMERS = ["customer_a", "customer_b"]
+SUBJECTS = ["customer_a", "customer_b"]
 
 
 def _make_finding(
@@ -57,12 +57,12 @@ def _write_agent_file(
     customer: str,
     findings: list[dict[str, Any]] | None = None,
 ) -> None:
-    """Write a customer JSON file into the agent's findings directory."""
+    """Write a subject JSON file into the agent's findings directory."""
     agent_dir = findings_dir / agent
     agent_dir.mkdir(parents=True, exist_ok=True)
     data = {
-        "customer": customer,
-        "customer_safe_name": customer,
+        "subject": customer,
+        "subject_safe_name": customer,
         "agent": agent,
         "findings": findings if findings is not None else [_make_finding()],
     }
@@ -70,15 +70,15 @@ def _write_agent_file(
 
 
 def _setup_complete(findings_dir: Path, file_inventory: list[str] | None = None) -> PreMergeValidator:
-    """Create a validator with all 4 agents × 2 customers populated."""
+    """Create a validator with all 4 agents x 2 subjects populated."""
     for agent in AGENTS:
-        for customer in CUSTOMERS:
-            _write_agent_file(findings_dir, agent, customer)
+        for subject in SUBJECTS:
+            _write_agent_file(findings_dir, agent, subject)
     inv = file_inventory or ["1. Due Diligence/doc.pdf"]
     return PreMergeValidator(
         run_dir=findings_dir.parent,
         findings_dir=findings_dir,
-        customer_safe_names=CUSTOMERS,
+        subject_safe_names=SUBJECTS,
         file_inventory=inv,
     )
 
@@ -93,21 +93,21 @@ class TestFileCompleteness:
         findings_dir = tmp_path / "findings"
         # Write files for all agents except finance for customer_b
         for agent in AGENTS:
-            for customer in CUSTOMERS:
-                if agent == "finance" and customer == "customer_b":
+            for subject in SUBJECTS:
+                if agent == "finance" and subject == "customer_b":
                     continue
-                _write_agent_file(findings_dir, agent, customer)
+                _write_agent_file(findings_dir, agent, subject)
 
         validator = PreMergeValidator(
             run_dir=tmp_path,
             findings_dir=findings_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
             file_inventory=["1. Due Diligence/doc.pdf"],
         )
         report = validator.validate()
         assert len(report.file_completeness_issues) > 0
         issue = report.file_completeness_issues[0]
-        assert issue["customer"] == "customer_b"
+        assert issue["subject"] == "customer_b"
         assert "finance" in issue["missing_agents"]
 
     def test_all_present_passes(self, tmp_path: Path) -> None:
@@ -127,8 +127,8 @@ class TestJsonIntegrity:
         findings_dir = tmp_path / "findings"
         # Set up normal files first
         for agent in AGENTS:
-            for customer in CUSTOMERS:
-                _write_agent_file(findings_dir, agent, customer)
+            for subject in SUBJECTS:
+                _write_agent_file(findings_dir, agent, subject)
 
         # Corrupt one file
         corrupt_path = findings_dir / "legal" / "customer_a.json"
@@ -137,13 +137,13 @@ class TestJsonIntegrity:
         validator = PreMergeValidator(
             run_dir=tmp_path,
             findings_dir=findings_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
             file_inventory=["1. Due Diligence/doc.pdf"],
         )
         report = validator.validate()
         assert len(report.json_integrity_issues) > 0
         assert report.json_integrity_issues[0]["agent"] == "legal"
-        assert report.json_integrity_issues[0]["customer"] == "customer_a"
+        assert report.json_integrity_issues[0]["subject"] == "customer_a"
         # Corrupt JSON makes the report not pass
         assert report.passed is False
 
@@ -157,13 +157,13 @@ class TestSchemaCompliance:
     def test_missing_required_keys_flagged(self, tmp_path: Path) -> None:
         findings_dir = tmp_path / "findings"
         for agent in AGENTS:
-            for customer in CUSTOMERS:
-                _write_agent_file(findings_dir, agent, customer)
+            for subject in SUBJECTS:
+                _write_agent_file(findings_dir, agent, subject)
 
         # Write a finding missing "severity" and "citations"
         bad_data = {
             "customer": "customer_a",
-            "customer_safe_name": "customer_a",
+            "subject_safe_name": "customer_a",
             "agent": "legal",
             "findings": [
                 {
@@ -178,7 +178,7 @@ class TestSchemaCompliance:
         validator = PreMergeValidator(
             run_dir=tmp_path,
             findings_dir=findings_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
             file_inventory=["1. Due Diligence/doc.pdf"],
         )
         report = validator.validate()
@@ -197,18 +197,18 @@ class TestCitationPaths:
     def test_invalid_paths_flagged(self, tmp_path: Path) -> None:
         findings_dir = tmp_path / "findings"
         for agent in AGENTS:
-            for customer in CUSTOMERS:
+            for subject in SUBJECTS:
                 _write_agent_file(
                     findings_dir,
                     agent,
-                    customer,
+                    subject,
                     [_make_finding(source_path="nonexistent/path/to/file.pdf")],
                 )
 
         validator = PreMergeValidator(
             run_dir=tmp_path,
             findings_dir=findings_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
             file_inventory=["1. Due Diligence/doc.pdf"],
         )
         report = validator.validate()
@@ -230,28 +230,28 @@ class TestAsymmetricRisk:
     def test_p0_plus_zero_findings_flagged(self, tmp_path: Path) -> None:
         findings_dir = tmp_path / "findings"
         for agent in AGENTS:
-            for customer in CUSTOMERS:
-                if agent == "legal" and customer == "customer_a":
-                    _write_agent_file(findings_dir, agent, customer, [_make_finding(severity="P0")])
-                elif agent == "finance" and customer == "customer_a":
-                    _write_agent_file(findings_dir, agent, customer, findings=[])
+            for subject in SUBJECTS:
+                if agent == "legal" and subject == "customer_a":
+                    _write_agent_file(findings_dir, agent, subject, [_make_finding(severity="P0")])
+                elif agent == "finance" and subject == "customer_a":
+                    _write_agent_file(findings_dir, agent, subject, findings=[])
                 else:
-                    _write_agent_file(findings_dir, agent, customer)
+                    _write_agent_file(findings_dir, agent, subject)
 
         validator = PreMergeValidator(
             run_dir=tmp_path,
             findings_dir=findings_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
             file_inventory=["1. Due Diligence/doc.pdf"],
         )
         report = validator.validate()
         assert len(report.asymmetric_risk_anomalies) > 0
         anomaly = report.asymmetric_risk_anomalies[0]
-        assert anomaly["customer"] == "customer_a"
+        assert anomaly["subject"] == "customer_a"
 
-    def test_balanced_customer_not_flagged(self, tmp_path: Path) -> None:
+    def test_balanced_subject_not_flagged(self, tmp_path: Path) -> None:
         findings_dir = tmp_path / "findings"
-        # All agents have similar findings for all customers
+        # All agents have similar findings for all subjects
         validator = _setup_complete(findings_dir)
         report = validator.validate()
         assert report.asymmetric_risk_anomalies == []
@@ -268,28 +268,28 @@ class TestSeverityDisagreement:
         shared_category = "change_of_control_clauses"
 
         for agent in AGENTS:
-            for customer in CUSTOMERS:
+            for subject in SUBJECTS:
                 if agent == "legal":
                     _write_agent_file(
                         findings_dir,
                         agent,
-                        customer,
+                        subject,
                         [_make_finding(severity="P0", category=shared_category)],
                     )
                 elif agent == "commercial":
                     _write_agent_file(
                         findings_dir,
                         agent,
-                        customer,
+                        subject,
                         [_make_finding(severity="P3", category=shared_category)],
                     )
                 else:
-                    _write_agent_file(findings_dir, agent, customer)
+                    _write_agent_file(findings_dir, agent, subject)
 
         validator = PreMergeValidator(
             run_dir=tmp_path,
             findings_dir=findings_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
             file_inventory=["1. Due Diligence/doc.pdf"],
         )
         report = validator.validate()
@@ -302,28 +302,28 @@ class TestSeverityDisagreement:
         shared_category = "ip_ownership"
 
         for agent in AGENTS:
-            for customer in CUSTOMERS:
+            for subject in SUBJECTS:
                 if agent == "legal":
                     _write_agent_file(
                         findings_dir,
                         agent,
-                        customer,
+                        subject,
                         [_make_finding(severity="P1", category=shared_category)],
                     )
                 elif agent == "commercial":
                     _write_agent_file(
                         findings_dir,
                         agent,
-                        customer,
+                        subject,
                         [_make_finding(severity="P2", category=shared_category)],
                     )
                 else:
-                    _write_agent_file(findings_dir, agent, customer)
+                    _write_agent_file(findings_dir, agent, subject)
 
         validator = PreMergeValidator(
             run_dir=tmp_path,
             findings_dir=findings_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
             file_inventory=["1. Due Diligence/doc.pdf"],
         )
         report = validator.validate()
@@ -340,21 +340,21 @@ class TestSummaryMatrix:
         findings_dir = tmp_path / "findings"
         # customer_a: legal has 2 findings, others have 1
         for agent in AGENTS:
-            for customer in CUSTOMERS:
-                if agent == "legal" and customer == "customer_a":
+            for subject in SUBJECTS:
+                if agent == "legal" and subject == "customer_a":
                     _write_agent_file(
                         findings_dir,
                         agent,
-                        customer,
+                        subject,
                         [_make_finding(), _make_finding(title="Second finding")],
                     )
                 else:
-                    _write_agent_file(findings_dir, agent, customer)
+                    _write_agent_file(findings_dir, agent, subject)
 
         validator = PreMergeValidator(
             run_dir=tmp_path,
             findings_dir=findings_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
             file_inventory=["1. Due Diligence/doc.pdf"],
         )
         report = validator.validate()
@@ -379,34 +379,34 @@ class TestReportSerialization:
 
         loaded = json.loads(output_path.read_text())
         assert loaded["passed"] is True
-        assert loaded["total_customers"] == 2
+        assert loaded["total_subjects"] == 2
         assert isinstance(loaded["summary_matrix"], dict)
 
 
 # ---------------------------------------------------------------------------
-# Non-customer files excluded
+# Non-subject files excluded
 # ---------------------------------------------------------------------------
 
 
-class TestNonCustomerExclusion:
+class TestNonSubjectExclusion:
     def test_coverage_manifest_excluded(self, tmp_path: Path) -> None:
         findings_dir = tmp_path / "findings"
         for agent in AGENTS:
-            for customer in CUSTOMERS:
-                _write_agent_file(findings_dir, agent, customer)
-            # Write coverage_manifest.json alongside customer files
+            for subject in SUBJECTS:
+                _write_agent_file(findings_dir, agent, subject)
+            # Write coverage_manifest.json alongside subject files
             manifest = {"agent": agent, "coverage_pct": 1.0}
             (findings_dir / agent / "coverage_manifest.json").write_text(json.dumps(manifest))
 
         validator = PreMergeValidator(
             run_dir=tmp_path,
             findings_dir=findings_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
             file_inventory=["1. Due Diligence/doc.pdf"],
         )
         report = validator.validate()
-        # coverage_manifest should not appear in any issues as a customer
-        all_customers_in_issues = set()
+        # coverage_manifest should not appear in any issues as a subject
+        all_subjects_in_issues = set()
         for issue_list in [
             report.file_completeness_issues,
             report.json_integrity_issues,
@@ -414,8 +414,8 @@ class TestNonCustomerExclusion:
         ]:
             for issue in issue_list:
                 if "customer" in issue:
-                    all_customers_in_issues.add(issue["customer"])
-        assert "coverage_manifest" not in all_customers_in_issues
+                    all_subjects_in_issues.add(issue["subject"])
+        assert "coverage_manifest" not in all_subjects_in_issues
         # Should not appear in summary matrix
         assert "coverage_manifest" not in report.summary_matrix
 
@@ -429,13 +429,13 @@ class TestEmptyFindings:
     def test_empty_findings_handled(self, tmp_path: Path) -> None:
         findings_dir = tmp_path / "findings"
         for agent in AGENTS:
-            for customer in CUSTOMERS:
-                _write_agent_file(findings_dir, agent, customer, findings=[])
+            for subject in SUBJECTS:
+                _write_agent_file(findings_dir, agent, subject, findings=[])
 
         validator = PreMergeValidator(
             run_dir=tmp_path,
             findings_dir=findings_dir,
-            customer_safe_names=CUSTOMERS,
+            subject_safe_names=SUBJECTS,
             file_inventory=["1. Due Diligence/doc.pdf"],
         )
         report = validator.validate()

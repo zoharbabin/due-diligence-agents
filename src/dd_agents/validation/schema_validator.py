@@ -276,7 +276,7 @@ class SchemaValidator:
         if condition == "never":
             return False
         # Evaluate dotted-path conditions like "judge.enabled"
-        # or "source_of_truth.customer_database"
+        # or "source_of_truth.subject_database"
         return self._evaluate_condition(condition)
 
     def _column_is_active(self, col: Any) -> bool:
@@ -314,7 +314,7 @@ class SchemaValidator:
         Supports:
         - Dotted paths: ``"judge.enabled"`` -> deal_config["judge"]["enabled"]
         - Equality: ``"execution.mode == incremental"``
-        - Truthy: ``"source_of_truth.customer_database"``
+        - Truthy: ``"source_of_truth.subject_database"``
 
         Returns False when the path is missing or the condition is not met.
         """

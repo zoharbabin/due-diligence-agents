@@ -49,15 +49,15 @@ class TestAcquirerIntelligenceAgent:
         assert "Grep" in tools
         assert "Write" not in tools
 
-    def test_max_turns_low(self, tmp_path: Path) -> None:
-        """Single-pass analysis — should not run many turns."""
+    def test_max_turns_reasonable(self, tmp_path: Path) -> None:
+        """Synthesis agent needs enough turns to read findings + produce output."""
         agent = self._make_agent(tmp_path)
-        assert agent.max_turns <= 10
+        assert agent.max_turns == 75
 
     def test_budget_low(self, tmp_path: Path) -> None:
         """Should use minimal budget since it's a synthesis pass."""
         agent = self._make_agent(tmp_path)
-        assert agent.max_budget_usd <= 2.0
+        assert agent.max_budget_usd <= 5.0
 
     def test_tools_list_constant(self) -> None:
         assert isinstance(ACQUIRER_INTELLIGENCE_TOOLS, list)
@@ -117,63 +117,29 @@ class TestAcquirerIntelligenceAgent:
         prompt = agent.build_prompt(state)
         assert len(prompt) > 0
 
-    def test_parse_acquirer_output_valid(self, tmp_path: Path) -> None:
-        """Test parsing structured acquirer intelligence output."""
-        agent = self._make_agent(tmp_path)
+    def test_base_parse_agent_output_valid(self) -> None:
+        """Base class parser extracts structured JSON from agent output."""
+        from dd_agents.agents.base import BaseAgentRunner
+
         raw = '{"summary": "Strong fit", "recommendations": ["Proceed"]}'
-        result = agent.parse_acquirer_output(raw)
-        assert result["summary"] == "Strong fit"
-        assert result["recommendations"] == ["Proceed"]
+        result = BaseAgentRunner._parse_agent_output(raw)
+        assert len(result) == 1
+        assert result[0]["summary"] == "Strong fit"
+        assert result[0]["recommendations"] == ["Proceed"]
 
-    def test_parse_acquirer_output_empty(self, tmp_path: Path) -> None:
-        agent = self._make_agent(tmp_path)
-        result = agent.parse_acquirer_output("")
-        assert result == {}
+    def test_base_parse_agent_output_empty(self) -> None:
+        from dd_agents.agents.base import BaseAgentRunner
 
-    def test_parse_acquirer_output_malformed(self, tmp_path: Path) -> None:
-        agent = self._make_agent(tmp_path)
-        result = agent.parse_acquirer_output("not json at all")
-        assert result == {}
+        result = BaseAgentRunner._parse_agent_output("")
+        assert result == []
 
-    def test_parse_acquirer_output_with_fences(self, tmp_path: Path) -> None:
-        agent = self._make_agent(tmp_path)
+    def test_base_parse_agent_output_with_fences(self) -> None:
+        from dd_agents.agents.base import BaseAgentRunner
+
         raw = '```json\n{"summary": "Analysis complete"}\n```'
-        result = agent.parse_acquirer_output(raw)
-        assert result["summary"] == "Analysis complete"
-
-    def test_parse_fills_missing_fields_with_defaults(self, tmp_path: Path) -> None:
-        """Pydantic validation fills missing fields with safe defaults."""
-        agent = self._make_agent(tmp_path)
-        raw = '{"summary": "Partial output"}'
-        result = agent.parse_acquirer_output(raw)
-        assert result["summary"] == "Partial output"
-        assert result["recommendations"] == []
-        assert result["risk_alignment"] == []
-        assert result["deal_impact"] == ""
-        assert result["key_concerns"] == []
-
-    def test_parse_validates_risk_alignment_structure(self, tmp_path: Path) -> None:
-        """Risk alignment list items are validated through Pydantic."""
-        agent = self._make_agent(tmp_path)
-        raw = (
-            '{"summary": "Test", "risk_alignment": ['
-            '{"focus_area": "ip", "finding_count": 3, "assessment": "High risk"}'
-            "]}"
-        )
-        result = agent.parse_acquirer_output(raw)
-        assert len(result["risk_alignment"]) == 1
-        assert result["risk_alignment"][0]["focus_area"] == "ip"
-        assert result["risk_alignment"][0]["finding_count"] == 3
-
-    def test_parse_whitespace_only_returns_empty(self, tmp_path: Path) -> None:
-        agent = self._make_agent(tmp_path)
-        result = agent.parse_acquirer_output("   \n\t  ")
-        assert result == {}
-
-    def test_parse_none_returns_empty(self, tmp_path: Path) -> None:
-        agent = self._make_agent(tmp_path)
-        result = agent.parse_acquirer_output("")  # type: ignore[arg-type]
-        assert result == {}
+        result = BaseAgentRunner._parse_agent_output(raw)
+        assert len(result) == 1
+        assert result[0]["summary"] == "Analysis complete"
 
     def test_output_model_defaults(self) -> None:
         """AcquirerIntelligenceOutput has safe defaults for all fields."""

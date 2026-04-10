@@ -69,7 +69,7 @@ class IntegrationPlaybookRenderer(SectionRenderer):
         if risk_factors:
             parts.append("<h3>Integration Risk Factors</h3>")
             parts.append(
-                "<table class='customer-table sortable'><thead><tr>"
+                "<table class='subject-table sortable'><thead><tr>"
                 "<th scope='col'>Risk Factor</th>"
                 "<th scope='col'>Impact</th>"
                 "<th scope='col'>ARR at Risk</th>"

@@ -124,10 +124,10 @@ def _base_name(path: str) -> str:
     return cleaned
 
 
-def _customer_prefix(path: str) -> str:
-    """Extract the customer directory prefix from a path.
+def _subject_prefix(path: str) -> str:
+    """Extract the subject directory prefix from a path.
 
-    For ``GroupA/CustomerX/file.pdf`` returns ``GroupA/CustomerX``.
+    For ``GroupA/SubjectX/file.pdf`` returns ``GroupA/SubjectX``.
     For ``file.pdf`` returns ``""`` (root-level file).
     """
     parts = path.replace("\\", "/").split("/")
@@ -141,14 +141,14 @@ class VersionGroup:
     """A group of related files ordered by precedence (most authoritative first)."""
 
     base_name: str
-    customer_prefix: str
+    subject_prefix: str
     files: list[FileEntry] = field(default_factory=list)
 
 
 class VersionChainBuilder:
     """Detects version chains among files and marks superseded ones.
 
-    Groups files by normalized base name within each customer directory,
+    Groups files by normalized base name within each subject directory,
     orders by version rank → folder tier → mtime, and marks all but the
     first (most authoritative) as superseded.
     """
@@ -174,10 +174,10 @@ class VersionChainBuilder:
                 entry.version_indicator = indicator
                 entry.version_rank = rank
 
-        # Group by (customer_prefix, base_name)
+        # Group by (subject_prefix, base_name)
         groups_map: dict[tuple[str, str], list[FileEntry]] = {}
         for entry in entries:
-            prefix = _customer_prefix(entry.path)
+            prefix = _subject_prefix(entry.path)
             base = _base_name(entry.path)
             key = (prefix, base)
             groups_map.setdefault(key, []).append(entry)
@@ -205,6 +205,6 @@ class VersionChainBuilder:
                     older.is_latest_version = False
                     older.superseded_by = latest.path
 
-            result.append(VersionGroup(base_name=base, customer_prefix=prefix, files=sorted_files))
+            result.append(VersionGroup(base_name=base, subject_prefix=prefix, files=sorted_files))
 
         return result

@@ -77,10 +77,10 @@ FRESH_FILES: list[str] = [
     f"{INVENTORY_DIR}/tree.txt",
     f"{INVENTORY_DIR}/files.txt",
     f"{INVENTORY_DIR}/file_types.txt",
-    f"{INVENTORY_DIR}/customers.csv",
+    f"{INVENTORY_DIR}/subjects.csv",
     f"{INVENTORY_DIR}/counts.json",
     f"{INVENTORY_DIR}/reference_files.json",
-    f"{INVENTORY_DIR}/customer_mentions.json",
+    f"{INVENTORY_DIR}/subject_mentions.json",
     f"{INVENTORY_DIR}/entity_matches.json",
 ]
 

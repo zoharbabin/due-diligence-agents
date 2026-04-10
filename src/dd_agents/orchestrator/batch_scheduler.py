@@ -1,8 +1,8 @@
-"""Batch scheduling with customer complexity scoring (Issue #148).
+"""Batch scheduling with subject complexity scoring (Issue #148).
 
 Provides smart batch scheduling that:
-1. Scores customer complexity based on file count and total document size
-2. Sorts customers simple-first for fast wins
+1. Scores subject complexity based on file count and total document size
+2. Sorts subjects simple-first for fast wins
 3. Respects batch size and token limits
 4. Returns ordered batches ready for parallel agent execution
 """
@@ -25,28 +25,28 @@ _SIZE_UNIT: float = 100_000.0  # 100KB
 
 
 # ---------------------------------------------------------------------------
-# Customer complexity model
+# Subject complexity model
 # ---------------------------------------------------------------------------
 
 
-class CustomerComplexity(BaseModel):
-    """Complexity assessment for a single customer."""
+class SubjectComplexity(BaseModel):
+    """Complexity assessment for a single subject."""
 
-    customer_safe_name: str = Field(description="Normalized customer identifier")
-    file_count: int = Field(default=0, description="Number of files in customer data room folder")
-    total_bytes: int = Field(default=0, description="Total byte size of all customer documents")
+    subject_safe_name: str = Field(description="Normalized subject identifier")
+    file_count: int = Field(default=0, description="Number of files in subject data room folder")
+    total_bytes: int = Field(default=0, description="Total byte size of all subject documents")
     score: float = Field(default=0.0, description="Composite complexity score")
     tier: str = Field(default="simple", description="Tier: simple, medium, complex")
-    estimated_tokens: int = Field(default=0, description="Estimated token count for this customer's documents")
+    estimated_tokens: int = Field(default=0, description="Estimated token count for this subject's documents")
 
 
-def score_customer_complexity(
-    customer_safe_name: str,
+def score_subject_complexity(
+    subject_safe_name: str,
     *,
     file_count: int = 0,
     total_bytes: int = 0,
-) -> CustomerComplexity:
-    """Score a customer's complexity based on their document profile.
+) -> SubjectComplexity:
+    """Score a subject's complexity based on their document profile.
 
     Score formula: (file_count * FILE_WEIGHT) + (total_bytes / SIZE_UNIT * SIZE_WEIGHT)
 
@@ -67,8 +67,8 @@ def score_customer_complexity(
     # Rough token estimate: ~4 chars per token
     estimated_tokens = total_bytes // 4
 
-    return CustomerComplexity(
-        customer_safe_name=customer_safe_name,
+    return SubjectComplexity(
+        subject_safe_name=subject_safe_name,
         file_count=file_count,
         total_bytes=total_bytes,
         score=score,
@@ -83,12 +83,12 @@ def score_customer_complexity(
 
 
 class BatchScheduler:
-    """Schedule customers into ordered batches for agent execution.
+    """Schedule subjects into ordered batches for agent execution.
 
     Parameters
     ----------
     max_batch_size:
-        Maximum number of customers per batch.
+        Maximum number of subjects per batch.
     max_batch_tokens:
         Optional maximum estimated tokens per batch.  When set, batches
         are split when the cumulative token estimate exceeds this value.
@@ -104,28 +104,28 @@ class BatchScheduler:
 
     def schedule(
         self,
-        complexities: list[CustomerComplexity],
-    ) -> list[list[CustomerComplexity]]:
-        """Partition customers into ordered batches.
+        complexities: list[SubjectComplexity],
+    ) -> list[list[SubjectComplexity]]:
+        """Partition subjects into ordered batches.
 
-        Customers are sorted by complexity score ascending (simple first)
+        Subjects are sorted by complexity score ascending (simple first)
         for fast wins, then packed into batches respecting size and token limits.
         """
         if not complexities:
             return []
 
-        sorted_customers = sorted(complexities, key=lambda c: c.score)
+        sorted_subjects = sorted(complexities, key=lambda c: c.score)
 
-        batches: list[list[CustomerComplexity]] = []
-        current_batch: list[CustomerComplexity] = []
+        batches: list[list[SubjectComplexity]] = []
+        current_batch: list[SubjectComplexity] = []
         current_tokens = 0
 
-        for customer in sorted_customers:
-            # Check if adding this customer would exceed limits
+        for subject in sorted_subjects:
+            # Check if adding this subject would exceed limits
             would_exceed_size = len(current_batch) >= self.max_batch_size
             would_exceed_tokens = (
                 self.max_batch_tokens is not None
-                and current_tokens + customer.estimated_tokens > self.max_batch_tokens
+                and current_tokens + subject.estimated_tokens > self.max_batch_tokens
                 and len(current_batch) > 0
             )
 
@@ -134,8 +134,8 @@ class BatchScheduler:
                 current_batch = []
                 current_tokens = 0
 
-            current_batch.append(customer)
-            current_tokens += customer.estimated_tokens
+            current_batch.append(subject)
+            current_tokens += subject.estimated_tokens
 
         if current_batch:
             batches.append(current_batch)
@@ -143,6 +143,6 @@ class BatchScheduler:
         return batches
 
     @staticmethod
-    def batch_names(batch: list[CustomerComplexity]) -> list[str]:
-        """Extract customer_safe_name list from a batch."""
-        return [c.customer_safe_name for c in batch]
+    def batch_names(batch: list[SubjectComplexity]) -> list[str]:
+        """Extract subject_safe_name list from a batch."""
+        return [c.subject_safe_name for c in batch]

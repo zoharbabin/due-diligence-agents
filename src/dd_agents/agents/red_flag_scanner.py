@@ -166,7 +166,7 @@ class RedFlagScannerAgent(BaseAgentRunner):
         """Build a targeted prompt for the Red Flag Scanner.
 
         Unlike specialist agents, the Red Flag Scanner does not receive
-        customer batches.  It scans the entire data room for key documents.
+        subject batches.  It scans the entire data room for key documents.
         """
         project_dir = str(self.project_dir)
         text_dir = f"{project_dir}/_dd/forensic-dd/index/text"

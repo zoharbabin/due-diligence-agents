@@ -32,7 +32,7 @@ from dd_agents.entity_resolution.matcher import (
     _pass_5_parent_child,
     _pass_6_manual_review,
 )
-from dd_agents.entity_resolution.safe_name import customer_safe_name, preprocess_name
+from dd_agents.entity_resolution.safe_name import preprocess_name, subject_safe_name
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -44,7 +44,7 @@ if TYPE_CHECKING:
 
 @pytest.fixture()
 def target_names() -> dict[str, str]:
-    """Preprocessed -> original target name mapping (customers.csv)."""
+    """Preprocessed -> original target name mapping (subjects.csv)."""
     raw = [
         "Apex Digital",
         "Global Analytics Group",
@@ -59,8 +59,8 @@ def target_names() -> dict[str, str]:
 
 
 @pytest.fixture()
-def customers_csv() -> list[dict[str, Any]]:
-    """Minimal customers.csv rows."""
+def subjects_csv() -> list[dict[str, Any]]:
+    """Minimal subjects.csv rows."""
     return [
         {"customer_name": "Apex Digital"},
         {"customer_name": "Global Analytics Group"},
@@ -92,12 +92,12 @@ def entity_aliases() -> dict[str, Any]:
 @pytest.fixture()
 def resolver(
     tmp_path: Path,
-    customers_csv: list[dict[str, Any]],
+    subjects_csv: list[dict[str, Any]],
     entity_aliases: dict[str, Any],
 ) -> EntityResolver:
     """Fresh EntityResolver instance with an empty cache."""
     return EntityResolver(
-        customers_csv=customers_csv,
+        subjects_csv=subjects_csv,
         entity_aliases=entity_aliases,
         cache_path=tmp_path / "entity_resolution_cache.json",
         run_id="test_run_001",
@@ -137,26 +137,26 @@ class TestPreprocessName:
 
 
 # =====================================================================
-# customer_safe_name (via safe_name module)
+# subject_safe_name (via safe_name module)
 # =====================================================================
 
 
 class TestCustomerSafeName:
     def test_basic(self) -> None:
-        assert customer_safe_name("Global Analytics Group") == "global_analytics_group"
+        assert subject_safe_name("Global Analytics Group") == "global_analytics_group"
 
     def test_strip_suffix(self) -> None:
-        assert customer_safe_name("Alpine Systems, Inc.") == "alpine_systems"
+        assert subject_safe_name("Alpine Systems, Inc.") == "alpine_systems"
 
     def test_short_name(self) -> None:
-        assert customer_safe_name("GAG") == "gag"
+        assert subject_safe_name("GAG") == "gag"
 
     def test_ampersand(self) -> None:
-        assert customer_safe_name("R&D Global") == "r_d_global"
+        assert subject_safe_name("R&D Global") == "r_d_global"
 
     def test_empty_raises(self) -> None:
         with pytest.raises(ValueError):
-            customer_safe_name("")
+            subject_safe_name("")
 
 
 # =====================================================================
@@ -634,20 +634,20 @@ class TestEntityResolver:
     def test_cache_hit_on_second_resolve(
         self,
         tmp_path: Path,
-        customers_csv: list[dict[str, Any]],
+        subjects_csv: list[dict[str, Any]],
         entity_aliases: dict[str, Any],
     ) -> None:
         """After resolving once, a second resolver should hit the cache."""
         cache_path = tmp_path / "cache.json"
 
         # First resolver: resolves and populates cache
-        r1 = EntityResolver(customers_csv, entity_aliases, cache_path, "run_001")
+        r1 = EntityResolver(subjects_csv, entity_aliases, cache_path, "run_001")
         r1.cache.compute_invalidation(entity_aliases, r1.config_hash)
         r1.resolve_name("Apex Digital Inc.")
         r1.cache.save("run_001")
 
         # Second resolver: should hit cache
-        r2 = EntityResolver(customers_csv, entity_aliases, cache_path, "run_002")
+        r2 = EntityResolver(subjects_csv, entity_aliases, cache_path, "run_002")
         r2.cache.compute_invalidation(entity_aliases, r2.config_hash)
         result = r2.resolve_name("Apex Digital Inc.")
         assert result == "Apex Digital"
@@ -663,11 +663,11 @@ class TestEntityResolver:
     def test_fuzzy_match_integration(
         self,
         tmp_path: Path,
-        customers_csv: list[dict[str, Any]],
+        subjects_csv: list[dict[str, Any]],
     ) -> None:
         """A close variant should fuzzy-match via the full resolver."""
         resolver = EntityResolver(
-            customers_csv=customers_csv,
+            subjects_csv=subjects_csv,
             entity_aliases={},  # no aliases
             cache_path=tmp_path / "cache.json",
             run_id="run_001",
@@ -690,24 +690,24 @@ class TestEntityResolver:
             "parent_child": {"Phantom Parent": ["Alpha Child"]},
         }
         resolver = EntityResolver(
-            customers_csv=customers,
+            subjects_csv=customers,
             entity_aliases=aliases,
             cache_path=tmp_path / "cache.json",
             run_id="run_001",
         )
         result = resolver.resolve_name("Alpha Child")
-        # "Phantom Parent" is NOT in customers_csv so must not be returned
+        # "Phantom Parent" is NOT in subjects_csv so must not be returned
         assert result is None
 
     def test_resolve_all_calls_cache_lifecycle(
         self,
         tmp_path: Path,
-        customers_csv: list[dict[str, Any]],
+        subjects_csv: list[dict[str, Any]],
         entity_aliases: dict[str, Any],
     ) -> None:
         """resolve_all must call compute_invalidation before and save after."""
         cache_path = tmp_path / "cache.json"
-        resolver = EntityResolver(customers_csv, entity_aliases, cache_path, "run_001")
+        resolver = EntityResolver(subjects_csv, entity_aliases, cache_path, "run_001")
         results = resolver.resolve_all(["Apex Digital Inc."])
         assert results["Apex Digital Inc."] == "Apex Digital"
         # Cache file should have been written to disk by save()

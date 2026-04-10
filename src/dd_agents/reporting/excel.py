@@ -40,7 +40,7 @@ def _recalibrate_merged(merged: dict[str, dict[str, Any]]) -> dict[str, dict[str
     values.  Findings are shallow-copied; the original dicts are not mutated.
 
     Handles both plain dicts and Pydantic model instances (e.g.
-    ``MergedCustomerOutput``) by normalizing via ``model_dump()`` first.
+    ``MergedSubjectOutput``) by normalizing via ``model_dump()`` first.
     """
     out: dict[str, dict[str, Any]] = {}
     for csn, data in merged.items():
@@ -72,7 +72,7 @@ def compute_overall_risk(
     findings: list[dict[str, Any]],
     gaps: list[dict[str, Any]],
 ) -> str:
-    """Compute overall risk rating for a customer.
+    """Compute overall risk rating for a subject.
 
     Uses softened thresholds (Issue #113):
     - Critical: P0 count >= 3
@@ -130,7 +130,7 @@ class ExcelReportGenerator:
         Parameters
         ----------
         merged_findings:
-            ``{customer_safe_name: MergedCustomerOutput | dict}``
+            ``{subject_safe_name: MergedSubjectOutput | dict}``
         report_schema:
             Parsed ``ReportSchema`` model from ``report_schema.json``.
         output_path:
@@ -305,7 +305,7 @@ class ExcelReportGenerator:
         run_metadata: dict[str, Any],
     ) -> list[dict[str, Any]]:
         """Prepare data rows for a given sheet name."""
-        # Normalise MergedCustomerOutput instances to dicts
+        # Normalise MergedSubjectOutput instances to dicts
         normalised: dict[str, dict[str, Any]] = {}
         for csn, mco in merged_findings.items():
             if hasattr(mco, "model_dump"):
@@ -363,7 +363,7 @@ class ExcelReportGenerator:
                     sev_counts[sev] += 1
 
             row = {
-                "customer": data.get("customer", _csn),
+                "subject": data.get("subject", _csn),
                 "overall_risk_rating": compute_overall_risk(findings, gaps),
                 "p0_count": sev_counts["P0"],
                 "p1_count": sev_counts["P1"],
@@ -417,10 +417,10 @@ class ExcelReportGenerator:
     ) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
         for _csn, data in sorted(merged.items()):
-            customer = data.get("customer", _csn)
+            entity_name = data.get("subject", _csn)
             for cr in data.get("cross_references", []):
                 cr_dict = cr if isinstance(cr, dict) else dict(cr)
-                row: dict[str, Any] = {"customer": customer}
+                row: dict[str, Any] = {"subject": entity_name}
                 row["data_type"] = cr_dict.get("data_type", "")
                 row["data_point"] = cr_dict.get("data_point", "")
                 row["contract_value"] = cr_dict.get("contract_value", "")
@@ -536,7 +536,7 @@ class ExcelReportGenerator:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _finding_to_row(finding: dict[str, Any], customer_data: dict[str, Any]) -> dict[str, Any]:
+    def _finding_to_row(finding: dict[str, Any], subject_data: dict[str, Any]) -> dict[str, Any]:
         """Flatten a finding dict into a row dict."""
         cit = (finding.get("citations") or [{}])[0]
         if isinstance(cit, dict):
@@ -549,7 +549,7 @@ class ExcelReportGenerator:
             exact_quote = getattr(cit, "exact_quote", "")
 
         return {
-            "analysis_unit": finding.get("analysis_unit", customer_data.get("customer", "")),
+            "analysis_unit": finding.get("analysis_unit", subject_data.get("subject", "")),
             "severity": finding.get("severity", ""),
             "agent": finding.get("agent", ""),
             "category": finding.get("category", ""),

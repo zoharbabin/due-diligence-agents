@@ -1,6 +1,6 @@
 """6-pass cascading entity resolver.
 
-Matches customer names across contracts, databases, directories, and
+Matches subject names across contracts, databases, directories, and
 financial data.  Implements a deterministic 6-pass cascade with
 short-name guards, an exclusion list, per-entry cache invalidation,
 and comprehensive match logging.
@@ -243,8 +243,8 @@ class EntityResolver:
 
     Parameters
     ----------
-    customers_csv:
-        List of dicts with at least a ``"customer_name"`` key.
+    subjects_csv:
+        List of dicts with at least a ``"subject_name"`` key.
     entity_aliases:
         The ``entity_aliases`` section from ``deal-config.json``.
     cache_path:
@@ -255,19 +255,23 @@ class EntityResolver:
 
     def __init__(
         self,
-        customers_csv: list[dict[str, Any]],
-        entity_aliases: dict[str, Any],
-        cache_path: Path,
-        run_id: str,
+        subjects_csv: list[dict[str, Any]] | None = None,
+        entity_aliases: dict[str, Any] | None = None,
+        cache_path: Path | None = None,
+        run_id: str = "",
     ) -> None:
-        self.customers = customers_csv
+        if cache_path is None:
+            raise TypeError("cache_path is required")
+        _csv = subjects_csv or []
+        _aliases = entity_aliases or {}
+        self.subjects = _csv
         self.run_id = run_id
 
         # Parse alias config (with safe defaults if absent)
-        self.canonical_to_variants: dict[str, list[str]] = entity_aliases.get("canonical_to_variants", {})
-        self.short_name_guard: list[str] = entity_aliases.get("short_name_guard", [])
-        self.exclusions: list[str] = entity_aliases.get("exclusions", [])
-        self.parent_child: dict[str, list[str]] = entity_aliases.get("parent_child", {})
+        self.canonical_to_variants: dict[str, list[str]] = _aliases.get("canonical_to_variants", {})
+        self.short_name_guard: list[str] = _aliases.get("short_name_guard", [])
+        self.exclusions: list[str] = _aliases.get("exclusions", [])
+        self.parent_child: dict[str, list[str]] = _aliases.get("parent_child", {})
 
         # Pre-compute the preprocessed guard list once (avoids re-computing per resolve call)
         self._preprocessed_guards: list[str] = [preprocess_name(n) for n in self.short_name_guard]
@@ -276,16 +280,16 @@ class EntityResolver:
         # Skip entries that preprocess to empty string (e.g. "Inc.") to avoid
         # false-positive exact matches and dictionary key collisions.
         self.target_names: dict[str, str] = {}
-        for cust in customers_csv:
-            original = cust["customer_name"]
+        for entry in _csv:
+            original = entry.get("subject_name", entry.get("customer_name", ""))
             preprocessed = preprocess_name(original)
             if preprocessed:
                 self.target_names[preprocessed] = original
 
         # Load cache
         self.cache = EntityResolutionCache(cache_path)
-        self._entity_aliases = entity_aliases
-        self.config_hash = self._compute_config_hash(entity_aliases)
+        self._entity_aliases = _aliases
+        self.config_hash = self._compute_config_hash(_aliases)
 
         # Match logger
         self._logger = MatchLogger()
@@ -321,7 +325,7 @@ class EntityResolver:
         Returns
         -------
         str | None
-            Canonical customer name from ``customers.csv``, or ``None`` if
+            Canonical subject name from ``subjects.csv``, or ``None`` if
             unmatched.
         """
         preprocessed = preprocess_name(source_name)

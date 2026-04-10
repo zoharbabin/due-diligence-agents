@@ -37,7 +37,7 @@ DEFAULT_STALL_THRESHOLD_S: int = 10 * 60  # 10 minutes with no output
 
 # Adaptive timeout parameters (Issue #42)
 BASE_TIMEOUT_S: int = 1800  # 30 minutes base
-PER_CUSTOMER_TIMEOUT_S: int = 120  # 2 minutes per customer
+PER_SUBJECT_TIMEOUT_S: int = 120  # 2 minutes per subject
 MAX_TIMEOUT_S: int = 60 * 60  # 60 minutes hard cap
 WARN_NO_OUTPUT_S: int = 5 * 60  # 5 minutes -- log WARNING
 STALL_NO_OUTPUT_S: int = 10 * 60  # 10 minutes -- consider stalled
@@ -92,7 +92,7 @@ class AgentTeam:
         self,
         agent_configs: dict[str, Any] | None = None,
         *,
-        num_customers: int = 0,
+        num_subjects: int = 0,
         agents: list[str] | None = None,
     ) -> dict[str, Any]:
         """Spawn specialist agents in parallel.
@@ -101,9 +101,9 @@ class AgentTeam:
         ----------
         agent_configs:
             Optional per-agent configuration overrides.
-        num_customers:
-            Number of customers to process.  When > 0, an adaptive timeout
-            is calculated (base + per-customer).  Otherwise falls back to
+        num_subjects:
+            Number of subjects to process.  When > 0, an adaptive timeout
+            is calculated (base + per-subject).  Otherwise falls back to
             the instance's ``agent_timeout_s``.
         agents:
             Optional subset of agent names to spawn.  When *None* (default),
@@ -139,18 +139,18 @@ class AgentTeam:
         effective_waves = max(1, -(-max_batches // max(1, batch_concurrency)))
 
         timeout = (
-            self.calculate_adaptive_timeout(num_customers, num_batches=effective_waves)
-            if num_customers > 0
+            self.calculate_adaptive_timeout(num_subjects, num_batches=effective_waves)
+            if num_subjects > 0
             else self.agent_timeout_s
         )
         logger.info(
-            "Specialist timeout: %ds (customers=%d, batches=%d, concurrency=%d, waves=%d, adaptive=%s)",
+            "Specialist timeout: %ds (subjects=%d, batches=%d, concurrency=%d, waves=%d, adaptive=%s)",
             timeout,
-            num_customers,
+            num_subjects,
             max_batches,
             batch_concurrency,
             effective_waves,
-            num_customers > 0,
+            num_subjects > 0,
         )
 
         for agent_name in agent_names:
@@ -177,7 +177,7 @@ class AgentTeam:
                     agent_names,
                     stop_event=stop_monitor,
                     agent_tasks=tasks,
-                    total_customers=len(self.state.customer_safe_names),
+                    total_subjects=len(self.state.subject_safe_names),
                 ),
                 name="agent-output-monitor",
             )
@@ -218,7 +218,7 @@ class AgentTeam:
         prompts:
             Optional list of pre-built prompts (one per batch).  Takes
             precedence over *prompt*.  Used by respawn to pass multiple
-            batched prompts for missing customers.
+            batched prompts for missing subjects.
         """
         from dd_agents.agents.prompt_builder import AgentType
         from dd_agents.agents.specialists import SPECIALIST_CLASSES
@@ -261,7 +261,7 @@ class AgentTeam:
             batch_prompts = list(pre_built) if pre_built else [None]
 
         # Concurrency limit for parallel batch execution.  Each batch
-        # processes different customers writing to different files, so
+        # processes different subjects writing to different files, so
         # parallelism is safe.  Default 6 (configurable via deal-config).
         concurrency = getattr(
             getattr(getattr(self.state, "deal_config", None), "execution", None),
@@ -290,7 +290,7 @@ class AgentTeam:
                 runner.max_budget_usd = runner_kwargs["max_budget_usd"]
 
             agent_state: dict[str, Any] = {
-                "customers": self.state.customer_safe_names,
+                "subjects": self.state.subject_safe_names,
                 "deal_config": self.state.deal_config,
                 "prompt": batch_prompt,
             }
@@ -578,31 +578,31 @@ class AgentTeam:
 
     @staticmethod
     def calculate_adaptive_timeout(
-        num_customers: int,
+        num_subjects: int,
         *,
         num_batches: int = 1,
         base_timeout_s: int = BASE_TIMEOUT_S,
-        per_customer_s: int = PER_CUSTOMER_TIMEOUT_S,
+        per_subject_s: int = PER_SUBJECT_TIMEOUT_S,
         max_timeout_s: int = MAX_TIMEOUT_S,
     ) -> int:
-        """Calculate an adaptive timeout based on customers and batch count.
+        """Calculate an adaptive timeout based on subjects and batch count.
 
         When agents run multiple batches sequentially (e.g. 4 batches of 20
-        customers each), each batch needs its own time budget.  The timeout
+        subjects each), each batch needs its own time budget.  The timeout
         is calculated per-batch and then multiplied by the batch count,
         capped at ``max_timeout_s`` (default 60 min).
 
         Parameters
         ----------
-        num_customers:
-            Total number of customers the agent must process.
+        num_subjects:
+            Total number of subjects the agent must process.
         num_batches:
             Number of sequential batches (default 1).  Each batch gets its
-            own share of per-customer time.
+            own share of per-subject time.
         base_timeout_s:
             Fixed base timeout in seconds (default 1800 = 30 min).
-        per_customer_s:
-            Additional seconds per customer (default 120 = 2 min).
+        per_subject_s:
+            Additional seconds per subject (default 120 = 2 min).
         max_timeout_s:
             Hard cap on calculated timeout (default 3600 = 60 min).
 
@@ -612,8 +612,8 @@ class AgentTeam:
             Calculated timeout in seconds, capped at *max_timeout_s*.
         """
         effective_batches = max(1, num_batches)
-        # Each batch gets the base timeout + per-customer time for its share.
-        per_batch = base_timeout_s + (num_customers * per_customer_s) // effective_batches
+        # Each batch gets the base timeout + per-subject time for its share.
+        per_batch = base_timeout_s + (num_subjects * per_subject_s) // effective_batches
         raw = per_batch * effective_batches
         return min(raw, max_timeout_s)
 
@@ -646,7 +646,7 @@ class AgentTeam:
         *,
         since: float | None = None,
     ) -> tuple[int, int, str]:
-        """Count customer JSON files for *agent_name*.
+        """Count subject JSON files for *agent_name*.
 
         Returns ``(total_count, modified_count, latest_filename)``.
 
@@ -654,7 +654,7 @@ class AgentTeam:
         (i.e. files written or overwritten since the monitor started).
         When *since* is ``None``, *modified_count* equals *total_count*.
 
-        Excludes non-customer files like ``coverage_manifest.json`` and
+        Excludes non-subject files like ``coverage_manifest.json`` and
         ``_temp_*`` scratch files.
         """
         agent_dir = output_dir / agent_name
@@ -696,12 +696,12 @@ class AgentTeam:
         cancel_threshold_s: float | None = None,
         stop_event: asyncio.Event | None = None,
         agent_tasks: dict[str, asyncio.Task[dict[str, Any]]] | None = None,
-        total_customers: int = 0,
+        total_subjects: int = 0,
     ) -> None:
         """Continuously monitor *output_dir* for new files with live progress.
 
         Runs until *stop_event* is set (or cancelled).  At each interval it
-        counts customer output files per agent and logs a progress summary.
+        counts subject output files per agent and logs a progress summary.
 
         - After ``warn_threshold_s`` seconds with no new files: log WARNING.
         - After ``stall_threshold_s`` seconds with no new files: log ERROR.
@@ -729,8 +729,8 @@ class AgentTeam:
         agent_tasks:
             Mapping of agent name to asyncio.Task — used to cancel stalled
             tasks after ``cancel_threshold_s`` elapses.
-        total_customers:
-            Total number of customers being processed.
+        total_subjects:
+            Total number of subjects being processed.
         """
         # Use a shorter interval for progress display (15s) while keeping
         # the stall detection thresholds unchanged.
@@ -750,9 +750,9 @@ class AgentTeam:
         # after this timestamp are counted as actively written this run.
         monitor_epoch = time.time()
 
-        # Use provided total_customers; fall back to state attribute.
-        if total_customers <= 0:
-            total_customers = len(getattr(self.state, "customer_safe_names", []))
+        # Use provided total_subjects; fall back to state attribute.
+        if total_subjects <= 0:
+            total_subjects = len(getattr(self.state, "subject_safe_names", []))
 
         while not evt.is_set():
             try:
@@ -780,8 +780,8 @@ class AgentTeam:
                     else:
                         parts.append(f"{name}: starting up")
                 else:
-                    pct = f" ({modified * 100 // total_customers}%)" if total_customers > 0 else ""
-                    parts.append(f"{name}: {modified}/{total_customers} done{pct} | latest: {latest}")
+                    pct = f" ({modified * 100 // total_subjects}%)" if total_subjects > 0 else ""
+                    parts.append(f"{name}: {modified}/{total_subjects} done{pct} | latest: {latest}")
 
             progress_line = " | ".join(parts)
             logger.info(
@@ -805,10 +805,10 @@ class AgentTeam:
             elapsed_since_last = time.monotonic() - last_new_file_time
 
             # Per-agent completion tracking: mark agents as completed when
-            # they've written files for all (or nearly all) customers.
+            # they've written files for all (or nearly all) subjects.
             # This prevents the global stall detector from cancelling
             # agents that finished early while others are still working.
-            if total_customers > 0:
+            if total_subjects > 0:
                 for name in agent_names:
                     if name in self._completed_agents:
                         continue
@@ -817,14 +817,14 @@ class AgentTeam:
                         name,
                         since=monitor_epoch,
                     )
-                    # Mark done when agent has covered all customers (±1 for
+                    # Mark done when agent has covered all subjects (±1 for
                     # rounding / off-by-one in agent-side counting).
-                    if total_files >= total_customers:
+                    if total_files >= total_subjects:
                         logger.info(
                             "Agent %s appears complete: %d/%d files written",
                             name,
                             total_files,
-                            total_customers,
+                            total_subjects,
                         )
                         self.mark_agent_completed(name)
 

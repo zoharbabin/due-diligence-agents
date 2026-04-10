@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from dd_agents.models.enums import CustomerClassificationStatus
-from dd_agents.models.persistence import CustomerClassEntry
+from dd_agents.models.enums import SubjectClassificationStatus
+from dd_agents.models.persistence import SubjectClassEntry
 from dd_agents.persistence.incremental import IncrementalClassifier
 from dd_agents.persistence.run_manager import RunManager
 from dd_agents.persistence.tiers import VERSIONED_SUBDIRS, TierManager
@@ -292,85 +292,85 @@ class TestRunManager:
 
 
 class TestIncrementalClassifier:
-    """Tests for customer classification in incremental mode."""
+    """Tests for subject classification in incremental mode."""
 
-    def test_new_customer(self) -> None:
-        """Customers in current but not prior should be classified as NEW."""
+    def test_new_subject(self) -> None:
+        """Subjects in current but not prior should be classified as NEW."""
         classifier = IncrementalClassifier()
-        result = classifier.classify_customers(
+        result = classifier.classify_subjects(
             current_files={"acme": ["hash1", "hash2"]},
             prior_files={},
             staleness_threshold=3,
         )
-        assert len(result.customers) == 1
-        assert result.customers[0].classification == CustomerClassificationStatus.NEW
+        assert len(result.subjects) == 1
+        assert result.subjects[0].classification == SubjectClassificationStatus.NEW
         assert result.classification_summary.new == 1
 
-    def test_deleted_customer(self) -> None:
-        """Customers in prior but not current should be classified as DELETED."""
+    def test_deleted_subject(self) -> None:
+        """Subjects in prior but not current should be classified as DELETED."""
         classifier = IncrementalClassifier()
-        result = classifier.classify_customers(
+        result = classifier.classify_subjects(
             current_files={},
             prior_files={"acme": ["hash1"]},
             staleness_threshold=3,
         )
-        assert len(result.customers) == 1
-        assert result.customers[0].classification == CustomerClassificationStatus.DELETED
+        assert len(result.subjects) == 1
+        assert result.subjects[0].classification == SubjectClassificationStatus.DELETED
         assert result.classification_summary.deleted == 1
 
-    def test_changed_customer(self) -> None:
-        """Customers with different checksums should be classified as CHANGED."""
+    def test_changed_subject(self) -> None:
+        """Subjects with different checksums should be classified as CHANGED."""
         classifier = IncrementalClassifier()
-        result = classifier.classify_customers(
+        result = classifier.classify_subjects(
             current_files={"acme": ["hash1", "hash3"]},
             prior_files={"acme": ["hash1", "hash2"]},
             staleness_threshold=3,
         )
-        assert len(result.customers) == 1
-        assert result.customers[0].classification == CustomerClassificationStatus.CHANGED
+        assert len(result.subjects) == 1
+        assert result.subjects[0].classification == SubjectClassificationStatus.CHANGED
         assert result.classification_summary.changed == 1
 
-    def test_unchanged_customer(self) -> None:
-        """Customers with identical checksums and below threshold should be UNCHANGED."""
+    def test_unchanged_subject(self) -> None:
+        """Subjects with identical checksums and below threshold should be UNCHANGED."""
         classifier = IncrementalClassifier()
-        result = classifier.classify_customers(
+        result = classifier.classify_subjects(
             current_files={"acme": ["hash1", "hash2"]},
             prior_files={"acme": ["hash1", "hash2"]},
             staleness_threshold=3,
         )
-        assert len(result.customers) == 1
-        assert result.customers[0].classification == CustomerClassificationStatus.UNCHANGED
-        assert result.customers[0].consecutive_unchanged_runs == 1
+        assert len(result.subjects) == 1
+        assert result.subjects[0].classification == SubjectClassificationStatus.UNCHANGED
+        assert result.subjects[0].consecutive_unchanged_runs == 1
         assert result.classification_summary.unchanged == 1
 
-    def test_stale_refresh_customer(self) -> None:
-        """Customers unchanged for >= threshold runs should be STALE_REFRESH."""
+    def test_stale_refresh_subject(self) -> None:
+        """Subjects unchanged for >= threshold runs should be STALE_REFRESH."""
         classifier = IncrementalClassifier()
 
-        prior_entry = CustomerClassEntry(
-            customer="acme",
-            customer_safe_name="acme",
-            classification=CustomerClassificationStatus.UNCHANGED,
+        prior_entry = SubjectClassEntry(
+            subject="acme",
+            subject_safe_name="acme",
+            classification=SubjectClassificationStatus.UNCHANGED,
             reason="",
             consecutive_unchanged_runs=2,
         )
 
-        result = classifier.classify_customers(
+        result = classifier.classify_subjects(
             current_files={"acme": ["hash1"]},
             prior_files={"acme": ["hash1"]},
             staleness_threshold=3,
             prior_classifications={"acme": prior_entry},
         )
 
-        assert len(result.customers) == 1
-        assert result.customers[0].classification == CustomerClassificationStatus.STALE_REFRESH
-        assert result.customers[0].consecutive_unchanged_runs == 3
+        assert len(result.subjects) == 1
+        assert result.subjects[0].classification == SubjectClassificationStatus.STALE_REFRESH
+        assert result.subjects[0].consecutive_unchanged_runs == 3
         assert result.classification_summary.stale_refresh == 1
 
     def test_mixed_classification(self) -> None:
-        """Classify a mix of customers correctly."""
+        """Classify a mix of subjects correctly."""
         classifier = IncrementalClassifier()
-        result = classifier.classify_customers(
+        result = classifier.classify_subjects(
             current_files={
                 "acme": ["h1"],
                 "globex": ["h2", "h3"],
@@ -389,7 +389,7 @@ class TestIncrementalClassifier:
         assert summary.changed == 1  # globex
         assert summary.new == 1  # new_corp
         assert summary.deleted == 1  # old_corp
-        assert len(result.customers) == 4
+        assert len(result.subjects) == 4
 
     def test_carry_forward_findings(self, tmp_path: Path) -> None:
         """carry_forward_findings should copy findings with _carried_forward metadata."""
@@ -402,7 +402,7 @@ class TestIncrementalClassifier:
         (legal_dir / "acme.json").write_text(
             json.dumps(
                 {
-                    "customer": "acme",
+                    "subject": "acme",
                     "findings": [{"id": "f1"}],
                 }
             )
@@ -424,7 +424,7 @@ class TestIncrementalClassifier:
         current.mkdir(parents=True)
 
         carried = classifier.carry_forward_findings(
-            unchanged_customers=["acme"],
+            unchanged_subjects=["acme"],
             prior_findings_dir=prior,
             current_findings_dir=current,
         )
@@ -451,7 +451,7 @@ class TestIncrementalClassifier:
         current.mkdir(parents=True)
 
         carried = classifier.carry_forward_findings(
-            unchanged_customers=["nonexistent"],
+            unchanged_subjects=["nonexistent"],
             prior_findings_dir=prior,
             current_findings_dir=current,
         )
@@ -460,7 +460,7 @@ class TestIncrementalClassifier:
     def test_classification_execution_mode(self) -> None:
         """Classification document should have execution_mode 'incremental'."""
         classifier = IncrementalClassifier()
-        result = classifier.classify_customers(
+        result = classifier.classify_subjects(
             current_files={"a": ["h1"]},
             prior_files={},
             staleness_threshold=3,
@@ -477,13 +477,13 @@ class TestIncrementalClassifier:
         classifier = IncrementalClassifier()
         # Common files: file_a.pdf, file_b.pdf.
         # file_c.pdf added, file_d.pdf removed.
-        result = classifier.classify_customers(
+        result = classifier.classify_subjects(
             current_files={"acme": ["file_a.pdf", "file_b.pdf", "file_c.pdf"]},
             prior_files={"acme": ["file_a.pdf", "file_b.pdf", "file_d.pdf"]},
             staleness_threshold=3,
         )
-        entry = result.customers[0]
-        assert entry.classification == CustomerClassificationStatus.CHANGED
+        entry = result.subjects[0]
+        assert entry.classification == SubjectClassificationStatus.CHANGED
         assert "file_c.pdf" in entry.files_added
         assert "file_d.pdf" in entry.files_removed
         # Common files (file_a, file_b) should appear as potentially modified.
@@ -496,13 +496,13 @@ class TestIncrementalClassifier:
         Regression (Issue #66): old code returned [] when len(current) != len(prior).
         """
         classifier = IncrementalClassifier()
-        result = classifier.classify_customers(
+        result = classifier.classify_subjects(
             current_files={"acme": ["file_a.pdf", "file_b.pdf", "file_c.pdf"]},
             prior_files={"acme": ["file_a.pdf", "file_b.pdf"]},
             staleness_threshold=3,
         )
-        entry = result.customers[0]
-        assert entry.classification == CustomerClassificationStatus.CHANGED
+        entry = result.subjects[0]
+        assert entry.classification == SubjectClassificationStatus.CHANGED
         assert "file_c.pdf" in entry.files_added
         # Common files still detected
         assert "file_a.pdf" in entry.files_modified

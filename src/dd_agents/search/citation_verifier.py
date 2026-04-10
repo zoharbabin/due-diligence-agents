@@ -9,7 +9,7 @@ Verification uses a **progressive search scope** (Issue #24):
 2. Adjacent pages: expand to ±1 page (catches cross-page quotes
    and off-by-one page citations).
 3. Full document: search the entire source file.
-4. Cross-file: search ALL files in the customer's text set
+4. Cross-file: search ALL files in the subject's text set
    (catches file misattributions from the LLM merge phase).
 
 This module runs locally — no API calls, no LLM usage.
@@ -29,7 +29,7 @@ from dd_agents.search.chunker import PAGE_MARKER_RE
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from dd_agents.models.search import SearchCitation, SearchCustomerResult
+    from dd_agents.models.search import SearchCitation, SearchSubjectResult
     from dd_agents.search.chunker import FileText
 
 logger = logging.getLogger(__name__)
@@ -149,10 +149,10 @@ class CitationVerifier:
 
     def verify_result(
         self,
-        result: SearchCustomerResult,
+        result: SearchSubjectResult,
         file_texts: list[FileText] | None = None,
-    ) -> SearchCustomerResult:
-        """Verify all citations in a customer result in-place.
+    ) -> SearchSubjectResult:
+        """Verify all citations in a subject result in-place.
 
         If *file_texts* is provided, uses those directly (avoids disk I/O).
         Otherwise loads from ``text_dir``.
@@ -165,7 +165,7 @@ class CitationVerifier:
             for ft in file_texts:
                 text_lookup[ft.file_path] = ft.text
         else:
-            text_lookup = self._load_customer_texts(result)
+            text_lookup = self._load_subject_texts(result)
 
         for col_result in result.columns.values():
             for citation in col_result.citations:
@@ -242,7 +242,7 @@ class CitationVerifier:
                 return
 
         # Scope 4: Cross-file search — the quote may be misattributed.
-        # Search ALL other files in the customer's text set.  Issue #24.
+        # Search ALL other files in the subject's text set.  Issue #24.
         best_score = 0.0
         best_file = ""
         for file_path, text in text_lookup.items():
@@ -299,7 +299,7 @@ class CitationVerifier:
             citation.quote_verified = False
             citation.quote_match_score = 0.0
 
-    def _load_customer_texts(self, result: SearchCustomerResult) -> dict[str, str]:
+    def _load_subject_texts(self, result: SearchSubjectResult) -> dict[str, str]:
         """Load extracted .md files for all cited file paths."""
         from dd_agents.extraction.pipeline import ExtractionPipeline
 
@@ -340,8 +340,8 @@ class CitationVerifier:
         return text_lookup
 
 
-def compute_verification_summary(result: SearchCustomerResult) -> dict[str, int]:
-    """Compute verification counts for a customer result.
+def compute_verification_summary(result: SearchSubjectResult) -> dict[str, int]:
+    """Compute verification counts for a subject result.
 
     Returns a dict with keys: ``verified``, ``failed``, ``unverifiable``.
     """

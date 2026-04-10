@@ -53,13 +53,13 @@ def _make_gap(
 
 
 def _make_merged_data(
-    customers: dict[str, dict[str, object]] | None = None,
+    subjects: dict[str, dict[str, object]] | None = None,
 ) -> dict[str, object]:
-    if customers is not None:
-        return customers  # type: ignore[return-value]
+    if subjects is not None:
+        return subjects  # type: ignore[return-value]
     return {
         "customer_a": {
-            "customer": "Customer A",
+            "subject": "Customer A",
             "findings": [
                 _make_finding(severity="P0", agent="legal", category="change_of_control"),
                 _make_finding(severity="P1", agent="finance", category="revenue_recognition"),
@@ -74,7 +74,7 @@ def _make_merged_data(
             ],
         },
         "customer_b": {
-            "customer": "Customer B",
+            "subject": "Customer B",
             "findings": [
                 _make_finding(severity="P1", agent="legal", category="ip_ownership"),
             ],
@@ -99,16 +99,16 @@ class TestReportComputedData:
         data = ReportComputedData()
         assert data.total_findings == 0
         assert data.total_gaps == 0
-        assert data.total_customers == 0
+        assert data.total_subjects == 0
         assert data.deal_risk_score == 0.0
         assert data.concentration_hhi == 0.0
 
     def test_model_serialization_roundtrip(self) -> None:
-        data = ReportComputedData(total_findings=10, total_customers=5)
+        data = ReportComputedData(total_findings=10, total_subjects=5)
         json_str = data.model_dump_json()
         restored = ReportComputedData.model_validate_json(json_str)
         assert restored.total_findings == 10
-        assert restored.total_customers == 5
+        assert restored.total_subjects == 5
 
 
 class TestReportDataComputer:
@@ -119,7 +119,7 @@ class TestReportDataComputer:
         result = computer.compute({})
         assert result.total_findings == 0
         assert result.total_gaps == 0
-        assert result.total_customers == 0
+        assert result.total_subjects == 0
         assert result.deal_risk_label == "Clean"
 
     def test_total_counts(self) -> None:
@@ -127,7 +127,7 @@ class TestReportDataComputer:
         result = computer.compute(_make_merged_data())
         assert result.total_findings == 5
         assert result.total_gaps == 2
-        assert result.total_customers == 2
+        assert result.total_subjects == 2
 
     def test_severity_breakdown(self) -> None:
         computer = ReportDataComputer()
@@ -153,7 +153,7 @@ class TestReportDataComputer:
 
     def test_deal_risk_clean_when_no_findings(self) -> None:
         computer = ReportDataComputer()
-        data = {"c": {"customer": "C", "findings": [], "gaps": []}}
+        data = {"c": {"subject": "C", "findings": [], "gaps": []}}
         result = computer.compute(data)
         assert result.deal_risk_label == "Clean"
 
@@ -161,7 +161,7 @@ class TestReportDataComputer:
         computer = ReportDataComputer()
         data = {
             "c": {
-                "customer": "C",
+                "subject": "C",
                 "findings": [
                     _make_finding(severity="P1"),
                     _make_finding(severity="P1"),
@@ -183,7 +183,7 @@ class TestReportDataComputer:
         computer = ReportDataComputer()
         result = computer.compute(_make_merged_data())
         # Customer A has P0 -> higher risk than Customer B with only P1
-        assert result.customer_risk_scores["customer_a"] > result.customer_risk_scores["customer_b"]
+        assert result.subject_risk_scores["customer_a"] > result.subject_risk_scores["customer_b"]
 
     def test_gap_breakdown_by_priority(self) -> None:
         computer = ReportDataComputer()
@@ -235,7 +235,7 @@ class TestReportDataComputer:
     def test_non_dict_data_skipped(self) -> None:
         computer = ReportDataComputer()
         result = computer.compute({"bad": "not a dict"})
-        assert result.total_customers == 1
+        assert result.total_subjects == 1
         assert result.total_findings == 0
 
     def test_missing_fields_handled(self) -> None:
@@ -248,7 +248,7 @@ class TestReportDataComputer:
         computer = ReportDataComputer()
         data = {
             "c": {
-                "customer": "C",
+                "subject": "C",
                 "findings": [_make_finding(severity="P1")],
                 "gaps": [],
             }
@@ -261,7 +261,7 @@ class TestReportDataComputer:
         computer = ReportDataComputer()
         data = {
             f"c{i}": {
-                "customer": f"Customer {i}",
+                "subject": f"Customer {i}",
                 "findings": [_make_finding()],
                 "gaps": [],
             }
@@ -271,60 +271,60 @@ class TestReportDataComputer:
         # 4 equal customers: HHI = 4 * (25^2) = 2500
         assert result.concentration_hhi == pytest.approx(2500.0)
 
-    def test_top_customers_by_risk_sorted(self) -> None:
+    def test_top_subjects_by_risk_sorted(self) -> None:
         computer = ReportDataComputer()
         result = computer.compute(_make_merged_data())
-        assert len(result.top_customers_by_risk) >= 1
-        # First customer should have highest risk
-        first = result.top_customers_by_risk[0]
+        assert len(result.top_subjects_by_risk) >= 1
+        # First subject should have highest risk
+        first = result.top_subjects_by_risk[0]
         assert first == "customer_a"  # Has P0 finding
 
     def test_hhi_zero_findings_no_division_by_zero(self) -> None:
         """HHI with zero total findings should return 0.0, not raise."""
         computer = ReportDataComputer()
-        data = {"c": {"customer": "C", "findings": [], "gaps": []}}
+        data = {"c": {"subject": "C", "findings": [], "gaps": []}}
         result = computer.compute(data)
         assert result.concentration_hhi == pytest.approx(0.0)
 
     def test_governance_negative_value_stored(self) -> None:
         """Negative governance scores are stored (validation is upstream)."""
         computer = ReportDataComputer()
-        data = {"c": {"customer": "C", "findings": [], "gaps": [], "governance_resolution_pct": -5.0}}
+        data = {"c": {"subject": "C", "findings": [], "gaps": [], "governance_resolution_pct": -5.0}}
         result = computer.compute(data)
         assert result.governance_scores.get("c") == -5.0
 
     def test_governance_over_100_stored(self) -> None:
         """Governance >100 is stored (clamping happens in renderer, not computer)."""
         computer = ReportDataComputer()
-        data = {"c": {"customer": "C", "findings": [], "gaps": [], "governance_resolution_pct": 150.0}}
+        data = {"c": {"subject": "C", "findings": [], "gaps": [], "governance_resolution_pct": 150.0}}
         result = computer.compute(data)
         assert result.governance_scores.get("c") == 150.0
 
     def test_governance_string_value_handled(self) -> None:
         """String governance values are coerced to float or skipped."""
         computer = ReportDataComputer()
-        data = {"c": {"customer": "C", "findings": [], "gaps": [], "governance_resolution_pct": "85.5"}}
+        data = {"c": {"subject": "C", "findings": [], "gaps": [], "governance_resolution_pct": "85.5"}}
         result = computer.compute(data)
         assert result.governance_scores.get("c") == pytest.approx(85.5)
 
     def test_governance_invalid_string_skipped(self) -> None:
         """Non-numeric governance values are skipped."""
         computer = ReportDataComputer()
-        data = {"c": {"customer": "C", "findings": [], "gaps": [], "governance_resolution_pct": "N/A"}}
+        data = {"c": {"subject": "C", "findings": [], "gaps": [], "governance_resolution_pct": "N/A"}}
         result = computer.compute(data)
         assert "c" not in result.governance_scores
 
     def test_deal_risk_medium_for_single_p1(self) -> None:
         """Single P1 finding should be Medium (below High threshold of 3 P1s)."""
         computer = ReportDataComputer()
-        data = {"c": {"customer": "C", "findings": [_make_finding(severity="P1")], "gaps": []}}
+        data = {"c": {"subject": "C", "findings": [_make_finding(severity="P1")], "gaps": []}}
         result = computer.compute(data)
         assert result.deal_risk_label == "Medium"
 
     def test_xref_zero_total_returns_zero_rate(self) -> None:
         """Match rate should be 0.0 when there are no cross-references."""
         computer = ReportDataComputer()
-        data = {"c": {"customer": "C", "findings": [], "gaps": []}}
+        data = {"c": {"subject": "C", "findings": [], "gaps": []}}
         result = computer.compute(data)
         assert result.match_rate == pytest.approx(0.0)
         assert result.total_cross_refs == 0
@@ -334,7 +334,7 @@ class TestReportDataComputer:
         computer = ReportDataComputer()
         data = {
             "c": {
-                "customer": "C",
+                "subject": "C",
                 "findings": [],
                 "gaps": [],
                 "cross_references": [
@@ -352,7 +352,7 @@ class TestReportDataComputer:
         computer = ReportDataComputer()
         data = {
             "c": {
-                "customer": "C",
+                "subject": "C",
                 "findings": [],
                 "gaps": [],
                 "cross_references": [
@@ -373,7 +373,7 @@ class TestReportDataComputer:
         computer = ReportDataComputer()
         data = {
             "c": {
-                "customer": "C",
+                "subject": "C",
                 "findings": [],
                 "gaps": [],
                 "cross_references": [
@@ -391,7 +391,7 @@ class TestReportDataComputer:
         computer = ReportDataComputer()
         data = {
             "c": {
-                "customer": "C",
+                "subject": "C",
                 "findings": [],
                 "gaps": [],
                 "cross_references": [{"data_point": "ARR", "match_status": "partial"}],
@@ -451,11 +451,11 @@ class TestRiskScoreLogarithmic:
 class TestSeverityRecalibration:
     """Tests for post-hoc severity recalibration."""
 
-    def test_customer_severity_table_excludes_recalibrated_p0(self) -> None:
-        """_build_customer_severity_tables should not list recalibrated-away P0 titles."""
+    def test_subject_severity_table_excludes_recalibrated_p0(self) -> None:
+        """_build_subject_severity_tables should not list recalibrated-away P0 titles."""
         merged: dict[str, object] = {
             "customer_contracts": {
-                "customer": "Customer Contracts",
+                "subject": "Customer Contracts",
                 "findings": [
                     _make_finding(
                         severity="P0",
@@ -469,14 +469,14 @@ class TestSeverityRecalibration:
         }
         computed = ReportDataComputer().compute(merged)
         # After recalibration, P0 count for this customer should be 0
-        p0_rows = computed.customer_p0_summary
+        p0_rows = computed.subject_p0_summary
         assert len(p0_rows) == 0, f"Expected no P0 rows but got {p0_rows}"
 
-    def test_customer_severity_table_keeps_genuine_p0(self) -> None:
+    def test_subject_severity_table_keeps_genuine_p0(self) -> None:
         """Genuine P0 findings should still appear in the P0 table."""
         merged: dict[str, object] = {
             "customer_a": {
-                "customer": "Customer A",
+                "subject": "Customer A",
                 "findings": [
                     _make_finding(
                         severity="P0",
@@ -488,7 +488,7 @@ class TestSeverityRecalibration:
             }
         }
         computed = ReportDataComputer().compute(merged)
-        p0_rows = computed.customer_p0_summary
+        p0_rows = computed.subject_p0_summary
         assert len(p0_rows) == 1
         assert p0_rows[0]["primary_issue"] == "Undisclosed material litigation"
 
@@ -547,7 +547,7 @@ class TestSeverityRecalibration:
         """Wolf pack should exclude findings recalibrated from P0/P1 to lower severity."""
         merged: dict[str, object] = {
             "customer_a": {
-                "customer": "Customer A",
+                "subject": "Customer A",
                 "findings": [
                     _make_finding(
                         severity="P0",
@@ -568,7 +568,7 @@ class TestSeverityRecalibration:
         """Customer with both genuine and false-positive P0 should count correctly."""
         merged: dict[str, object] = {
             "customer_a": {
-                "customer": "Customer A",
+                "subject": "Customer A",
                 "findings": [
                     _make_finding(
                         severity="P0",
@@ -588,7 +588,7 @@ class TestSeverityRecalibration:
         # Only genuine P0 should survive
         assert computed.findings_by_severity.get("P0", 0) == 1
         assert computed.findings_by_severity.get("P3", 0) == 1
-        p0_rows = computed.customer_p0_summary
+        p0_rows = computed.subject_p0_summary
         assert len(p0_rows) == 1
         assert p0_rows[0]["p0_count"] == 1
         assert p0_rows[0]["primary_issue"] == "Undisclosed material litigation"
@@ -635,7 +635,7 @@ class TestDataQualityClassification:
         """compute() should produce correct material/DQ/noise counts in a three-way split."""
         merged: dict[str, object] = {
             "customer_a": {
-                "customer": "Customer A",
+                "subject": "Customer A",
                 "findings": [
                     _make_finding(severity="P1", title="CoC consent required", category="change_of_control"),
                     _make_finding(severity="P2", title="Revenue waterfall data unavailable"),
@@ -653,7 +653,7 @@ class TestDataQualityClassification:
         """A P1 data-quality finding should NOT appear in the wolf pack."""
         merged: dict[str, object] = {
             "customer_a": {
-                "customer": "Customer A",
+                "subject": "Customer A",
                 "findings": [
                     _make_finding(severity="P1", title="Billing data unavailable — cannot verify AR quality"),
                     _make_finding(severity="P1", title="Genuine P1 issue", category="ip_ownership"),
@@ -670,7 +670,7 @@ class TestDataQualityClassification:
         """Data quality findings should not appear in domain category_groups."""
         merged: dict[str, object] = {
             "customer_a": {
-                "customer": "Customer A",
+                "subject": "Customer A",
                 "findings": [
                     _make_finding(
                         severity="P2",
@@ -700,7 +700,7 @@ class TestDataQualityClassification:
         """Noise findings should not appear in domain category_groups."""
         merged: dict[str, object] = {
             "customer_a": {
-                "customer": "Customer A",
+                "subject": "Customer A",
                 "findings": [
                     _make_finding(
                         severity="P3",

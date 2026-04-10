@@ -22,8 +22,8 @@ from dd_agents.agents.prompt_builder import AgentType, PromptBuilder
 # ---------------------------------------------------------------------------
 
 
-def _make_customer(name: str = "Customer A") -> Any:
-    """Build a minimal CustomerEntry-like object."""
+def _make_subject(name: str = "Subject A") -> Any:
+    """Build a minimal SubjectEntry-like object."""
     m = MagicMock()
     m.name = name
     m.safe_name = name.lower().replace(" ", "_")
@@ -51,7 +51,7 @@ def _build_prompt(deal_type: str = "acquisition", agent_name: str = "legal") -> 
     )
     return builder.build_specialist_prompt(
         agent_name=agent_name,
-        customers=[_make_customer()],
+        subjects=[_make_subject()],
         deal_config=_make_deal_config(deal_type),
     )
 

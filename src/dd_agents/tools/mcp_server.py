@@ -26,7 +26,7 @@ def build_mcp_server(
     *,
     text_dir: str | Path | None = None,
     files_list: list[str] | None = None,
-    customers_csv: list[dict[str, Any]] | None = None,
+    subjects_csv: list[dict[str, Any]] | None = None,
     cache_path: str | Path | None = None,
     allowed_dir: str | Path | None = None,
 ) -> Any | None:
@@ -43,9 +43,9 @@ def build_mcp_server(
     files_list:
         List of known file paths from inventory.
         Required by ``verify_citation``.
-    customers_csv:
-        List of customer dicts from the inventory CSV.
-        Required by ``get_customer_files``.
+    subjects_csv:
+        List of subject dicts from the inventory CSV.
+        Required by ``get_subject_files``.
     cache_path:
         Path to ``entity_resolution_cache.json``.
         Required by ``resolve_entity``.
@@ -152,19 +152,19 @@ def build_mcp_server(
                 "type": "object",
                 "properties": {
                     "agent_name": {"type": "string", "description": "Name of the reporting agent"},
-                    "customers_processed": {"type": "integer", "description": "Count of customers completed so far"},
-                    "total_customers": {"type": "integer", "description": "Total customers assigned"},
-                    "current_customer": {"type": "string", "description": "Customer currently being processed"},
+                    "subjects_processed": {"type": "integer", "description": "Count of subjects completed so far"},
+                    "total_subjects": {"type": "integer", "description": "Total subjects assigned"},
+                    "current_subject": {"type": "string", "description": "Subject currently being processed"},
                 },
-                "required": ["agent_name", "customers_processed", "total_customers", "current_customer"],
+                "required": ["agent_name", "subjects_processed", "total_subjects", "current_subject"],
             },
         )
         async def report_progress_tool(input_data: dict[str, Any]) -> dict[str, Any]:
             return _report_progress(
                 agent_name=input_data["agent_name"],
-                customers_processed=input_data["customers_processed"],
-                total_customers=input_data["total_customers"],
-                current_customer=input_data["current_customer"],
+                subjects_processed=input_data["subjects_processed"],
+                total_subjects=input_data["total_subjects"],
+                current_subject=input_data["current_subject"],
             )
 
         tools.append(report_progress_tool)
@@ -183,7 +183,7 @@ def build_mcp_server(
                         "type": "string",
                         "description": "Natural-language search query (e.g., 'change of control clause')",
                     },
-                    "customer": {"type": "string", "description": "Optional customer_safe_name to filter results"},
+                    "subject": {"type": "string", "description": "Optional subject_safe_name to filter results"},
                     "top_k": {"type": "integer", "description": "Maximum number of results (1-20, default 5)"},
                 },
                 "required": ["query"],
@@ -192,7 +192,7 @@ def build_mcp_server(
         async def search_similar_tool(input_data: dict[str, Any]) -> dict[str, Any]:
             return _search_similar(
                 query=input_data["query"],
-                customer=input_data.get("customer"),
+                subject=input_data.get("subject"),
                 top_k=input_data.get("top_k", 5),
             )
 
@@ -239,32 +239,32 @@ def build_mcp_server(
 
         tools.append(verify_citation_tool)
 
-    if "get_customer_files" in allowed_tool_names:
-        from dd_agents.tools.get_customer_files import get_customer_files as _get_customer_files
+    if "get_subject_files" in allowed_tool_names:
+        from dd_agents.tools.get_subject_files import get_subject_files as _get_subject_files
 
-        _gcf_customers_csv = customers_csv or []
+        _gcf_subjects_csv = subjects_csv or []
 
         @tool(
-            "get_customer_files",
-            "Return the file list and count for a customer. Use customer_safe_name (e.g., 'acme_corp').",
+            "get_subject_files",
+            "Return the file list and count for a subject. Use subject_safe_name (e.g., 'acme_corp').",
             {
                 "type": "object",
                 "properties": {
-                    "customer_safe_name": {
+                    "subject_safe_name": {
                         "type": "string",
-                        "description": "The customer_safe_name from the assignment",
+                        "description": "The subject_safe_name from the assignment",
                     }
                 },
-                "required": ["customer_safe_name"],
+                "required": ["subject_safe_name"],
             },
         )
-        async def get_customer_files_tool(input_data: dict[str, Any]) -> dict[str, Any]:
-            return _get_customer_files(
-                customer_safe_name=input_data["customer_safe_name"],
-                customers_csv=_gcf_customers_csv,
+        async def get_subject_files_tool(input_data: dict[str, Any]) -> dict[str, Any]:
+            return _get_subject_files(
+                subject_safe_name=input_data["subject_safe_name"],
+                subjects_csv=_gcf_subjects_csv,
             )
 
-        tools.append(get_customer_files_tool)
+        tools.append(get_subject_files_tool)
 
     if "resolve_entity" in allowed_tool_names:
         from dd_agents.tools.resolve_entity import resolve_entity as _resolve_entity
@@ -273,7 +273,7 @@ def build_mcp_server(
 
         @tool(
             "resolve_entity",
-            "Look up a name in the entity resolution cache to find the canonical customer name. "
+            "Look up a name in the entity resolution cache to find the canonical subject name. "
             "Returns the canonical name and match method, or 'unresolved'.",
             {
                 "type": "object",
@@ -333,7 +333,7 @@ def build_mcp_server(
 def _build_runtime_context(
     project_dir: Path,
     run_dir: Path,
-    customers_csv: list[dict[str, Any]] | None = None,
+    subjects_csv: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Derive runtime context paths from project/run directories.
 
@@ -365,7 +365,7 @@ def _build_runtime_context(
     return {
         "text_dir": text_dir if text_dir.is_dir() else None,
         "files_list": files_list or None,
-        "customers_csv": customers_csv,
+        "subjects_csv": subjects_csv,
         "cache_path": cache_path if cache_path.exists() else None,
         # Always set allowed_dir to the project dir for path containment.
         # Even if _dd/ doesn't exist yet, agents should not read outside it.

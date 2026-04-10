@@ -26,7 +26,7 @@ class PipelineStep(StrEnum):
     BUILD_INVENTORY = "06_build_inventory"
     ENTITY_RESOLUTION = "07_entity_resolution"
     REFERENCE_REGISTRY = "08_reference_registry"
-    CUSTOMER_MENTIONS = "09_customer_mentions"
+    SUBJECT_MENTIONS = "09_subject_mentions"
     INVENTORY_INTEGRITY = "10_inventory_integrity"
     CONTRACT_DATE_RECONCILIATION = "11_contract_date_reconciliation"  # CONDITIONAL
     INCREMENTAL_CLASSIFICATION = "12_incremental_classification"  # CONDITIONAL
@@ -109,7 +109,7 @@ _BLOCKING_GATES: frozenset[PipelineStep] = frozenset(
 
 _CONDITIONAL_STEPS: frozenset[PipelineStep] = frozenset(
     {
-        PipelineStep.CONTRACT_DATE_RECONCILIATION,  # Only if source_of_truth.customer_database exists
+        PipelineStep.CONTRACT_DATE_RECONCILIATION,  # Only if source_of_truth.subject_database exists
         PipelineStep.INCREMENTAL_CLASSIFICATION,  # Only if execution_mode == "incremental"
         PipelineStep.INCREMENTAL_MERGE,  # Only if execution_mode == "incremental"
         PipelineStep.SPAWN_JUDGE,  # Only if judge.enabled

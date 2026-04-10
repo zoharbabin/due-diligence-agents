@@ -17,7 +17,7 @@ from dd_agents.utils.constants import INDEX_DIR, TEXT_DIR
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from dd_agents.models.search import SearchCustomerResult
+    from dd_agents.models.search import SearchSubjectResult
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +35,8 @@ class SearchRunner:
         Destination for the Excel report.
     group_filter:
         Comma-separated group names to include (case-insensitive partial match).
-    customer_filter:
-        Comma-separated customer names to include (case-insensitive partial match).
+    subject_filter:
+        Comma-separated subject names to include (case-insensitive partial match).
     concurrency:
         Maximum parallel API calls.
     auto_confirm:
@@ -51,7 +51,7 @@ class SearchRunner:
         data_room_path: Path,
         output_path: Path | None = None,
         group_filter: str | None = None,
-        customer_filter: str | None = None,
+        subject_filter: str | None = None,
         concurrency: int = 5,
         auto_confirm: bool = False,
         verbose: bool = False,
@@ -59,7 +59,7 @@ class SearchRunner:
         self._prompts_path = prompts_path
         self._data_room = data_room_path.resolve()
         self._group_filter = group_filter
-        self._customer_filter = customer_filter
+        self._subject_filter = subject_filter
         self._concurrency = concurrency
         self._auto_confirm = auto_confirm
         self._verbose = verbose
@@ -94,70 +94,70 @@ class SearchRunner:
             )
         )
 
-        # 2. Discover files and build customer registry.
-        from dd_agents.inventory.customers import CustomerRegistryBuilder
+        # 2. Discover files and build subject registry.
         from dd_agents.inventory.discovery import FileDiscovery
+        from dd_agents.inventory.subjects import SubjectRegistryBuilder
 
         discovery = FileDiscovery()
         files = discovery.discover(self._data_room)
 
-        builder = CustomerRegistryBuilder()
-        customers, counts = builder.build(self._data_room, files)
+        builder = SubjectRegistryBuilder()
+        subjects, counts = builder.build(self._data_room, files)
 
-        if not customers:
+        if not subjects:
             self._err_console.print(
                 Panel(
-                    "[bold red]No customers found[/bold red]\n\n"
+                    "[bold red]No subjects found[/bold red]\n\n"
                     "The data room must follow this directory structure:\n\n"
                     "  data_room/\n"
                     "    GroupName/\n"
-                    "      CustomerName/\n"
+                    "      SubjectName/\n"
                     "        contract.pdf\n"
                     "        amendment.docx\n"
                     "        ...\n\n"
-                    "Each customer must be in a subfolder under a group folder.",
+                    "Each subject must be in a subfolder under a group folder.",
                     title="Error",
                     border_style="red",
                 )
             )
             raise SystemExit(1)
 
-        # 3. Apply group filter, then customer filter.
+        # 3. Apply group filter, then subject filter.
         if self._group_filter:
             gfilters = [g.strip().lower() for g in self._group_filter.split(",") if g.strip()]
-            customers = [c for c in customers if any(g in c.group.lower() for g in gfilters)]
-            if not customers:
+            subjects = [c for c in subjects if any(g in c.group.lower() for g in gfilters)]
+            if not subjects:
                 self._err_console.print(
                     Panel(
-                        f"[bold red]No customers matched group filter:[/bold red] {self._group_filter}",
+                        f"[bold red]No subjects matched group filter:[/bold red] {self._group_filter}",
                         title="Error",
                         border_style="red",
                     )
                 )
                 raise SystemExit(1)
 
-        if self._customer_filter:
-            filters = [f.strip().lower() for f in self._customer_filter.split(",") if f.strip()]
-            customers = [c for c in customers if any(f in c.name.lower() for f in filters)]
-            if not customers:
+        if self._subject_filter:
+            filters = [f.strip().lower() for f in self._subject_filter.split(",") if f.strip()]
+            subjects = [c for c in subjects if any(f in c.name.lower() for f in filters)]
+            if not subjects:
                 self._err_console.print(
                     Panel(
-                        f"[bold red]No customers matched filter:[/bold red] {self._customer_filter}",
+                        f"[bold red]No subjects matched filter:[/bold red] {self._subject_filter}",
                         title="Error",
                         border_style="red",
                     )
                 )
                 raise SystemExit(1)
 
-        filtered_files = sum(c.file_count for c in customers)
-        self._console.print(f"\nCustomers: {len(customers)} | Files: {filtered_files}")
+        filtered_files = sum(c.file_count for c in subjects)
+        self._console.print(f"\nSubjects: {len(subjects)} | Files: {filtered_files}")
 
         # 4. Ensure text extraction is complete for the filtered files.
         text_dir = self._data_room / TEXT_DIR
         cache_path = self._data_room / INDEX_DIR / "checksums.sha256"
 
-        # Only extract files belonging to filtered customers.
-        relevant_file_paths = [str(self._data_room / fp) for c in customers for fp in c.files]
+        # Only extract files belonging to filtered subjects.
+        relevant_file_paths = [str(self._data_room / fp) for c in subjects for fp in c.files]
 
         if relevant_file_paths:
             self._console.print("\n[bold]Running text extraction...[/bold]")
@@ -185,12 +185,12 @@ class SearchRunner:
             concurrency=self._concurrency,
         )
 
-        estimate = analyzer.estimate_cost(customers)
+        estimate = analyzer.estimate_cost(subjects)
         api_calls_info = f"~{estimate['total_api_calls']} API calls"
-        if estimate.get("chunked_customers", 0) > 0:
-            api_calls_info += f" ({estimate['chunked_customers']} customers chunked)"
+        if estimate.get("chunked_subjects", 0) > 0:
+            api_calls_info += f" ({estimate['chunked_subjects']} subjects chunked)"
         cost_lines = [
-            f"Customers to analyse: {estimate['total_customers']}",
+            f"Subjects to analyse: {estimate['total_subjects']}",
             f"Files with extracted text: {estimate['files_with_text']}",
             f"Estimated API calls: {api_calls_info}",
             f"Estimated API cost: [bold]${estimate['estimated_cost_usd']:.2f}[/bold]",
@@ -220,32 +220,32 @@ class SearchRunner:
 
         # 6. Run analysis with progress bar.
 
-        analyzed: list[SearchCustomerResult] = []
+        analyzed: list[SearchSubjectResult] = []
         with Progress(console=self._console) as progress:
-            task = progress.add_task("Analyzing customers...", total=len(customers))
+            task = progress.add_task("Analyzing subjects...", total=len(subjects))
 
-            def on_progress(customer_name: str) -> None:
+            def on_progress(subject_name: str) -> None:
                 progress.advance(task)
 
-            analyzed = asyncio.run(analyzer.analyze_all(customers, progress_callback=on_progress))
+            analyzed = asyncio.run(analyzer.analyze_all(subjects, progress_callback=on_progress))
 
         # 6b. Citation verification — verify LLM citations against source text.
         self._verify_citations(analyzed, text_dir)
 
         # 7. Verify completeness.
-        if len(analyzed) != len(customers):
+        if len(analyzed) != len(subjects):
             self._err_console.print(
                 Panel(
                     f"[bold red]COMPLETENESS WARNING:[/bold red] "
-                    f"Expected {len(customers)} results, got {len(analyzed)}.\n"
-                    "Some customers may be missing from the report.",
+                    f"Expected {len(subjects)} results, got {len(analyzed)}.\n"
+                    "Some subjects may be missing from the report.",
                     title="Warning",
                     border_style="red",
                 )
             )
             logger.error(
-                "COMPLETENESS VIOLATION: %d customers submitted, %d results returned",
-                len(customers),
+                "COMPLETENESS VIOLATION: %d subjects submitted, %d results returned",
+                len(subjects),
                 len(analyzed),
             )
 
@@ -272,7 +272,7 @@ class SearchRunner:
 
         summary_lines = [
             "[bold green]Search complete[/bold green]",
-            f"Customers analyzed: {len(analyzed)}",
+            f"Subjects analyzed: {len(analyzed)}",
         ]
 
         if failures:
@@ -324,7 +324,7 @@ class SearchRunner:
         except Exception as exc:
             logger.warning("External reference download failed (non-blocking): %s", exc)
 
-    def _verify_citations(self, analyzed: list[SearchCustomerResult], text_dir: Path) -> None:
+    def _verify_citations(self, analyzed: list[SearchSubjectResult], text_dir: Path) -> None:
         """Verify LLM citations against source text (Issue #5).
 
         Runs locally using fuzzy matching — no API calls.
@@ -346,7 +346,7 @@ class SearchRunner:
             except Exception as exc:
                 logger.warning(
                     "Citation verification failed for %s (non-blocking): %s",
-                    result.customer_name,
+                    result.subject_name,
                     exc,
                 )
 

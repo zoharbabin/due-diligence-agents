@@ -1,4 +1,4 @@
-"""Customer safe name convention and name preprocessing utilities."""
+"""Subject safe name convention and name preprocessing utilities."""
 
 from __future__ import annotations
 
@@ -119,8 +119,8 @@ def preprocess_name(name: str) -> str:
     return name
 
 
-def customer_safe_name(name: str) -> str:
-    """Convert a customer name to a filesystem-safe ASCII identifier.
+def subject_safe_name(name: str) -> str:
+    """Convert a subject name to a filesystem-safe ASCII identifier.
 
     Steps:
         1. Transliterate Unicode to ASCII (ü→u, ø→o, ß→ss, …)
@@ -135,15 +135,15 @@ def customer_safe_name(name: str) -> str:
         ValueError: If name is empty or becomes empty after processing.
 
     Examples:
-        >>> customer_safe_name("Global Analytics Group")
+        >>> subject_safe_name("Global Analytics Group")
         'global_analytics_group'
-        >>> customer_safe_name("Alpine Systems, Inc.")
+        >>> subject_safe_name("Alpine Systems, Inc.")
         'alpine_systems'
-        >>> customer_safe_name("Müller GmbH")
+        >>> subject_safe_name("Müller GmbH")
         'muller'
     """
     if not name or not name.strip():
-        raise ValueError("Customer name cannot be empty")
+        raise ValueError("Subject name cannot be empty")
 
     name = _transliterate_to_ascii(name)
     name = name.lower()
@@ -164,6 +164,6 @@ def customer_safe_name(name: str) -> str:
     name = name.strip("_")
 
     if not name:
-        raise ValueError("Customer name resolves to empty string after processing")
+        raise ValueError("Subject name resolves to empty string after processing")
 
     return name

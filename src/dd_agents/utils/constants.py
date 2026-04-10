@@ -120,10 +120,10 @@ SHORT_NAME_MAX_LEN = int(os.getenv("DD_SHORT_NAME_MAX_LEN", "5"))  # Never fuzzy
 TFIDF_THRESHOLD = float(os.getenv("DD_TFIDF_THRESHOLD", "0.80"))  # Cosine similarity for TF-IDF
 
 # ---------------------------------------------------------------------------
-# Non-customer JSON stems (used by merge and pre-merge validation)
+# Non-subject JSON stems (used by merge and pre-merge validation)
 # ---------------------------------------------------------------------------
 
-NON_CUSTOMER_STEMS: frozenset[str] = frozenset(
+NON_SUBJECT_STEMS: frozenset[str] = frozenset(
     {
         "coverage_manifest",
         "numerical_manifest",

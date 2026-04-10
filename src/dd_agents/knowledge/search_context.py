@@ -2,7 +2,7 @@
 
 Assembles pre-computed knowledge from the Deal Knowledge Base, Knowledge Graph,
 and Finding Lineage Tracker into a structured text block that enriches search
-prompts. Budget: max 15K chars of knowledge context per customer.
+prompts. Budget: max 15K chars of knowledge context per subject.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ _MIN_CONTEXT_CHARS = 100
 class KnowledgeContextBuilder:
     """Assembles pre-computed knowledge context for search enrichment.
 
-    Budget: max 15K chars of knowledge context per customer.
+    Budget: max 15K chars of knowledge context per subject.
 
     Priority order (sub-budgets as fraction of ``max_chars``):
         1. Entity profile summary — 40%
@@ -69,7 +69,7 @@ class KnowledgeContextBuilder:
         Parameters
         ----------
         entity_safe_name:
-            The entity's ``customer_safe_name`` (lowercase, normalized).
+            The entity's ``subject_safe_name`` (lowercase, normalized).
         column_names:
             List of analysis column names to match clause summaries against.
         max_chars:

@@ -34,6 +34,7 @@ _MATCH_STATUS_ALIASES: dict[str, str] = {
     "concern": "mismatch",
     "gap": "not_available",
     "unverifiable": "unverified",
+    "requires_investigation": "unverified",
 }
 
 _VALID_MATCH_STATUSES: set[str] = {s.value for s in MatchStatus}
@@ -157,8 +158,8 @@ class Finding(BaseModel):
     """
 
     id: str = Field(
-        pattern=r"^[a-z][a-z0-9-]*_[a-z][a-z0-9_-]*_\d{4,}$",
-        description="Format: {skill}_{agent}_{sequential_number} e.g. forensic-dd_legal_0001",
+        pattern=r"^[a-z][a-z0-9-]*_[a-z]+_[a-z0-9][a-z0-9_-]*_\d{4,}$",
+        description="Format: {skill}_{agent}_{subject_safe_name}_{seq} e.g. forensic-dd_legal_acme_corp_0001",
     )
     severity: Severity = Field(description="Finding severity: P0 (deal-stopper) through P3 (informational)")
     category: str = Field(description="Finding category (e.g. change_of_control, termination)")
@@ -170,7 +171,7 @@ class Finding(BaseModel):
     skill: str = Field(default="forensic-dd", description="Skill identifier")
     run_id: str = Field(description="Unique run identifier")
     timestamp: str = Field(description="ISO-8601 timestamp of finding creation")
-    analysis_unit: str = Field(description="Customer name this finding pertains to")
+    analysis_unit: str = Field(description="Subject name this finding pertains to")
     metadata: dict[str, Any] = Field(default_factory=dict, description="Additional key-value metadata")
 
     @field_validator("severity", mode="before")
@@ -233,6 +234,25 @@ class AgentFinding(BaseModel):
     def coerce_confidence(cls, v: Any) -> Confidence:
         return _coerce_confidence(v)
 
+    @model_validator(mode="after")
+    def downgrade_p0_p1_without_quotes(self) -> AgentFinding:
+        """Auto-downgrade P0/P1 to P2 when citations lack exact_quote.
+
+        This catches the problem at agent output parsing time rather than
+        waiting for the merge step.  The merge step applies additional
+        downgrade logic but this early check prevents false-positive
+        high-severity findings from ever entering the pipeline.
+        """
+        if self.severity in (Severity.P0, Severity.P1):
+            missing = any(not cit.exact_quote for cit in self.citations)
+            if missing:
+                original = self.severity.value
+                self.severity = Severity.P2
+                self.verification_note = (
+                    f"Auto-downgraded from {original}: P0/P1 findings require exact_quote in all citations."
+                )
+        return self
+
 
 class Gap(BaseModel):
     """
@@ -240,7 +260,7 @@ class Gap(BaseModel):
     Every gap MUST have all required fields -- missing fields cause QA failure.
     """
 
-    customer: str = Field(description="Customer name this gap pertains to")
+    subject: str = Field(description="Subject name this gap pertains to")
     priority: Severity = Field(description="Gap priority: P0 through P3")
     gap_type: GapType = Field(description="Type of gap: Missing_Doc, Incomplete_Doc, etc.")
     missing_item: str = Field(max_length=200, description="What is missing (max 200 chars)")
@@ -298,7 +318,7 @@ class CrossReferenceData(BaseModel):
 class FileHeader(BaseModel):
     """
     Per-file extraction header. From domain-definitions.md section 1.
-    Recorded in the customer JSON for every file processed.
+    Recorded in the subject JSON for every file processed.
     """
 
     file_path: str = Field(description="File path relative to data room root")
@@ -379,7 +399,7 @@ class CrossReference(BaseModel):
 
 
 class CrossReferenceSummary(BaseModel):
-    """Per-customer cross-reference summary. From domain-definitions.md section 7f."""
+    """Per-subject cross-reference summary. From domain-definitions.md section 7f."""
 
     reference_files_checked: list[str] = Field(
         default_factory=list, description="Reference files used for cross-referencing"
@@ -392,22 +412,22 @@ class CrossReferenceSummary(BaseModel):
     gaps_generated: int = Field(default=0, description="Gaps generated from missing data")
 
 
-class CustomerAnalysis(BaseModel):
+class SubjectAnalysis(BaseModel):
     """
-    Per-customer output from each specialist agent.
+    Per-subject output from each specialist agent.
     From agent-prompts.md section 4c.
-    Written to {RUN_DIR}/findings/{agent}/{customer_safe_name}.json
+    Written to {RUN_DIR}/findings/{agent}/{subject_safe_name}.json
     """
 
-    customer: str = Field(description="Canonical customer name")
-    customer_safe_name: str = Field(description="Normalized safe name per SKILL.md 1b convention")
+    subject: str = Field(description="Canonical subject name")
+    subject_safe_name: str = Field(description="Normalized safe name per SKILL.md 1b convention")
     agent: AgentName = Field(description="Agent that produced this analysis")
     run_id: str = Field(description="Unique run identifier")
     timestamp: str = Field(description="ISO-8601 completion timestamp")
-    files_analyzed: int = Field(description="Count of files processed for this customer")
+    files_analyzed: int = Field(description="Count of files processed for this subject")
     file_headers: list[FileHeader] = Field(default_factory=list, description="Per-file extraction headers")
     governance_graph: GovernanceGraph = Field(
-        default_factory=GovernanceGraph, description="Contract governance graph for this customer"
+        default_factory=GovernanceGraph, description="Contract governance graph for this subject"
     )
     findings: list[AgentFinding] = Field(default_factory=list, description="Findings produced by the agent")
     gaps: list[Gap] = Field(default_factory=list, description="Gaps identified by the agent")
@@ -423,14 +443,14 @@ class CustomerAnalysis(BaseModel):
     # _consecutive_unchanged_runs: int
 
 
-class MergedCustomerOutput(BaseModel):
+class MergedSubjectOutput(BaseModel):
     """
-    Merged per-customer output. Written to {RUN_DIR}/findings/merged/{customer_safe_name}.json.
+    Merged per-subject output. Written to {RUN_DIR}/findings/merged/{subject_safe_name}.json.
     From reporting-protocol.md section 1.
     """
 
-    customer: str = Field(description="Canonical customer name")
-    customer_safe_name: str = Field(description="Normalized safe name for file naming")
+    subject: str = Field(description="Canonical subject name")
+    subject_safe_name: str = Field(description="Normalized safe name for file naming")
     findings: list[Finding] = Field(
         default_factory=list, description="Fully transformed findings conforming to finding.schema.json"
     )
@@ -447,5 +467,5 @@ class MergedCustomerOutput(BaseModel):
         default_factory=GovernanceGraph, description="Merged governance graph from all agents"
     )
     governance_resolved_pct: float = Field(
-        default=0.0, ge=0.0, le=1.0, description="(files with governed_by in [file_path, SELF]) / total_customer_files"
+        default=0.0, ge=0.0, le=1.0, description="(files with governed_by in [file_path, SELF]) / total_subject_files"
     )

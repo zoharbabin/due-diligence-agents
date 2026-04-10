@@ -23,7 +23,7 @@ class AuditEntry(BaseModel):
     agent: str = Field(description="Agent name that performed the action")
     skill: str = Field(default="forensic-dd", description="Skill identifier")
     action: AuditAction = Field(description="Type of audited action")
-    target: str = Field(description="What was acted upon (file path, customer name, etc.)")
+    target: str = Field(description="What was acted upon (file path, subject name, etc.)")
     result: str = Field(description="Outcome of the action")
     details: str = Field(default="", description="Additional context or diagnostic information")
 
@@ -43,7 +43,7 @@ class AuditCheck(BaseModel):
 class AuditSummary(BaseModel):
     """Summary statistics within audit.json."""
 
-    total_customers: int = Field(default=0, description="Number of customers analyzed")
+    total_subjects: int = Field(default=0, description="Number of subjects analyzed")
     total_files: int = Field(default=0, description="Total files in the data room")
     total_findings: int = Field(default=0, description="Total findings across all agents")
     total_gaps: int = Field(default=0, description="Total gaps across all agents")
@@ -89,7 +89,7 @@ class SpotCheck(BaseModel):
 
     finding_id: str = Field(description="Identifier of the finding being checked")
     agent: str = Field(description="AgentName value of the agent that produced the finding")
-    analysis_unit: str = Field(description="Customer name being analyzed")
+    analysis_unit: str = Field(description="Subject name being analyzed")
     severity: str = Field(description="Severity level of the finding (P0-P3)")
     dimension: SpotCheckDimension = Field(description="Quality dimension being evaluated")
     result: SpotCheckResult = Field(description="Check outcome: pass, partial, or fail")
@@ -102,7 +102,7 @@ class Contradiction(BaseModel):
     From agent-prompts.md section 6e.
     """
 
-    analysis_unit: str = Field(description="Customer name where contradiction was found")
+    analysis_unit: str = Field(description="Subject name where contradiction was found")
     agents: list[str] = Field(description="AgentName values of the contradicting agents")
     fact_in_dispute: str = Field(description="Description of the contradicted fact")
     resolution: str = Field(description="How the contradiction was resolved")
@@ -145,10 +145,10 @@ class AgentScore(BaseModel):
 
 
 class UnitScore(BaseModel):
-    """Per-customer (analysis unit) quality score."""
+    """Per-subject (analysis unit) quality score."""
 
-    score: int = Field(ge=0, le=100, description="Quality score for this customer (0-100)")
-    agents_reviewed: int = Field(default=0, description="Number of agents reviewed for this customer")
+    score: int = Field(ge=0, le=100, description="Quality score for this subject (0-100)")
+    agents_reviewed: int = Field(default=0, description="Number of agents reviewed for this subject")
     contradictions: int = Field(default=0, description="Number of inter-agent contradictions found")
 
 
@@ -163,7 +163,7 @@ class QualityScores(BaseModel):
     skill: str = Field(default="forensic-dd", description="Skill identifier")
     judge_config: dict[str, Any] = Field(default_factory=dict, description="Judge configuration snapshot")
     agent_scores: dict[str, AgentScore] = Field(default_factory=dict, description="Quality scores keyed by agent name")
-    unit_scores: dict[str, UnitScore] = Field(default_factory=dict, description="Quality scores keyed by customer name")
+    unit_scores: dict[str, UnitScore] = Field(default_factory=dict, description="Quality scores keyed by subject name")
     overall_quality: int = Field(ge=0, le=100, description="Aggregate quality score across all agents (0-100)")
     iteration_round: int = Field(default=1, description="Current Judge iteration round (1-based)")
     agents_below_threshold: list[str] = Field(

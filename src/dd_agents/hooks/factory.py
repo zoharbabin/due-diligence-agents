@@ -17,7 +17,7 @@ from dd_agents.hooks.pre_tool import (
     file_size_guard,
     path_guard,
 )
-from dd_agents.hooks.stop import check_audit_log, check_coverage, check_manifest
+from dd_agents.hooks.stop import check_coverage, check_manifest
 
 if TYPE_CHECKING:
     from claude_agent_sdk import HookMatcher  # type: ignore[import-not-found]
@@ -69,7 +69,7 @@ def _build_pre_tool_hook(
                         "decision": "block",
                         "reason": (
                             f"Blocked write to aggregate filename '{filename}'. "
-                            f"Findings must be per-customer, not aggregated."
+                            f"Findings must be per-subject, not aggregated."
                         ),
                     }
 
@@ -90,7 +90,7 @@ def _build_pre_tool_hook(
 def _build_stop_hook(
     agent_name: str,
     run_dir: Path,
-    expected_customers: int,
+    expected_subjects: int,
 ) -> Any:
     """Return an async Stop callback compatible with the SDK.
 
@@ -101,8 +101,8 @@ def _build_stop_hook(
 
     async def stop_hook(hook_input: Any, tool_name: str | None, context: Any) -> dict[str, Any]:
         try:
-            # 1. Coverage check — must have produced all customer JSONs
-            result = check_coverage(output_dir, expected_customers)
+            # 1. Coverage check — must have produced all subject JSONs
+            result = check_coverage(output_dir, expected_subjects)
             if result["decision"] == "block":
                 return {"continue_": False, "stopReason": result["reason"]}
 
@@ -111,10 +111,10 @@ def _build_stop_hook(
             if result["decision"] == "block":
                 return {"continue_": False, "stopReason": result["reason"]}
 
-            # 3. Audit log check (warning only)
-            result = check_audit_log(output_dir)
-            if result["reason"]:
-                logger.warning("[%s] %s", agent_name, result["reason"])
+            # Note: audit log is written by the orchestrator AFTER the agent
+            # session completes (_write_audit_log in engine.py), so checking
+            # for it here would always warn.  QA audit (step 28, DoD #11)
+            # validates audit logs exist post-pipeline.
 
             return {}
         except Exception as exc:  # noqa: BLE001
@@ -134,7 +134,7 @@ def build_hooks_for_agent(
     agent_name: str,
     run_dir: Path,
     project_dir: Path,
-    expected_customers: int,
+    expected_subjects: int,
 ) -> dict[str, list[HookMatcher]] | None:
     """Build the complete hook configuration for a specialist agent.
 
@@ -149,8 +149,8 @@ def build_hooks_for_agent(
         Path to the current run directory.
     project_dir:
         Path to the project root (for path guard scope).
-    expected_customers:
-        Number of customer JSONs the agent is expected to produce.
+    expected_subjects:
+        Number of subject JSONs the agent is expected to produce.
     """
     try:
         from claude_agent_sdk import HookMatcher as _HookMatcher  # type: ignore[import-not-found]
@@ -167,7 +167,7 @@ def build_hooks_for_agent(
         ],
         "Stop": [
             _HookMatcher(
-                hooks=[_build_stop_hook(agent_name, run_dir, expected_customers)],
+                hooks=[_build_stop_hook(agent_name, run_dir, expected_subjects)],
                 timeout=10.0,
             ),
         ],

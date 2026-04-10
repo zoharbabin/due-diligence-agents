@@ -64,7 +64,7 @@ class PipelineErrorRecord:
     category: ErrorCategory | None = None
     severity: ErrorSeverity | None = None
     agent: str | None = None
-    customers_affected: list[str] = field(default_factory=list)
+    subjects_affected: list[str] = field(default_factory=list)
     details: dict[str, object] = field(default_factory=dict)
     outcome: str = ""  # "recovered", "degraded", "fatal"
 
@@ -98,11 +98,11 @@ class PartialFailureError(RecoverableError):
         message: str,
         *,
         agent_name: str = "unknown",
-        missing_customers: list[str] | None = None,
+        missing_subjects: list[str] | None = None,
     ) -> None:
         super().__init__(message)
         self.agent_name = agent_name
-        self.missing_customers = missing_customers or []
+        self.missing_subjects = missing_subjects or []
 
 
 class ConfigurationError(Exception):

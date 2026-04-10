@@ -1,6 +1,8 @@
 # Production Hardening Plan
 
 > **ARCHIVED** — All issues in this plan are RESOLVED as of v0.4.1 (2026-03-05). This document is kept for historical reference. See [CHANGELOG.md](CHANGELOG.md) for the current state.
+>
+> **Note (v1.0.0)**: This document uses "customer" terminology throughout. As of v1.0.0 (Issue #187), all internal code uses "subject" instead. References to "customer" below reflect the terminology at time of writing.
 
 > Original plan to bring the pipeline from functional prototype to
 > production-grade quality: resilient, complete, stable, and accurate.

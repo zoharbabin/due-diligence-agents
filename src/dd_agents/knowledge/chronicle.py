@@ -163,7 +163,7 @@ class AnalysisChronicle:
 
         Format per line::
 
-            [2026-03-07 14:30] Pipeline Run (full) — 15 customers, 200 documents
+            [2026-03-07 14:30] Pipeline Run (full) — 15 subjects, 200 documents
 
         Returns
         -------

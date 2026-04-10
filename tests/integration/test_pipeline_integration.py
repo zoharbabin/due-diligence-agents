@@ -480,7 +480,7 @@ class TestExtraction:
 class TestInventoryBuilding:
     """Test step 6: build inventory."""
 
-    def test_builds_customer_registry(self, tmp_path: Path) -> None:
+    def test_builds_subject_registry(self, tmp_path: Path) -> None:
         """Step 6 builds the customer registry with correct counts."""
         data_room = _create_data_room(tmp_path)
         config_path = _create_deal_config(data_room)
@@ -490,12 +490,12 @@ class TestInventoryBuilding:
 
         state = asyncio.run(run())
 
-        assert state.total_customers == 6  # 3 in GroupA + 3 in GroupB
-        assert len(state.customer_safe_names) == 6
+        assert state.total_subjects == 6  # 3 in GroupA + 3 in GroupB
+        assert len(state.subject_safe_names) == 6
 
         # Check inventory files exist
         inv_dir = data_room / "_dd" / "forensic-dd" / "inventory"
-        assert (inv_dir / "customers.csv").exists()
+        assert (inv_dir / "subjects.csv").exists()
         assert (inv_dir / "counts.json").exists()
 
     def test_counts_json_content(self, tmp_path: Path) -> None:
@@ -511,13 +511,13 @@ class TestInventoryBuilding:
         inv_dir = data_room / "_dd" / "forensic-dd" / "inventory"
         counts = json.loads((inv_dir / "counts.json").read_text())
 
-        assert counts["total_customers"] == 6
+        assert counts["total_subjects"] == 6
         assert counts["total_files"] >= 14
         assert counts["total_reference_files"] >= 2
-        assert "GroupA" in counts["customers_by_group"]
-        assert "GroupB" in counts["customers_by_group"]
-        assert counts["customers_by_group"]["GroupA"] == 3
-        assert counts["customers_by_group"]["GroupB"] == 3
+        assert "GroupA" in counts["subjects_by_group"]
+        assert "GroupB" in counts["subjects_by_group"]
+        assert counts["subjects_by_group"]["GroupA"] == 3
+        assert counts["subjects_by_group"]["GroupB"] == 3
 
 
 class TestEntityResolution:
@@ -577,7 +577,7 @@ class TestCustomerMentions:
         asyncio.run(run())
 
         inv_dir = data_room / "_dd" / "forensic-dd" / "inventory"
-        assert (inv_dir / "customer_mentions.json").exists()
+        assert (inv_dir / "subject_mentions.json").exists()
 
 
 class TestInventoryIntegrity:
@@ -644,7 +644,7 @@ class TestFullPreAgentPipeline:
 
         state = asyncio.run(run())
 
-        # Step 11 should complete (but do nothing -- no customer_database)
+        # Step 11 should complete (but do nothing -- no subject_database)
         assert PipelineStep.CONTRACT_DATE_RECONCILIATION in state.completed_steps
 
         # Step 12 should complete (but do nothing -- not incremental mode)

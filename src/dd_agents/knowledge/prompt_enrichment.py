@@ -130,13 +130,13 @@ class AgentKnowledgeEnricher:
     def build_agent_context(
         self,
         agent_name: str,
-        customer_safe_names: list[str],
+        subject_safe_names: list[str],
         max_chars: int = 8_000,
     ) -> str | None:
         """Build knowledge context for a specialist agent prompt.
 
         Returns ``None`` if no knowledge base exists (first run), the agent
-        domain is unrecognised, the customer list is empty, or the assembled
+        domain is unrecognised, the subject list is empty, or the assembled
         text is shorter than 100 characters.
 
         Sub-budgets (of *max_chars*):
@@ -151,7 +151,7 @@ class AgentKnowledgeEnricher:
         ----------
         agent_name:
             Agent name (e.g. ``"legal"``, ``"FinanceAgent"``).
-        customer_safe_names:
+        subject_safe_names:
             List of entity safe names to build context for.
         max_chars:
             Maximum total characters for the assembled context.
@@ -163,32 +163,30 @@ class AgentKnowledgeEnricher:
         if domain is None:
             return None
 
-        if not customer_safe_names:
+        if not subject_safe_names:
             return None
 
         sections: list[str] = []
 
-        profiles = self._build_entity_profiles(
-            agent_name, customer_safe_names, int(max_chars * _BUDGET_ENTITY_PROFILES)
-        )
+        profiles = self._build_entity_profiles(agent_name, subject_safe_names, int(max_chars * _BUDGET_ENTITY_PROFILES))
         if profiles:
             sections.append(profiles)
 
-        lineage = self._build_lineage_highlights(agent_name, customer_safe_names, int(max_chars * _BUDGET_LINEAGE))
+        lineage = self._build_lineage_highlights(agent_name, subject_safe_names, int(max_chars * _BUDGET_LINEAGE))
         if lineage:
             sections.append(lineage)
 
         contradictions = self._build_contradictions(
-            agent_name, customer_safe_names, int(max_chars * _BUDGET_CONTRADICTIONS)
+            agent_name, subject_safe_names, int(max_chars * _BUDGET_CONTRADICTIONS)
         )
         if contradictions:
             sections.append(contradictions)
 
-        doc_rels = self._build_document_relationships(customer_safe_names, int(max_chars * _BUDGET_DOC_RELATIONSHIPS))
+        doc_rels = self._build_document_relationships(subject_safe_names, int(max_chars * _BUDGET_DOC_RELATIONSHIPS))
         if doc_rels:
             sections.append(doc_rels)
 
-        insights = self._build_prior_insights(agent_name, customer_safe_names, int(max_chars * _BUDGET_PRIOR_INSIGHTS))
+        insights = self._build_prior_insights(agent_name, subject_safe_names, int(max_chars * _BUDGET_PRIOR_INSIGHTS))
         if insights:
             sections.append(insights)
 
@@ -210,12 +208,12 @@ class AgentKnowledgeEnricher:
     def _build_entity_profiles(
         self,
         agent_name: str,
-        customer_safe_names: list[str],
+        subject_safe_names: list[str],
         max_chars: int,
     ) -> str:
         """Build entity profile section filtered to agent's domain categories.
 
-        For each customer, looks up the ``entity_{safe_name}`` article and
+        For each subject, looks up the ``entity_{safe_name}`` article and
         extracts severity counts and key clauses filtered to the agent's
         domain.
 
@@ -223,7 +221,7 @@ class AgentKnowledgeEnricher:
         ----------
         agent_name:
             Agent name for domain resolution.
-        customer_safe_names:
+        subject_safe_names:
             Entity safe names.
         max_chars:
             Character budget for this section.
@@ -238,7 +236,7 @@ class AgentKnowledgeEnricher:
         categories = AGENT_DOMAIN_CATEGORIES[domain]
         lines: list[str] = ["=== Entity Profiles ==="]
 
-        for safe_name in customer_safe_names:
+        for safe_name in subject_safe_names:
             article = self._kb.get_article(f"entity_{safe_name}")
             if article is None:
                 continue
@@ -272,7 +270,7 @@ class AgentKnowledgeEnricher:
     def _build_lineage_highlights(
         self,
         agent_name: str,
-        customer_safe_names: list[str],
+        subject_safe_names: list[str],
         max_chars: int,
     ) -> str:
         """Build lineage highlights: persistent findings and severity changes.
@@ -284,7 +282,7 @@ class AgentKnowledgeEnricher:
         ----------
         agent_name:
             Agent name for domain resolution.
-        customer_safe_names:
+        subject_safe_names:
             Entity safe names.
         max_chars:
             Character budget for this section.
@@ -299,7 +297,7 @@ class AgentKnowledgeEnricher:
         categories = AGENT_DOMAIN_CATEGORIES[domain]
         lines: list[str] = ["=== Finding Lineage ==="]
 
-        for safe_name in customer_safe_names:
+        for safe_name in subject_safe_names:
             entity_lineage = self._lineage.get_entity_lineage(safe_name)
             if not entity_lineage:
                 continue
@@ -334,19 +332,19 @@ class AgentKnowledgeEnricher:
     def _build_contradictions(
         self,
         agent_name: str,
-        customer_safe_names: list[str],
+        subject_safe_names: list[str],
         max_chars: int,
     ) -> str:
-        """Build contradictions section filtered to agent domain and customers.
+        """Build contradictions section filtered to agent domain and subjects.
 
         Searches the knowledge base for contradiction articles where any
-        customer is in tags AND the category matches the agent's domain.
+        subject is in tags AND the category matches the agent's domain.
 
         Parameters
         ----------
         agent_name:
             Agent name for domain resolution.
-        customer_safe_names:
+        subject_safe_names:
             Entity safe names.
         max_chars:
             Character budget for this section.
@@ -364,15 +362,15 @@ class AgentKnowledgeEnricher:
         lines: list[str] = ["=== Known Contradictions ==="]
 
         all_contradictions = self._kb.list_articles(ArticleType.CONTRADICTION)
-        customer_set = set(customer_safe_names)
+        subject_set = set(subject_safe_names)
 
         for article in all_contradictions:
             if article.superseded_by:
                 continue
 
-            # Check customer tag match
-            has_customer = any(tag in customer_set for tag in article.tags)
-            if not has_customer:
+            # Check subject tag match
+            has_subject = any(tag in subject_set for tag in article.tags)
+            if not has_subject:
                 continue
 
             # Check domain category match
@@ -401,17 +399,17 @@ class AgentKnowledgeEnricher:
 
     def _build_document_relationships(
         self,
-        customer_safe_names: list[str],
+        subject_safe_names: list[str],
         max_chars: int,
     ) -> str:
         """Build document relationship section from the knowledge graph.
 
-        For each customer, calls ``get_entity_context()`` with a per-entity
-        character budget of ``max_chars / len(customers)``.
+        For each subject, calls ``get_entity_context()`` with a per-entity
+        character budget of ``max_chars / len(subjects)``.
 
         Parameters
         ----------
-        customer_safe_names:
+        subject_safe_names:
             Entity safe names.
         max_chars:
             Character budget for this section.
@@ -419,13 +417,13 @@ class AgentKnowledgeEnricher:
         if self._graph is None:
             return ""
 
-        if not customer_safe_names:
+        if not subject_safe_names:
             return ""
 
-        per_entity = max(100, max_chars // len(customer_safe_names))
+        per_entity = max(100, max_chars // len(subject_safe_names))
         lines: list[str] = ["=== Document Relationships ==="]
 
-        for safe_name in customer_safe_names:
+        for safe_name in subject_safe_names:
             context = self._graph.get_entity_context(safe_name, max_chars=per_entity)
             if context and not context.startswith("No graph data"):
                 lines.append(context)
@@ -438,19 +436,19 @@ class AgentKnowledgeEnricher:
     def _build_prior_insights(
         self,
         agent_name: str,
-        customer_safe_names: list[str],
+        subject_safe_names: list[str],
         max_chars: int,
     ) -> str:
-        """Build prior insights section filtered by domain and customer tags.
+        """Build prior insights section filtered by domain and subject tags.
 
         Searches the knowledge base for insight articles tagged with any
-        customer AND the agent's domain categories.
+        subject AND the agent's domain categories.
 
         Parameters
         ----------
         agent_name:
             Agent name for domain resolution.
-        customer_safe_names:
+        subject_safe_names:
             Entity safe names.
         max_chars:
             Character budget for this section.
@@ -465,7 +463,7 @@ class AgentKnowledgeEnricher:
         from dd_agents.knowledge.articles import ArticleType
 
         categories = AGENT_DOMAIN_CATEGORIES[domain]
-        customer_set = set(customer_safe_names)
+        subject_set = set(subject_safe_names)
         lines: list[str] = ["=== Prior Insights ==="]
 
         all_insights = self._kb.list_articles(ArticleType.INSIGHT)
@@ -474,9 +472,9 @@ class AgentKnowledgeEnricher:
             if article.superseded_by:
                 continue
 
-            # Must be tagged with at least one customer
-            has_customer = any(tag in customer_set for tag in article.tags)
-            if not has_customer:
+            # Must be tagged with at least one subject
+            has_subject = any(tag in subject_set for tag in article.tags)
+            if not has_subject:
                 continue
 
             # Must match domain via tags or content category

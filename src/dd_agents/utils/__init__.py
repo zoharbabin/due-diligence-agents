@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dd_agents.utils.naming import customer_safe_name
+from dd_agents.utils.naming import subject_safe_name
 
 __all__ = [
-    "customer_safe_name",
+    "subject_safe_name",
 ]

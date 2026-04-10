@@ -117,12 +117,12 @@ class DiffRenderer(SectionRenderer):
             "</tr></thead><tbody>"
         ]
         for c in changes:
-            raw_customer = str(c.get("customer", ""))
-            customer = self.escape(
-                self.data.display_names.get(raw_customer, raw_customer) if self.data else raw_customer
+            raw_subject = str(c.get("subject", ""))
+            entity_name = self.escape(
+                self.data.display_names.get(raw_subject, raw_subject) if self.data else raw_subject
             )
             summary = self.escape(str(c.get("finding_summary", "")))
-            parts.append(f"<tr><td>{customer}</td><td>{summary}</td></tr>")
+            parts.append(f"<tr><td>{entity_name}</td><td>{summary}</td></tr>")
         parts.append("</tbody></table>")
         return "\n".join(parts)
 
@@ -134,13 +134,13 @@ class DiffRenderer(SectionRenderer):
             "</tr></thead><tbody>"
         ]
         for c in changes:
-            raw_customer = str(c.get("customer", ""))
-            customer = self.escape(
-                self.data.display_names.get(raw_customer, raw_customer) if self.data else raw_customer
+            raw_subject = str(c.get("subject", ""))
+            entity_name = self.escape(
+                self.data.display_names.get(raw_subject, raw_subject) if self.data else raw_subject
             )
             summary = self.escape(str(c.get("finding_summary", "")))
             prior = self.escape(str(c.get("prior_severity", "")))
             current = self.escape(str(c.get("current_severity", "")))
-            parts.append(f"<tr><td>{customer}</td><td>{summary}</td><td>{prior}</td><td>{current}</td></tr>")
+            parts.append(f"<tr><td>{entity_name}</td><td>{summary}</td><td>{prior}</td><td>{current}</td></tr>")
         parts.append("</tbody></table>")
         return "\n".join(parts)

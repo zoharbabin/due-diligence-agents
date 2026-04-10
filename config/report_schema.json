@@ -29,12 +29,12 @@
       "name": "Summary",
       "required": true,
       "activation_condition": "always",
-      "description": "Aggregated risk overview per customer across all agents.",
+      "description": "Aggregated risk overview per subject across all agents.",
       "source": "merged/*.json + merged/gaps/*.json + counts.json",
-      "_source_note": "One row per customer. Counts from merged findings and gaps.",
-      "row_rule": "one_row_per_customer",
+      "_source_note": "One row per subject. Counts from merged findings and gaps.",
+      "row_rule": "one_row_per_subject",
       "columns": [
-        { "name": "Customer", "key": "customer", "type": "string", "width": 30 },
+        { "name": "Entity", "key": "subject", "type": "string", "width": 30 },
         { "name": "Overall Risk Rating", "key": "overall_risk_rating", "type": "string", "width": 20, "_algorithm": "Critical if P0>=3, High if P0 1-2 or P1>=3, Medium if P1 1-2 or P2>=5, Low if P2/P3>0, Clean if none (Issue #113 softened thresholds)" },
         { "name": "P0 Count", "key": "p0_count", "type": "integer", "width": 10 },
         { "name": "P1 Count", "key": "p1_count", "type": "integer", "width": 10 },
@@ -51,7 +51,7 @@
       ],
       "sort_order": [
         { "column": "overall_risk_rating", "direction": "asc" },
-        { "column": "customer", "direction": "asc" }
+        { "column": "subject", "direction": "asc" }
       ],
       "conditional_formatting": [
         { "column": "overall_risk_rating", "rule": "== Critical", "format": { "bg": "#FF0000", "font": "#FFFFFF" } },
@@ -61,7 +61,7 @@
       ],
       "summary_formulas": {
         "bottom": [
-          { "column": "customer", "value": "TOTAL" },
+          { "column": "subject", "value": "TOTAL" },
           { "column": "p0_count", "formula": "SUM(p0_count)" },
           { "column": "p1_count", "formula": "SUM(p1_count)" },
           { "column": "p2_count", "formula": "SUM(p2_count)" },
@@ -81,7 +81,7 @@
       "_source_note": "Filter: finding.severity in ['P0', 'P1'] from all agents.",
       "row_rule": "one_row_per_finding where severity in [P0, P1]",
       "columns": [
-        { "name": "Customer", "key": "analysis_unit", "type": "string", "width": 25 },
+        { "name": "Entity", "key": "analysis_unit", "type": "string", "width": 25 },
         { "name": "Severity", "key": "severity", "type": "string", "width": 10 },
         { "name": "Agent", "key": "agent", "type": "string", "width": 14 },
         { "name": "Category", "key": "category", "type": "string", "width": 25 },
@@ -95,7 +95,7 @@
       ],
       "sort_order": [
         { "column": "severity", "direction": "asc" },
-        { "column": "customer", "direction": "asc" }
+        { "column": "subject", "direction": "asc" }
       ],
       "conditional_formatting": [
         { "column": "severity", "rule": "== P0", "format": { "bg": "#FF0000", "font": "#FFFFFF" } },
@@ -117,7 +117,7 @@
       "_source_note": "Filter: finding.agent == 'legal'.",
       "row_rule": "one_row_per_finding where agent == legal",
       "columns": [
-        { "name": "Customer", "key": "analysis_unit", "type": "string", "width": 25 },
+        { "name": "Entity", "key": "analysis_unit", "type": "string", "width": 25 },
         { "name": "Severity", "key": "severity", "type": "string", "width": 10 },
         { "name": "Category", "key": "category", "type": "string", "width": 25 },
         { "name": "Title", "key": "title", "type": "string", "width": 40 },
@@ -130,7 +130,7 @@
       ],
       "sort_order": [
         { "column": "severity", "direction": "asc" },
-        { "column": "customer", "direction": "asc" }
+        { "column": "subject", "direction": "asc" }
       ],
       "conditional_formatting": [
         { "column": "severity", "rule": "== P0", "format": { "bg": "#FF0000", "font": "#FFFFFF" } },
@@ -148,7 +148,7 @@
       "_source_note": "Filter: finding.agent == 'commercial'.",
       "row_rule": "one_row_per_finding where agent == commercial",
       "columns": [
-        { "name": "Customer", "key": "analysis_unit", "type": "string", "width": 25 },
+        { "name": "Entity", "key": "analysis_unit", "type": "string", "width": 25 },
         { "name": "Severity", "key": "severity", "type": "string", "width": 10 },
         { "name": "Category", "key": "category", "type": "string", "width": 25 },
         { "name": "Title", "key": "title", "type": "string", "width": 40 },
@@ -161,7 +161,7 @@
       ],
       "sort_order": [
         { "column": "severity", "direction": "asc" },
-        { "column": "customer", "direction": "asc" }
+        { "column": "subject", "direction": "asc" }
       ],
       "conditional_formatting": [
         { "column": "severity", "rule": "== P0", "format": { "bg": "#FF0000", "font": "#FFFFFF" } },
@@ -179,7 +179,7 @@
       "_source_note": "Filter: finding.agent == 'finance'.",
       "row_rule": "one_row_per_finding where agent == finance",
       "columns": [
-        { "name": "Customer", "key": "analysis_unit", "type": "string", "width": 25 },
+        { "name": "Entity", "key": "analysis_unit", "type": "string", "width": 25 },
         { "name": "Severity", "key": "severity", "type": "string", "width": 10 },
         { "name": "Category", "key": "category", "type": "string", "width": 25 },
         { "name": "Title", "key": "title", "type": "string", "width": 40 },
@@ -192,7 +192,7 @@
       ],
       "sort_order": [
         { "column": "severity", "direction": "asc" },
-        { "column": "customer", "direction": "asc" }
+        { "column": "subject", "direction": "asc" }
       ],
       "conditional_formatting": [
         { "column": "severity", "rule": "== P0", "format": { "bg": "#FF0000", "font": "#FFFFFF" } },
@@ -210,7 +210,7 @@
       "_source_note": "Filter: finding.agent == 'producttech'.",
       "row_rule": "one_row_per_finding where agent == producttech",
       "columns": [
-        { "name": "Customer", "key": "analysis_unit", "type": "string", "width": 25 },
+        { "name": "Entity", "key": "analysis_unit", "type": "string", "width": 25 },
         { "name": "Severity", "key": "severity", "type": "string", "width": 10 },
         { "name": "Category", "key": "category", "type": "string", "width": 25 },
         { "name": "Title", "key": "title", "type": "string", "width": 40 },
@@ -223,7 +223,7 @@
       ],
       "sort_order": [
         { "column": "severity", "direction": "asc" },
-        { "column": "customer", "direction": "asc" }
+        { "column": "subject", "direction": "asc" }
       ],
       "conditional_formatting": [
         { "column": "severity", "rule": "== P0", "format": { "bg": "#FF0000", "font": "#FFFFFF" } },
@@ -238,10 +238,10 @@
       "activation_condition": "always",
       "description": "Cross-reference data comparing contract values against reference files.",
       "source": "merged/*.json cross_references",
-      "_source_note": "Rows from cross_references[] array in each merged customer file.",
+      "_source_note": "Rows from cross_references[] array in each merged subject file.",
       "row_rule": "one_row_per_cross_reference",
       "columns": [
-        { "name": "Customer", "key": "customer", "type": "string", "width": 25 },
+        { "name": "Entity", "key": "subject", "type": "string", "width": 25 },
         { "name": "Data Type", "key": "data_type", "type": "string", "width": 15 },
         { "name": "Data Point", "key": "data_point", "type": "string", "width": 20 },
         { "name": "Contract Value", "key": "contract_value", "type": "string", "width": 20 },
@@ -255,7 +255,7 @@
       ],
       "sort_order": [
         { "column": "match_status", "direction": "desc" },
-        { "column": "customer", "direction": "asc" }
+        { "column": "subject", "direction": "asc" }
       ],
       "conditional_formatting": [
         { "column": "match_status", "rule": "== mismatch", "format": { "bg": "#FFC7CE", "font": "#9C0006" } },
@@ -263,7 +263,7 @@
       ],
       "summary_formulas": {
         "bottom": [
-          { "column": "customer", "value": "TOTAL" },
+          { "column": "subject", "value": "TOTAL" },
           { "column": "data_point", "formula": "COUNTA(data_point)" },
           { "column": "match_status", "formula": "COUNTIF(match_status, mismatch)" }
         ]
@@ -278,7 +278,7 @@
       "_source_note": "Union of gap files from all agents, deduplicated by missing_item.",
       "row_rule": "one_row_per_gap",
       "columns": [
-        { "name": "Customer", "key": "customer", "type": "string", "width": 25 },
+        { "name": "Entity", "key": "subject", "type": "string", "width": 25 },
         { "name": "Priority", "key": "priority", "type": "string", "width": 10 },
         { "name": "Gap Type", "key": "gap_type", "type": "string", "width": 18 },
         { "name": "Missing Item", "key": "missing_item", "type": "string", "width": 35 },
@@ -292,7 +292,7 @@
       ],
       "sort_order": [
         { "column": "priority", "direction": "asc" },
-        { "column": "customer", "direction": "asc" }
+        { "column": "subject", "direction": "asc" }
       ],
       "conditional_formatting": [
         { "column": "priority", "rule": "== P0", "format": { "bg": "#FF0000", "font": "#FFFFFF" } },
@@ -301,7 +301,7 @@
       ],
       "summary_formulas": {
         "bottom": [
-          { "column": "customer", "value": "TOTAL" },
+          { "column": "subject", "value": "TOTAL" },
           { "column": "missing_item", "formula": "COUNTA(missing_item)" }
         ]
       }
@@ -309,13 +309,13 @@
     {
       "name": "Contract_Date_Reconciliation",
       "required": false,
-      "activation_condition": "source_of_truth.customer_database exists in deal-config.json",
+      "activation_condition": "source_of_truth.subject_database exists in deal-config.json",
       "description": "Reconciliation of database contract end dates against data room evidence.",
       "source": "contract_date_reconciliation.json",
-      "_source_note": "Only generated when source_of_truth.customer_database is configured.",
+      "_source_note": "Only generated when source_of_truth.subject_database is configured.",
       "row_rule": "one_row_per_reconciliation_entry",
       "columns": [
-        { "name": "Customer", "key": "customer", "type": "string", "width": 25 },
+        { "name": "Entity", "key": "subject", "type": "string", "width": 25 },
         { "name": "Database End Date", "key": "database_end_date", "type": "date", "width": 18, "format": "YYYY-MM-DD" },
         { "name": "Actual End Date", "key": "actual_end_date", "type": "date", "width": 18, "format": "YYYY-MM-DD" },
         { "name": "ARR", "key": "arr", "type": "currency", "width": 15, "format": "#,##0.00" },
@@ -325,7 +325,7 @@
       ],
       "sort_order": [
         { "column": "status", "direction": "asc" },
-        { "column": "customer", "direction": "asc" }
+        { "column": "subject", "direction": "asc" }
       ],
       "conditional_formatting": [
         { "column": "status", "rule": "contains active", "format": { "bg": "#C6EFCE", "font": "#006100" } },
@@ -334,7 +334,7 @@
       ],
       "summary_formulas": {
         "bottom": [
-          { "column": "customer", "value": "TOTAL" },
+          { "column": "subject", "value": "TOTAL" },
           { "column": "arr", "formula": "SUM(arr)" },
           { "column": "status", "formula": "COUNTA_UNIQUE(status)" }
         ]
@@ -353,7 +353,7 @@
         { "name": "Category", "key": "category", "type": "string", "width": 18 },
         { "name": "Subcategory", "key": "subcategory", "type": "string", "width": 20 },
         { "name": "Description", "key": "description", "type": "string", "width": 45 },
-        { "name": "Customers Mentioned", "key": "customers_mentioned_count", "type": "integer", "width": 20 },
+        { "name": "Entities Mentioned", "key": "subjects_mentioned_count", "type": "integer", "width": 20 },
         { "name": "Data Points", "key": "data_points_extractable", "type": "string", "width": 35 },
         { "name": "Assigned To", "key": "assigned_to_agents", "type": "string", "width": 25 }
       ],
@@ -365,7 +365,7 @@
       "summary_formulas": {
         "bottom": [
           { "column": "file_path", "value": "TOTAL" },
-          { "column": "customers_mentioned_count", "formula": "SUM(customers_mentioned_count)" }
+          { "column": "subjects_mentioned_count", "formula": "SUM(subjects_mentioned_count)" }
         ]
       }
     },
@@ -412,7 +412,7 @@
       "columns": [
         { "name": "Finding ID", "key": "finding_id", "type": "string", "width": 30 },
         { "name": "Agent", "key": "agent", "type": "string", "width": 14 },
-        { "name": "Customer", "key": "analysis_unit", "type": "string", "width": 25 },
+        { "name": "Entity", "key": "analysis_unit", "type": "string", "width": 25 },
         { "name": "Severity", "key": "severity", "type": "string", "width": 10 },
         { "name": "Dimension", "key": "dimension", "type": "string", "width": 25 },
         { "name": "Result", "key": "result", "type": "string", "width": 10 },
@@ -444,7 +444,7 @@
       "row_rule": "one_row_per_change",
       "columns": [
         { "name": "Change Type", "key": "change_type", "type": "string", "width": 20 },
-        { "name": "Customer", "key": "customer", "type": "string", "width": 25 },
+        { "name": "Entity", "key": "subject", "type": "string", "width": 25 },
         { "name": "Finding Summary", "key": "finding_summary", "type": "string", "width": 45 },
         { "name": "Prior Severity", "key": "prior_severity", "type": "string", "width": 14 },
         { "name": "Current Severity", "key": "current_severity", "type": "string", "width": 16 },
@@ -452,7 +452,7 @@
       ],
       "sort_order": [
         { "column": "change_type", "direction": "asc" },
-        { "column": "customer", "direction": "asc" }
+        { "column": "subject", "direction": "asc" }
       ],
       "conditional_formatting": [
         { "column": "change_type", "rule": "== new_finding", "format": { "bg": "#FFC7CE", "font": "#9C0006" } },
@@ -462,7 +462,7 @@
       "summary_formulas": {
         "bottom": [
           { "column": "change_type", "formula": "COUNTA(change_type)" },
-          { "column": "customer", "formula": "COUNTA_UNIQUE(customer)" }
+          { "column": "subject", "formula": "COUNTA_UNIQUE(subject)" }
         ]
       }
     },

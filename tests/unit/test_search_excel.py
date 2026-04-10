@@ -11,8 +11,8 @@ from dd_agents.models.search import (
     SearchCitation,
     SearchColumn,
     SearchColumnResult,
-    SearchCustomerResult,
     SearchPrompts,
+    SearchSubjectResult,
 )
 from dd_agents.search.excel_writer import SearchExcelWriter
 
@@ -30,10 +30,10 @@ def _make_prompts() -> SearchPrompts:
     )
 
 
-def _make_results() -> list[SearchCustomerResult]:
+def _make_results() -> list[SearchSubjectResult]:
     return [
-        SearchCustomerResult(
-            customer_name="Acme Corp",
+        SearchSubjectResult(
+            subject_name="Acme Corp",
             group="GroupA",
             files_analyzed=2,
             total_files=3,
@@ -59,16 +59,16 @@ def _make_results() -> list[SearchCustomerResult]:
                 ),
             },
         ),
-        SearchCustomerResult(
-            customer_name="Globex Inc",
+        SearchSubjectResult(
+            subject_name="Globex Inc",
             group="GroupA",
             files_analyzed=1,
             total_files=1,
             chunks_analyzed=0,
             error="API error after 3 retries: timeout",
         ),
-        SearchCustomerResult(
-            customer_name="Partial Corp",
+        SearchSubjectResult(
+            subject_name="Partial Corp",
             group="GroupB",
             files_analyzed=2,
             total_files=2,
@@ -111,11 +111,11 @@ class TestSearchExcelWriter:
         assert "Summary" in wb.sheetnames
 
         ws = wb["Summary"]
-        # Header row: Customer, Group, Files Analyzed, Chunks, Files Skipped, Q1, Q2, Error
+        # Header row: Entity, Group, Files Analyzed, Chunks, Files Skipped, Q1, Q2, Error
         headers = [ws.cell(row=1, column=c).value for c in range(1, 9)]
-        assert headers == ["Customer", "Group", "Files Analyzed", "Chunks", "Files Skipped", "Q1", "Q2", "Error"]
+        assert headers == ["Entity", "Group", "Files Analyzed", "Chunks", "Files Skipped", "Q1", "Q2", "Error"]
 
-        # 3 data rows (one per customer).
+        # 3 data rows (one per subject).
         assert ws.cell(row=2, column=1).value == "Acme Corp"
         assert ws.cell(row=3, column=1).value == "Globex Inc"
         assert ws.cell(row=4, column=1).value == "Partial Corp"
@@ -136,7 +136,7 @@ class TestSearchExcelWriter:
 
         ws = wb["Details"]
         # Header check.
-        assert ws.cell(row=1, column=1).value == "Customer"
+        assert ws.cell(row=1, column=1).value == "Entity"
         assert ws.cell(row=1, column=9).value == "Exact Quote"
 
         # Header should say "Question", not "Column" (user-friendly).
@@ -161,7 +161,7 @@ class TestSearchExcelWriter:
         assert wb["Summary"].freeze_panes == "A2"
         assert wb["Details"].freeze_panes == "A2"
 
-    def test_error_customers_in_both_sheets(self, tmp_path: Path) -> None:
+    def test_error_subjects_in_both_sheets(self, tmp_path: Path) -> None:
         output = tmp_path / "report.xlsx"
         writer = SearchExcelWriter()
         writer.write(_make_results(), _make_prompts(), output)
@@ -238,8 +238,8 @@ class TestSearchExcelWriter:
     def test_summary_answer_normalization(self, tmp_path: Path) -> None:
         """Verbose LLM answers should be normalized to YES/NO/NOT_ADDRESSED in Summary."""
         results = [
-            SearchCustomerResult(
-                customer_name="Verbose Corp",
+            SearchSubjectResult(
+                subject_name="Verbose Corp",
                 group="GroupA",
                 files_analyzed=1,
                 total_files=1,
@@ -274,8 +274,8 @@ class TestSearchExcelWriter:
         """Details sheet preserves the full verbose answer (not normalized)."""
         verbose_answer = "YES. Section 12.1 requires prior written consent for any change of control."
         results = [
-            SearchCustomerResult(
-                customer_name="Verbose Corp",
+            SearchSubjectResult(
+                subject_name="Verbose Corp",
                 group="GroupA",
                 files_analyzed=1,
                 total_files=1,
@@ -313,8 +313,8 @@ class TestSearchExcelWriter:
     def test_summary_not_addressed_normalization(self, tmp_path: Path) -> None:
         """Verbose NOT_ADDRESSED answers are normalized in Summary."""
         results = [
-            SearchCustomerResult(
-                customer_name="Partial Corp",
+            SearchSubjectResult(
+                subject_name="Partial Corp",
                 group="GroupA",
                 files_analyzed=1,
                 total_files=1,

@@ -6,7 +6,7 @@ Top-down executive M&A decision-support report with progressive drill-down:
 Level 0: Deal-Level Decision View (go/no-go signals)
   Level 1: Domain Analysis (Legal / Finance / Commercial / ProductTech)
     Level 2: Risk Categories within each domain
-      Level 3: Per-Customer / Per-Entity findings
+      Level 3: Per-Subject / Per-Entity findings
         Level 4: Individual findings with full citations
 
 Features: sidebar navigation with scroll tracking, alert boxes, severity
@@ -26,15 +26,14 @@ from typing import TYPE_CHECKING, Any
 from dd_agents.reporting.computed_metrics import ReportDataComputer
 from dd_agents.reporting.html_analysis import (
     CoCAnalysisRenderer,
-    CustomerHealthRenderer,
     PrivacyAnalysisRenderer,
+    SubjectHealthRenderer,
     TfCAnalysisRenderer,
 )
 from dd_agents.reporting.html_base import render_css, render_js, render_nav_bar
 from dd_agents.reporting.html_compliance import ComplianceRenderer
 from dd_agents.reporting.html_cross import CrossRefRenderer
 from dd_agents.reporting.html_cross_domain import CrossDomainRenderer
-from dd_agents.reporting.html_customers import CustomerRenderer
 from dd_agents.reporting.html_dashboard import DashboardRenderer
 from dd_agents.reporting.html_diff import DiffRenderer
 from dd_agents.reporting.html_discount import DiscountAnalysisRenderer
@@ -56,6 +55,7 @@ from dd_agents.reporting.html_renewal import RenewalAnalysisRenderer
 from dd_agents.reporting.html_risk import RiskRenderer
 from dd_agents.reporting.html_saas_metrics import SaaSMetricsRenderer
 from dd_agents.reporting.html_strategy import StrategyRenderer
+from dd_agents.reporting.html_subjects import SubjectRenderer
 from dd_agents.reporting.html_timeline import TimelineRenderer
 from dd_agents.reporting.html_valuation import ValuationBridgeRenderer
 
@@ -117,7 +117,7 @@ class HTMLReportGenerator:
         Parameters
         ----------
         merged_data:
-            ``{customer_safe_name: merged_customer_dict}``
+            ``{subject_safe_name: merged_subject_dict}``
         output_path:
             Destination file path.
         run_id:
@@ -234,7 +234,7 @@ class HTMLReportGenerator:
             # 13. Cross-Reference Reconciliation
             CrossRefRenderer(computed, merged_data, renderer_config),
             # 14. Entity Health Tiers
-            CustomerHealthRenderer(computed, merged_data, renderer_config),
+            SubjectHealthRenderer(computed, merged_data, renderer_config),
             # 15. Recommendations
             RecommendationsRenderer(computed, merged_data, renderer_config),
             # 15b. Post-Close Integration Playbook (Issue #117)
@@ -245,7 +245,7 @@ class HTMLReportGenerator:
             # 16. Missing or Incomplete Data (moved from main body to appendix)
             GapRenderer(computed, merged_data, renderer_config),
             # 17. Entity Detail (collapsed)
-            CustomerRenderer(computed, merged_data, renderer_config),
+            SubjectRenderer(computed, merged_data, renderer_config),
             # 18. Methodology & Limitations (collapsed appendix)
             MethodologyRenderer(computed, merged_data, renderer_config),
             # 19. Data Quality appendix (collapsed) — governance, QA, noise findings

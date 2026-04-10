@@ -19,7 +19,7 @@ class EntityMatch(BaseModel):
         description="Method used: preprocessing, exact, alias_lookup, fuzzy, tfidf, or parent_child"
     )
     confidence: float = Field(ge=0.0, le=1.0, description="Match confidence score (0.0-1.0)")
-    canonical_name: str = Field(description="Resolved canonical customer name")
+    canonical_name: str = Field(description="Resolved canonical subject name")
 
 
 class MatchAttempt(BaseModel):
@@ -71,11 +71,11 @@ class EntityCacheEntry(BaseModel):
     From entity-resolution-protocol.md section 7.
     """
 
-    canonical: str = Field(description="Canonical customer name")
+    canonical: str = Field(description="Canonical subject name")
     match_pass: int = Field(description="Pass number that confirmed this match")
     match_type: str = Field(description="Match method that confirmed this entry")
     confidence: float = Field(ge=0.0, le=1.0, description="Match confidence score (0.0-1.0)")
-    entity_type: str = Field(default="customer", description="Entity type (currently always 'customer')")
+    entity_type: str = Field(default="subject", description="Entity type (currently always 'subject')")
     first_seen_run: str = Field(description="Run ID where this entry was first created")
     last_confirmed_run: str = Field(description="Run ID where this entry was last confirmed")
     confirmation_count: int = Field(default=1, description="Number of runs that confirmed this match")

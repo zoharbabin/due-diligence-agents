@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from pathlib import Path
 
-CUSTOMER_POOL: list[str] = [
+SUBJECT_POOL: list[str] = [
     "Alpha Corp",
     "Beta Inc",
     "Gamma LLC",
@@ -31,7 +31,7 @@ _GROUP_NAMES: list[str] = ["GroupA", "GroupB"]
 
 
 def _safe_filename(name: str) -> str:
-    """Convert a customer name to a filesystem-safe lowercase slug."""
+    """Convert a subject name to a filesystem-safe lowercase slug."""
     return name.lower().replace(" ", "_").replace(",", "").replace(".", "")
 
 
@@ -53,43 +53,43 @@ class SyntheticDataRoomGenerator:
     # Public API
     # ------------------------------------------------------------------
 
-    def generate(self, root: Path, num_customers: int = 5) -> Path:
+    def generate(self, root: Path, num_subjects: int = 5) -> Path:
         """Create a synthetic data room under *root*.
 
         Parameters
         ----------
         root:
             Directory in which the ``data_room/`` folder will be created.
-        num_customers:
-            Number of customers to generate (1-10).
+        num_subjects:
+            Number of subjects to generate (1-10).
 
         Returns
         -------
         Path
             The ``data_room/`` directory that was created.
         """
-        if num_customers < 1 or num_customers > len(CUSTOMER_POOL):
-            msg = f"num_customers must be between 1 and {len(CUSTOMER_POOL)}"
+        if num_subjects < 1 or num_subjects > len(SUBJECT_POOL):
+            msg = f"num_subjects must be between 1 and {len(SUBJECT_POOL)}"
             raise ValueError(msg)
 
         data_room = root / "data_room"
         data_room.mkdir(parents=True, exist_ok=True)
 
-        # Pick customers deterministically
-        pool = list(CUSTOMER_POOL)
+        # Pick subjects deterministically
+        pool = list(SUBJECT_POOL)
         self._rng.shuffle(pool)
-        customers = pool[:num_customers]
+        subjects = pool[:num_subjects]
 
-        # Split customers across two groups
-        mid = len(customers) // 2 or 1
+        # Split subjects across two groups
+        mid = len(subjects) // 2 or 1
         groups: dict[str, list[str]] = {
-            _GROUP_NAMES[0]: customers[:mid],
-            _GROUP_NAMES[1]: customers[mid:],
+            _GROUP_NAMES[0]: subjects[:mid],
+            _GROUP_NAMES[1]: subjects[mid:],
         }
 
-        for group_name, group_customers in groups.items():
-            for customer in group_customers:
-                self._generate_customer(data_room / group_name / customer, customer)
+        for group_name, group_subjects in groups.items():
+            for subject_entry in group_subjects:
+                self._generate_subject(data_room / group_name / subject_entry, subject_entry)
 
         self._generate_reference(data_room / "_reference")
 
@@ -99,23 +99,23 @@ class SyntheticDataRoomGenerator:
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _generate_customer(self, customer_dir: Path, customer_name: str) -> None:
-        """Generate 2-4 markdown documents for a single customer."""
-        customer_dir.mkdir(parents=True, exist_ok=True)
+    def _generate_subject(self, subject_dir: Path, subject_name: str) -> None:
+        """Generate 2-4 markdown documents for a single subject."""
+        subject_dir.mkdir(parents=True, exist_ok=True)
 
         num_docs = self._rng.randint(2, 4)
         doc_types = list(DOCUMENT_TYPES)
         self._rng.shuffle(doc_types)
         selected_types = doc_types[:num_docs]
 
-        slug = _safe_filename(customer_name)
+        slug = _safe_filename(subject_name)
 
         for doc_type in selected_types:
             filename = f"{doc_type.lower().replace(' ', '_')}_{slug}.pdf.md"
-            content = self._render_document(customer_name, doc_type)
-            (customer_dir / filename).write_text(content, encoding="utf-8")
+            content = self._render_document(subject_name, doc_type)
+            (subject_dir / filename).write_text(content, encoding="utf-8")
 
-    def _render_document(self, customer_name: str, doc_type: str) -> str:
+    def _render_document(self, subject_name: str, doc_type: str) -> str:
         """Render a single synthetic contract document as markdown."""
         year = self._rng.randint(2021, 2025)
         month = self._rng.randint(1, 12)
@@ -125,7 +125,7 @@ class SyntheticDataRoomGenerator:
         annual_value = self._rng.randint(50, 500) * 1000
 
         sections: list[str] = [
-            f"# {doc_type} - {customer_name}\n",
+            f"# {doc_type} - {subject_name}\n",
             f"Effective Date: {effective_date}\nTerm: {term_months} months\nAnnual Value: ${annual_value:,}\n",
         ]
 

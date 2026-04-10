@@ -15,9 +15,9 @@ from pathlib import Path
 
 def check_coverage(
     agent_output_dir: str | Path,
-    expected_customer_count: int,
+    expected_subject_count: int,
 ) -> dict[str, str]:
-    """Check whether the agent has produced one JSON per expected customer.
+    """Check whether the agent has produced one JSON per expected subject.
 
     Counts ``*.json`` files in *agent_output_dir*, excluding
     ``coverage_manifest.json``.
@@ -31,22 +31,22 @@ def check_coverage(
         return {
             "decision": "block",
             "reason": (
-                f"Output directory does not exist: {output_dir}. Expected {expected_customer_count} customer JSONs."
+                f"Output directory does not exist: {output_dir}. Expected {expected_subject_count} subject JSONs."
             ),
         }
 
-    customer_jsons = [f for f in output_dir.glob("*.json") if f.name != "coverage_manifest.json"]
-    actual_count = len(customer_jsons)
+    subject_jsons = [f for f in output_dir.glob("*.json") if f.name != "coverage_manifest.json"]
+    actual_count = len(subject_jsons)
 
-    if actual_count < expected_customer_count:
-        produced = sorted(f.stem for f in customer_jsons)
+    if actual_count < expected_subject_count:
+        produced = sorted(f.stem for f in subject_jsons)
         return {
             "decision": "block",
             "reason": (
-                f"Only {actual_count}/{expected_customer_count} customer JSONs "
+                f"Only {actual_count}/{expected_subject_count} subject JSONs "
                 f"found. Produced so far: {produced[:10]}"
                 f"{'...' if len(produced) > 10 else ''}. "
-                f"Continue processing remaining customers."
+                f"Continue processing remaining subjects."
             ),
         }
 

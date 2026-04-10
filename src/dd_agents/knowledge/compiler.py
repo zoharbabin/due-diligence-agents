@@ -116,9 +116,9 @@ class KnowledgeCompiler:
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
                 findings_list = data.get("findings", []) if isinstance(data, dict) else []
-                customer = data.get("customer_safe_name", path.stem) if isinstance(data, dict) else path.stem
+                subj = data.get("subject_safe_name", path.stem) if isinstance(data, dict) else path.stem
                 if findings_list:
-                    entity_findings[customer] = findings_list
+                    entity_findings[subj] = findings_list
             except (json.JSONDecodeError, ValueError) as exc:
                 logger.warning("Skipping corrupt merged file %s: %s", path.name, exc)
 

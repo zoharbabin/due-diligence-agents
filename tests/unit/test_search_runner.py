@@ -69,11 +69,11 @@ class TestSearchRunnerInit:
         runner = SearchRunner(prompts, dr, group_filter="GroupA")
         assert runner._group_filter == "GroupA"
 
-    def test_customer_filter_stored(self, tmp_path: Path) -> None:
+    def test_subject_filter_stored(self, tmp_path: Path) -> None:
         prompts = _write_prompts(tmp_path / "search.json")
         dr = _make_data_room(tmp_path)
-        runner = SearchRunner(prompts, dr, customer_filter="Acme")
-        assert runner._customer_filter == "Acme"
+        runner = SearchRunner(prompts, dr, subject_filter="Acme")
+        assert runner._subject_filter == "Acme"
 
     def test_concurrency_stored(self, tmp_path: Path) -> None:
         prompts = _write_prompts(tmp_path / "search.json")

@@ -11,34 +11,34 @@ from typing import Any
 
 def report_progress(
     agent_name: str,
-    customers_processed: int,
-    total_customers: int,
-    current_customer: str,
+    subjects_processed: int,
+    total_subjects: int,
+    current_subject: str,
 ) -> dict[str, Any]:
     """Return a progress snapshot.
 
     Args:
         agent_name: Name of the reporting agent.
-        customers_processed: Count of customers completed so far.
-        total_customers: Total customers assigned to this agent.
-        current_customer: Customer currently being processed.
+        subjects_processed: Count of subjects completed so far.
+        total_subjects: Total subjects assigned to this agent.
+        current_subject: Subject currently being processed.
 
     Returns:
         Progress dict with percentage, counts, and status.
     """
-    pct = (customers_processed / total_customers * 100.0) if total_customers > 0 else 0.0
+    pct = (subjects_processed / total_subjects * 100.0) if total_subjects > 0 else 0.0
 
     status = "in_progress"
-    if customers_processed >= total_customers:
+    if subjects_processed >= total_subjects:
         status = "complete"
-    elif customers_processed == 0:
+    elif subjects_processed == 0:
         status = "starting"
 
     return {
         "agent": agent_name,
-        "customers_processed": customers_processed,
-        "total_customers": total_customers,
-        "current_customer": current_customer,
+        "subjects_processed": subjects_processed,
+        "total_subjects": total_subjects,
+        "current_subject": current_subject,
         "progress_pct": round(pct, 1),
         "status": status,
     }

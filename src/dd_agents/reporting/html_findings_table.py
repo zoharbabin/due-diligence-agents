@@ -1,7 +1,7 @@
-"""Customer-level P0/P1 findings table renderer (Issue #113 B1).
+"""Subject-level P0/P1 findings table renderer (Issue #113 B1).
 
 Replaces individual finding cards in the executive view with scannable
-customer-level tables showing: Entity, P0/P1 Count, Total Findings,
+subject-level tables showing: Entity, P0/P1 Count, Total Findings,
 and Primary Issue.
 """
 
@@ -14,7 +14,7 @@ from dd_agents.reporting.html_base import SectionRenderer
 
 
 class FindingsTableRenderer(SectionRenderer):
-    """Render customer-level P0 and P1 findings tables."""
+    """Render subject-level P0 and P1 findings tables."""
 
     def render(self) -> str:
         parts: list[str] = []
@@ -22,7 +22,7 @@ class FindingsTableRenderer(SectionRenderer):
         p0_section = self._render_severity_table(
             "P0 Deal Stoppers",
             "sec-p0-table",
-            self.data.customer_p0_summary,
+            self.data.subject_p0_summary,
             "p0_count",
             "critical",
         )
@@ -32,7 +32,7 @@ class FindingsTableRenderer(SectionRenderer):
         p1_section = self._render_severity_table(
             "P1 Critical Issues",
             "sec-p1-table",
-            self.data.customer_p1_summary,
+            self.data.subject_p1_summary,
             "p1_count",
             "high",
         )
@@ -70,9 +70,9 @@ class FindingsTableRenderer(SectionRenderer):
             )
         )
 
-        # Customer-level table
+        # Subject-level table
         parts.append(
-            "<table class='customer-table sortable'><thead><tr>"
+            "<table class='subject-table sortable'><thead><tr>"
             "<th scope='col'>Entity</th>"
             f"<th scope='col'>{html.escape(count_key.upper().replace('_', ' '))}</th>"
             "<th scope='col'>Total Findings</th>"
@@ -105,11 +105,11 @@ class FindingsTableRenderer(SectionRenderer):
         return f"<tr>{self._render_row_cells(row, count_key)}</tr>"
 
     def _render_row_cells(self, row: dict[str, Any], count_key: str) -> str:
-        raw_customer = str(row.get("customer", ""))
-        csn = str(row.get("customer_safe_name", raw_customer))
-        display_name = self.data.display_names.get(csn, self.data.display_names.get(raw_customer, raw_customer))
-        customer = html.escape(display_name)
+        raw_subject = str(row.get("subject", ""))
+        csn = str(row.get("subject_safe_name", raw_subject))
+        display_name = self.data.display_names.get(csn, self.data.display_names.get(raw_subject, raw_subject))
+        entity_name = html.escape(display_name)
         count = row.get(count_key, 0)
         total = row.get("total_findings", 0)
         issue = html.escape(str(row.get("primary_issue", "")))
-        return f"<td><strong>{customer}</strong></td><td>{count}</td><td>{total}</td><td>{issue}</td>"
+        return f"<td><strong>{entity_name}</strong></td><td>{count}</td><td>{total}</td><td>{issue}</td>"

@@ -15,13 +15,13 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from dd_agents.models.inventory import CustomerEntry
+from dd_agents.models.inventory import SubjectEntry
 from dd_agents.models.search import (
     SearchCitation,
     SearchColumn,
     SearchColumnResult,
-    SearchCustomerResult,
     SearchPrompts,
+    SearchSubjectResult,
 )
 from dd_agents.search.analyzer import SearchAnalyzer, _extract_yes_no, _max_confidence
 from dd_agents.search.chunker import (
@@ -50,8 +50,8 @@ def _make_prompts() -> SearchPrompts:
     )
 
 
-def _make_customer(name: str = "Acme Corp", group: str = "GroupA") -> CustomerEntry:
-    return CustomerEntry(
+def _make_subject(name: str = "Acme Corp", group: str = "GroupA") -> SubjectEntry:
+    return SubjectEntry(
         group=group,
         name=name,
         safe_name="acme",
@@ -107,14 +107,14 @@ def _make_column_result(
     )
 
 
-def _make_customer_result(
-    customer_name: str = "Acme Corp",
+def _make_subject_result(
+    subject_name: str = "Acme Corp",
     columns: dict[str, SearchColumnResult] | None = None,
     error: str | None = None,
-) -> SearchCustomerResult:
-    """Create a SearchCustomerResult for testing."""
-    return SearchCustomerResult(
-        customer_name=customer_name,
+) -> SearchSubjectResult:
+    """Create a SearchSubjectResult for testing."""
+    return SearchSubjectResult(
+        subject_name=subject_name,
         group="GroupA",
         files_analyzed=1,
         total_files=2,
@@ -136,7 +136,7 @@ class TestConfidenceNormalization:
     async def test_confidence_normalized_to_uppercase(self, tmp_path: Path) -> None:
         """LLM returns mixed-case confidence — parser must normalize to uppercase."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
         _write_text_file(tmp_path, "GroupA/Acme Corp/msa.pdf", "Agreement with consent clause.")
 
         mock_response_data = {
@@ -163,15 +163,15 @@ class TestConfidenceNormalization:
     def test_confidence_normalized_on_merge(self, tmp_path: Path) -> None:
         """Merge phase normalizes confidence to uppercase."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
-        chunk1 = _make_customer_result(
+        chunk1 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="YES", confidence="High"),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED", confidence="medium"),
             }
         )
-        chunk2 = _make_customer_result(
+        chunk2 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="NOT_ADDRESSED", confidence="low"),
                 "Notice Required": _make_column_result(answer="NO", confidence="Medium"),
@@ -187,22 +187,22 @@ class TestConfidenceNormalization:
     async def test_confidence_normalized_in_synthesis(self, tmp_path: Path) -> None:
         """Synthesis pass (Phase 3) normalizes confidence to uppercase."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
-        merged = _make_customer_result(
+        merged = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="YES", confidence="medium"),
                 "Notice Required": _make_column_result(answer="YES", confidence="high"),
             }
         )
         chunk_results = [
-            _make_customer_result(
+            _make_subject_result(
                 columns={
                     "Consent Required": _make_column_result(answer="YES"),
                     "Notice Required": _make_column_result(answer="YES"),
                 }
             ),
-            _make_customer_result(
+            _make_subject_result(
                 columns={
                     "Consent Required": _make_column_result(answer="NO"),
                     "Notice Required": _make_column_result(answer="YES"),
@@ -230,9 +230,9 @@ class TestConfidenceNormalization:
     async def test_confidence_normalized_in_validation(self, tmp_path: Path) -> None:
         """Validation pass (Phase 4) normalizes confidence to uppercase."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
-        result = _make_customer_result(
+        result = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="YES", confidence="high"),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED", confidence="high"),
@@ -267,10 +267,10 @@ class TestCostEstimate:
 
     def test_returns_required_keys(self, tmp_path: Path) -> None:
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
         estimate = analyzer.estimate_cost([customer])
 
-        assert "total_customers" in estimate
+        assert "total_subjects" in estimate
         assert "total_files" in estimate
         assert "files_with_text" in estimate
         assert "files_missing_text" in estimate
@@ -279,20 +279,20 @@ class TestCostEstimate:
         assert "estimated_cost_usd" in estimate
         # New keys for 4-phase chunked analysis.
         assert "total_api_calls" in estimate
-        assert "chunked_customers" in estimate
-        assert estimate["total_customers"] == 1
+        assert "chunked_subjects" in estimate
+        assert estimate["total_subjects"] == 1
 
-    def test_zero_customers(self, tmp_path: Path) -> None:
+    def test_zero_subjects(self, tmp_path: Path) -> None:
         analyzer = _make_analyzer(tmp_path)
         estimate = analyzer.estimate_cost([])
 
-        assert estimate["total_customers"] == 0
+        assert estimate["total_subjects"] == 0
         assert estimate["total_files"] == 0
         assert estimate["estimated_cost_usd"] == 0.0
 
     def test_missing_files_counted(self, tmp_path: Path) -> None:
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
         # Write only one of the two expected files.
         _write_text_file(tmp_path, "GroupA/Acme Corp/msa.pdf", "Some text.")
 
@@ -341,10 +341,10 @@ class TestPromptBuilding:
         assert "Double-check" in prompt
         assert "pay special attention" in prompt.lower()
 
-    def test_customer_prompt_includes_document_text(self, tmp_path: Path) -> None:
+    def test_subject_prompt_includes_document_text(self, tmp_path: Path) -> None:
         """_gather_file_texts + _build_chunk_prompt preserves document content in prompt."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
         # Write extracted text file.
         _write_text_file(tmp_path, "GroupA/Acme Corp/msa.pdf", "Master Service Agreement content here.")
@@ -365,10 +365,10 @@ class TestPromptBuilding:
         assert "Master Service Agreement" in prompt
         assert "msa.pdf" in prompt
 
-    def test_customer_prompt_empty_when_no_text(self, tmp_path: Path) -> None:
+    def test_subject_prompt_empty_when_no_text(self, tmp_path: Path) -> None:
         """_gather_file_texts returns empty list when no text files exist."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
         # No text files written.
         file_texts, skipped = analyzer._gather_file_texts(customer)
@@ -378,7 +378,7 @@ class TestPromptBuilding:
     def test_skipped_files_tracked(self, tmp_path: Path) -> None:
         """_gather_file_texts returns skipped files list correctly."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
         _write_text_file(tmp_path, "GroupA/Acme Corp/msa.pdf", "Content here.")
 
         file_texts, skipped = analyzer._gather_file_texts(customer)
@@ -397,7 +397,7 @@ class TestAnalysis:
     @pytest.mark.asyncio
     async def test_successful_analysis(self, tmp_path: Path) -> None:
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
         _write_text_file(tmp_path, "GroupA/Acme Corp/msa.pdf", "Agreement with consent clause.")
 
         mock_response_data = {
@@ -427,7 +427,7 @@ class TestAnalysis:
 
         assert len(results) == 1
         result = results[0]
-        assert result.customer_name == "Acme Corp"
+        assert result.subject_name == "Acme Corp"
         assert result.error is None
         assert result.columns["Consent Required"].answer == "YES"
         assert len(result.columns["Consent Required"].citations) == 1
@@ -441,7 +441,7 @@ class TestAnalysis:
     async def test_retry_on_failure(self, tmp_path: Path) -> None:
         analyzer = _make_analyzer(tmp_path)
         analyzer._max_retries = 2
-        customer = _make_customer()
+        customer = _make_subject()
         _write_text_file(tmp_path, "GroupA/Acme Corp/msa.pdf", "Some content.")
 
         mock_call = AsyncMock(side_effect=RuntimeError("API down"))
@@ -456,9 +456,9 @@ class TestAnalysis:
         assert mock_call.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_customer_with_no_text(self, tmp_path: Path) -> None:
+    async def test_subject_with_no_text(self, tmp_path: Path) -> None:
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
         # No text files -> should return error without calling API.
         results = await analyzer.analyze_all([customer])
@@ -473,7 +473,7 @@ class TestAnalysis:
     async def test_empty_json_rejected(self, tmp_path: Path) -> None:
         """Empty {} from Claude should be treated as an error, not silent success."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
         _write_text_file(tmp_path, "GroupA/Acme Corp/msa.pdf", "Some content.")
 
         mock_call = AsyncMock(return_value="{}")
@@ -489,7 +489,7 @@ class TestAnalysis:
     async def test_incomplete_response_detected(self, tmp_path: Path) -> None:
         """Missing columns in Claude's response should be flagged."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
         _write_text_file(tmp_path, "GroupA/Acme Corp/msa.pdf", "Some content.")
 
         # Only return one of two expected columns.
@@ -517,20 +517,20 @@ class TestAnalysis:
         assert "INCOMPLETE" in result.columns["Notice Required"].answer
 
     @pytest.mark.asyncio
-    async def test_all_customers_returned(self, tmp_path: Path) -> None:
+    async def test_all_subjects_returned(self, tmp_path: Path) -> None:
         """Every input customer must appear in output, even on failure."""
         analyzer = _make_analyzer(tmp_path)
         customers = [
-            _make_customer(name="Alpha"),
-            _make_customer(name="Beta"),
-            _make_customer(name="Gamma"),
+            _make_subject(name="Alpha"),
+            _make_subject(name="Beta"),
+            _make_subject(name="Gamma"),
         ]
 
         # No text for any -> all should return errors.
         results = await analyzer.analyze_all(customers)
 
         assert len(results) == len(customers)
-        names = {r.customer_name for r in results}
+        names = {r.subject_name for r in results}
         assert names == {"Alpha", "Beta", "Gamma"}
 
 
@@ -545,7 +545,7 @@ class TestGatherFileTexts:
     def test_gathers_existing_files(self, tmp_path: Path) -> None:
         """Two existing text files produce two FileText objects."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
         _write_text_file(tmp_path, "GroupA/Acme Corp/msa.pdf", "Preamble text\n--- Page 1 ---\nMSA content here.")
         _write_text_file(tmp_path, "GroupA/Acme Corp/sow.docx", "SOW content with no page markers.")
 
@@ -563,7 +563,7 @@ class TestGatherFileTexts:
     def test_skips_missing_files(self, tmp_path: Path) -> None:
         """Only write 1 of 2 files -- missing one should appear in skipped list."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
         _write_text_file(tmp_path, "GroupA/Acme Corp/msa.pdf", "MSA content.")
 
         file_texts, skipped = analyzer._gather_file_texts(customer)
@@ -575,7 +575,7 @@ class TestGatherFileTexts:
     def test_skips_empty_files(self, tmp_path: Path) -> None:
         """Empty extracted text file should be skipped."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
         _write_text_file(tmp_path, "GroupA/Acme Corp/msa.pdf", "")  # Empty file
         _write_text_file(tmp_path, "GroupA/Acme Corp/sow.docx", "   \n  ")  # Whitespace-only
 
@@ -596,7 +596,7 @@ class TestBuildChunkPrompt:
     def test_single_chunk_format(self, tmp_path: Path) -> None:
         """Single chunk with 1 segment gets standard format (no Part X of Y)."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
         segment = FileSegment(
             file_path="GroupA/Acme Corp/msa.pdf",
@@ -620,7 +620,7 @@ class TestBuildChunkPrompt:
     def test_multi_chunk_format(self, tmp_path: Path) -> None:
         """Multi-chunk prompt includes 'Part X of Y' header."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
         segment = FileSegment(
             file_path="GroupA/Acme Corp/msa.pdf",
@@ -643,7 +643,7 @@ class TestBuildChunkPrompt:
     def test_page_info_in_prompt(self, tmp_path: Path) -> None:
         """Partial segment shows page range info in the document header."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
         segment = FileSegment(
             file_path="GroupA/Acme Corp/msa.pdf",
@@ -669,7 +669,7 @@ class TestBuildChunkPrompt:
 
 
 class TestParallelChunkAnalysis:
-    """Tests for concurrent chunk processing in _analyze_customer (Issue #21)."""
+    """Tests for concurrent chunk processing in _analyze_subject (Issue #21)."""
 
     @pytest.mark.asyncio
     async def test_multi_chunk_runs_concurrently(self, tmp_path: Path) -> None:
@@ -684,7 +684,7 @@ class TestParallelChunkAnalysis:
         big_text = "".join(text_parts)
         _write_text_file(tmp_path, "GroupA/Acme Corp/msa.pdf", big_text)
 
-        customer = CustomerEntry(
+        customer = SubjectEntry(
             group="GroupA",
             name="Acme Corp",
             safe_name="acme",
@@ -706,7 +706,7 @@ class TestParallelChunkAnalysis:
             )
 
         with patch.object(analyzer, "_call_claude", side_effect=mock_call):
-            result = await analyzer._analyze_customer(customer)
+            result = await analyzer._analyze_subject(customer)
 
         # Should have called Claude for multiple chunks (Phase 1) + validation (Phase 4).
         assert call_count >= 2
@@ -727,15 +727,15 @@ class TestMergeChunkResults:
     def test_yes_overrides_not_addressed(self, tmp_path: Path) -> None:
         """YES from chunk 1 + NOT_ADDRESSED from chunk 2 -> YES wins."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
-        chunk1 = _make_customer_result(
+        chunk1 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="YES", confidence="high"),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED", confidence="high"),
             }
         )
-        chunk2 = _make_customer_result(
+        chunk2 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="NOT_ADDRESSED", confidence="high"),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED", confidence="high"),
@@ -751,15 +751,15 @@ class TestMergeChunkResults:
     def test_conflict_detection(self, tmp_path: Path) -> None:
         """YES from chunk 1 + NO from chunk 2 -> conflict detected."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
-        chunk1 = _make_customer_result(
+        chunk1 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="YES", confidence="high"),
                 "Notice Required": _make_column_result(answer="YES", confidence="high"),
             }
         )
-        chunk2 = _make_customer_result(
+        chunk2 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="NO", confidence="medium"),
                 "Notice Required": _make_column_result(answer="YES", confidence="high"),
@@ -778,7 +778,7 @@ class TestMergeChunkResults:
     def test_citation_deduplication(self, tmp_path: Path) -> None:
         """Same citation in two chunks -> deduplicated in merged result."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
         shared_citation = SearchCitation(
             file_path="GroupA/Acme Corp/msa.pdf",
@@ -793,13 +793,13 @@ class TestMergeChunkResults:
             exact_quote="additional clause",
         )
 
-        chunk1 = _make_customer_result(
+        chunk1 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="YES", citations=[shared_citation]),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
             }
         )
-        chunk2 = _make_customer_result(
+        chunk2 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="YES", citations=[shared_citation, unique_citation]),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
@@ -815,15 +815,15 @@ class TestMergeChunkResults:
     def test_all_not_addressed(self, tmp_path: Path) -> None:
         """Both chunks NOT_ADDRESSED -> merged is NOT_ADDRESSED."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
-        chunk1 = _make_customer_result(
+        chunk1 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="NOT_ADDRESSED"),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
             }
         )
-        chunk2 = _make_customer_result(
+        chunk2 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="NOT_ADDRESSED"),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
@@ -845,10 +845,10 @@ class TestMergeChunkResults:
         substantive free-text (priority 2).
         """
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
         # Chunk 1: verbose NOT_ADDRESSED explanation (the early partial review).
-        chunk1 = _make_customer_result(
+        chunk1 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(
                     answer=(
@@ -861,7 +861,7 @@ class TestMergeChunkResults:
             }
         )
         # Chunk 2: actual substantive summary from the later chunk.
-        chunk2 = _make_customer_result(
+        chunk2 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(
                     answer="Section 12.1 requires prior written consent for any change of control.",
@@ -881,15 +881,15 @@ class TestMergeChunkResults:
     def test_longer_free_text_preferred(self, tmp_path: Path) -> None:
         """When two chunks provide free-text at the same priority, the longer one wins."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
-        chunk1 = _make_customer_result(
+        chunk1 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="Short answer."),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
             }
         )
-        chunk2 = _make_customer_result(
+        chunk2 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(
                     answer="A much longer and more detailed answer with specific section references."
@@ -905,7 +905,7 @@ class TestMergeChunkResults:
     def test_citation_dedup_normalizes_whitespace(self, tmp_path: Path) -> None:
         """Citations with trailing whitespace in keys should be deduplicated."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
         cit_clean = SearchCitation(
             file_path="GroupA/Acme Corp/msa.pdf",
@@ -920,13 +920,13 @@ class TestMergeChunkResults:
             exact_quote="consent required ",  # same quote with trailing space
         )
 
-        chunk1 = _make_customer_result(
+        chunk1 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="YES", citations=[cit_clean]),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
             }
         )
-        chunk2 = _make_customer_result(
+        chunk2 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="YES", citations=[cit_whitespace]),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
@@ -941,7 +941,7 @@ class TestMergeChunkResults:
     def test_citation_dedup_preserves_distinct_quotes(self, tmp_path: Path) -> None:
         """Different quotes from the same page/section must NOT be deduplicated.  Issue #17."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
         cit_a = SearchCitation(
             file_path="GroupA/Acme Corp/msa.pdf",
@@ -956,13 +956,13 @@ class TestMergeChunkResults:
             exact_quote="prior written notice shall be provided",
         )
 
-        chunk1 = _make_customer_result(
+        chunk1 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="YES", citations=[cit_a]),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
             }
         )
-        chunk2 = _make_customer_result(
+        chunk2 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="YES", citations=[cit_b]),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
@@ -981,19 +981,19 @@ class TestMergeChunkResults:
     def test_confidence_takes_max_when_answers_agree(self, tmp_path: Path) -> None:
         """When two chunks agree at the same priority, the higher confidence wins.  Issue #22."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
         # Both chunks return literal YES (priority 3), but different confidences.
         # Chunk 1 is processed first, so its answer/confidence become the initial best.
         # Chunk 2 has the same priority and same answer length, so is_better is False.
         # The _max_confidence fix should still promote the confidence to HIGH.
-        chunk1 = _make_customer_result(
+        chunk1 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="YES", confidence="medium"),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
             }
         )
-        chunk2 = _make_customer_result(
+        chunk2 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="YES", confidence="high"),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
@@ -1008,10 +1008,10 @@ class TestMergeChunkResults:
     def test_confidence_takes_max_for_free_text(self, tmp_path: Path) -> None:
         """When a longer free-text answer wins, a shorter answer's higher confidence is kept."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
         # Chunk 1: longer free-text with MEDIUM confidence.
-        chunk1 = _make_customer_result(
+        chunk1 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(
                     answer="Section 12.1 requires prior written consent for any change of control.",
@@ -1021,7 +1021,7 @@ class TestMergeChunkResults:
             }
         )
         # Chunk 2: shorter free-text with HIGH confidence.
-        chunk2 = _make_customer_result(
+        chunk2 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(
                     answer="Consent is required.",
@@ -1040,15 +1040,15 @@ class TestMergeChunkResults:
     def test_free_text_no_triggers_conflict_with_yes(self, tmp_path: Path) -> None:
         """Free-text starting with 'NO' should conflict with literal 'YES'.  Issue #18."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
-        chunk1 = _make_customer_result(
+        chunk1 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="YES", confidence="high"),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
             }
         )
-        chunk2 = _make_customer_result(
+        chunk2 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(
                     answer="NO - the amendment removed the consent requirement.",
@@ -1066,15 +1066,15 @@ class TestMergeChunkResults:
     def test_free_text_yes_triggers_conflict_with_no(self, tmp_path: Path) -> None:
         """Free-text starting with 'YES' should conflict with literal 'NO'.  Issue #18."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
-        chunk1 = _make_customer_result(
+        chunk1 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="NO", confidence="high"),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
             }
         )
-        chunk2 = _make_customer_result(
+        chunk2 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(
                     answer="YES, consent is required per Section 12.",
@@ -1091,9 +1091,9 @@ class TestMergeChunkResults:
     def test_free_text_without_yes_no_no_conflict(self, tmp_path: Path) -> None:
         """Free-text that doesn't start with YES/NO should not trigger false conflicts."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
-        chunk1 = _make_customer_result(
+        chunk1 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(
                     answer="Section 12 requires consent from both parties.",
@@ -1102,7 +1102,7 @@ class TestMergeChunkResults:
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
             }
         )
-        chunk2 = _make_customer_result(
+        chunk2 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(
                     answer="The agreement stipulates mutual consent is needed.",
@@ -1130,10 +1130,10 @@ class TestSynthesisPass:
     async def test_synthesis_resolves_conflict(self, tmp_path: Path) -> None:
         """Mock _call_claude to return resolution, verify conflicted column updated."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
         # Merged result has conflicted "Consent Required".
-        merged = _make_customer_result(
+        merged = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="YES", confidence="medium"),
                 "Notice Required": _make_column_result(answer="YES", confidence="high"),
@@ -1141,13 +1141,13 @@ class TestSynthesisPass:
         )
 
         chunk_results = [
-            _make_customer_result(
+            _make_subject_result(
                 columns={
                     "Consent Required": _make_column_result(answer="YES"),
                     "Notice Required": _make_column_result(answer="YES"),
                 }
             ),
-            _make_customer_result(
+            _make_subject_result(
                 columns={
                     "Consent Required": _make_column_result(answer="NO"),
                     "Notice Required": _make_column_result(answer="YES"),
@@ -1188,9 +1188,9 @@ class TestSynthesisPass:
     async def test_synthesis_failure_keeps_merged(self, tmp_path: Path) -> None:
         """Mock _call_claude to raise, verify original merged result returned."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
-        merged = _make_customer_result(
+        merged = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="YES", confidence="medium"),
                 "Notice Required": _make_column_result(answer="YES", confidence="high"),
@@ -1198,13 +1198,13 @@ class TestSynthesisPass:
         )
 
         chunk_results = [
-            _make_customer_result(
+            _make_subject_result(
                 columns={
                     "Consent Required": _make_column_result(answer="YES"),
                     "Notice Required": _make_column_result(answer="YES"),
                 }
             ),
-            _make_customer_result(
+            _make_subject_result(
                 columns={
                     "Consent Required": _make_column_result(answer="NO"),
                     "Notice Required": _make_column_result(answer="YES"),
@@ -1225,9 +1225,9 @@ class TestSynthesisPass:
     async def test_synthesis_preserves_non_conflicted(self, tmp_path: Path) -> None:
         """Non-conflicted columns are unchanged after synthesis."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
-        merged = _make_customer_result(
+        merged = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="YES", confidence="medium"),
                 "Notice Required": _make_column_result(answer="NO", confidence="high"),
@@ -1235,13 +1235,13 @@ class TestSynthesisPass:
         )
 
         chunk_results = [
-            _make_customer_result(
+            _make_subject_result(
                 columns={
                     "Consent Required": _make_column_result(answer="YES"),
                     "Notice Required": _make_column_result(answer="NO"),
                 }
             ),
-            _make_customer_result(
+            _make_subject_result(
                 columns={
                     "Consent Required": _make_column_result(answer="NO"),
                     "Notice Required": _make_column_result(answer="NO"),
@@ -1273,11 +1273,11 @@ class TestSynthesisPass:
     async def test_synthesis_preserves_long_quotes(self, tmp_path: Path) -> None:
         """Synthesis prompt should include quotes longer than 200 chars.  Issue #20."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
         long_quote = "A" * 500  # 500-char quote
 
-        merged = _make_customer_result(
+        merged = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="YES", confidence="medium"),
                 "Notice Required": _make_column_result(answer="YES", confidence="high"),
@@ -1285,7 +1285,7 @@ class TestSynthesisPass:
         )
 
         chunk_results = [
-            _make_customer_result(
+            _make_subject_result(
                 columns={
                     "Consent Required": _make_column_result(
                         answer="YES",
@@ -1301,7 +1301,7 @@ class TestSynthesisPass:
                     "Notice Required": _make_column_result(answer="YES"),
                 }
             ),
-            _make_customer_result(
+            _make_subject_result(
                 columns={
                     "Consent Required": _make_column_result(answer="NO"),
                     "Notice Required": _make_column_result(answer="YES"),
@@ -1345,9 +1345,9 @@ class TestValidationPass:
     async def test_validation_finds_answer(self, tmp_path: Path) -> None:
         """Mock _call_claude returns YES for NOT_ADDRESSED column, verify updated."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
-        result = _make_customer_result(
+        result = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="YES", confidence="high"),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED", confidence="high"),
@@ -1387,9 +1387,9 @@ class TestValidationPass:
     async def test_validation_failure_keeps_current(self, tmp_path: Path) -> None:
         """Mock _call_claude raises, verify original result returned."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
-        result = _make_customer_result(
+        result = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="YES"),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
@@ -1410,9 +1410,9 @@ class TestValidationPass:
     async def test_validation_skips_already_answered(self, tmp_path: Path) -> None:
         """No NOT_ADDRESSED columns -> validation not called."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
-        result = _make_customer_result(
+        result = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="YES"),
                 "Notice Required": _make_column_result(answer="NO"),
@@ -1436,9 +1436,9 @@ class TestValidationPass:
     async def test_validation_uses_document_order(self, tmp_path: Path) -> None:
         """Validation pass should include files in document order, not sorted by size.  Issue #19."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
-        result = _make_customer_result(
+        result = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="NOT_ADDRESSED"),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
@@ -1482,9 +1482,9 @@ class TestValidationPass:
         from dd_agents.search.chunker import TARGET_CHUNK_CHARS
 
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
-        result = _make_customer_result(
+        result = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="NOT_ADDRESSED"),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
@@ -1797,22 +1797,22 @@ class TestMergeEdgeCases:
     def test_three_chunks_escalating_confidence(self, tmp_path: Path) -> None:
         """LOW → MEDIUM → HIGH across 3 chunks. Final confidence should be HIGH."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
         chunks = [
-            _make_customer_result(
+            _make_subject_result(
                 columns={
                     "Consent Required": _make_column_result(answer="YES", confidence="low"),
                     "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
                 }
             ),
-            _make_customer_result(
+            _make_subject_result(
                 columns={
                     "Consent Required": _make_column_result(answer="YES", confidence="medium"),
                     "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
                 }
             ),
-            _make_customer_result(
+            _make_subject_result(
                 columns={
                     "Consent Required": _make_column_result(answer="YES", confidence="high"),
                     "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
@@ -1826,15 +1826,15 @@ class TestMergeEdgeCases:
     def test_notice_answer_does_not_conflict_with_yes(self, tmp_path: Path) -> None:
         """'NOTICE IS REQUIRED' is free-text, not NO — should not conflict with YES."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
-        chunk1 = _make_customer_result(
+        chunk1 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="YES"),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
             }
         )
-        chunk2 = _make_customer_result(
+        chunk2 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="NOTICE IS REQUIRED"),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
@@ -1847,18 +1847,18 @@ class TestMergeEdgeCases:
     def test_citation_dedup_handles_empty_quotes(self, tmp_path: Path) -> None:
         """Empty and whitespace-only quotes should be treated as duplicates."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
         cit_empty = SearchCitation(file_path="a.pdf", page="1", section_ref="S1", exact_quote="")
         cit_space = SearchCitation(file_path="a.pdf", page="1", section_ref="S1", exact_quote="   ")
 
-        chunk1 = _make_customer_result(
+        chunk1 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="YES", citations=[cit_empty]),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
             }
         )
-        chunk2 = _make_customer_result(
+        chunk2 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="YES", citations=[cit_space]),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
@@ -1871,9 +1871,9 @@ class TestMergeEdgeCases:
     def test_yes_prefixed_free_text_beats_no(self, tmp_path: Path) -> None:
         """'YES, consent required per Section 12' should beat 'NO' (YES priority > NO)."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
-        chunk1 = _make_customer_result(
+        chunk1 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(
                     answer="YES, consent is required per Section 12", confidence="high"
@@ -1881,7 +1881,7 @@ class TestMergeEdgeCases:
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
             }
         )
-        chunk2 = _make_customer_result(
+        chunk2 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="NO", confidence="high"),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
@@ -1897,15 +1897,15 @@ class TestMergeEdgeCases:
     def test_no_prefixed_free_text_same_priority_as_bare_no(self, tmp_path: Path) -> None:
         """'NO - amendment removed this' has same priority as bare 'NO'; longer wins."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
-        chunk1 = _make_customer_result(
+        chunk1 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="NO", confidence="high"),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
             }
         )
-        chunk2 = _make_customer_result(
+        chunk2 = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(
                     answer="NO - the amendment removed this requirement", confidence="medium"
@@ -1931,22 +1931,22 @@ class TestSynthesisEdgeCases:
     async def test_zero_citations_no_division_error(self, tmp_path: Path) -> None:
         """When conflicting chunks have no citations, quote budget math should not crash."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
-        merged = _make_customer_result(
+        merged = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="YES"),
                 "Notice Required": _make_column_result(answer="YES"),
             }
         )
         chunk_results = [
-            _make_customer_result(
+            _make_subject_result(
                 columns={
                     "Consent Required": _make_column_result(answer="YES", citations=[]),
                     "Notice Required": _make_column_result(answer="YES"),
                 }
             ),
-            _make_customer_result(
+            _make_subject_result(
                 columns={
                     "Consent Required": _make_column_result(answer="NO", citations=[]),
                     "Notice Required": _make_column_result(answer="YES"),
@@ -1977,9 +1977,9 @@ class TestValidationEdgeCases:
         from dd_agents.search.chunker import TARGET_CHUNK_CHARS
 
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
-        result = _make_customer_result(
+        result = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="NOT_ADDRESSED"),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
@@ -2020,9 +2020,9 @@ class TestValidationEdgeCases:
         from dd_agents.search.chunker import TARGET_CHUNK_CHARS
 
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
-        result = _make_customer_result(
+        result = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="NOT_ADDRESSED"),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED"),
@@ -2079,7 +2079,7 @@ class TestParallelChunkFailure:
         big_text = "".join(pages)
         _write_text_file(tmp_path, "GroupA/Acme Corp/msa.pdf", big_text)
 
-        customer = CustomerEntry(
+        customer = SubjectEntry(
             group="GroupA",
             name="Acme Corp",
             safe_name="acme",
@@ -2104,10 +2104,10 @@ class TestParallelChunkFailure:
             )
 
         with patch.object(analyzer, "_call_claude", side_effect=mock_call):
-            result = await analyzer._analyze_customer(customer)
+            result = await analyzer._analyze_subject(customer)
 
         # Despite one chunk failing, we should still have a result (not a crash).
-        assert result.customer_name == "Acme Corp"
+        assert result.subject_name == "Acme Corp"
         # The successful chunks should provide an answer.
         assert result.columns.get("Consent Required") is not None
         # Chunks were analyzed (multiple).
@@ -2126,7 +2126,7 @@ class TestNonTransientErrors:
     async def test_prompt_too_long_no_retry(self, tmp_path: Path) -> None:
         """'Prompt is too long' error should not be retried."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
         _write_text_file(tmp_path, "GroupA/Acme Corp/msa.pdf", "Content")
 
         mock_call = AsyncMock(side_effect=RuntimeError("Prompt is too long"))
@@ -2143,7 +2143,7 @@ class TestNonTransientErrors:
     async def test_context_length_no_retry(self, tmp_path: Path) -> None:
         """'context length' error should not be retried."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
         _write_text_file(tmp_path, "GroupA/Acme Corp/msa.pdf", "Content")
 
         mock_call = AsyncMock(side_effect=RuntimeError("exceeds context length limit"))
@@ -2172,7 +2172,7 @@ class TestExternalReferenceIsolation:
     async def test_external_files_not_included_in_analysis(self, tmp_path: Path) -> None:
         """__external__ files in text_dir are invisible to the analyzer."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
         # Write the customer's actual file.
         _write_text_file(tmp_path, "GroupA/Acme Corp/msa.pdf", "Customer contract text.")
@@ -2506,7 +2506,7 @@ class TestStructuredOutputWiring:
     async def test_phase1_passes_schema(self, tmp_path: Path) -> None:
         """Phase 1 (map) must pass output_schema to _call_claude."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
         _write_text_file(tmp_path, "GroupA/Acme Corp/msa.pdf", "Agreement content.")
 
         captured_schemas: list[dict[str, Any] | None] = []
@@ -2534,22 +2534,22 @@ class TestStructuredOutputWiring:
     async def test_phase3_passes_conflicted_schema(self, tmp_path: Path) -> None:
         """Phase 3 (synthesis) must pass schema with only conflicted columns."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
-        merged = _make_customer_result(
+        merged = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="YES", confidence="medium"),
                 "Notice Required": _make_column_result(answer="YES", confidence="high"),
             }
         )
         chunk_results = [
-            _make_customer_result(
+            _make_subject_result(
                 columns={
                     "Consent Required": _make_column_result(answer="YES"),
                     "Notice Required": _make_column_result(answer="YES"),
                 }
             ),
-            _make_customer_result(
+            _make_subject_result(
                 columns={
                     "Consent Required": _make_column_result(answer="NO"),
                     "Notice Required": _make_column_result(answer="YES"),
@@ -2577,9 +2577,9 @@ class TestStructuredOutputWiring:
     async def test_phase4_passes_not_addressed_schema(self, tmp_path: Path) -> None:
         """Phase 4 (validation) must pass schema with only NOT_ADDRESSED columns."""
         analyzer = _make_analyzer(tmp_path)
-        customer = _make_customer()
+        customer = _make_subject()
 
-        result = _make_customer_result(
+        result = _make_subject_result(
             columns={
                 "Consent Required": _make_column_result(answer="YES", confidence="high"),
                 "Notice Required": _make_column_result(answer="NOT_ADDRESSED", confidence="high"),

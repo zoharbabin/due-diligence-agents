@@ -37,7 +37,7 @@ class FinancialImpactRenderer(SectionRenderer):
 
         # Data coverage note
         cov = self.data.revenue_data_coverage
-        total = self.data.total_customers
+        total = self.data.total_subjects
         with_data = int(cov * total)
         parts.append(
             f"<p class='data-note'>Revenue data available for {with_data} of "

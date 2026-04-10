@@ -5,8 +5,8 @@ Covers:
 - PipelineState: creation, to_checkpoint_dict / from_checkpoint_dict round-trip
 - Checkpoints: save and load via public functions
 - PipelineEngine: initialisation, step registry completeness
-- Step 15: Route reference files to customer dirs
-- Step 18: Incremental merge of prior findings for unchanged customers
+- Step 15: Route reference files to subject dirs
+- Step 18: Incremental merge of prior findings for unchanged subjects
 - Steps 20-22: Judge review cycle
 - Issue #45: prior_run_id population from run history
 - Issue #45: Idempotent run history (no double-append)
@@ -152,14 +152,14 @@ class TestPipelineState:
             project_dir=tmp_path,
             execution_mode="incremental",
             judge_enabled=False,
-            total_customers=42,
-            customer_safe_names=["acme_corp", "beta_inc"],
+            total_subjects=42,
+            subject_safe_names=["acme_corp", "beta_inc"],
         )
         assert state.run_id == "20260221_120000"
         assert state.execution_mode == "incremental"
         assert state.judge_enabled is False
-        assert state.total_customers == 42
-        assert len(state.customer_safe_names) == 2
+        assert state.total_subjects == 42
+        assert len(state.subject_safe_names) == 2
 
     def test_checkpoint_round_trip(self, tmp_path: Path) -> None:
         """to_checkpoint_dict -> from_checkpoint_dict should preserve state."""
@@ -171,8 +171,8 @@ class TestPipelineState:
             execution_mode="incremental",
             judge_enabled=False,
             total_files=100,
-            total_customers=10,
-            customer_safe_names=["alpha", "bravo", "charlie"],
+            total_subjects=10,
+            subject_safe_names=["alpha", "bravo", "charlie"],
             reference_file_count=5,
             current_step=PipelineStep.BUILD_INVENTORY,
             completed_steps=[
@@ -184,7 +184,7 @@ class TestPipelineState:
             batch_counts={"legal": 2},
             validation_results={"numerical_audit": True},
             audit_passed=True,
-            customers_to_analyze=["alpha", "bravo"],
+            subjects_to_analyze=["alpha", "bravo"],
             cross_skill_run_ids={"other-skill": "run_abc"},
             judge_scores={"legal": 85},
         )
@@ -216,8 +216,8 @@ class TestPipelineState:
         assert restored.execution_mode == state.execution_mode
         assert restored.judge_enabled == state.judge_enabled
         assert restored.total_files == state.total_files
-        assert restored.total_customers == state.total_customers
-        assert restored.customer_safe_names == state.customer_safe_names
+        assert restored.total_subjects == state.total_subjects
+        assert restored.subject_safe_names == state.subject_safe_names
         assert restored.reference_file_count == state.reference_file_count
         assert restored.current_step == state.current_step
         assert restored.completed_steps == state.completed_steps
@@ -226,7 +226,7 @@ class TestPipelineState:
         assert restored.batch_counts == state.batch_counts
         assert restored.validation_results == state.validation_results
         assert restored.audit_passed == state.audit_passed
-        assert restored.customers_to_analyze == state.customers_to_analyze
+        assert restored.subjects_to_analyze == state.subjects_to_analyze
         assert restored.cross_skill_run_ids == state.cross_skill_run_ids
         assert restored.judge_scores == state.judge_scores
         assert len(restored.errors) == 1
@@ -326,21 +326,21 @@ class TestPipelineState:
             prior_run_dir=tmp_path / "prior",
             framework_version="1.2.3",
             total_files=100,
-            total_customers=10,
-            customer_safe_names=["alpha", "bravo"],
+            total_subjects=10,
+            subject_safe_names=["alpha", "bravo"],
             reference_file_count=5,
             current_step=PipelineStep.BUILD_INVENTORY,
             completed_steps=[PipelineStep.VALIDATE_CONFIG, PipelineStep.INIT_PERSISTENCE],
             errors=[{"step": "01_validate_config", "message": "test"}],
             agent_sessions={"legal": "sess_1"},
-            agent_results={"legal": {"status": "complete", "customers": 10}},
+            agent_results={"legal": {"status": "complete", "subjects": 10}},
             agent_costs={"legal": 1.23},
             agent_prompts={"legal": ["prompt line 1"]},
             batch_counts={"legal": 2},
             validation_results={"numerical_audit": True},
             audit_passed=True,
-            classification={"customers": [{"name": "alpha", "status": "new"}]},
-            customers_to_analyze=["alpha"],
+            classification={"subjects": [{"name": "alpha", "status": "new"}]},
+            subjects_to_analyze=["alpha"],
             cross_skill_run_ids={"other": "run_xyz"},
             judge_scores={"legal": 85},
         )
@@ -367,8 +367,8 @@ class TestPipelineState:
         assert str(restored.prior_run_dir) == str(state.prior_run_dir)
         assert restored.framework_version == state.framework_version
         assert restored.total_files == state.total_files
-        assert restored.total_customers == state.total_customers
-        assert restored.customer_safe_names == state.customer_safe_names
+        assert restored.total_subjects == state.total_subjects
+        assert restored.subject_safe_names == state.subject_safe_names
         assert restored.reference_file_count == state.reference_file_count
         assert restored.current_step == state.current_step
         assert restored.completed_steps == state.completed_steps
@@ -381,7 +381,7 @@ class TestPipelineState:
         assert restored.validation_results == state.validation_results
         assert restored.audit_passed == state.audit_passed
         assert restored.classification == state.classification
-        assert restored.customers_to_analyze == state.customers_to_analyze
+        assert restored.subjects_to_analyze == state.subjects_to_analyze
         assert restored.cross_skill_run_ids == state.cross_skill_run_ids
         assert restored.judge_scores == state.judge_scores
         # Step results round-trip
@@ -455,7 +455,7 @@ class TestCheckpoints:
                 PipelineStep.VALIDATE_CONFIG,
                 PipelineStep.INIT_PERSISTENCE,
             ],
-            total_customers=7,
+            total_subjects=7,
         )
 
         path = save_checkpoint(state, cp_dir)
@@ -465,7 +465,7 @@ class TestCheckpoints:
         loaded = load_checkpoint(cp_dir)
         assert loaded.run_id == "ckpt_test"
         assert loaded.current_step == PipelineStep.BUILD_INVENTORY
-        assert loaded.total_customers == 7
+        assert loaded.total_subjects == 7
 
     def test_load_by_step(self, tmp_path: Path) -> None:
         cp_dir = tmp_path / "checkpoints"
@@ -649,11 +649,11 @@ class TestExceptions:
         err = PartialFailureError(
             "partial",
             agent_name="finance",
-            missing_customers=["acme", "beta"],
+            missing_subjects=["acme", "beta"],
         )
         assert isinstance(err, RecoverableError)
         assert err.agent_name == "finance"
-        assert err.missing_customers == ["acme", "beta"]
+        assert err.missing_subjects == ["acme", "beta"]
 
 
 # ======================================================================
@@ -790,18 +790,18 @@ class TestRebuildMissingInventoryFiles:
             run_id="test_run",
             project_dir=tmp_path,
             run_dir=run_dir,
-            total_customers=3,
+            total_subjects=3,
             total_files=10,
             reference_file_count=2,
-            customer_safe_names=["acme_corp", "globex", "initech"],
+            subject_safe_names=["acme_corp", "globex", "initech"],
         )
 
-    def test_rebuilds_customers_csv_from_safe_names(self, tmp_path: Path) -> None:
-        """Creates customers.csv from state.customer_safe_names when missing."""
+    def test_rebuilds_subjects_csv_from_safe_names(self, tmp_path: Path) -> None:
+        """Creates subjects.csv from state.subject_safe_names when missing."""
         engine = self._make_engine(tmp_path)
         state = self._make_state(tmp_path)
         inv_dir = tmp_path / "_dd" / "forensic-dd" / "inventory"
-        csv_path = inv_dir / "customers.csv"
+        csv_path = inv_dir / "subjects.csv"
         assert not csv_path.exists()
 
         engine._rebuild_missing_inventory_files(state, inv_dir)
@@ -836,7 +836,7 @@ class TestRebuildMissingInventoryFiles:
         counts_path = inv_dir / "counts.json"
         assert counts_path.exists()
         data = json.loads(counts_path.read_text())
-        assert data["total_customers"] == 3
+        assert data["total_subjects"] == 3
         assert data["total_files"] == 10
         assert data["total_reference_files"] == 2
 
@@ -847,7 +847,7 @@ class TestRebuildMissingInventoryFiles:
         inv_dir = tmp_path / "_dd" / "forensic-dd" / "inventory"
 
         # Pre-create with custom content
-        csv_path = inv_dir / "customers.csv"
+        csv_path = inv_dir / "subjects.csv"
         csv_path.write_text("original content\n")
         ref_path = inv_dir / "reference_files.json"
         ref_path.write_text("[1, 2, 3]")
@@ -875,7 +875,7 @@ class TestStep28FullQAAudit:
             run_id="test_run",
             project_dir=tmp_path,
             run_dir=run_dir,
-            customer_safe_names=["customer_a"],
+            subject_safe_names=["subject_a"],
         )
 
     @pytest.mark.asyncio
@@ -892,7 +892,7 @@ class TestStep28FullQAAudit:
             run_id="test_run",
             checks={
                 "file_coverage": AuditCheck(passed=True, rule="File coverage"),
-                "customer_coverage": AuditCheck(passed=False, rule="Customer coverage"),
+                "subject_coverage": AuditCheck(passed=False, rule="Subject coverage"),
                 "citation_integrity": AuditCheck(passed=False, rule="Citation integrity"),
             },
         )
@@ -924,7 +924,7 @@ class TestStep28FullQAAudit:
             run_id="test_run",
             checks={
                 "file_coverage": AuditCheck(passed=True, rule="File coverage"),
-                "customer_coverage": AuditCheck(passed=True, rule="Customer coverage"),
+                "subject_coverage": AuditCheck(passed=True, rule="Subject coverage"),
             },
         )
         with (
@@ -958,7 +958,7 @@ class TestStep35Shutdown:
             run_id="test_run",
             project_dir=tmp_path,
             run_dir=run_dir,
-            customer_safe_names=["customer_a"],
+            subject_safe_names=["subject_a"],
         )
 
     @pytest.mark.asyncio
@@ -1088,7 +1088,7 @@ class TestStep35Shutdown:
 
 
 class TestSubCheckpoints:
-    """Tests for per-customer sub-checkpoints within long-running steps."""
+    """Tests for per-subject sub-checkpoints within long-running steps."""
 
     def test_save_and_load_sub_checkpoint(self, tmp_path: Path) -> None:
         from dd_agents.orchestrator.checkpoints import load_sub_checkpoints, save_sub_checkpoint
@@ -1096,15 +1096,15 @@ class TestSubCheckpoints:
         cp_dir = tmp_path / "checkpoints"
 
         # Save two sub-checkpoints for step 16
-        save_sub_checkpoint(cp_dir, "step_16", "customer_a", {"status": "complete", "findings": 5})
-        save_sub_checkpoint(cp_dir, "step_16", "customer_b", {"status": "complete", "findings": 3})
+        save_sub_checkpoint(cp_dir, "step_16", "subject_a", {"status": "complete", "findings": 5})
+        save_sub_checkpoint(cp_dir, "step_16", "subject_b", {"status": "complete", "findings": 3})
 
         # Load them back
         loaded = load_sub_checkpoints(cp_dir, "step_16")
         assert len(loaded) == 2
-        assert loaded["customer_a"]["status"] == "complete"
-        assert loaded["customer_a"]["findings"] == 5
-        assert loaded["customer_b"]["findings"] == 3
+        assert loaded["subject_a"]["status"] == "complete"
+        assert loaded["subject_a"]["findings"] == 5
+        assert loaded["subject_b"]["findings"] == 3
 
     def test_load_sub_checkpoints_empty(self, tmp_path: Path) -> None:
         from dd_agents.orchestrator.checkpoints import load_sub_checkpoints
@@ -1117,7 +1117,7 @@ class TestSubCheckpoints:
         from dd_agents.orchestrator.checkpoints import save_sub_checkpoint
 
         cp_dir = tmp_path / "checkpoints"
-        save_sub_checkpoint(cp_dir, "step_16", "customer_a", {"ok": True})
+        save_sub_checkpoint(cp_dir, "step_16", "subject_a", {"ok": True})
 
         sub_dir = cp_dir / "step_16"
         tmp_files = list(sub_dir.glob("*.tmp"))
@@ -1130,7 +1130,7 @@ class TestSubCheckpoints:
         save_sub_checkpoint(cp_dir, "step_16", "good", {"status": "ok"})
 
         # Create a corrupt sub-checkpoint
-        corrupt_path = cp_dir / "step_16" / "customer_bad.json"
+        corrupt_path = cp_dir / "step_16" / "subject_bad.json"
         corrupt_path.write_text("not valid json {{{")
 
         loaded = load_sub_checkpoints(cp_dir, "step_16")
@@ -1143,7 +1143,7 @@ class TestSubCheckpoints:
 
         cp_dir = tmp_path / "checkpoints"
         cp_dir.mkdir()
-        save_sub_checkpoint(cp_dir, "step_16", "customer_a", {"ok": True})
+        save_sub_checkpoint(cp_dir, "step_16", "subject_a", {"ok": True})
 
         assert (cp_dir / "step_16").is_dir()
         clean_checkpoints(cp_dir)
@@ -1287,39 +1287,39 @@ class TestPipelineStateExitCode:
 class TestAgentTeamAdaptiveTimeout:
     """Tests for AgentTeam.calculate_adaptive_timeout."""
 
-    def test_zero_customers(self) -> None:
+    def test_zero_subjects(self) -> None:
         from dd_agents.orchestrator.team import AgentTeam
 
         result = AgentTeam.calculate_adaptive_timeout(0)
-        # base_timeout + 0 * per_customer = 1800
+        # base_timeout + 0 * per_subject = 1800
         assert result == 1800
 
-    def test_ten_customers(self) -> None:
+    def test_ten_subjects(self) -> None:
         from dd_agents.orchestrator.team import AgentTeam
 
         result = AgentTeam.calculate_adaptive_timeout(10)
         # 1800 + 10 * 120 = 3000
         assert result == 3000
 
-    def test_hundred_customers(self) -> None:
+    def test_hundred_subjects(self) -> None:
         from dd_agents.orchestrator.team import AgentTeam
 
         result = AgentTeam.calculate_adaptive_timeout(100)
         # 1800 + 100 * 120 = 13800, capped at MAX_TIMEOUT_S (3600)
         assert result == 3600
 
-    def test_custom_base_and_per_customer(self) -> None:
+    def test_custom_base_and_per_subject(self) -> None:
         from dd_agents.orchestrator.team import AgentTeam
 
         result = AgentTeam.calculate_adaptive_timeout(
             5,
             base_timeout_s=600,
-            per_customer_s=60,
+            per_subject_s=60,
         )
         # 600 + 5 * 60 = 900
         assert result == 900
 
-    def test_one_customer(self) -> None:
+    def test_one_subject(self) -> None:
         from dd_agents.orchestrator.team import AgentTeam
 
         result = AgentTeam.calculate_adaptive_timeout(1)
@@ -1329,13 +1329,13 @@ class TestAgentTeamAdaptiveTimeout:
     def test_multiple_batches_increases_timeout(self) -> None:
         from dd_agents.orchestrator.team import AgentTeam
 
-        # 80 customers, 4 batches (uncapped raw values shown):
+        # 80 subjects, 4 batches (uncapped raw values shown):
         # per_batch = 1800 + (80 * 120) // 4 = 1800 + 2400 = 4200
         # total = 4200 * 4 = 16800 → capped at 3600
         result = AgentTeam.calculate_adaptive_timeout(80, num_batches=4)
         assert result == 3600
 
-        # Same 80 customers with 1 batch (default):
+        # Same 80 subjects with 1 batch (default):
         # per_batch = 1800 + (80 * 120) // 1 = 1800 + 9600 = 11400
         # total = 11400 * 1 = 11400 → capped at 3600
         single = AgentTeam.calculate_adaptive_timeout(80, num_batches=1)
@@ -1366,7 +1366,7 @@ class TestAgentTeamAdaptiveTimeout:
     def test_below_cap_not_reduced(self) -> None:
         from dd_agents.orchestrator.team import AgentTeam
 
-        # 5 customers: 1800 + 5*120 = 2400, under 3600 cap
+        # 5 subjects: 1800 + 5*120 = 2400, under 3600 cap
         result = AgentTeam.calculate_adaptive_timeout(5)
         assert result == 2400
 
@@ -1589,11 +1589,11 @@ class TestAgentTeamMonitorOutput:
 
 
 class TestAgentTeamSpawnSpecialistsAdaptive:
-    """Tests that spawn_specialists uses adaptive timeout when num_customers > 0."""
+    """Tests that spawn_specialists uses adaptive timeout when num_subjects > 0."""
 
     @pytest.mark.asyncio
     async def test_spawn_with_adaptive_timeout(self, tmp_path: Path) -> None:
-        """spawn_specialists calculates adaptive timeout from num_customers."""
+        """spawn_specialists calculates adaptive timeout from num_subjects."""
         from dd_agents.orchestrator.team import AgentTeam
 
         run_dir = tmp_path / "run"
@@ -1608,7 +1608,7 @@ class TestAgentTeamSpawnSpecialistsAdaptive:
         team = AgentTeam(state)
 
         # With placeholder agents, this should complete quickly.
-        results = await team.spawn_specialists(num_customers=10)
+        results = await team.spawn_specialists(num_subjects=10)
         # All 4 specialists should have results.
         assert len(results) == 4
         for name in ("legal", "finance", "commercial", "producttech"):
@@ -1616,7 +1616,7 @@ class TestAgentTeamSpawnSpecialistsAdaptive:
 
 
 # ======================================================================
-# Issue #37: Step 14 - Customer batching via PromptBuilder
+# Issue #37: Step 14 - Subject batching via PromptBuilder
 # ======================================================================
 
 
@@ -1639,47 +1639,47 @@ class TestStep14PreparePrompts:
             run_id="test_run",
             project_dir=tmp_path,
             run_dir=run_dir,
-            customer_safe_names=["customer_a", "customer_b"],
+            subject_safe_names=["subject_a", "subject_b"],
         )
 
     @pytest.mark.asyncio
-    async def test_step_14_calls_batch_customers_and_stores_results(self, tmp_path: Path) -> None:
-        """Step 14 must use PromptBuilder.batch_customers and populate state."""
+    async def test_step_14_calls_batch_subjects_and_stores_results(self, tmp_path: Path) -> None:
+        """Step 14 must use PromptBuilder.batch_subjects and populate state."""
         from unittest.mock import patch
 
-        from dd_agents.models.inventory import CustomerEntry
+        from dd_agents.models.inventory import SubjectEntry
 
         engine = self._make_engine(tmp_path)
         state = self._make_state(tmp_path)
 
-        # Attach customer entries to state (normally done by step 6)
-        customers = [
-            CustomerEntry(
+        # Attach subject entries to state (normally done by step 6)
+        subjects = [
+            SubjectEntry(
                 group="group_a",
-                name="Customer A",
-                safe_name="customer_a",
-                path="customers/customer_a",
+                name="Subject A",
+                safe_name="subject_a",
+                path="subjects/subject_a",
                 file_count=2,
                 files=["file1.pdf", "file2.pdf"],
             ),
-            CustomerEntry(
+            SubjectEntry(
                 group="group_a",
-                name="Customer B",
-                safe_name="customer_b",
-                path="customers/customer_b",
+                name="Subject B",
+                safe_name="subject_b",
+                path="subjects/subject_b",
                 file_count=1,
                 files=["file3.pdf"],
             ),
         ]
-        state._customer_entries = customers  # type: ignore[attr-defined]
+        state._subject_entries = subjects  # type: ignore[attr-defined]
 
         with patch(
-            "dd_agents.agents.prompt_builder.PromptBuilder.batch_customers",
-            wraps=lambda custs, **kw: [custs],  # single batch
+            "dd_agents.agents.prompt_builder.PromptBuilder.batch_subjects",
+            wraps=lambda subjs, **kw: [subjs],  # single batch
         ) as mock_batch:
             result = await engine._step_14_prepare_prompts(state)
 
-        # batch_customers should have been called (once per agent = 4 times)
+        # batch_subjects should have been called (once per agent = 4 times)
         assert mock_batch.call_count == 4
 
         # All 4 specialist agents should have prompts
@@ -1701,15 +1701,15 @@ class TestStep14PreparePrompts:
             assert result.batch_counts[agent_name] >= 1
 
     @pytest.mark.asyncio
-    async def test_step_14_handles_empty_customers(self, tmp_path: Path) -> None:
-        """Step 14 with no customers should produce empty prompts."""
+    async def test_step_14_handles_empty_subjects(self, tmp_path: Path) -> None:
+        """Step 14 with no subjects should produce empty prompts."""
         engine = self._make_engine(tmp_path)
         state = self._make_state(tmp_path)
-        state._customer_entries = []  # type: ignore[attr-defined]
+        state._subject_entries = []  # type: ignore[attr-defined]
 
         result = await engine._step_14_prepare_prompts(state)
 
-        # batch_customers([]) returns [] so agent_prompts should be empty lists
+        # batch_subjects([]) returns [] so agent_prompts should be empty lists
         for agent_name in ["legal", "finance", "commercial", "producttech"]:
             assert result.agent_prompts[agent_name] == []
             assert result.batch_counts[agent_name] == 0
@@ -1728,37 +1728,37 @@ class TestStep17CoverageGate:
         config_path.write_text("{}")
         return PipelineEngine(tmp_path, config_path)
 
-    def _make_state(self, tmp_path: Path, customers: list | None = None) -> PipelineState:
+    def _make_state(self, tmp_path: Path, subjects: list | None = None) -> PipelineState:
         run_dir = tmp_path / "runs" / "test_run"
         run_dir.mkdir(parents=True, exist_ok=True)
         findings_dir = run_dir / "findings"
         findings_dir.mkdir(parents=True, exist_ok=True)
-        if customers is None:
-            customers = ["customer_a", "customer_b", "customer_c"]
+        if subjects is None:
+            subjects = ["subject_a", "subject_b", "subject_c"]
         return PipelineState(
             run_id="test_run",
             project_dir=tmp_path,
             run_dir=run_dir,
-            customer_safe_names=customers,
+            subject_safe_names=subjects,
         )
 
-    def _create_finding(self, findings_dir: Path, agent: str, customer: str) -> None:
+    def _create_finding(self, findings_dir: Path, agent: str, subject: str) -> None:
         """Helper: create a dummy finding file."""
         agent_dir = findings_dir / agent
         agent_dir.mkdir(parents=True, exist_ok=True)
-        (agent_dir / f"{customer}.json").write_text('{"findings": []}')
+        (agent_dir / f"{subject}.json").write_text('{"findings": []}')
 
     @pytest.mark.asyncio
     async def test_coverage_gate_passes_with_full_coverage(self, tmp_path: Path) -> None:
-        """Coverage gate passes when all customers have output for all agents."""
+        """Coverage gate passes when all subjects have output for all agents."""
         engine = self._make_engine(tmp_path)
         state = self._make_state(tmp_path)
         findings_dir = state.run_dir / "findings"
 
-        # Create output for all customers for all agents
+        # Create output for all subjects for all agents
         for agent in ["legal", "finance", "commercial", "producttech"]:
-            for customer in state.customer_safe_names:
-                self._create_finding(findings_dir, agent, customer)
+            for subject in state.subject_safe_names:
+                self._create_finding(findings_dir, agent, subject)
 
         result = await engine._step_17_coverage_gate(state)
         assert result is not None  # Should not raise
@@ -1767,31 +1767,31 @@ class TestStep17CoverageGate:
     async def test_coverage_gate_blocks_below_50_percent(self, tmp_path: Path) -> None:
         """Coverage gate raises BlockingGateError when coverage < 50%."""
         engine = self._make_engine(tmp_path)
-        # Use 10 customers so we can create < 50% coverage
-        customers = [f"customer_{i}" for i in range(10)]
-        state = self._make_state(tmp_path, customers=customers)
+        # Use 10 subjects so we can create < 50% coverage
+        subjects = [f"subject_{i}" for i in range(10)]
+        state = self._make_state(tmp_path, subjects=subjects)
         findings_dir = state.run_dir / "findings"
 
-        # Create output for only 4 of 10 customers for legal agent
+        # Create output for only 4 of 10 subjects for legal agent
         # (40% coverage < 50%)
         for agent in ["legal", "finance", "commercial", "producttech"]:
-            for customer in customers[:4]:
-                self._create_finding(findings_dir, agent, customer)
+            for subject in subjects[:4]:
+                self._create_finding(findings_dir, agent, subject)
 
         with pytest.raises(BlockingGateError, match="coverage.*< 50% threshold"):
             await engine._step_17_coverage_gate(state)
 
     @pytest.mark.asyncio
     async def test_coverage_gate_generates_gap_findings(self, tmp_path: Path) -> None:
-        """Coverage gate generates P1 gap findings for missing customers."""
+        """Coverage gate generates P1 gap findings for missing subjects."""
         engine = self._make_engine(tmp_path)
-        state = self._make_state(tmp_path, customers=["customer_a", "customer_b"])
+        state = self._make_state(tmp_path, subjects=["subject_a", "subject_b"])
         findings_dir = state.run_dir / "findings"
 
-        # Create output for customer_a only across all agents
+        # Create output for subject_a only across all agents
         for agent in ["legal", "finance", "commercial", "producttech"]:
-            self._create_finding(findings_dir, agent, "customer_a")
-        # customer_b is missing from all agents
+            self._create_finding(findings_dir, agent, "subject_a")
+        # subject_b is missing from all agents
 
         # 50% coverage -- should not block (>= 50%) but should generate gaps
         await engine._step_17_coverage_gate(state)
@@ -1801,20 +1801,20 @@ class TestStep17CoverageGate:
         assert gap_path.exists(), "coverage_gap_findings.json should be generated"
 
         gaps = json.loads(gap_path.read_text())
-        assert len(gaps) == 4  # 4 agents x 1 missing customer
+        assert len(gaps) == 4  # 4 agents x 1 missing subject
 
         # Each gap finding should be P1 severity
         for gap in gaps:
             assert gap["severity"] == "P1"
             assert gap["finding_type"] == "coverage_gap"
-            assert gap["customer_safe_name"] == "customer_b"
+            assert gap["subject_safe_name"] == "subject_b"
             assert gap["auto_generated"] is True
 
     @pytest.mark.asyncio
-    async def test_coverage_gate_no_customers(self, tmp_path: Path) -> None:
-        """Coverage gate passes trivially when there are no customers."""
+    async def test_coverage_gate_no_subjects(self, tmp_path: Path) -> None:
+        """Coverage gate passes trivially when there are no subjects."""
         engine = self._make_engine(tmp_path)
-        state = self._make_state(tmp_path, customers=[])
+        state = self._make_state(tmp_path, subjects=[])
 
         result = await engine._step_17_coverage_gate(state)
         assert result is not None  # Should not raise
@@ -1824,10 +1824,10 @@ class TestReconcileAgentOutputFilenames:
     """Tests for _reconcile_agent_output_filenames (misnamed file recovery)."""
 
     def test_misnamed_file_gets_renamed(self, tmp_path: Path) -> None:
-        """A file named entity.json with customer_safe_name='commercial' is renamed."""
+        """A file named entity.json with subject_safe_name='commercial' is renamed."""
         agent_dir = tmp_path / "commercial_agent"
         agent_dir.mkdir()
-        data = {"customer_safe_name": "commercial", "findings": [{"title": "F1"}]}
+        data = {"subject_safe_name": "commercial", "findings": [{"title": "F1"}]}
         (agent_dir / "fidelity.json").write_text(json.dumps(data))
 
         count = PipelineEngine._reconcile_agent_output_filenames(
@@ -1838,14 +1838,14 @@ class TestReconcileAgentOutputFilenames:
         assert (agent_dir / "commercial.json").exists()
         assert not (agent_dir / "fidelity.json").exists()
         result = json.loads((agent_dir / "commercial.json").read_text())
-        assert result["customer_safe_name"] == "commercial"
+        assert result["subject_safe_name"] == "commercial"
         assert len(result["findings"]) == 1
 
     def test_correctly_named_file_untouched(self, tmp_path: Path) -> None:
         """Files already matching expected names are not modified."""
         agent_dir = tmp_path / "agent"
         agent_dir.mkdir()
-        data = {"customer_safe_name": "legal", "findings": [{"title": "ok"}]}
+        data = {"subject_safe_name": "legal", "findings": [{"title": "ok"}]}
         (agent_dir / "legal.json").write_text(json.dumps(data))
 
         count = PipelineEngine._reconcile_agent_output_filenames(
@@ -1856,11 +1856,11 @@ class TestReconcileAgentOutputFilenames:
         assert (agent_dir / "legal.json").exists()
 
     def test_multiple_files_merged_into_one(self, tmp_path: Path) -> None:
-        """Multiple entity files with the same customer_safe_name get merged."""
+        """Multiple entity files with the same subject_safe_name get merged."""
         agent_dir = tmp_path / "agent"
         agent_dir.mkdir()
-        d1 = {"customer_safe_name": "commercial", "findings": [{"title": "A"}], "files_analyzed": 3}
-        d2 = {"customer_safe_name": "commercial", "findings": [{"title": "B"}], "files_analyzed": 2}
+        d1 = {"subject_safe_name": "commercial", "findings": [{"title": "A"}], "files_analyzed": 3}
+        d2 = {"subject_safe_name": "commercial", "findings": [{"title": "B"}], "files_analyzed": 2}
         (agent_dir / "fidelity.json").write_text(json.dumps(d1))
         (agent_dir / "pacific_life.json").write_text(json.dumps(d2))
 
@@ -1875,8 +1875,8 @@ class TestReconcileAgentOutputFilenames:
         assert not (agent_dir / "fidelity.json").exists()
         assert not (agent_dir / "pacific_life.json").exists()
 
-    def test_file_without_customer_safe_name_skipped(self, tmp_path: Path) -> None:
-        """Files without a customer_safe_name field are left alone."""
+    def test_file_without_subject_safe_name_skipped(self, tmp_path: Path) -> None:
+        """Files without a subject_safe_name field are left alone."""
         agent_dir = tmp_path / "agent"
         agent_dir.mkdir()
         (agent_dir / "unknown.json").write_text('{"findings": []}')
@@ -1900,8 +1900,8 @@ class TestReconcileAgentOutputFilenames:
         """Misnamed files merge into an already-existing correctly-named file."""
         agent_dir = tmp_path / "agent"
         agent_dir.mkdir()
-        base = {"customer_safe_name": "commercial", "findings": [{"title": "Base"}], "files_analyzed": 1}
-        extra = {"customer_safe_name": "commercial", "findings": [{"title": "Extra"}], "files_analyzed": 2}
+        base = {"subject_safe_name": "commercial", "findings": [{"title": "Base"}], "files_analyzed": 1}
+        extra = {"subject_safe_name": "commercial", "findings": [{"title": "Extra"}], "files_analyzed": 2}
         (agent_dir / "commercial.json").write_text(json.dumps(base))
         (agent_dir / "entity_x.json").write_text(json.dumps(extra))
 
@@ -1918,7 +1918,7 @@ class TestReconcileAgentOutputFilenames:
         """coverage_manifest.json is never reconciled."""
         agent_dir = tmp_path / "agent"
         agent_dir.mkdir()
-        (agent_dir / "coverage_manifest.json").write_text('{"customer_safe_name": "commercial"}')
+        (agent_dir / "coverage_manifest.json").write_text('{"subject_safe_name": "commercial"}')
 
         count = PipelineEngine._reconcile_agent_output_filenames(
             agent_dir,
@@ -1928,7 +1928,7 @@ class TestReconcileAgentOutputFilenames:
 
 
 class TestRespawnBatching:
-    """Tests that _respawn_for_missing_customers batches large customer sets."""
+    """Tests that _respawn_for_missing_subjects batches large subject sets."""
 
     def _make_engine(self, tmp_path: Path) -> PipelineEngine:
         config_path = tmp_path / "deal-config.json"
@@ -1936,34 +1936,34 @@ class TestRespawnBatching:
         return PipelineEngine(tmp_path, config_path)
 
     @pytest.mark.asyncio
-    async def test_respawn_batches_missing_customers(self, tmp_path: Path) -> None:
-        """Respawn should batch missing customers via PromptBuilder.batch_customers."""
+    async def test_respawn_batches_missing_subjects(self, tmp_path: Path) -> None:
+        """Respawn should batch missing subjects via PromptBuilder.batch_subjects."""
         from unittest.mock import AsyncMock, MagicMock, patch
 
         engine = self._make_engine(tmp_path)
 
-        # Create 30 customers to exceed max_per_batch=20
-        customers = [f"customer_{i}" for i in range(30)]
+        # Create 30 subjects to exceed max_per_batch=20
+        subjects = [f"subject_{i}" for i in range(30)]
         run_dir = tmp_path / "runs" / "test_run"
         run_dir.mkdir(parents=True, exist_ok=True)
         state = PipelineState(
             run_id="test_run",
             project_dir=tmp_path,
             run_dir=run_dir,
-            customer_safe_names=customers,
+            subject_safe_names=subjects,
         )
 
-        # Create mock CustomerEntry objects
+        # Create mock SubjectEntry objects
         mock_entries = []
-        for name in customers:
+        for name in subjects:
             entry = MagicMock()
             entry.safe_name = name
             mock_entries.append(entry)
-        state._customer_entries = mock_entries  # type: ignore[attr-defined]
+        state._subject_entries = mock_entries  # type: ignore[attr-defined]
 
-        # Mock _ensure_customer_entries to return our entries
+        # Mock _ensure_subject_entries to return our entries
         with (
-            patch.object(engine, "_ensure_customer_entries", return_value=mock_entries),
+            patch.object(engine, "_ensure_subject_entries", return_value=mock_entries),
             patch.object(engine, "_ensure_team") as mock_team,
             patch(
                 "dd_agents.agents.prompt_builder.PromptBuilder.build_specialist_prompt",
@@ -1973,9 +1973,9 @@ class TestRespawnBatching:
             mock_specialist = AsyncMock(return_value={"status": "completed"})
             mock_team.return_value._run_specialist = mock_specialist
 
-            await engine._respawn_for_missing_customers(
+            await engine._respawn_for_missing_subjects(
                 agent_name="legal",
-                missing_customers=customers,
+                missing_subjects=subjects,
                 state=state,
             )
 
@@ -1986,34 +1986,34 @@ class TestRespawnBatching:
             assert "prompts" in call_kwargs.kwargs
             prompts = call_kwargs.kwargs["prompts"]
             assert isinstance(prompts, list)
-            # With 30 customers and max_per_batch=20, we expect 2 batches
+            # With 30 subjects and max_per_batch=20, we expect 2 batches
             assert len(prompts) == 2
 
     @pytest.mark.asyncio
     async def test_respawn_single_batch_for_small_set(self, tmp_path: Path) -> None:
-        """Respawn with few customers produces a single batch."""
+        """Respawn with few subjects produces a single batch."""
         from unittest.mock import AsyncMock, MagicMock, patch
 
         engine = self._make_engine(tmp_path)
 
-        customers = [f"customer_{i}" for i in range(5)]
+        subjects = [f"subject_{i}" for i in range(5)]
         run_dir = tmp_path / "runs" / "test_run"
         run_dir.mkdir(parents=True, exist_ok=True)
         state = PipelineState(
             run_id="test_run",
             project_dir=tmp_path,
             run_dir=run_dir,
-            customer_safe_names=customers,
+            subject_safe_names=subjects,
         )
 
         mock_entries = []
-        for name in customers:
+        for name in subjects:
             entry = MagicMock()
             entry.safe_name = name
             mock_entries.append(entry)
 
         with (
-            patch.object(engine, "_ensure_customer_entries", return_value=mock_entries),
+            patch.object(engine, "_ensure_subject_entries", return_value=mock_entries),
             patch.object(engine, "_ensure_team") as mock_team,
             patch(
                 "dd_agents.agents.prompt_builder.PromptBuilder.build_specialist_prompt",
@@ -2023,9 +2023,9 @@ class TestRespawnBatching:
             mock_specialist = AsyncMock(return_value={"status": "completed"})
             mock_team.return_value._run_specialist = mock_specialist
 
-            await engine._respawn_for_missing_customers(
+            await engine._respawn_for_missing_subjects(
                 agent_name="legal",
-                missing_customers=customers,
+                missing_subjects=subjects,
                 state=state,
             )
 
@@ -2044,22 +2044,22 @@ class TestGenerateCoverageGapFinding:
 
     def test_returns_p1_finding(self) -> None:
         gap = PipelineEngine._generate_coverage_gap_finding(
-            customer_safe_name="test_customer",
+            subject_safe_name="test_subject",
             agent_name="legal",
             run_id="run_001",
         )
         assert gap["severity"] == "P1"
         assert gap["finding_type"] == "coverage_gap"
-        assert gap["customer_safe_name"] == "test_customer"
+        assert gap["subject_safe_name"] == "test_subject"
         assert gap["agent"] == "legal"
         assert gap["run_id"] == "run_001"
         assert gap["auto_generated"] is True
         assert "finding_id" in gap
         assert "timestamp" in gap
 
-    def test_finding_id_includes_agent_and_customer(self) -> None:
+    def test_finding_id_includes_agent_and_subject(self) -> None:
         gap = PipelineEngine._generate_coverage_gap_finding(
-            customer_safe_name="acme_corp",
+            subject_safe_name="acme_corp",
             agent_name="finance",
             run_id="run_002",
         )
@@ -2083,7 +2083,7 @@ class TestContextExhaustionDetection:
         result = PipelineEngine._detect_context_exhaustion(
             agent_name="legal",
             findings_dir=findings_dir,
-            expected_customers=["customer_a", "customer_b"],
+            expected_subjects=["subject_a", "subject_b"],
         )
         assert result["likely_exhaustion"] is True
         assert "No output directory" in result["reason"]
@@ -2096,14 +2096,14 @@ class TestContextExhaustionDetection:
         agent_dir = findings_dir / "legal"
         agent_dir.mkdir(parents=True)
 
-        # Create files for all expected customers
-        for name in ["customer_a", "customer_b"]:
+        # Create files for all expected subjects
+        for name in ["subject_a", "subject_b"]:
             (agent_dir / f"{name}.json").write_text('{"findings": [], "data": "x" }')
 
         result = PipelineEngine._detect_context_exhaustion(
             agent_name="legal",
             findings_dir=findings_dir,
-            expected_customers=["customer_a", "customer_b"],
+            expected_subjects=["subject_a", "subject_b"],
         )
         assert result["likely_exhaustion"] is False
         assert result["produced"] == 2
@@ -2118,68 +2118,68 @@ class TestContextExhaustionDetection:
         # Create 5 normal-sized files and 2 tiny files at the end (alphabetical order)
         expected = []
         for i in range(7):
-            name = f"customer_{i:02d}"
+            name = f"subject_{i:02d}"
             expected.append(name)
             # Normal sized (~1000 chars) for first 5, tiny (~20 chars, <30% of avg) for rest
             content = ('{"findings": [' + '"x",' * 200 + '"y"' + "]}") if i < 5 else '{"findings": []}'
             (agent_dir / f"{name}.json").write_text(content)
 
-        # Expected 10 customers but only 7 produced
-        all_expected = expected + ["customer_07", "customer_08", "customer_09"]
+        # Expected 10 subjects but only 7 produced
+        all_expected = expected + ["subject_07", "subject_08", "subject_09"]
 
         result = PipelineEngine._detect_context_exhaustion(
             agent_name="legal",
             findings_dir=findings_dir,
-            expected_customers=all_expected,
+            expected_subjects=all_expected,
         )
         assert result["likely_exhaustion"] is True
         assert result["produced"] == 7
         assert result["expected"] == 10
 
-    def test_no_customers_expected_no_exhaustion(self, tmp_path: Path) -> None:
-        """No expected customers means no exhaustion possible."""
+    def test_no_subjects_expected_no_exhaustion(self, tmp_path: Path) -> None:
+        """No expected subjects means no exhaustion possible."""
         findings_dir = tmp_path / "findings"
         findings_dir.mkdir()
 
         result = PipelineEngine._detect_context_exhaustion(
             agent_name="legal",
             findings_dir=findings_dir,
-            expected_customers=[],
+            expected_subjects=[],
         )
         assert result["likely_exhaustion"] is False
         assert result["coverage_pct"] == 0.0
 
     def test_single_file_produced_flags_exhaustion(self, tmp_path: Path) -> None:
-        """Only 1 file for 5 expected customers should flag exhaustion."""
+        """Only 1 file for 5 expected subjects should flag exhaustion."""
         findings_dir = tmp_path / "findings"
         agent_dir = findings_dir / "legal"
         agent_dir.mkdir(parents=True)
 
-        (agent_dir / "customer_a.json").write_text('{"findings": []}')
+        (agent_dir / "subject_a.json").write_text('{"findings": []}')
 
         result = PipelineEngine._detect_context_exhaustion(
             agent_name="legal",
             findings_dir=findings_dir,
-            expected_customers=[f"customer_{c}" for c in "abcde"],
+            expected_subjects=[f"subject_{c}" for c in "abcde"],
         )
         assert result["likely_exhaustion"] is True
         assert result["produced"] == 1
 
     def test_excludes_coverage_manifest(self, tmp_path: Path) -> None:
-        """coverage_manifest.json should not be counted as a customer output."""
+        """coverage_manifest.json should not be counted as a subject output."""
         findings_dir = tmp_path / "findings"
         agent_dir = findings_dir / "legal"
         agent_dir.mkdir(parents=True)
 
         (agent_dir / "coverage_manifest.json").write_text("{}")
-        (agent_dir / "customer_a.json").write_text('{"findings": []}')
+        (agent_dir / "subject_a.json").write_text('{"findings": []}')
 
         result = PipelineEngine._detect_context_exhaustion(
             agent_name="legal",
             findings_dir=findings_dir,
-            expected_customers=["customer_a", "customer_b"],
+            expected_subjects=["subject_a", "subject_b"],
         )
-        # Should count only customer_a, not coverage_manifest
+        # Should count only subject_a, not coverage_manifest
         assert result["produced"] == 1
 
 
@@ -2304,7 +2304,7 @@ class TestStep18IncrementalMerge:
 
         # Write a prior finding file
         prior_finding = {"findings": [{"id": "F1", "severity": "P1"}]}
-        (prior_findings / "customer_a.json").write_text(json.dumps(prior_finding))
+        (prior_findings / "subject_a.json").write_text(json.dumps(prior_finding))
 
         # Current run dir
         run_dir = tmp_path / "_dd" / "forensic-dd" / "runs" / "current_run"
@@ -2318,13 +2318,13 @@ class TestStep18IncrementalMerge:
             prior_run_id="prior_run",
             prior_run_dir=prior_run_dir,
             classification={
-                "customers": [
+                "subjects": [
                     {
-                        "customer_safe_name": "customer_a",
+                        "subject_safe_name": "subject_a",
                         "classification": "UNCHANGED",
                     },
                     {
-                        "customer_safe_name": "customer_b",
+                        "subject_safe_name": "subject_b",
                         "classification": "CHANGED",
                     },
                 ]
@@ -2334,14 +2334,14 @@ class TestStep18IncrementalMerge:
 
     @pytest.mark.asyncio
     async def test_step_18_carries_forward_unchanged(self, tmp_path: Path) -> None:
-        """Unchanged customers get findings from prior run."""
+        """Unchanged subjects get findings from prior run."""
         engine = self._make_engine(tmp_path)
         state, _prior_run_dir = self._make_state(tmp_path)
 
         result = await engine._step_18_incremental_merge(state)
 
-        # Verify carry-forward: customer_a should have findings in current run
-        carried = state.run_dir / "findings" / "legal" / "customer_a.json"
+        # Verify carry-forward: subject_a should have findings in current run
+        carried = state.run_dir / "findings" / "legal" / "subject_a.json"
         assert carried.exists()
         data = json.loads(carried.read_text())
         assert data["_carried_forward"] is True
@@ -2392,7 +2392,7 @@ class TestStep20JudgeReview:
             project_dir=tmp_path,
             run_dir=run_dir,
             judge_enabled=True,
-            customer_safe_names=["customer_a"],
+            subject_safe_names=["subject_a"],
         )
 
     @pytest.mark.asyncio
@@ -2906,8 +2906,8 @@ class TestStep15ErrorHandlingMissingReferenceFiles:
         assert result is state
 
 
-class TestStep18WithEmptyUnchangedCustomers:
-    """Tests for step 18 when there are no unchanged customers."""
+class TestStep18WithEmptyUnchangedSubjects:
+    """Tests for step 18 when there are no unchanged subjects."""
 
     def _make_engine(self, tmp_path: Path) -> PipelineEngine:
         config_path = tmp_path / "deal-config.json"
@@ -2915,8 +2915,8 @@ class TestStep18WithEmptyUnchangedCustomers:
         return PipelineEngine(tmp_path, config_path)
 
     @pytest.mark.asyncio
-    async def test_step_18_no_unchanged_customers(self, tmp_path: Path) -> None:
-        """Step 18 should return state unchanged when all customers are CHANGED."""
+    async def test_step_18_no_unchanged_subjects(self, tmp_path: Path) -> None:
+        """Step 18 should return state unchanged when all subjects are CHANGED."""
         engine = self._make_engine(tmp_path)
 
         prior_run_dir = tmp_path / "_dd" / "forensic-dd" / "runs" / "prior"
@@ -2932,9 +2932,9 @@ class TestStep18WithEmptyUnchangedCustomers:
             prior_run_id="prior",
             prior_run_dir=prior_run_dir,
             classification={
-                "customers": [
-                    {"customer_safe_name": "customer_a", "classification": "CHANGED"},
-                    {"customer_safe_name": "customer_b", "classification": "CHANGED"},
+                "subjects": [
+                    {"subject_safe_name": "subject_a", "classification": "CHANGED"},
+                    {"subject_safe_name": "subject_b", "classification": "CHANGED"},
                 ]
             },
         )
@@ -2943,8 +2943,8 @@ class TestStep18WithEmptyUnchangedCustomers:
         assert result is state
 
     @pytest.mark.asyncio
-    async def test_step_18_empty_classification_customers(self, tmp_path: Path) -> None:
-        """Step 18 should handle empty classification customers list."""
+    async def test_step_18_empty_classification_subjects(self, tmp_path: Path) -> None:
+        """Step 18 should handle empty classification subjects list."""
         engine = self._make_engine(tmp_path)
 
         prior_run_dir = tmp_path / "_dd" / "forensic-dd" / "runs" / "prior"
@@ -2959,7 +2959,7 @@ class TestStep18WithEmptyUnchangedCustomers:
             execution_mode="incremental",
             prior_run_id="prior",
             prior_run_dir=prior_run_dir,
-            classification={"customers": []},
+            classification={"subjects": []},
         )
 
         result = await engine._step_18_incremental_merge(state)
@@ -3006,7 +3006,7 @@ class TestStep20To22JudgeCycleDegradedMode:
             project_dir=tmp_path,
             run_dir=run_dir,
             judge_enabled=True,
-            customer_safe_names=["customer_a"],
+            subject_safe_names=["subject_a"],
         )
 
     @pytest.mark.asyncio
@@ -3117,7 +3117,7 @@ class TestStep35WithMixedCriticalAndNonCriticalFailures:
             run_id="test_run",
             project_dir=tmp_path,
             run_dir=run_dir,
-            customer_safe_names=["customer_a"],
+            subject_safe_names=["subject_a"],
         )
 
     @pytest.mark.asyncio
@@ -3159,10 +3159,10 @@ class TestStep35WithMixedCriticalAndNonCriticalFailures:
 
         # Checks 4, 5, 7 are non-critical
         mock_checks = [
-            AuditCheck(passed=True, rule="Customer outputs ok", dod_checks=[1]),
+            AuditCheck(passed=True, rule="Subject outputs ok", dod_checks=[1]),
             AuditCheck(passed=False, rule="Governance not resolved", dod_checks=[4]),
             AuditCheck(passed=False, rule="Citations not validated", dod_checks=[5]),
-            AuditCheck(passed=False, rule="Cross-customer not run", dod_checks=[7]),
+            AuditCheck(passed=False, rule="Cross-subject not run", dod_checks=[7]),
         ]
         with patch(
             "dd_agents.validation.dod.DefinitionOfDoneChecker.check_all",
@@ -3221,13 +3221,13 @@ class TestStep16SubCheckpoints:
     """Tests for step-16-specific sub-checkpoint save/load and schema validation."""
 
     def test_save_sub_checkpoint_writes_json_to_correct_path(self, tmp_path: Path) -> None:
-        """save_sub_checkpoint creates checkpoints/<step>/customer_<key>.json."""
+        """save_sub_checkpoint creates checkpoints/<step>/subject_<key>.json."""
         from dd_agents.orchestrator.checkpoints import save_sub_checkpoint
 
         cp_dir = tmp_path / "checkpoints"
         result_path = save_sub_checkpoint(cp_dir, "step_16", "acme_corp", {"status": "complete", "agent": "legal"})
 
-        expected_path = cp_dir / "step_16" / "customer_acme_corp.json"
+        expected_path = cp_dir / "step_16" / "subject_acme_corp.json"
         assert result_path == expected_path
         assert expected_path.exists()
 
@@ -3246,7 +3246,7 @@ class TestStep16SubCheckpoints:
         assert isinstance(result, dict)
 
     def test_load_sub_checkpoints_reads_back_saved_data(self, tmp_path: Path) -> None:
-        """load_sub_checkpoints returns all previously saved sub-checkpoints keyed by customer."""
+        """load_sub_checkpoints returns all previously saved sub-checkpoints keyed by subject."""
         from dd_agents.orchestrator.checkpoints import load_sub_checkpoints, save_sub_checkpoint
 
         cp_dir = tmp_path / "checkpoints"
@@ -3306,7 +3306,7 @@ class TestValidateAgentOutputStructure:
         legal_dir.mkdir(parents=True)
 
         data = {
-            "customer": "Acme Corp",
+            "subject": "Acme Corp",
             "findings": [],
             "cross_references": [{"data_point": "ARR", "match_status": "match"}],
             "gaps": [{"missing_item": "DPA", "gap_type": "Missing_Doc"}],
@@ -3326,7 +3326,7 @@ class TestValidateAgentOutputStructure:
         finance_dir.mkdir(parents=True)
 
         data = {
-            "customer": "Beta Inc",
+            "subject": "Beta Inc",
             "findings": [],
             "cross_references": [
                 "Revenue matches between MSA and cube",
@@ -3348,7 +3348,7 @@ class TestValidateAgentOutputStructure:
         legal_dir.mkdir(parents=True)
 
         data = {
-            "customer": "Gamma LLC",
+            "subject": "Gamma LLC",
             "findings": [],
             "cross_references": [],
             "gaps": ["Missing DPA", "Missing SOW"],
@@ -3366,7 +3366,7 @@ class TestValidateAgentOutputStructure:
         legal_dir.mkdir(parents=True)
 
         # coverage_manifest.json has a different structure
-        manifest = {"customers_covered": 5, "coverage_pct": 1.0}
+        manifest = {"subjects_covered": 5, "coverage_pct": 1.0}
         (legal_dir / "coverage_manifest.json").write_text(json.dumps(manifest))
 
         summary = PipelineEngine._validate_agent_output_structure(findings_dir, [])
@@ -3482,7 +3482,7 @@ class TestMonitorCancellationParams:
             ["legal"],
             stop_event=stop_event,
             agent_tasks=mock_tasks,
-            total_customers=10,
+            total_subjects=10,
         )
 
     @pytest.mark.asyncio
@@ -3498,7 +3498,7 @@ class TestMonitorCancellationParams:
             run_id="cancel_test2",
             project_dir=tmp_path,
         )
-        state.customer_safe_names = ["cust_a", "cust_b"]
+        state.subject_safe_names = ["cust_a", "cust_b"]
         team = AgentTeam(state, stall_threshold_s=1)
 
         output_dir = tmp_path / "findings"
@@ -3534,7 +3534,7 @@ class TestMonitorCancellationParams:
             cancel_threshold_s=0.03,
             stop_event=stop_event,
             agent_tasks=mock_tasks,
-            total_customers=2,
+            total_subjects=2,
         )
 
         # Give the cancellation a moment to propagate
@@ -3803,20 +3803,20 @@ class TestPerAgentCompletionTracking:
 
     @pytest.mark.asyncio
     async def test_agent_marked_complete_when_all_files_written(self, tmp_path: Path) -> None:
-        """Monitor should mark agent as complete when it has written all customer files."""
+        """Monitor should mark agent as complete when it has written all subject files."""
         import asyncio
 
         from dd_agents.orchestrator.team import AgentTeam
 
         state = PipelineState(run_id="completion_test", project_dir=tmp_path)
-        state.customer_safe_names = ["cust_a", "cust_b"]
+        state.subject_safe_names = ["cust_a", "cust_b"]
         team = AgentTeam(state)
 
         output_dir = tmp_path / "findings"
         legal_dir = output_dir / "legal"
         legal_dir.mkdir(parents=True)
 
-        # Write all customer files for legal
+        # Write all subject files for legal
         (legal_dir / "cust_a.json").write_text("{}")
         (legal_dir / "cust_b.json").write_text("{}")
 
@@ -3832,7 +3832,7 @@ class TestPerAgentCompletionTracking:
                 ["legal"],
                 check_interval_s=0.1,
                 stop_event=stop,
-                total_customers=2,
+                total_subjects=2,
             ),
             stop_after_check(),
         )

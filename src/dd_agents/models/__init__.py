@@ -23,8 +23,6 @@ from dd_agents.models.config import (
     BuyerInfo,
     BuyerStrategy,
     CustomDomain,
-    CustomerDatabase,
-    CustomerDatabaseColumns,
     DealConfig,
     DealInfo,
     DomainConfig,
@@ -38,6 +36,8 @@ from dd_agents.models.config import (
     ReportingConfig,
     SamplingRates,
     SourceOfTruth,
+    SubjectDatabase,
+    SubjectDatabaseColumns,
     TargetInfo,
 )
 
@@ -60,7 +60,6 @@ from dd_agents.models.enums import (
     AuditAction,
     CompletionStatus,
     Confidence,
-    CustomerClassificationStatus,
     DealType,
     DetectionMethod,
     ExecutionMode,
@@ -74,6 +73,7 @@ from dd_agents.models.enums import (
     SourceType,
     SpotCheckDimension,
     SpotCheckResult,
+    SubjectClassificationStatus,
 )
 
 # Finding
@@ -85,11 +85,11 @@ from dd_agents.models.finding import (
     CrossReferenceData,
     CrossReferenceSource,
     CrossReferenceSummary,
-    CustomerAnalysis,
     FileHeader,
     Finding,
     Gap,
-    MergedCustomerOutput,
+    MergedSubjectOutput,
+    SubjectAnalysis,
 )
 
 # Governance
@@ -102,12 +102,12 @@ from dd_agents.models.governance import (
 # Inventory
 from dd_agents.models.inventory import (
     CountsJson,
-    CustomerEntry,
-    CustomerMention,
-    CustomerMentionIndex,
     ExtractionQualityEntry,
     FileEntry,
     ReferenceFile,
+    SubjectEntry,
+    SubjectMention,
+    SubjectMentionIndex,
 )
 
 # Manifest
@@ -116,7 +116,7 @@ from dd_agents.models.manifest import (
     FileFailed,
     FileRead,
     FileSkipped,
-    ManifestCustomer,
+    ManifestSubject,
 )
 
 # Numerical
@@ -130,10 +130,10 @@ from dd_agents.models.persistence import (
     AnalysisUnitCounts,
     Classification,
     ClassificationSummary,
-    CustomerClassEntry,
     FindingCounts,
     RunHistoryEntry,
     RunMetadata,
+    SubjectClassEntry,
 )
 
 # Reporting
@@ -158,8 +158,8 @@ from dd_agents.models.search import (
     SearchCitation,
     SearchColumn,
     SearchColumnResult,
-    SearchCustomerResult,
     SearchPrompts,
+    SearchSubjectResult,
 )
 
 __all__ = [
@@ -168,7 +168,7 @@ __all__ = [
     "AuditAction",
     "CompletionStatus",
     "Confidence",
-    "CustomerClassificationStatus",
+    "SubjectClassificationStatus",
     "DealType",
     "DetectionMethod",
     "ExecutionMode",
@@ -188,8 +188,8 @@ __all__ = [
     "BuyerInfo",
     "BuyerStrategy",
     "CustomDomain",
-    "CustomerDatabase",
-    "CustomerDatabaseColumns",
+    "SubjectDatabase",
+    "SubjectDatabaseColumns",
     "DealConfig",
     "DealInfo",
     "DomainConfig",
@@ -216,16 +216,16 @@ __all__ = [
     "CrossReferenceData",
     "CrossReferenceSource",
     "CrossReferenceSummary",
-    "CustomerAnalysis",
+    "SubjectAnalysis",
     "FileHeader",
     "Finding",
     "Gap",
-    "MergedCustomerOutput",
+    "MergedSubjectOutput",
     # Inventory
     "CountsJson",
-    "CustomerEntry",
-    "CustomerMention",
-    "CustomerMentionIndex",
+    "SubjectEntry",
+    "SubjectMention",
+    "SubjectMentionIndex",
     "ExtractionQualityEntry",
     "FileEntry",
     "ReferenceFile",
@@ -234,7 +234,7 @@ __all__ = [
     "FileFailed",
     "FileRead",
     "FileSkipped",
-    "ManifestCustomer",
+    "ManifestSubject",
     # Audit
     "AgentScore",
     "AgentScoreDimensions",
@@ -250,7 +250,7 @@ __all__ = [
     "AnalysisUnitCounts",
     "Classification",
     "ClassificationSummary",
-    "CustomerClassEntry",
+    "SubjectClassEntry",
     "FindingCounts",
     "RunHistoryEntry",
     "RunMetadata",
@@ -285,6 +285,6 @@ __all__ = [
     "SearchCitation",
     "SearchColumn",
     "SearchColumnResult",
-    "SearchCustomerResult",
+    "SearchSubjectResult",
     "SearchPrompts",
 ]

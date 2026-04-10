@@ -9,13 +9,13 @@ import pytest
 from dd_agents.reporting.computed_metrics import ReportComputedData, ReportDataComputer
 
 
-def _customer(
+def _subject(
     name: str,
     findings: list[dict[str, Any]] | None = None,
     cross_references: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     return {
-        "customer": name,
+        "subject": name,
         "findings": findings or [],
         "gaps": [],
         "cross_references": cross_references or [],
@@ -31,20 +31,20 @@ class TestSaaSMetricsComputation:
         assert hasattr(data, "saas_metrics")
 
     def test_saas_metrics_empty_when_no_revenue(self) -> None:
-        merged = {"a": _customer("A")}
+        merged = {"a": _subject("A")}
         computer = ReportDataComputer()
         result = computer.compute(merged)
-        assert result.saas_metrics.get("total_customers", 0) == 1
+        assert result.saas_metrics.get("total_subjects", 0) == 1
 
     def test_customer_count(self) -> None:
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 cross_references=[
                     {"data_point": "ARR", "contract_value": "$100,000", "reference_value": "", "match_status": "match"},
                 ],
             ),
-            "b": _customer(
+            "b": _subject(
                 "B",
                 cross_references=[
                     {"data_point": "ARR", "contract_value": "$200,000", "reference_value": "", "match_status": "match"},
@@ -53,18 +53,18 @@ class TestSaaSMetricsComputation:
         }
         computer = ReportDataComputer()
         result = computer.compute(merged)
-        assert result.saas_metrics["total_customers"] == 2
-        assert result.saas_metrics["customers_with_revenue"] == 2
+        assert result.saas_metrics["total_subjects"] == 2
+        assert result.saas_metrics["subjects_with_revenue"] == 2
 
     def test_avg_contract_value(self) -> None:
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 cross_references=[
                     {"data_point": "ARR", "contract_value": "$100,000", "reference_value": "", "match_status": "match"},
                 ],
             ),
-            "b": _customer(
+            "b": _subject(
                 "B",
                 cross_references=[
                     {"data_point": "ARR", "contract_value": "$300,000", "reference_value": "", "match_status": "match"},
@@ -75,15 +75,15 @@ class TestSaaSMetricsComputation:
         result = computer.compute(merged)
         assert result.saas_metrics["avg_contract_value"] == pytest.approx(200_000.0)
 
-    def test_revenue_concentration_top_customer(self) -> None:
+    def test_revenue_concentration_top_subject(self) -> None:
         merged = {
-            "big": _customer(
+            "big": _subject(
                 "Big",
                 cross_references=[
                     {"data_point": "ARR", "contract_value": "$800,000", "reference_value": "", "match_status": "match"},
                 ],
             ),
-            "small": _customer(
+            "small": _subject(
                 "Small",
                 cross_references=[
                     {"data_point": "ARR", "contract_value": "$200,000", "reference_value": "", "match_status": "match"},
@@ -97,19 +97,19 @@ class TestSaaSMetricsComputation:
     def test_tier_distribution(self) -> None:
         """Customers should be classified into tiers by revenue."""
         merged = {
-            "enterprise": _customer(
+            "enterprise": _subject(
                 "Enterprise",
                 cross_references=[
                     {"data_point": "ARR", "contract_value": "$500,000", "reference_value": "", "match_status": "match"},
                 ],
             ),
-            "mid": _customer(
+            "mid": _subject(
                 "Mid",
                 cross_references=[
                     {"data_point": "ARR", "contract_value": "$50,000", "reference_value": "", "match_status": "match"},
                 ],
             ),
-            "smb": _customer(
+            "smb": _subject(
                 "SMB",
                 cross_references=[
                     {"data_point": "ARR", "contract_value": "$5,000", "reference_value": "", "match_status": "match"},
@@ -145,7 +145,7 @@ class TestSaaSMetricsRenderer:
         computed = ReportComputedData(
             total_contracted_arr=1_000_000.0,
             saas_metrics={
-                "total_customers": 10,
+                "total_subjects": 10,
                 "customers_with_revenue": 8,
                 "avg_contract_value": 125_000.0,
                 "top_customer_pct": 35.0,
@@ -164,7 +164,7 @@ class TestSaaSMetricsRenderer:
         computed = ReportComputedData(
             total_contracted_arr=100.0,
             saas_metrics={
-                "total_customers": 1,
+                "total_subjects": 1,
                 "customers_with_revenue": 1,
                 "avg_contract_value": 100.0,
                 "top_customer_pct": 100.0,

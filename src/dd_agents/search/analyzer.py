@@ -24,7 +24,7 @@ from dd_agents.models.enums import Confidence
 from dd_agents.models.search import (
     SearchCitation,
     SearchColumnResult,
-    SearchCustomerResult,
+    SearchSubjectResult,
     dedup_citations,
     parse_column_result,
 )
@@ -43,7 +43,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from dd_agents.models.inventory import CustomerEntry
+    from dd_agents.models.inventory import SubjectEntry
     from dd_agents.models.search import SearchPrompts
 
 logger = logging.getLogger(__name__)
@@ -141,7 +141,7 @@ def _extract_leading_segment(ft: FileText, max_chars: int) -> str:
 
 
 class SearchAnalyzer:
-    """Analyse customer contracts against custom prompts via the Claude Agent SDK.
+    """Analyse subject contracts against custom prompts via the Claude Agent SDK.
 
     Uses ``claude_agent_sdk.query()`` to call Claude.  The SDK handles
     authentication and routing (Bedrock, Vertex, Anthropic API, etc.)
@@ -158,7 +158,7 @@ class SearchAnalyzer:
     concurrency:
         Maximum parallel API calls.
     max_retries:
-        Retries per customer on transient API errors.
+        Retries per subject on transient API errors.
     """
 
     def __init__(
@@ -179,48 +179,48 @@ class SearchAnalyzer:
     # Cost estimation
     # ------------------------------------------------------------------
 
-    def estimate_cost(self, customers: list[CustomerEntry]) -> dict[str, Any]:
-        """Return a rough cost estimate for analysing *customers*.
+    def estimate_cost(self, subjects: list[SubjectEntry]) -> dict[str, Any]:
+        """Return a rough cost estimate for analysing *subjects*.
 
         Returns
         -------
         dict
-            Keys: ``total_customers``, ``total_files``, ``estimated_input_tokens``,
+            Keys: ``total_subjects``, ``total_files``, ``estimated_input_tokens``,
             ``estimated_output_tokens``, ``estimated_cost_usd``,
             ``files_with_text``, ``files_missing_text``,
-            ``total_api_calls``, ``chunked_customers``.
+            ``total_api_calls``, ``chunked_subjects``.
         """
         total_chars = 0
         files_with_text = 0
         files_missing_text = 0
         total_api_calls = 0
-        chunked_customers = 0
+        chunked_subjects = 0
         system_chars = len(self._build_system_prompt())
 
-        for customer in customers:
-            customer_chars = system_chars
+        for subject in subjects:
+            subject_chars = system_chars
             file_sizes: list[int] = []
-            for file_path in customer.files:
+            for file_path in subject.files:
                 text_path = self._get_text_path(file_path)
                 if text_path.exists():
                     size = text_path.stat().st_size
-                    customer_chars += size
+                    subject_chars += size
                     file_sizes.append(size)
                     files_with_text += 1
                 else:
                     files_missing_text += 1
-            total_chars += customer_chars
+            total_chars += subject_chars
 
             chunk_count = estimate_chunks(file_sizes, TARGET_CHUNK_CHARS)
             total_api_calls += chunk_count  # Phase 1: map calls
             if chunk_count > 1:
-                chunked_customers += 1
+                chunked_subjects += 1
                 total_api_calls += 1  # Phase 3: synthesis pass
             total_api_calls += 1  # Phase 4: potential validation pass (worst case)
 
         estimated_input_tokens = total_chars // _CHARS_PER_TOKEN
-        # Rough output estimate: ~500 tokens per column per customer.
-        estimated_output_tokens = len(customers) * len(self._prompts.columns) * 500
+        # Rough output estimate: ~500 tokens per column per subject.
+        estimated_output_tokens = len(subjects) * len(self._prompts.columns) * 500
 
         estimated_cost = (
             estimated_input_tokens / 1_000_000 * _INPUT_COST_PER_MTOK
@@ -228,7 +228,7 @@ class SearchAnalyzer:
         )
 
         return {
-            "total_customers": len(customers),
+            "total_subjects": len(subjects),
             "total_files": files_with_text + files_missing_text,
             "files_with_text": files_with_text,
             "files_missing_text": files_missing_text,
@@ -236,7 +236,7 @@ class SearchAnalyzer:
             "estimated_output_tokens": estimated_output_tokens,
             "estimated_cost_usd": round(estimated_cost, 2),
             "total_api_calls": total_api_calls,
-            "chunked_customers": chunked_customers,
+            "chunked_subjects": chunked_subjects,
         }
 
     # ------------------------------------------------------------------
@@ -245,25 +245,25 @@ class SearchAnalyzer:
 
     async def analyze_all(
         self,
-        customers: list[CustomerEntry],
+        subjects: list[SubjectEntry],
         progress_callback: Callable[[str], None] | None = None,
-    ) -> list[SearchCustomerResult]:
-        """Analyse all *customers* concurrently.
+    ) -> list[SearchSubjectResult]:
+        """Analyse all *subjects* concurrently.
 
-        Every customer in the input list is guaranteed to appear in the
-        output — errors are captured as :attr:`SearchCustomerResult.error`,
+        Every subject in the input list is guaranteed to appear in the
+        output — errors are captured as :attr:`SearchSubjectResult.error`,
         never raised.
 
         Parameters
         ----------
-        customers:
-            Customer entries to analyse.
+        subjects:
+            Subject entries to analyse.
         progress_callback:
-            Called with the customer name after each customer completes.
+            Called with the subject name after each subject completes.
 
         Returns
         -------
-        list[SearchCustomerResult]
+        list[SearchSubjectResult]
         """
         # Suppress the SDK's cancel-scope RuntimeError that leaks from
         # internal background tasks.  Without this, asyncio's default
@@ -286,47 +286,47 @@ class SearchAnalyzer:
 
         semaphore = asyncio.Semaphore(self._concurrency)
 
-        async def _bounded(customer: CustomerEntry) -> SearchCustomerResult:
+        async def _bounded(subject: SubjectEntry) -> SearchSubjectResult:
             async with semaphore:
                 try:
-                    result = await self._analyze_customer(customer)
+                    result = await self._analyze_subject(subject)
                 except Exception as exc:
-                    # Absolute safety net: no customer is ever lost.
-                    logger.error("Unhandled exception for %s: %s", customer.name, exc)
-                    result = SearchCustomerResult(
-                        customer_name=customer.name,
-                        group=customer.group,
-                        total_files=customer.file_count,
+                    # Absolute safety net: no subject is ever lost.
+                    logger.error("Unhandled exception for %s: %s", subject.name, exc)
+                    result = SearchSubjectResult(
+                        subject_name=subject.name,
+                        group=subject.group,
+                        total_files=subject.file_count,
                         error=f"Unexpected error: {exc}",
                     )
                 if progress_callback is not None:
-                    progress_callback(customer.name)
+                    progress_callback(subject.name)
                 return result
 
-        tasks = [asyncio.create_task(_bounded(c)) for c in customers]
+        tasks = [asyncio.create_task(_bounded(c)) for c in subjects]
         results = list(await asyncio.gather(*tasks, return_exceptions=True))
 
         # Convert any stray exceptions into error results (belt and suspenders).
-        final: list[SearchCustomerResult] = []
+        final: list[SearchSubjectResult] = []
         for i, item in enumerate(results):
             if isinstance(item, BaseException):
-                logger.error("gather() returned exception for customer %s: %s", customers[i].name, item)
+                logger.error("gather() returned exception for subject %s: %s", subjects[i].name, item)
                 final.append(
-                    SearchCustomerResult(
-                        customer_name=customers[i].name,
-                        group=customers[i].group,
-                        total_files=customers[i].file_count,
+                    SearchSubjectResult(
+                        subject_name=subjects[i].name,
+                        group=subjects[i].group,
+                        total_files=subjects[i].file_count,
                         error=f"Unexpected gather error: {item}",
                     )
                 )
             else:
                 final.append(item)
 
-        # Verify completeness: every input customer must appear in output.
-        if len(final) != len(customers):
+        # Verify completeness: every input subject must appear in output.
+        if len(final) != len(subjects):
             logger.error(
-                "COMPLETENESS VIOLATION: %d customers in, %d results out",
-                len(customers),
+                "COMPLETENESS VIOLATION: %d subjects in, %d results out",
+                len(subjects),
                 len(final),
             )
 
@@ -336,30 +336,30 @@ class SearchAnalyzer:
         return final
 
     # ------------------------------------------------------------------
-    # Per-customer analysis (4-phase flow)
+    # Per-subject analysis (4-phase flow)
     # ------------------------------------------------------------------
 
-    async def _analyze_customer(self, customer: CustomerEntry) -> SearchCustomerResult:
-        """Analyse a single customer using the 4-phase chunked flow.
+    async def _analyze_subject(self, subject: SubjectEntry) -> SearchSubjectResult:
+        """Analyse a single subject using the 4-phase chunked flow.
 
         Phase 1 — MAP:   Analyse each chunk independently.
         Phase 2 — MERGE: Mechanically combine chunk results.
         Phase 3 — SYNTH: Resolve conflicts via lightweight LLM call.
         Phase 4 — VALID: Re-query for remaining NOT_ADDRESSED answers.
 
-        Single-chunk customers (the majority) skip Phases 2-3.
+        Single-chunk subjects (the majority) skip Phases 2-3.
         """
         # I/O boundary: read extracted text files.
-        file_texts, skipped_files = self._gather_file_texts(customer)
+        file_texts, skipped_files = self._gather_file_texts(subject)
 
         if not file_texts:
-            return SearchCustomerResult(
-                customer_name=customer.name,
-                group=customer.group,
+            return SearchSubjectResult(
+                subject_name=subject.name,
+                group=subject.group,
                 files_analyzed=0,
-                total_files=customer.file_count,
+                total_files=subject.file_count,
                 skipped_files=skipped_files,
-                error="No extracted text found for this customer's files",
+                error="No extracted text found for this subject's files",
             )
 
         files_with_text = len(file_texts)
@@ -369,22 +369,22 @@ class SearchAnalyzer:
 
         # PHASE 1: Map — analyse each chunk independently and concurrently.
         # Each chunk is an independent unit; no state is shared between calls.
-        # A per-customer semaphore limits concurrent API calls so a customer
+        # A per-subject semaphore limits concurrent API calls so a subject
         # with many chunks doesn't monopolise the concurrency budget.  Issue #61.
         chunk_sem = asyncio.Semaphore(self._concurrency)
 
-        async def _bounded_chunk(chunk: AnalysisChunk) -> SearchCustomerResult:
+        async def _bounded_chunk(chunk: AnalysisChunk) -> SearchSubjectResult:
             async with chunk_sem:
-                return await self._analyze_single(chunk, customer, files_with_text, skipped_files)
+                return await self._analyze_single(chunk, subject, files_with_text, skipped_files)
 
         if len(chunks) == 1:
-            chunk_results = [await self._analyze_single(chunks[0], customer, files_with_text, skipped_files)]
+            chunk_results = [await self._analyze_single(chunks[0], subject, files_with_text, skipped_files)]
         else:
             chunk_tasks = [asyncio.create_task(_bounded_chunk(chunk)) for chunk in chunks]
             raw_results = await asyncio.gather(*chunk_tasks, return_exceptions=True)
 
             # Convert stray exceptions into NOT_ADDRESSED fallback results so a
-            # single chunk failure doesn't lose the entire customer.
+            # single chunk failure doesn't lose the entire subject.
             chunk_results = []
             for i, item in enumerate(raw_results):
                 if isinstance(item, BaseException):
@@ -392,15 +392,15 @@ class SearchAnalyzer:
                         "Chunk %d/%d failed for %s: %s",
                         i + 1,
                         len(chunks),
-                        customer.name,
+                        subject.name,
                         item,
                     )
                     chunk_results.append(
-                        SearchCustomerResult(
-                            customer_name=customer.name,
-                            group=customer.group,
+                        SearchSubjectResult(
+                            subject_name=subject.name,
+                            group=subject.group,
                             files_analyzed=files_with_text,
-                            total_files=customer.file_count,
+                            total_files=subject.file_count,
                             skipped_files=skipped_files,
                             columns={
                                 col.name: SearchColumnResult(
@@ -422,19 +422,19 @@ class SearchAnalyzer:
             conflicted_columns: list[str] = []
         else:
             merged, conflicted_columns = self._merge_chunk_results(
-                chunk_results, customer, files_with_text, skipped_files
+                chunk_results, subject, files_with_text, skipped_files
             )
 
         # PHASE 3: Synthesis (multi-chunk with conflicts only).
         if conflicted_columns:
-            merged = await self._synthesis_pass(merged, chunk_results, conflicted_columns, customer)
+            merged = await self._synthesis_pass(merged, chunk_results, conflicted_columns, subject)
 
         # PHASE 4: Validation (NOT_ADDRESSED remaining).
         not_addressed = [
             col_name for col_name, col_result in merged.columns.items() if col_result.answer == "NOT_ADDRESSED"
         ]
         if not_addressed and file_texts:
-            merged = await self._validation_pass(merged, file_texts, customer)
+            merged = await self._validation_pass(merged, file_texts, subject)
 
         merged.chunks_analyzed = len(chunks)
         return merged
@@ -442,12 +442,12 @@ class SearchAnalyzer:
     async def _analyze_single(
         self,
         chunk: AnalysisChunk,
-        customer: CustomerEntry,
+        subject: SubjectEntry,
         files_with_text: int,
         skipped_files: list[str],
-    ) -> SearchCustomerResult:
+    ) -> SearchSubjectResult:
         """Run the retry loop for a single chunk. Returns a parsed result."""
-        user_prompt = self._build_chunk_prompt(chunk, customer)
+        user_prompt = self._build_chunk_prompt(chunk, subject)
         system_prompt = self._build_system_prompt()
         schema = self._build_analysis_schema([col.name for col in self._prompts.columns])
         last_error: str = ""
@@ -462,25 +462,25 @@ class SearchAnalyzer:
                     "Attempt %d/%d failed for %s (chunk %d/%d): %s%s",
                     attempt,
                     self._max_retries,
-                    customer.name,
+                    subject.name,
                     chunk.chunk_index + 1,
                     chunk.total_chunks,
                     exc,
                     " (non-transient, skipping retries)" if is_non_transient else "",
                 )
                 if is_non_transient or attempt >= self._max_retries:
-                    return SearchCustomerResult(
-                        customer_name=customer.name,
-                        group=customer.group,
+                    return SearchSubjectResult(
+                        subject_name=subject.name,
+                        group=subject.group,
                         files_analyzed=files_with_text,
-                        total_files=customer.file_count,
+                        total_files=subject.file_count,
                         skipped_files=skipped_files,
                         error=f"API error: {exc}",
                     )
                 await asyncio.sleep(2**attempt)
                 continue
 
-            result = self._parse_response(raw_text, customer, files_with_text, skipped_files)
+            result = self._parse_response(raw_text, subject, files_with_text, skipped_files)
 
             # Accept if we got at least some parsed columns, even if
             # incomplete — partial data is better than retrying.
@@ -492,7 +492,7 @@ class SearchAnalyzer:
                 "Attempt %d/%d: unusable response for %s (chunk %d/%d): %s",
                 attempt,
                 self._max_retries,
-                customer.name,
+                subject.name,
                 chunk.chunk_index + 1,
                 chunk.total_chunks,
                 last_error,
@@ -500,11 +500,11 @@ class SearchAnalyzer:
             if attempt < self._max_retries:
                 await asyncio.sleep(2**attempt)
 
-        return SearchCustomerResult(
-            customer_name=customer.name,
-            group=customer.group,
+        return SearchSubjectResult(
+            subject_name=subject.name,
+            group=subject.group,
             files_analyzed=files_with_text,
-            total_files=customer.file_count,
+            total_files=subject.file_count,
             skipped_files=skipped_files,
             error=last_error,
         )
@@ -621,7 +621,8 @@ class SearchAnalyzer:
             system_prompt=system_prompt,
             max_turns=1,
             permission_mode="bypassPermissions",
-            disallowed_tools=["Read", "Edit", "Write", "Bash", "Glob", "Grep", "WebFetch", "Task", "NotebookEdit"],
+            tools=[],
+            allowed_tools=[],
             output_format={"type": "json_schema", "schema": output_schema} if output_schema else None,
         )
 
@@ -633,6 +634,9 @@ class SearchAnalyzer:
                         if isinstance(block, TextBlock):
                             text_parts.append(block.text)
                 elif isinstance(message, ResultMessage) and message.is_error:
+                    if text_parts:
+                        logger.warning("Claude returned error but text was captured; using partial response")
+                        break
                     raise RuntimeError(f"Claude returned error: {message.result}")
         except RuntimeError as exc:
             if "cancel scope" in str(exc).lower():
@@ -668,7 +672,7 @@ class SearchAnalyzer:
         column_names_list = ", ".join(f'"{col.name}"' for col in self._prompts.columns)
 
         return (
-            "You are a meticulous legal due-diligence analyst reviewing customer contracts.\n\n"
+            "You are a meticulous legal due-diligence analyst reviewing subject contracts.\n\n"
             "## Critical Requirements\n\n"
             "You MUST answer EVERY question listed below. Do not skip any question.\n"
             f"Your response MUST contain exactly these keys: {column_names_list}.\n"
@@ -700,7 +704,7 @@ class SearchAnalyzer:
             f"{column_descriptions}\n"
         )
 
-    def _gather_file_texts(self, customer: CustomerEntry) -> tuple[list[FileText], list[str]]:
+    def _gather_file_texts(self, subject: SubjectEntry) -> tuple[list[FileText], list[str]]:
         """Read extracted ``.md`` files and return :class:`FileText` objects.
 
         This is the ONLY I/O point — everything downstream is pure logic.
@@ -714,7 +718,7 @@ class SearchAnalyzer:
         file_texts: list[FileText] = []
         skipped_files: list[str] = []
 
-        for file_path in customer.files:
+        for file_path in subject.files:
             text_path = self._get_text_path(file_path)
             if not text_path.exists():
                 logger.warning("SKIPPED (no extraction): %s", file_path)
@@ -737,30 +741,30 @@ class SearchAnalyzer:
 
         if skipped_files:
             logger.warning(
-                "Customer %s: %d of %d files skipped (missing/empty extraction): %s",
-                customer.name,
+                "Subject %s: %d of %d files skipped (missing/empty extraction): %s",
+                subject.name,
                 len(skipped_files),
-                customer.file_count,
+                subject.file_count,
                 ", ".join(skipped_files),
             )
 
         return file_texts, skipped_files
 
-    def _build_chunk_prompt(self, chunk: AnalysisChunk, customer: CustomerEntry) -> str:
+    def _build_chunk_prompt(self, chunk: AnalysisChunk, subject: SubjectEntry) -> str:
         """Build the user prompt from an :class:`AnalysisChunk`.
 
-        Single-chunk customers get the same format as the old
-        ``_build_customer_prompt``.  Multi-chunk customers get a
+        Single-chunk subjects get the same format as the old
+        ```_build_subject_prompt```.  Multi-chunk subjects get a
         "Part X of Y" header instructing the LLM to answer NOT_ADDRESSED
         if the relevant information is not in this part.
         """
-        header = f"# Customer: {customer.name} (Group: {customer.group})\n"
+        header = f"# Subject: {subject.name} (Group: {subject.group})\n"
         parts: list[str] = [header]
 
         if chunk.total_chunks > 1:
             parts.append(
                 f"\n**Analysis Part {chunk.chunk_index + 1} of {chunk.total_chunks}**\n"
-                "You are reviewing a SUBSET of this customer's documents. "
+                "You are reviewing a SUBSET of this subject's documents. "
                 "If a question cannot be answered from the documents below, "
                 'answer "NOT_ADDRESSED" — another chunk may contain the answer.\n'
             )
@@ -787,11 +791,11 @@ class SearchAnalyzer:
 
     def _merge_chunk_results(
         self,
-        chunk_results: list[SearchCustomerResult],
-        customer: CustomerEntry,
+        chunk_results: list[SearchSubjectResult],
+        subject: SubjectEntry,
         files_with_text: int,
         skipped_files: list[str],
-    ) -> tuple[SearchCustomerResult, list[str]]:
+    ) -> tuple[SearchSubjectResult, list[str]]:
         """Mechanically merge results from multiple chunks.
 
         Per column: answer priority YES > NO > NOT_ADDRESSED.
@@ -799,7 +803,7 @@ class SearchAnalyzer:
 
         Returns
         -------
-        tuple[SearchCustomerResult, list[str]]
+        tuple[SearchSubjectResult, list[str]]
             The merged result and a list of conflicted column names.
         """
         merged_columns: dict[str, SearchColumnResult] = {}
@@ -885,11 +889,11 @@ class SearchAnalyzer:
         if merged_incomplete:
             error_msg = f"Incomplete response — missing columns: {', '.join(merged_incomplete)}"
 
-        merged = SearchCustomerResult(
-            customer_name=customer.name,
-            group=customer.group,
+        merged = SearchSubjectResult(
+            subject_name=subject.name,
+            group=subject.group,
             files_analyzed=files_with_text,
-            total_files=customer.file_count,
+            total_files=subject.file_count,
             skipped_files=skipped_files,
             columns=merged_columns,
             incomplete_columns=merged_incomplete,
@@ -904,11 +908,11 @@ class SearchAnalyzer:
 
     async def _synthesis_pass(
         self,
-        merged: SearchCustomerResult,
-        chunk_results: list[SearchCustomerResult],
+        merged: SearchSubjectResult,
+        chunk_results: list[SearchSubjectResult],
         conflicted_columns: list[str],
-        customer: CustomerEntry,
-    ) -> SearchCustomerResult:
+        subject: SubjectEntry,
+    ) -> SearchSubjectResult:
         """Resolve conflicts using a lightweight LLM call with all findings as JSON.
 
         Only called when chunks DISAGREE on YES vs NO for some columns.
@@ -965,7 +969,7 @@ class SearchAnalyzer:
         )
 
         synthesis_user = (
-            f"# Customer: {customer.name}\n\n"
+            f"# Subject: {subject.name}\n\n"
             "The following columns had CONFLICTING answers across document chunks.\n"
             "Review the evidence and determine the correct answer for each.\n\n"
             f"## Conflicting Findings\n\n```json\n{json.dumps(findings, indent=2)}\n```\n"
@@ -977,7 +981,7 @@ class SearchAnalyzer:
             raw_text = await self._call_claude(synthesis_system, synthesis_user, output_schema=schema)
             data: dict[str, Any] = json.loads(raw_text)
         except Exception as exc:
-            logger.warning("Synthesis pass failed for %s: %s — keeping merged results", customer.name, exc)
+            logger.warning("Synthesis pass failed for %s: %s — keeping merged results", subject.name, exc)
             return merged
 
         # Update only the conflicted columns with synthesis results.
@@ -1002,10 +1006,10 @@ class SearchAnalyzer:
 
     async def _validation_pass(
         self,
-        result: SearchCustomerResult,
+        result: SearchSubjectResult,
         file_texts: list[FileText],
-        customer: CustomerEntry,
-    ) -> SearchCustomerResult:
+        subject: SubjectEntry,
+    ) -> SearchSubjectResult:
         """Re-query with targeted follow-up for remaining NOT_ADDRESSED answers.
 
         Uses AG-style follow-up prompting: "Pay special attention to schedules,
@@ -1057,7 +1061,7 @@ class SearchAnalyzer:
             f"## Questions to Answer\n\n{column_descriptions}\n"
         )
 
-        validation_user = f"# Customer: {customer.name}\n\n" + "\n".join(doc_parts)
+        validation_user = f"# Subject: {subject.name}\n\n" + "\n".join(doc_parts)
 
         schema = self._build_analysis_schema(not_addressed)
 
@@ -1065,7 +1069,7 @@ class SearchAnalyzer:
             raw_text = await self._call_claude(validation_system, validation_user, output_schema=schema)
             data: dict[str, Any] = json.loads(raw_text)
         except Exception as exc:
-            logger.warning("Validation pass failed for %s: %s — keeping current results", customer.name, exc)
+            logger.warning("Validation pass failed for %s: %s — keeping current results", subject.name, exc)
             return result
 
         # Update only the NOT_ADDRESSED columns with validation results.
@@ -1106,11 +1110,11 @@ class SearchAnalyzer:
     def _parse_response(
         self,
         raw_text: str,
-        customer: CustomerEntry,
+        subject: SubjectEntry,
         files_with_text: int,
         skipped_files: list[str],
-    ) -> SearchCustomerResult:
-        """Parse Claude's JSON response into a :class:`SearchCustomerResult`.
+    ) -> SearchSubjectResult:
+        """Parse Claude's JSON response into a :class:`SearchSubjectResult`.
 
         Validates completeness: every expected column must be present in
         the response, and empty ``{}`` responses are rejected.
@@ -1120,15 +1124,15 @@ class SearchAnalyzer:
         if not cleaned:
             logger.error(
                 "Empty response from Claude for %s (raw length: %d, preview: %.200s)",
-                customer.name,
+                subject.name,
                 len(raw_text),
                 raw_text[:200],
             )
-            return SearchCustomerResult(
-                customer_name=customer.name,
-                group=customer.group,
+            return SearchSubjectResult(
+                subject_name=subject.name,
+                group=subject.group,
                 files_analyzed=files_with_text,
-                total_files=customer.file_count,
+                total_files=subject.file_count,
                 skipped_files=skipped_files,
                 error="Claude returned an empty response — no data extracted",
             )
@@ -1138,27 +1142,27 @@ class SearchAnalyzer:
         except json.JSONDecodeError as exc:
             logger.error(
                 "JSON parse failed for %s: %s (preview: %.300s)",
-                customer.name,
+                subject.name,
                 exc,
                 cleaned[:300],
             )
-            return SearchCustomerResult(
-                customer_name=customer.name,
-                group=customer.group,
+            return SearchSubjectResult(
+                subject_name=subject.name,
+                group=subject.group,
                 files_analyzed=files_with_text,
-                total_files=customer.file_count,
+                total_files=subject.file_count,
                 skipped_files=skipped_files,
                 error=f"Failed to parse API response as JSON: {exc}",
             )
 
         # Reject empty JSON object — Claude likely hit a context limit.
         if not data:
-            logger.error("Claude returned empty JSON {} for %s", customer.name)
-            return SearchCustomerResult(
-                customer_name=customer.name,
-                group=customer.group,
+            logger.error("Claude returned empty JSON {} for %s", subject.name)
+            return SearchSubjectResult(
+                subject_name=subject.name,
+                group=subject.group,
                 files_analyzed=files_with_text,
-                total_files=customer.file_count,
+                total_files=subject.file_count,
                 skipped_files=skipped_files,
                 error="Claude returned empty JSON {} — likely a context limit or model error",
             )
@@ -1176,7 +1180,7 @@ class SearchAnalyzer:
                 # Column is completely missing from the response.
                 logger.warning(
                     "INCOMPLETE RESPONSE for %s: missing column '%s'",
-                    customer.name,
+                    subject.name,
                     col.name,
                 )
                 incomplete_columns.append(col.name)
@@ -1196,11 +1200,11 @@ class SearchAnalyzer:
         if incomplete_columns:
             error_msg = f"Incomplete response — missing columns: {', '.join(incomplete_columns)}"
 
-        return SearchCustomerResult(
-            customer_name=customer.name,
-            group=customer.group,
+        return SearchSubjectResult(
+            subject_name=subject.name,
+            group=subject.group,
             files_analyzed=files_with_text,
-            total_files=customer.file_count,
+            total_files=subject.file_count,
             skipped_files=skipped_files,
             columns=columns,
             incomplete_columns=incomplete_columns,

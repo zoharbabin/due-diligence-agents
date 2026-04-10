@@ -96,8 +96,8 @@ class PipelineState:
 
     # --- Inventory ----------------------------------------------------------
     total_files: int = 0
-    total_customers: int = 0
-    customer_safe_names: list[str] = field(default_factory=list)
+    total_subjects: int = 0
+    subject_safe_names: list[str] = field(default_factory=list)
     reference_file_count: int = 0
 
     # --- Document precedence (Issue #163) ---------------------------------
@@ -125,7 +125,7 @@ class PipelineState:
 
     # --- Incremental mode ---------------------------------------------------
     classification: dict[str, Any] | None = None
-    customers_to_analyze: list[str] = field(default_factory=list)
+    subjects_to_analyze: list[str] = field(default_factory=list)
 
     # --- Cross-skill --------------------------------------------------------
     cross_skill_run_ids: dict[str, str] = field(default_factory=dict)
@@ -154,15 +154,15 @@ class PipelineState:
             }
 
         # Persist dynamic attributes that downstream steps depend on.
-        # ``_customer_entries`` is assigned in step 6 and consumed
+        # ``_subject_entries`` is assigned in step 6 and consumed
         # by step 14 (prompt building) and the respawn path (step 17).
-        customer_entries_ser: list[dict[str, Any]] = []
-        _entries: list[Any] = getattr(self, "_customer_entries", [])
+        subject_entries_ser: list[dict[str, Any]] = []
+        _entries: list[Any] = getattr(self, "_subject_entries", [])
         for entry in _entries:
             if hasattr(entry, "model_dump"):
-                customer_entries_ser.append(entry.model_dump())
+                subject_entries_ser.append(entry.model_dump())
             elif isinstance(entry, dict):
-                customer_entries_ser.append(entry)
+                subject_entries_ser.append(entry)
 
         return {
             "run_id": self.run_id,
@@ -177,8 +177,8 @@ class PipelineState:
             "prior_run_dir": str(self.prior_run_dir) if self.prior_run_dir else None,
             "framework_version": self.framework_version,
             "total_files": self.total_files,
-            "total_customers": self.total_customers,
-            "customer_safe_names": self.customer_safe_names,
+            "total_subjects": self.total_subjects,
+            "subject_safe_names": self.subject_safe_names,
             "reference_file_count": self.reference_file_count,
             "current_step": self.current_step.value,
             "completed_steps": [s.value for s in self.completed_steps],
@@ -192,12 +192,12 @@ class PipelineState:
             "validation_results": self.validation_results,
             "audit_passed": self.audit_passed,
             "classification": self.classification,
-            "customers_to_analyze": self.customers_to_analyze,
+            "subjects_to_analyze": self.subjects_to_analyze,
             "cross_skill_run_ids": self.cross_skill_run_ids,
             "judge_scores": self.judge_scores,
             "exit_code": self.exit_code,
             "file_precedence": self.file_precedence,
-            "_customer_entries": customer_entries_ser,
+            "_subject_entries": subject_entries_ser,
         }
 
     # Step value migrations: old checkpoint string → current enum value.
@@ -238,8 +238,8 @@ class PipelineState:
             prior_run_dir=(Path(data["prior_run_dir"]) if data.get("prior_run_dir") else None),
             framework_version=data.get("framework_version", "unknown"),
             total_files=data.get("total_files", 0),
-            total_customers=data.get("total_customers", 0),
-            customer_safe_names=data.get("customer_safe_names", []),
+            total_subjects=data.get("total_subjects", 0),
+            subject_safe_names=data.get("subject_safe_names", []),
             reference_file_count=data.get("reference_file_count", 0),
             current_step=PipelineStep(cls._migrate_step_value(data["current_step"])),
             completed_steps=[PipelineStep(cls._migrate_step_value(v)) for v in data.get("completed_steps", [])],
@@ -253,27 +253,27 @@ class PipelineState:
             validation_results=data.get("validation_results", {}),
             audit_passed=data.get("audit_passed", False),
             classification=data.get("classification"),
-            customers_to_analyze=data.get("customers_to_analyze", []),
+            subjects_to_analyze=data.get("subjects_to_analyze", []),
             cross_skill_run_ids=data.get("cross_skill_run_ids", {}),
             judge_scores=data.get("judge_scores", {}),
             exit_code=data.get("exit_code", 0),
             file_precedence=data.get("file_precedence", {}),
         )
 
-        # Restore dynamic attribute ``_customer_entries`` so that respawn
+        # Restore dynamic attribute ``_subject_entries`` so that respawn
         # and prompt rebuilding work correctly after checkpoint resume.
-        raw_entries = data.get("_customer_entries", [])
+        raw_entries = data.get("_subject_entries", [])
         if raw_entries:
             import contextlib
 
-            from dd_agents.models.inventory import CustomerEntry
+            from dd_agents.models.inventory import SubjectEntry
 
-            restored: list[CustomerEntry] = []
+            restored: list[SubjectEntry] = []
             for item in raw_entries:
                 if isinstance(item, dict):
                     with contextlib.suppress(Exception):
-                        restored.append(CustomerEntry.model_validate(item))
+                        restored.append(SubjectEntry.model_validate(item))
             if restored:
-                state._customer_entries = restored  # type: ignore[attr-defined]
+                state._subject_entries = restored  # type: ignore[attr-defined]
 
         return state

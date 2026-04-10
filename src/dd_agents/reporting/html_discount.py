@@ -25,14 +25,14 @@ class DiscountAnalysisRenderer(SectionRenderer):
             "<h2>Discount &amp; Pricing Analysis</h2>",
         ]
 
-        customers_with = analysis.get("customers_with_discounts", 0)
-        if customers_with > 0:
+        subjects_with = analysis.get("subjects_with_discounts", 0)
+        if subjects_with > 0:
             parts.append(
                 self.render_alert(
-                    "high" if customers_with > 5 else "info",
-                    f"{customers_with} entities with identified discounts",
+                    "high" if subjects_with > 5 else "info",
+                    f"{subjects_with} entities with identified discounts",
                     f"{total} pricing-related findings across "
-                    f"{customers_with} entities. "
+                    f"{subjects_with} entities. "
                     f"Review discount concentration for revenue quality risk.",
                 )
             )
@@ -61,7 +61,7 @@ class DiscountAnalysisRenderer(SectionRenderer):
         if any(v > 0 for v in dist.values()):
             parts.append("<h3>Discount Distribution</h3>")
             parts.append(
-                "<table class='customer-table sortable'><thead><tr>"
+                "<table class='subject-table sortable'><thead><tr>"
                 "<th scope='col'>Bucket</th>"
                 "<th scope='col'>Count</th>"
                 "</tr></thead><tbody>"
@@ -75,7 +75,7 @@ class DiscountAnalysisRenderer(SectionRenderer):
         if top_discounted:
             parts.append("<h3>Top Discounted Entities</h3>")
             parts.append(
-                "<table class='customer-table sortable'><thead><tr>"
+                "<table class='subject-table sortable'><thead><tr>"
                 "<th scope='col'>Entity</th>"
                 "<th scope='col'>Discount %</th>"
                 "</tr></thead><tbody>"
@@ -93,7 +93,7 @@ class DiscountAnalysisRenderer(SectionRenderer):
         if findings:
             parts.append("<h3>Pricing Findings</h3>")
             parts.append(
-                "<table class='customer-table sortable'><thead><tr>"
+                "<table class='subject-table sortable'><thead><tr>"
                 "<th scope='col'>Severity</th>"
                 "<th scope='col'>Entity</th>"
                 "<th scope='col'>Finding</th>"
@@ -102,8 +102,8 @@ class DiscountAnalysisRenderer(SectionRenderer):
             for f in findings[:15]:
                 sev = str(f.get("severity", "P3"))
                 title = self.escape(str(f.get("title", "")))
-                customer = self.escape(self._resolve_display_name(f))
-                parts.append(f"<tr><td>{self.severity_badge(sev)}</td><td>{customer}</td><td>{title}</td></tr>")
+                entity_name = self.escape(self._resolve_display_name(f))
+                parts.append(f"<tr><td>{self.severity_badge(sev)}</td><td>{entity_name}</td><td>{title}</td></tr>")
             parts.append("</tbody></table>")
 
         parts.append("</section>")

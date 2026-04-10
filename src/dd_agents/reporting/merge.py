@@ -1,7 +1,7 @@
 """Finding merge and deduplication across specialist agents.
 
 Implements the 6-step merge/dedup protocol from 10-reporting.md:
-1. Collect agent outputs per customer
+1. Collect agent outputs per subject
 2. Merge findings into combined list
 3. Deduplicate by match key (citation source_path + location)
 4. Cross-validate severity disagreements
@@ -24,11 +24,11 @@ from dd_agents.models.finding import (
     CrossReferenceSummary,
     Finding,
     Gap,
-    MergedCustomerOutput,
+    MergedSubjectOutput,
 )
 from dd_agents.models.governance import GovernanceEdge, GovernanceGraph
-from dd_agents.utils.constants import ALL_SPECIALIST_AGENTS, NON_CUSTOMER_STEMS, SEVERITY_ORDER
-from dd_agents.utils.naming import customer_safe_name as compute_safe_name
+from dd_agents.utils.constants import ALL_SPECIALIST_AGENTS, NON_SUBJECT_STEMS, SEVERITY_ORDER
+from dd_agents.utils.naming import subject_safe_name as compute_safe_name
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -144,31 +144,31 @@ class FindingMerger:
     # Public API
     # ------------------------------------------------------------------
 
-    def merge_customer(
+    def merge_subject(
         self,
         agent_outputs: dict[str, dict[str, Any]],
-        customer_name: str = "",
-        customer_safe_name: str = "",
-    ) -> MergedCustomerOutput:
-        """Merge findings from specialist agents for one customer.
+        subject_name: str = "",
+        subject_safe_name: str = "",
+    ) -> MergedSubjectOutput:
+        """Merge findings from specialist agents for one subject.
 
         Parameters
         ----------
         agent_outputs:
             ``{agent_name: raw_json_dict}`` for each agent that produced output.
-        customer_name:
-            Canonical customer display name.  Falls back to the first agent
-            output's ``customer`` field when not provided.
-        customer_safe_name:
-            Filesystem-safe slug.  Computed from *customer_name* when absent.
+        subject_name:
+            Canonical subject display name.  Falls back to the first agent
+            output's ``subject`` field when not provided.
+        subject_safe_name:
+            Filesystem-safe slug.  Computed from *subject_name* when absent.
         """
-        # Resolve customer identity
-        if not customer_name:
+        # Resolve subject identity
+        if not subject_name:
             for data in agent_outputs.values():
-                customer_name = data.get("customer", "unknown")
+                subject_name = data.get("subject", "unknown")
                 break
-        if not customer_safe_name and customer_name.strip():
-            customer_safe_name = compute_safe_name(customer_name)
+        if not subject_safe_name and subject_name.strip():
+            subject_safe_name = compute_safe_name(subject_name)
 
         # Step 2 -- Merge
         all_findings: list[dict[str, Any]] = []
@@ -205,15 +205,15 @@ class FindingMerger:
         # Auto-generate finding IDs and promote to full Finding dicts
         promoted = self._promote_findings(
             deduped,
-            customer_name,
-            customer_safe_name,
+            subject_name,
+            subject_safe_name,
         )
 
         # Step 5 -- Consolidate governance
         governance = self._consolidate_governance(agent_outputs)
 
         # Step 6 -- Merge gap files from all agents
-        merged_gaps = self._collect_gaps(agent_outputs, customer_name)
+        merged_gaps = self._collect_gaps(agent_outputs, subject_name)
 
         # Cross-references
         cross_refs = self._union_cross_refs(agent_outputs)
@@ -222,9 +222,9 @@ class FindingMerger:
         conflicts = self._detect_cross_agent_conflicts(cross_refs)
         if conflicts:
             logger.warning(
-                "Detected %d cross-agent conflicts for customer %s",
+                "Detected %d cross-agent conflicts for subject %s",
                 len(conflicts),
-                customer_name,
+                subject_name,
             )
 
         xref_summary = self._merge_xref_summaries(agent_outputs)
@@ -235,9 +235,9 @@ class FindingMerger:
         # Pre-generation validation: warn about P0/P1 findings with empty citations
         self._validate_finding_citations(promoted)
 
-        return MergedCustomerOutput(
-            customer=customer_name,
-            customer_safe_name=customer_safe_name,
+        return MergedSubjectOutput(
+            subject=subject_name,
+            subject_safe_name=subject_safe_name,
             findings=promoted,
             gaps=merged_gaps,
             cross_references=cross_refs,
@@ -246,49 +246,49 @@ class FindingMerger:
             governance_resolved_pct=gov_pct,
         )
 
-    # Non-customer JSON files that agents may write alongside customer findings.
-    _NON_CUSTOMER_STEMS = NON_CUSTOMER_STEMS
+    # Non-subject JSON files that agents may write alongside subject findings.
+    _NON_SUBJECT_STEMS = NON_SUBJECT_STEMS
 
     def merge_all(
         self,
         findings_dir: Path,
         *,
-        expected_customers: list[str] | None = None,
-    ) -> dict[str, MergedCustomerOutput]:
-        """Process all customers found under *findings_dir*.
+        expected_subjects: list[str] | None = None,
+    ) -> dict[str, MergedSubjectOutput]:
+        """Process all subjects found under *findings_dir*.
 
         Expects the directory layout::
 
             findings_dir/
-                legal/<customer_safe_name>.json
-                finance/<customer_safe_name>.json
-                commercial/<customer_safe_name>.json
-                producttech/<customer_safe_name>.json
+                legal/<subject_safe_name>.json
+                finance/<subject_safe_name>.json
+                commercial/<subject_safe_name>.json
+                producttech/<subject_safe_name>.json
 
         Parameters
         ----------
         findings_dir:
             Root of the per-agent findings directories.
-        expected_customers:
+        expected_subjects:
             If provided, discovered stems are validated against this
             canonical list.  Unknown stems are mapped to the closest
             expected name (via fuzzy match) and a warning is logged.
 
-        Returns ``{customer_safe_name: MergedCustomerOutput}``.
+        Returns ``{subject_safe_name: MergedSubjectOutput}``.
         """
-        # Discover all customer safe names across agents
-        customer_names: set[str] = set()
+        # Discover all subject safe name across agents
+        subject_names: set[str] = set()
         for agent in ALL_SPECIALIST_AGENTS:
             agent_dir = findings_dir / agent
             if agent_dir.is_dir():
                 for fp in agent_dir.glob("*.json"):
-                    if fp.stem not in self._NON_CUSTOMER_STEMS:
-                        customer_names.add(fp.stem)
+                    if fp.stem not in self._NON_SUBJECT_STEMS:
+                        subject_names.add(fp.stem)
 
-        # Validate discovered stems against expected customer list (Issue #88).
-        if expected_customers is not None:
-            expected_set = set(expected_customers)
-            unknown_stems = customer_names - expected_set
+        # Validate discovered stems against expected subject list (Issue #88).
+        if expected_subjects is not None:
+            expected_set = set(expected_subjects)
+            unknown_stems = subject_names - expected_set
             if unknown_stems:
                 _rf_available = True
                 try:
@@ -298,13 +298,13 @@ class FindingMerger:
 
                 for stem in sorted(unknown_stems):
                     best_match: str | None = None
-                    if _rf_available and expected_customers:
-                        result = rf_process.extractOne(stem, expected_customers)
+                    if _rf_available and expected_subjects:
+                        result = rf_process.extractOne(stem, expected_subjects)
                         if result and result[1] >= 80.0:
                             best_match = result[0]
                     if best_match:
                         logger.warning(
-                            "Unknown customer stem %r — fuzzy-matched to %r (renaming files)",
+                            "Unknown subject stem %r — fuzzy-matched to %r (renaming files)",
                             stem,
                             best_match,
                         )
@@ -314,24 +314,24 @@ class FindingMerger:
                             dst = findings_dir / agent / f"{best_match}.json"
                             if src.exists() and not dst.exists():
                                 src.rename(dst)
-                        customer_names.discard(stem)
-                        customer_names.add(best_match)
+                        subject_names.discard(stem)
+                        subject_names.add(best_match)
                     else:
                         logger.warning(
-                            "Unknown customer stem %r not in expected list and no fuzzy match — keeping as-is",
+                            "Unknown subject stem %r not in expected list and no fuzzy match — keeping as-is",
                             stem,
                         )
 
-            missing = expected_set - customer_names
+            missing = expected_set - subject_names
             if missing:
                 logger.warning(
-                    "%d expected customers have no findings: %s",
+                    "%d expected subjects have no findings: %s",
                     len(missing),
                     sorted(missing)[:10],
                 )
 
-        results: dict[str, MergedCustomerOutput] = {}
-        for csn in sorted(customer_names):
+        results: dict[str, MergedSubjectOutput] = {}
+        for csn in sorted(subject_names):
             agent_outputs: dict[str, dict[str, Any]] = {}
             for agent in ALL_SPECIALIST_AGENTS:
                 fp = findings_dir / agent / f"{csn}.json"
@@ -347,17 +347,17 @@ class FindingMerger:
                         logger.warning("Findings file %s is not a JSON object (got %s)", fp, type(loaded).__name__)
             if agent_outputs:
                 try:
-                    results[csn] = self.merge_customer(
+                    results[csn] = self.merge_subject(
                         agent_outputs,
-                        customer_safe_name=csn,
+                        subject_safe_name=csn,
                     )
                 except Exception:  # noqa: BLE001
-                    logger.exception("Failed to merge customer %s — skipping", csn)
+                    logger.exception("Failed to merge subject %s — skipping", csn)
         # Check agent coverage (Issue #85).
         coverage_gaps = self.check_agent_coverage(results)
         if coverage_gaps:
             logger.warning(
-                "Agent coverage gaps detected: %d customers missing agents",
+                "Agent coverage gaps detected: %d subjects missing agents",
                 len(coverage_gaps),
             )
 
@@ -365,15 +365,15 @@ class FindingMerger:
 
     def write_merged(
         self,
-        merged: dict[str, MergedCustomerOutput],
+        merged: dict[str, MergedSubjectOutput],
         output_dir: Path,
         *,
         clean_stale: bool = True,
     ) -> None:
-        """Write per-customer merged JSON files to *output_dir*.
+        """Write per-subject merged JSON files to *output_dir*.
 
         When *clean_stale* is ``True`` (default), any ``.json`` file in
-        *output_dir* that does not correspond to a customer in *merged*
+        *output_dir* that does not correspond to a subject in *merged*
         is removed.  This prevents stale artefacts (e.g.
         ``numerical_manifest.json``, ``coverage_manifest.json``) from
         accumulating across runs.
@@ -401,11 +401,11 @@ class FindingMerger:
 
     @staticmethod
     def check_agent_coverage(
-        merged: dict[str, MergedCustomerOutput],
+        merged: dict[str, MergedSubjectOutput],
     ) -> list[dict[str, Any]]:
-        """Verify every customer has findings or gaps from all 4 specialist agents.
+        """Verify every subject has findings or gaps from all 4 specialist agents.
 
-        Returns a list of coverage gaps: ``[{customer, missing_agents}]``.
+        Returns a list of coverage gaps: ``[{subject, missing_agents}]``.
         """
         expected_agents = set(ALL_SPECIALIST_AGENTS)
         gaps: list[dict[str, Any]] = []
@@ -418,15 +418,15 @@ class FindingMerger:
                     actual_agents.add(g.agent.value if hasattr(g.agent, "value") else str(g.agent))
             missing = expected_agents - actual_agents
             if missing:
-                gaps.append({"customer": csn, "missing_agents": sorted(missing)})
+                gaps.append({"subject": csn, "missing_agents": sorted(missing)})
                 logger.warning(
-                    "Customer %s missing agent output: %s",
+                    "Subject %s missing agent output: %s",
                     csn,
                     sorted(missing),
                 )
         if gaps:
             logger.warning(
-                "%d/%d customers have incomplete agent coverage",
+                "%d/%d subjects have incomplete agent coverage",
                 len(gaps),
                 len(merged),
             )
@@ -519,7 +519,7 @@ class FindingMerger:
         if source in self._file_precedence:
             return self._file_precedence[source]
         # Basename fallback: take the maximum score among matches
-        # (multiple customers may have files with the same name)
+        # (multiple subjects may have files with the same name)
         basename = source.rsplit("/", 1)[-1].lower() if "/" in source else source.lower()
         matches = [
             score
@@ -905,7 +905,7 @@ class FindingMerger:
         governance: GovernanceGraph,
         agent_outputs: dict[str, dict[str, Any]],
     ) -> float:
-        """(files with governed_by resolved) / total_customer_files."""
+        """(files with governed_by resolved) / total_subject_files."""
         total_files = 0
         resolved = 0
         for data in agent_outputs.values():
@@ -1021,8 +1021,8 @@ class FindingMerger:
     def _promote_findings(
         self,
         raw_findings: list[dict[str, Any]],
-        customer_name: str,
-        customer_safe_name: str,
+        subject_name: str,
+        subject_safe_name: str,
     ) -> list[Finding]:
         """Transform raw dicts into full ``Finding`` models with auto-IDs."""
         results: list[Finding] = []
@@ -1032,7 +1032,7 @@ class FindingMerger:
             agent = self._normalize_agent_name(f.get("agent", "legal"))
             seq = counters.get(agent, 0) + 1
             counters[agent] = seq
-            finding_id = f"forensic-dd_{agent}_{customer_safe_name}_{seq:04d}"
+            finding_id = f"forensic-dd_{agent}_{subject_safe_name}_{seq:04d}"
 
             # Normalise severity BEFORE Pydantic validation.
             raw_severity = f.get("severity", "P3")
@@ -1194,16 +1194,16 @@ class FindingMerger:
                     skill="forensic-dd",
                     run_id=self.run_id,
                     timestamp=self.timestamp,
-                    analysis_unit=customer_name,
+                    analysis_unit=subject_name,
                     metadata=meta,
                 )
                 results.append(finding)
             except Exception as exc:  # noqa: BLE001
                 logger.error(
-                    "Finding DROPPED: title=%r agent=%s customer=%s severity=%r->%s error=%s",
+                    "Finding DROPPED: title=%r agent=%s subject=%s severity=%r->%s error=%s",
                     f.get("title"),
                     agent,
-                    customer_name,
+                    subject_name,
                     raw_severity,
                     severity,
                     exc,
@@ -1212,8 +1212,8 @@ class FindingMerger:
 
         if dropped:
             logger.warning(
-                "Customer %s: %d/%d findings dropped during promotion",
-                customer_name,
+                "Subject %s: %d/%d findings dropped during promotion",
+                subject_name,
                 len(dropped),
                 len(raw_findings),
             )
@@ -1324,7 +1324,7 @@ class FindingMerger:
         }
 
     @staticmethod
-    def _normalize_gap(raw: dict[str, Any], customer_name: str, agent: str) -> dict[str, Any]:
+    def _normalize_gap(raw: dict[str, Any], subject_name: str, agent: str) -> dict[str, Any]:
         """Normalise an agent-produced gap to match the Gap Pydantic model.
 
         Agents commonly produce gaps with simplified fields like::
@@ -1336,7 +1336,7 @@ class FindingMerger:
         ``detection_method``.
         """
         g = dict(raw)
-        g.setdefault("customer", customer_name)
+        g.setdefault("subject", subject_name)
         g.setdefault("agent", agent)
 
         # Map priority from severity if missing, coercing plain-English levels
@@ -1398,7 +1398,7 @@ class FindingMerger:
     @staticmethod
     def _collect_gaps(
         agent_outputs: dict[str, dict[str, Any]],
-        customer_name: str,
+        subject_name: str,
     ) -> list[Gap]:
         """Collect and deduplicate gaps from all specialist agents.
 
@@ -1417,7 +1417,7 @@ class FindingMerger:
                 if not isinstance(gap_raw, dict):
                     logger.warning("Skipping non-dict gap entry from %s: %s", agent, type(gap_raw).__name__)
                     continue
-                gap_dict = FindingMerger._normalize_gap(gap_raw, customer_name, agent)
+                gap_dict = FindingMerger._normalize_gap(gap_raw, subject_name, agent)
                 dedup_key = (gap_dict.get("missing_item", ""), gap_dict.get("gap_type", ""))
                 existing = seen.get(dedup_key)
                 if existing is None:

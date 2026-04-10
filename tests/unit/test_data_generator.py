@@ -17,7 +17,7 @@ class TestSyntheticDataRoomGenerator:
 
     def test_generate_creates_directory(self, tmp_path: Path) -> None:
         gen = SyntheticDataRoomGenerator(seed=42)
-        result = gen.generate(tmp_path, num_customers=3)
+        result = gen.generate(tmp_path, num_subjects=3)
         assert result.exists()
         assert result.is_dir()
         assert result.name == "data_room"
@@ -30,8 +30,8 @@ class TestSyntheticDataRoomGenerator:
 
         gen_a = SyntheticDataRoomGenerator(seed=99)
         gen_b = SyntheticDataRoomGenerator(seed=99)
-        root_a = gen_a.generate(dir_a, num_customers=4)
-        root_b = gen_b.generate(dir_b, num_customers=4)
+        root_a = gen_a.generate(dir_a, num_subjects=4)
+        root_b = gen_b.generate(dir_b, num_subjects=4)
 
         files_a = sorted(p.relative_to(root_a) for p in root_a.rglob("*.md"))
         files_b = sorted(p.relative_to(root_b) for p in root_b.rglob("*.md"))
@@ -49,8 +49,8 @@ class TestSyntheticDataRoomGenerator:
 
         gen_a = SyntheticDataRoomGenerator(seed=1)
         gen_b = SyntheticDataRoomGenerator(seed=2)
-        root_a = gen_a.generate(dir_a, num_customers=5)
-        root_b = gen_b.generate(dir_b, num_customers=5)
+        root_a = gen_a.generate(dir_a, num_subjects=5)
+        root_b = gen_b.generate(dir_b, num_subjects=5)
 
         files_a = sorted(p.relative_to(root_a) for p in root_a.rglob("*.md"))
         files_b = sorted(p.relative_to(root_b) for p in root_b.rglob("*.md"))
@@ -59,9 +59,9 @@ class TestSyntheticDataRoomGenerator:
         contents_b = [((root_b / r).read_text()) for r in files_b]
         assert files_a != files_b or contents_a != contents_b
 
-    def test_customer_count_matches(self, tmp_path: Path) -> None:
+    def test_subject_count_matches(self, tmp_path: Path) -> None:
         gen = SyntheticDataRoomGenerator(seed=42)
-        root = gen.generate(tmp_path, num_customers=5)
+        root = gen.generate(tmp_path, num_subjects=5)
 
         # Count customer directories (exclude _reference)
         customer_dirs: list[Path] = []
@@ -76,7 +76,7 @@ class TestSyntheticDataRoomGenerator:
 
     def test_files_are_markdown(self, tmp_path: Path) -> None:
         gen = SyntheticDataRoomGenerator(seed=42)
-        root = gen.generate(tmp_path, num_customers=3)
+        root = gen.generate(tmp_path, num_subjects=3)
 
         md_files = list(root.rglob("*.md"))
         assert len(md_files) > 0
@@ -91,7 +91,7 @@ class TestSyntheticDataRoomGenerator:
 
     def test_reference_folder_exists(self, tmp_path: Path) -> None:
         gen = SyntheticDataRoomGenerator(seed=42)
-        root = gen.generate(tmp_path, num_customers=2)
+        root = gen.generate(tmp_path, num_subjects=2)
 
         ref = root / "_reference"
         assert ref.exists()
@@ -100,7 +100,7 @@ class TestSyntheticDataRoomGenerator:
 
     def test_planted_coc_clause(self, tmp_path: Path) -> None:
         gen = SyntheticDataRoomGenerator(seed=42)
-        root = gen.generate(tmp_path, num_customers=5)
+        root = gen.generate(tmp_path, num_subjects=5)
 
         all_text = ""
         for md_file in root.rglob("*.pdf.md"):
@@ -110,7 +110,7 @@ class TestSyntheticDataRoomGenerator:
 
     def test_planted_liability_cap(self, tmp_path: Path) -> None:
         gen = SyntheticDataRoomGenerator(seed=42)
-        root = gen.generate(tmp_path, num_customers=5)
+        root = gen.generate(tmp_path, num_subjects=5)
 
         found = False
         for md_file in root.rglob("*.pdf.md"):
@@ -123,7 +123,7 @@ class TestSyntheticDataRoomGenerator:
 
     def test_group_structure(self, tmp_path: Path) -> None:
         gen = SyntheticDataRoomGenerator(seed=42)
-        root = gen.generate(tmp_path, num_customers=4)
+        root = gen.generate(tmp_path, num_subjects=4)
 
         groups = [d for d in root.iterdir() if d.is_dir() and not d.name.startswith("_")]
         assert len(groups) == 2
@@ -137,7 +137,7 @@ class TestSyntheticDataRoomGenerator:
 
     def test_ip_ownership_clause(self, tmp_path: Path) -> None:
         gen = SyntheticDataRoomGenerator(seed=42)
-        root = gen.generate(tmp_path, num_customers=5)
+        root = gen.generate(tmp_path, num_subjects=5)
 
         found = False
         for md_file in root.rglob("*.pdf.md"):
@@ -148,16 +148,16 @@ class TestSyntheticDataRoomGenerator:
 
         assert found, "No IP ownership clause found in any generated document"
 
-    def test_invalid_customer_count(self, tmp_path: Path) -> None:
+    def test_invalid_subject_count(self, tmp_path: Path) -> None:
         gen = SyntheticDataRoomGenerator(seed=42)
-        with pytest.raises(ValueError, match="num_customers must be between"):
-            gen.generate(tmp_path, num_customers=0)
-        with pytest.raises(ValueError, match="num_customers must be between"):
-            gen.generate(tmp_path, num_customers=11)
+        with pytest.raises(ValueError, match="num_subjects must be between"):
+            gen.generate(tmp_path, num_subjects=0)
+        with pytest.raises(ValueError, match="num_subjects must be between"):
+            gen.generate(tmp_path, num_subjects=11)
 
-    def test_each_customer_has_two_to_four_files(self, tmp_path: Path) -> None:
+    def test_each_subject_has_two_to_four_files(self, tmp_path: Path) -> None:
         gen = SyntheticDataRoomGenerator(seed=42)
-        root = gen.generate(tmp_path, num_customers=5)
+        root = gen.generate(tmp_path, num_subjects=5)
 
         for group_dir in root.iterdir():
             if group_dir.name.startswith("_"):

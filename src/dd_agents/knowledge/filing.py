@@ -13,7 +13,7 @@ import uuid
 from typing import TYPE_CHECKING, Any
 
 from dd_agents.knowledge.articles import ArticleType, KnowledgeArticle, KnowledgeSource
-from dd_agents.utils.naming import customer_safe_name as _to_safe_name
+from dd_agents.utils.naming import subject_safe_name as _to_safe_name
 
 if TYPE_CHECKING:
     from dd_agents.knowledge.base import DealKnowledgeBase
@@ -58,7 +58,7 @@ def file_search_results(
 ) -> int:
     """File search results as insight articles. Returns count of articles created.
 
-    For each customer result, for each column with an answer != ``"NOT_ADDRESSED"``,
+    For each subject result, for each column with an answer != ``"NOT_ADDRESSED"``,
     creates or updates a :class:`KnowledgeArticle` of type
     :attr:`ArticleType.INSIGHT`.
 
@@ -67,7 +67,7 @@ def file_search_results(
     knowledge_base:
         The deal knowledge base to write into.
     results:
-        List of dicts matching :class:`SearchCustomerResult` schema.
+        List of dicts matching :class:`SearchSubjectResult` schema.
     prompts_name:
         Name of the search prompts configuration that produced these results.
     timestamp:
@@ -79,13 +79,13 @@ def file_search_results(
         Number of articles created or updated.
     """
     count = 0
-    for customer_result in results:
-        customer_name: str = customer_result.get("customer_name", "")
+    for subject_result in results:
+        subject_name: str = subject_result.get("subject_name", "")
         try:
-            entity_safe = _to_safe_name(customer_name)
+            entity_safe = _to_safe_name(subject_name)
         except ValueError:
-            entity_safe = customer_name.strip().lower().replace(" ", "_")
-        columns: dict[str, Any] = customer_result.get("columns", {})
+            entity_safe = subject_name.strip().lower().replace(" ", "_")
+        columns: dict[str, Any] = subject_result.get("columns", {})
 
         for col_name, col_data in columns.items():
             if not isinstance(col_data, dict):
@@ -111,7 +111,7 @@ def file_search_results(
                             "confidence": col_data.get("confidence", ""),
                             "prompts_name": prompts_name,
                             "column": col_name,
-                            "entity": customer_name,
+                            "entity": subject_name,
                         },
                         "sources": [s.model_dump(mode="json") for s in sources],
                         "updated_by": f"search:{timestamp}",
@@ -121,13 +121,13 @@ def file_search_results(
                 article = KnowledgeArticle(
                     id=article_id,
                     article_type=ArticleType.INSIGHT,
-                    title=f"{customer_name} — {col_name}",
+                    title=f"{subject_name} — {col_name}",
                     content={
                         "answer": answer,
                         "confidence": col_data.get("confidence", ""),
                         "prompts_name": prompts_name,
                         "column": col_name,
-                        "entity": customer_name,
+                        "entity": subject_name,
                     },
                     sources=sources,
                     tags=[entity_safe, col_safe, "search"],

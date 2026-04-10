@@ -1,6 +1,6 @@
 """Product Adoption Matrix & Platform Dependency renderer (Issue #138).
 
-Renders a matrix showing which customers use which products,
+Renders a matrix showing which subjects use which products,
 along with single-product risk and multi-product adoption metrics.
 """
 
@@ -27,10 +27,10 @@ class ProductAdoptionRenderer(SectionRenderer):
         if not products or not matrix:
             return ""
 
-        total_customers = len(matrix)
+        total_subjects = len(matrix)
         multi_product = sum(1 for prods in matrix.values() if len(prods) > 1)
-        single_product = total_customers - multi_product
-        single_pct = round(100 * single_product / total_customers, 1) if total_customers > 0 else 0.0
+        single_product = total_subjects - multi_product
+        single_pct = round(100 * single_product / total_subjects, 1) if total_subjects > 0 else 0.0
 
         parts: list[str] = [
             "<section class='report-section' id='sec-product-adoption'>",
@@ -61,20 +61,20 @@ class ProductAdoptionRenderer(SectionRenderer):
         )
 
         # Adoption matrix table
-        parts.append("<table class='customer-table sortable'><thead><tr><th scope='col'>Entity</th>")
+        parts.append("<table class='subject-table sortable'><thead><tr><th scope='col'>Entity</th>")
         for prod in products:
             parts.append(f"<th scope='col'>{self.escape(prod)}</th>")
         parts.append("<th scope='col'>Product Count</th></tr></thead><tbody>")
 
-        for csn, customer_products in sorted(matrix.items()):
+        for csn, subject_products in sorted(matrix.items()):
             display_name = self.escape(self.data.display_names.get(csn, csn) if self.data else csn)
             parts.append(f"<tr><td>{display_name}</td>")
             for prod in products:
-                if prod in customer_products:
+                if prod in subject_products:
                     parts.append("<td style='text-align:center;color:#28a745;'>&#10003;</td>")
                 else:
                     parts.append("<td style='text-align:center;color:#ccc;'>&mdash;</td>")
-            parts.append(f"<td style='text-align:center;'>{len(customer_products)}</td></tr>")
+            parts.append(f"<td style='text-align:center;'>{len(subject_products)}</td></tr>")
 
         parts.append("</tbody></table>")
         parts.append("</section>")

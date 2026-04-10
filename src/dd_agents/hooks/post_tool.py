@@ -15,17 +15,17 @@ from dd_agents.models.finding import AgentFinding
 from dd_agents.models.manifest import CoverageManifest
 
 # ---------------------------------------------------------------------------
-# validate_customer_json
+# validate_subject_json
 # ---------------------------------------------------------------------------
 
 
-def validate_customer_json(file_path: str, content: str) -> list[str]:
-    """Validate a customer output JSON against the Finding model.
+def validate_subject_json(file_path: str, content: str) -> list[str]:
+    """Validate a subject output JSON against the Finding model.
 
     Checks:
     - Valid JSON
-    - Has required top-level keys (``customer``, ``findings``, ``file_headers``,
-      ``customer_safe_name``)
+    - Has required top-level keys (``subject``, ``findings``, ``file_headers``,
+      ``subject_safe_name``)
     - Each finding validates against :class:`AgentFinding`
 
     Returns:
@@ -43,9 +43,11 @@ def validate_customer_json(file_path: str, content: str) -> list[str]:
         return ["Top-level value must be a JSON object"]
 
     # Required top-level keys
-    for key in ("customer", "findings", "file_headers", "customer_safe_name"):
+    for key in ("subject", "findings", "file_headers"):
         if key not in data:
             errors.append(f"Missing required key: '{key}'")
+    if "subject_safe_name" not in data:
+        errors.append("Missing required key: 'subject_safe_name'")
 
     # Validate findings array
     findings_raw = data.get("findings")

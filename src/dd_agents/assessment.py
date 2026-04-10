@@ -2,7 +2,7 @@
 
 Scans a data room directory and produces a health report covering:
 - File type distribution and extraction readiness
-- Customer folder detection
+- Subject folder detection
 - Potential issues (empty files, unsupported types, deeply nested structures)
 - Overall completeness score (0-100)
 """
@@ -65,10 +65,10 @@ class DataRoomAssessor:
         """Run full assessment and return structured report."""
         files = self._discover_files()
         file_types = self._analyze_file_types(files)
-        customers = self._detect_customers(files)
-        issues = self._detect_issues(files, file_types, customers)
+        subjects = self._detect_subjects(files)
+        issues = self._detect_issues(files, file_types, subjects)
         score = self._compute_score(files, file_types, issues)
-        recommendations = self._generate_recommendations(file_types, issues, customers)
+        recommendations = self._generate_recommendations(file_types, issues, subjects)
 
         supported = sum(1 for f in files if f.suffix.lower() in _SUPPORTED_EXTENSIONS)
 
@@ -77,9 +77,9 @@ class DataRoomAssessor:
             "total_files": len(files),
             "supported_files": supported,
             "unsupported_files": len(files) - supported,
-            "estimated_customers": len(customers),
+            "estimated_subjects": len(subjects),
             "file_types": file_types,
-            "customer_folders": sorted(customers),
+            "subject_folders": sorted(subjects),
             "issues": issues,
             "recommendations": recommendations,
         }
@@ -109,9 +109,9 @@ class DataRoomAssessor:
             for ext, count in counts.items()
         }
 
-    def _detect_customers(self, files: list[Path]) -> list[str]:
-        """Detect likely customer folders (immediate children of data room)."""
-        customer_dirs: set[str] = set()
+    def _detect_subjects(self, files: list[Path]) -> list[str]:
+        """Detect likely subject folders (immediate children of data room)."""
+        subject_dirs: set[str] = set()
         for f in files:
             try:
                 relative = f.relative_to(self.data_room)
@@ -121,14 +121,14 @@ class DataRoomAssessor:
             if len(parts) >= 2:
                 top_dir = parts[0]
                 if not top_dir.startswith(".") and top_dir not in _SKIP_NAMES:
-                    customer_dirs.add(top_dir)
-        return sorted(customer_dirs)
+                    subject_dirs.add(top_dir)
+        return sorted(subject_dirs)
 
     def _detect_issues(
         self,
         files: list[Path],
         file_types: dict[str, dict[str, Any]],
-        customers: list[str],
+        subjects: list[str],
     ) -> list[dict[str, str]]:
         """Identify potential problems."""
         issues: list[dict[str, str]] = []
@@ -190,14 +190,14 @@ class DataRoomAssessor:
                 }
             )
 
-        # No customer folders detected
-        if not customers:
+        # No subject folders detected
+        if not subjects:
             issues.append(
                 {
                     "severity": "info",
                     "message": (
-                        "No customer subfolders detected. Files may be organized differently. "
-                        "Entity resolution will attempt to identify customers from file content."
+                        "No subject subfolders detected. Files may be organized differently. "
+                        "Entity resolution will attempt to identify subjects from file content."
                     ),
                 }
             )
@@ -261,7 +261,7 @@ class DataRoomAssessor:
     def _generate_recommendations(
         file_types: dict[str, dict[str, Any]],
         issues: list[dict[str, str]],
-        customers: list[str],
+        subjects: list[str],
     ) -> list[str]:
         """Generate actionable recommendations."""
         recs: list[str] = []
@@ -276,9 +276,9 @@ class DataRoomAssessor:
                 "for text extraction from scanned documents."
             )
 
-        if not customers:
+        if not subjects:
             recs.append(
-                "Organize files into customer subfolders (one folder per entity) for best entity resolution results."
+                "Organize files into subject subfolders (one folder per entity) for best entity resolution results."
             )
 
         critical_count = sum(1 for i in issues if i["severity"] == "critical")

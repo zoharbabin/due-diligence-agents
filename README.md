@@ -9,7 +9,7 @@
     <a href="https://github.com/zoharbabin/due-diligence-agents/actions"><img src="https://github.com/zoharbabin/due-diligence-agents/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
     <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.12+-blue.svg" alt="Python 3.12+"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green.svg" alt="License"></a>
-    <img src="https://img.shields.io/badge/tests-3,289-brightgreen.svg" alt="Tests">
+    <img src="https://img.shields.io/badge/tests-3,304-brightgreen.svg" alt="Tests">
     <img src="https://img.shields.io/badge/mypy-strict-blue.svg" alt="mypy strict">
     <a href="https://github.com/zoharbabin/due-diligence-agents/stargazers"><img src="https://img.shields.io/github/stars/zoharbabin/due-diligence-agents?style=social" alt="GitHub Stars"></a>
   </p>
@@ -17,7 +17,7 @@
 
 ---
 
-**[See a sample report](https://zoharbabin.github.io/due-diligence-agents/)** — interactive HTML output from a synthetic 4-customer deal, no install required.
+**[See a sample report](https://zoharbabin.github.io/due-diligence-agents/)** — interactive HTML output from a synthetic 4-subject deal, no install required.
 
 ---
 
@@ -27,7 +27,7 @@ Finds what gets buried across hundreds of contracts — cross-references it acro
 
 ## Why This Exists
 
-I built this to solve my own problem. As a corp dev lead, I'd spend weeks assembling the cross-domain picture from siloed advisor reports — legal, financial, and commercial teams all flagging the same customer independently, with nobody connecting the dots. A termination clause in one contract and a revenue concentration risk in the same customer would be flagged in separate workstreams, if at all.
+I built this to solve my own problem. As a corp dev lead, I'd spend weeks assembling the cross-domain picture from siloed advisor reports — legal, financial, and commercial teams all flagging the same subject independently, with nobody connecting the dots. A termination clause in one contract and a revenue concentration risk in the same subject would be flagged in separate workstreams, if at all.
 
 The numbers tell the story:
 
@@ -53,7 +53,7 @@ Analyzes every document through 4 domain lenses, cross-references findings, and 
 
 - **Interactive HTML report** — cross-domain findings, risk heatmaps, severity filtering, drill-down to exact clauses
 - **14-sheet Excel report** — structured findings, cross-references, audit trail for downstream modeling
-- **Per-customer JSON findings** — every finding with severity, citations, cross-references, and governance graph edges
+- **Per-subject JSON findings** — every finding with severity, citations, cross-references, and governance graph edges
 
 ### Quick Scan — Red Flag Triage in Minutes
 
@@ -153,17 +153,17 @@ export AWS_REGION=us-east-1
 <details>
 <summary><strong>Preparing Your Data Room</strong></summary>
 
-Organize contracts into folders by customer or counterparty:
+Organize contracts into folders by subject or counterparty:
 
 ```
 data_room/
-  CustomerGroup_A/
+  SubjectGroup_A/
     Acme_Corp/
       master_agreement.pdf
       amendment_2024.pdf
     Beta_Inc/
       license_agreement.pdf
-  CustomerGroup_B/
+  SubjectGroup_B/
     Gamma_LLC/
       services_contract.docx
   _reference/                    # Optional: buyer overview, customer database, etc.
@@ -236,7 +236,7 @@ _dd/forensic-dd/
   runs/
     latest/                       # Always points to the most recent run
       findings/
-        legal/                    # Per-customer findings from each agent
+        legal/                    # Per-subject findings from each agent
         finance/
         commercial/
         product_tech/

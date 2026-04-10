@@ -55,8 +55,8 @@ class CrossRefRenderer(SectionRenderer):
         for csn, data in sorted(self.merged_data.items()):
             if not isinstance(data, dict):
                 continue
-            raw_name = str(data.get("customer", csn))
-            customer = html.escape(self.data.display_names.get(csn, raw_name) if self.data else raw_name)
+            raw_name = str(data.get("subject", csn))
+            entity_name = html.escape(self.data.display_names.get(csn, raw_name) if self.data else raw_name)
             xrefs = data.get("cross_references", [])
             if not isinstance(xrefs, list):
                 continue
@@ -72,7 +72,7 @@ class CrossRefRenderer(SectionRenderer):
                 match_str = "Yes" if is_match else ("No" if is_mismatch else "Unverified")
                 row_class = "xref-mismatch" if is_mismatch else ("xref-match" if is_match else "xref-unverified")
                 parts.append(
-                    f"<tr class='{row_class}'><td>{customer}</td><td>{field}</td>"
+                    f"<tr class='{row_class}'><td>{entity_name}</td><td>{field}</td>"
                     f"<td>{src_a}</td><td>{src_b}</td><td>{match_str}</td></tr>"
                 )
 

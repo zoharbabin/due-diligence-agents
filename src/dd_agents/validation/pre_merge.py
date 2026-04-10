@@ -14,12 +14,12 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from dd_agents.utils.constants import ALL_SPECIALIST_AGENTS, NON_CUSTOMER_STEMS, SEVERITY_ORDER
+from dd_agents.utils.constants import ALL_SPECIALIST_AGENTS, NON_SUBJECT_STEMS, SEVERITY_ORDER
 
 logger = logging.getLogger(__name__)
 
 # Alias for backward compatibility — canonical definition in utils.constants.
-_NON_CUSTOMER_STEMS = NON_CUSTOMER_STEMS
+_NON_SUBJECT_STEMS = NON_SUBJECT_STEMS
 
 # Required keys in each finding dict
 _REQUIRED_FINDING_KEYS: frozenset[str] = frozenset({"severity", "category", "title", "description", "citations"})
@@ -37,11 +37,11 @@ class PreMergeReport(BaseModel):
     """Structured output of step 23 pre-merge validation."""
 
     passed: bool = Field(description="True if no critical issues (corrupt JSON, etc.)")
-    total_customers: int = Field(description="Number of customers validated")
-    total_findings: int = Field(description="Total finding count across all agents and customers")
+    total_subjects: int = Field(description="Number of subjects validated")
+    total_findings: int = Field(description="Total finding count across all agents and subjects")
     findings_per_agent: dict[str, int] = Field(default_factory=dict, description="Agent name -> total finding count")
     file_completeness_issues: list[dict[str, Any]] = Field(
-        default_factory=list, description="Missing agent files per customer"
+        default_factory=list, description="Missing agent files per subject"
     )
     json_integrity_issues: list[dict[str, Any]] = Field(
         default_factory=list, description="Corrupt or unparseable JSON files"
@@ -52,14 +52,14 @@ class PreMergeReport(BaseModel):
     )
     asymmetric_risk_anomalies: list[dict[str, Any]] = Field(
         default_factory=list,
-        description="Customers where one agent found P0/P1 but another found zero findings",
+        description="Subjects where one agent found P0/P1 but another found zero findings",
     )
     severity_disagreements: list[dict[str, Any]] = Field(
         default_factory=list,
-        description="Categories where agents disagree by 2+ severity levels on same customer",
+        description="Categories where agents disagree by 2+ severity levels on same subject",
     )
     summary_matrix: dict[str, dict[str, int]] = Field(
-        default_factory=dict, description="Customer -> agent -> finding count"
+        default_factory=dict, description="Subject -> agent -> finding count"
     )
 
 
@@ -80,12 +80,12 @@ class PreMergeValidator:
         self,
         run_dir: Path,
         findings_dir: Path,
-        customer_safe_names: list[str],
+        subject_safe_names: list[str],
         file_inventory: list[str],
     ) -> None:
         self.run_dir = Path(run_dir)
         self.findings_dir = Path(findings_dir)
-        self.customer_safe_names = customer_safe_names
+        self.subject_safe_names = subject_safe_names
         self.file_inventory_set = frozenset(file_inventory)
 
     # ------------------------------------------------------------------
@@ -107,8 +107,8 @@ class PreMergeValidator:
         findings_per_agent: dict[str, int] = {}
         for agent in ALL_SPECIALIST_AGENTS:
             agent_count = 0
-            for customer in self.customer_safe_names:
-                key = f"{agent}/{customer}"
+            for subject in self.subject_safe_names:
+                key = f"{agent}/{subject}"
                 if key in parsed:
                     findings_list = parsed[key]
                     agent_count += len(findings_list)
@@ -120,7 +120,7 @@ class PreMergeValidator:
 
         report = PreMergeReport(
             passed=passed,
-            total_customers=len(self.customer_safe_names),
+            total_subjects=len(self.subject_safe_names),
             total_findings=total_findings,
             findings_per_agent=findings_per_agent,
             file_completeness_issues=completeness_issues,
@@ -140,24 +140,24 @@ class PreMergeValidator:
     # ------------------------------------------------------------------
 
     def _check_file_completeness(self) -> list[dict[str, Any]]:
-        """Verify 4 agent files per customer."""
+        """Verify 4 agent files per subject."""
         issues: list[dict[str, Any]] = []
-        for customer in self.customer_safe_names:
+        for subject in self.subject_safe_names:
             missing_agents: list[str] = []
             for agent in ALL_SPECIALIST_AGENTS:
-                fpath = self.findings_dir / agent / f"{customer}.json"
+                fpath = self.findings_dir / agent / f"{subject}.json"
                 if not fpath.exists():
                     missing_agents.append(agent)
             if missing_agents:
                 issues.append(
                     {
-                        "customer": customer,
+                        "subject": subject,
                         "missing_agents": missing_agents,
                     }
                 )
                 logger.warning(
-                    "Pre-merge: customer %s missing files from agents: %s",
-                    customer,
+                    "Pre-merge: subject %s missing files from agents: %s",
+                    subject,
                     ", ".join(missing_agents),
                 )
         return issues
@@ -167,7 +167,7 @@ class PreMergeValidator:
     ) -> tuple[dict[str, list[dict[str, Any]]], list[dict[str, Any]]]:
         """Parse all JSON files, return (parsed_data, issues).
 
-        Keys in ``parsed_data`` are ``"agent/customer"`` strings mapping to
+        Keys in ``parsed_data`` are ``"agent/subject"`` strings mapping to
         the findings list from that file.
         """
         parsed: dict[str, list[dict[str, Any]]] = {}
@@ -179,9 +179,9 @@ class PreMergeValidator:
                 continue
             for fpath in sorted(agent_dir.glob("*.json")):
                 stem = fpath.stem
-                if stem in _NON_CUSTOMER_STEMS:
+                if stem in _NON_SUBJECT_STEMS:
                     continue
-                if stem not in self.customer_safe_names:
+                if stem not in self.subject_safe_names:
                     continue
                 try:
                     data = json.loads(fpath.read_text(encoding="utf-8"))
@@ -196,7 +196,7 @@ class PreMergeValidator:
                     issues.append(
                         {
                             "agent": agent,
-                            "customer": stem,
+                            "subject": stem,
                             "file": str(fpath),
                             "error": str(exc),
                         }
@@ -208,13 +208,13 @@ class PreMergeValidator:
         """Spot-check required keys in findings and citations."""
         issues: list[dict[str, Any]] = []
         for key, findings in parsed.items():
-            agent, customer = key.split("/", 1)
+            agent, subject = key.split("/", 1)
             for idx, finding in enumerate(findings):
                 if not isinstance(finding, dict):
                     issues.append(
                         {
                             "agent": agent,
-                            "customer": customer,
+                            "subject": subject,
                             "finding_index": idx,
                             "error": "finding is not a dict",
                             "missing_keys": [],
@@ -226,7 +226,7 @@ class PreMergeValidator:
                     issues.append(
                         {
                             "agent": agent,
-                            "customer": customer,
+                            "subject": subject,
                             "finding_index": idx,
                             "missing_keys": missing,
                         }
@@ -242,7 +242,7 @@ class PreMergeValidator:
                             issues.append(
                                 {
                                     "agent": agent,
-                                    "customer": customer,
+                                    "subject": subject,
                                     "finding_index": idx,
                                     "citation_index": c_idx,
                                     "missing_keys": cit_missing,
@@ -257,7 +257,7 @@ class PreMergeValidator:
 
         issues: list[dict[str, Any]] = []
         for key, findings in parsed.items():
-            agent, customer = key.split("/", 1)
+            agent, subject = key.split("/", 1)
             for idx, finding in enumerate(findings):
                 if not isinstance(finding, dict):
                     continue
@@ -274,7 +274,7 @@ class PreMergeValidator:
                         issues.append(
                             {
                                 "agent": agent,
-                                "customer": customer,
+                                "subject": subject,
                                 "finding_index": idx,
                                 "citation_index": c_idx,
                                 "source_path": source_path,
@@ -287,13 +287,13 @@ class PreMergeValidator:
     # ------------------------------------------------------------------
 
     def _detect_asymmetric_risk(self, parsed: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
-        """Flag customers with P0/P1 from one agent but zero from another."""
+        """Flag subjects with P0/P1 from one agent but zero from another."""
         anomalies: list[dict[str, Any]] = []
-        for customer in self.customer_safe_names:
+        for subject in self.subject_safe_names:
             agents_with_high: list[str] = []
             agents_with_zero: list[str] = []
             for agent in ALL_SPECIALIST_AGENTS:
-                key = f"{agent}/{customer}"
+                key = f"{agent}/{subject}"
                 findings = parsed.get(key, [])
                 has_high = any(isinstance(f, dict) and f.get("severity") in ("P0", "P1") for f in findings)
                 if has_high:
@@ -304,14 +304,14 @@ class PreMergeValidator:
             if agents_with_high and agents_with_zero:
                 anomalies.append(
                     {
-                        "customer": customer,
+                        "subject": subject,
                         "agents_with_p0_p1": agents_with_high,
                         "agents_with_zero": agents_with_zero,
                     }
                 )
                 logger.warning(
                     "Pre-merge: asymmetric risk for %s: %s found P0/P1, %s found nothing",
-                    customer,
+                    subject,
                     agents_with_high,
                     agents_with_zero,
                 )
@@ -321,11 +321,11 @@ class PreMergeValidator:
         """Flag 2+ severity level disagreements on shared categories."""
         disagreements: list[dict[str, Any]] = []
 
-        for customer in self.customer_safe_names:
+        for subject in self.subject_safe_names:
             # Build category -> agent -> min severity rank
             category_agent_severity: dict[str, dict[str, int]] = {}
             for agent in ALL_SPECIALIST_AGENTS:
-                key = f"{agent}/{customer}"
+                key = f"{agent}/{subject}"
                 for finding in parsed.get(key, []):
                     if not isinstance(finding, dict):
                         continue
@@ -352,7 +352,7 @@ class PreMergeValidator:
                     inv_order = {v: k for k, v in SEVERITY_ORDER.items()}
                     disagreements.append(
                         {
-                            "customer": customer,
+                            "subject": subject,
                             "category": cat,
                             "agent_severities": {a: inv_order.get(r, f"rank_{r}") for a, r in agent_ranks.items()},
                             "severity_gap": gap,
@@ -365,26 +365,26 @@ class PreMergeValidator:
     # ------------------------------------------------------------------
 
     def _build_summary_matrix(self, parsed: dict[str, list[dict[str, Any]]]) -> dict[str, dict[str, int]]:
-        """Customer -> agent -> finding count matrix."""
+        """Subject -> agent -> finding count matrix."""
         matrix: dict[str, dict[str, int]] = {}
-        for customer in self.customer_safe_names:
-            matrix[customer] = {}
+        for subject in self.subject_safe_names:
+            matrix[subject] = {}
             for agent in ALL_SPECIALIST_AGENTS:
-                key = f"{agent}/{customer}"
-                matrix[customer][agent] = len(parsed.get(key, []))
+                key = f"{agent}/{subject}"
+                matrix[subject][agent] = len(parsed.get(key, []))
         return matrix
 
     def _log_summary(self, report: PreMergeReport) -> None:
         """Log a human-readable summary."""
         logger.info(
-            "Pre-merge validation: %d customers, %d total findings, passed=%s",
-            report.total_customers,
+            "Pre-merge validation: %d subjects, %d total findings, passed=%s",
+            report.total_subjects,
             report.total_findings,
             report.passed,
         )
         if report.file_completeness_issues:
             logger.warning(
-                "  File completeness issues: %d customers affected",
+                "  File completeness issues: %d subjects affected",
                 len(report.file_completeness_issues),
             )
         if report.json_integrity_issues:
@@ -404,7 +404,7 @@ class PreMergeValidator:
             )
         if report.asymmetric_risk_anomalies:
             logger.warning(
-                "  Asymmetric risk anomalies: %d customers",
+                "  Asymmetric risk anomalies: %d subjects",
                 len(report.asymmetric_risk_anomalies),
             )
         if report.severity_disagreements:

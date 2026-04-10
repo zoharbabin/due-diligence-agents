@@ -6,10 +6,10 @@ This module detects those URLs, downloads the content, extracts text
 via ``markitdown``, and caches the result in the text index with an
 ``__external__`` prefix.
 
-**Important**: Downloaded references are stored alongside customer
-extractions but are NOT automatically included in any customer's
+**Important**: Downloaded references are stored alongside subject
+extractions but are NOT automatically included in any subject's
 analysis context.  The search analyzer only reads files listed in
-``customer.files`` from the customer registry — never by globbing
+``subject.files`` from the subject registry — never by globbing
 the text directory.  External references are available for future
 vendor/infrastructure analysis but must be explicitly opted-in.
 
@@ -299,7 +299,7 @@ def is_reference_url(url: str) -> bool:
     contract and its path matches a legal keyword (``agreement``,
     ``terms``, ``policy``, etc.), it was put there for a reason and
     should be downloaded.  The downstream analyzer controls which
-    files are actually included in each customer's analysis context.
+    files are actually included in each subject's analysis context.
     """
     lower = url.lower()
 

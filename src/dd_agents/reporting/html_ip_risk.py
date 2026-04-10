@@ -72,7 +72,7 @@ class IPRiskRenderer(SectionRenderer):
         if findings:
             parts.append("<h3>IP &amp; License Findings</h3>")
             parts.append(
-                "<table class='customer-table sortable'><thead><tr>"
+                "<table class='subject-table sortable'><thead><tr>"
                 "<th scope='col'>Entity</th>"
                 "<th scope='col'>Finding</th>"
                 "<th scope='col'>Severity</th>"
@@ -81,8 +81,8 @@ class IPRiskRenderer(SectionRenderer):
             for f in findings[:15]:
                 sev = str(f.get("severity", "P3"))
                 title = self.escape(str(f.get("title", "")))
-                customer = self.escape(self._resolve_display_name(f))
-                parts.append(f"<tr><td>{customer}</td><td>{title}</td><td>{self.severity_badge(sev)}</td></tr>")
+                entity_name = self.escape(self._resolve_display_name(f))
+                parts.append(f"<tr><td>{entity_name}</td><td>{title}</td><td>{self.severity_badge(sev)}</td></tr>")
             parts.append("</tbody></table>")
 
         parts.append("</section>")

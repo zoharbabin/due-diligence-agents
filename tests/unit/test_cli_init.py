@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
 
 def _create_data_room(tmp_path: Path) -> Path:
-    """Create a minimal data room with groups and customers."""
+    """Create a minimal data room with groups and subjects."""
     dr = tmp_path / "data_room"
     dr.mkdir()
 
@@ -71,7 +71,7 @@ class TestScanDataRoom:
         assert len(result["groups"]) == 2
         assert "GroupA" in result["groups"]
         assert "GroupB" in result["groups"]
-        assert len(result["customer_names"]) == 3
+        assert len(result["subject_names"]) == 3
         assert result["file_count"] == 5
 
     def test_empty_room(self, tmp_path: Path) -> None:
@@ -79,7 +79,7 @@ class TestScanDataRoom:
         result = scan_data_room(dr)
 
         assert result["groups"] == []
-        assert result["customer_names"] == []
+        assert result["subject_names"] == []
         assert result["file_count"] == 0
 
     def test_group_detection(self, tmp_path: Path) -> None:
@@ -89,11 +89,11 @@ class TestScanDataRoom:
         groups = result["groups"]
         assert groups == ["GroupA", "GroupB"]
 
-    def test_customer_detection(self, tmp_path: Path) -> None:
+    def test_subject_detection(self, tmp_path: Path) -> None:
         dr = _create_data_room(tmp_path)
         result = scan_data_room(dr)
 
-        names = result["customer_names"]
+        names = result["subject_names"]
         assert "Acme_Corp" in names
         assert "Beta_Inc" in names
         assert "Gamma_LLC" in names
@@ -132,7 +132,7 @@ class TestBuildConfigDict:
         assert "Target Inc." in variants
         assert "Target Ltd." in variants
 
-    def test_with_customers(self, tmp_path: Path) -> None:
+    def test_with_subjects(self, tmp_path: Path) -> None:
         dr = _create_data_room(tmp_path)
         scan_result = scan_data_room(dr)
 
@@ -143,7 +143,7 @@ class TestBuildConfigDict:
             focus_areas=["ip_ownership"],
             scan_result=scan_result,
         )
-        # Customers with underscores get clean name variants
+        # Subjects with underscores get clean name variants
         aliases = config.get("entity_aliases", {}).get("canonical_to_variants", {})
         assert "Acme Corp" in aliases
         assert "Acme_Corp" in aliases["Acme Corp"]
@@ -653,7 +653,7 @@ class TestUXDisplay:
             ],
         )
         assert result.exit_code == 0, result.output
-        assert "data_room/GroupName/CustomerName" in result.output
+        assert "data_room/GroupName/SubjectName" in result.output
 
     def test_populated_room_no_folder_hint(self, tmp_path: Path) -> None:
         dr = _create_data_room(tmp_path)

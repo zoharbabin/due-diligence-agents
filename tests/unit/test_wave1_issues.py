@@ -40,13 +40,13 @@ def _finding(
     }
 
 
-def _customer(
+def _subject(
     name: str,
     findings: list[dict[str, Any]] | None = None,
     cross_references: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     return {
-        "customer": name,
+        "subject": name,
         "findings": findings or [],
         "gaps": [],
         "cross_references": cross_references or [],
@@ -69,7 +69,7 @@ class TestFindingProvenance:
     def test_provenance_stats_populated(self) -> None:
         """compute() should populate provenance statistics."""
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 findings=[
                     _finding("F1", confidence="high"),
@@ -86,7 +86,7 @@ class TestFindingProvenance:
     def test_provenance_agents_tracked(self) -> None:
         """Provenance should track which agents contributed findings."""
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 findings=[
                     _finding("F1", agent="legal"),
@@ -104,7 +104,7 @@ class TestFindingProvenance:
     def test_provenance_recalibrated_count(self) -> None:
         """Recalibrated findings should be tracked in provenance."""
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 findings=[
                     _finding(
@@ -136,7 +136,7 @@ class TestDiscountAnalysis:
     def test_discount_extraction_from_findings(self) -> None:
         """Discount mentions in findings should be extracted."""
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 findings=[
                     _finding(
@@ -155,10 +155,10 @@ class TestDiscountAnalysis:
 
     def test_discount_empty_when_no_pricing(self) -> None:
         """Empty discount analysis when no pricing findings."""
-        merged = {"a": _customer("A")}
+        merged = {"a": _subject("A")}
         computer = ReportDataComputer()
         result = computer.compute(merged)
-        assert result.discount_analysis["customers_with_discounts"] == 0
+        assert result.discount_analysis["subjects_with_discounts"] == 0
 
     def test_discount_distribution_buckets(self) -> None:
         """Discount distribution should have standard buckets."""
@@ -182,7 +182,7 @@ class TestRenewalAnalysis:
     def test_renewal_type_detection(self) -> None:
         """Renewal type (auto/manual) should be detected from findings."""
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 findings=[
                     _finding(
@@ -203,7 +203,7 @@ class TestRenewalAnalysis:
     def test_evergreen_clause_detected(self) -> None:
         """Evergreen contract clauses should be detected as renewals."""
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 findings=[
                     _finding(
@@ -220,7 +220,7 @@ class TestRenewalAnalysis:
         assert result.renewal_analysis["total_renewal_findings"] == 1
 
     def test_renewal_empty_state(self) -> None:
-        merged = {"a": _customer("A")}
+        merged = {"a": _subject("A")}
         computer = ReportDataComputer()
         result = computer.compute(merged)
         assert result.renewal_analysis["total_renewal_findings"] == 0
@@ -228,7 +228,7 @@ class TestRenewalAnalysis:
     def test_renewal_escalation_detection(self) -> None:
         """Price escalation caps should be detected."""
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 findings=[
                     _finding(
@@ -260,7 +260,7 @@ class TestComplianceAnalysis:
     def test_dpa_coverage_computation(self) -> None:
         """DPA coverage percentage should be computed."""
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 findings=[
                     _finding(
@@ -271,7 +271,7 @@ class TestComplianceAnalysis:
                     ),
                 ],
             ),
-            "b": _customer(
+            "b": _subject(
                 "B",
                 findings=[
                     _finding(
@@ -292,7 +292,7 @@ class TestComplianceAnalysis:
     def test_jurisdiction_distribution(self) -> None:
         """Jurisdiction analysis should track governing law distribution."""
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 findings=[
                     _finding(
@@ -309,7 +309,7 @@ class TestComplianceAnalysis:
         assert "jurisdiction_findings_count" in analysis
 
     def test_compliance_empty_state(self) -> None:
-        merged = {"a": _customer("A")}
+        merged = {"a": _subject("A")}
         computer = ReportDataComputer()
         result = computer.compute(merged)
         assert result.compliance_analysis["dpa_findings_count"] == 0
@@ -330,7 +330,7 @@ class TestEntityDistribution:
     def test_entity_detection_from_findings(self) -> None:
         """Legal entities should be detected from findings."""
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 findings=[
                     _finding(
@@ -348,7 +348,7 @@ class TestEntityDistribution:
         assert "total_entities_mentioned" in analysis
 
     def test_entity_empty_state(self) -> None:
-        merged = {"a": _customer("A")}
+        merged = {"a": _subject("A")}
         computer = ReportDataComputer()
         result = computer.compute(merged)
         assert result.entity_distribution["total_entities_mentioned"] == 0
@@ -369,7 +369,7 @@ class TestContractTimeline:
     def test_timeline_date_extraction(self) -> None:
         """Contract dates should be extracted from findings."""
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 findings=[
                     _finding(
@@ -387,7 +387,7 @@ class TestContractTimeline:
         assert "date_mentions_count" in timeline
 
     def test_timeline_empty_state(self) -> None:
-        merged = {"a": _customer("A")}
+        merged = {"a": _subject("A")}
         computer = ReportDataComputer()
         result = computer.compute(merged)
         assert result.contract_timeline["date_mentions_count"] == 0
@@ -655,7 +655,7 @@ class TestDiscountAnalysisStrengthened:
     def test_discount_bucket_10_pct(self) -> None:
         """10% discount should go in 0-10% bucket."""
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 findings=[
                     _finding(
@@ -675,7 +675,7 @@ class TestDiscountAnalysisStrengthened:
     def test_discount_bucket_25_pct(self) -> None:
         """25% discount should go in 10-25% bucket."""
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 findings=[
                     _finding(
@@ -695,7 +695,7 @@ class TestDiscountAnalysisStrengthened:
     def test_no_discount_keyword_no_match(self) -> None:
         """Finding without pricing keywords should not be counted."""
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 findings=[_finding("Change of control clause", category="coc", agent="legal")],
             ),
@@ -707,7 +707,7 @@ class TestDiscountAnalysisStrengthened:
     def test_rebate_keyword_match(self) -> None:
         """Rebate keyword should be detected as pricing finding."""
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 findings=[
                     _finding(
@@ -730,7 +730,7 @@ class TestRenewalAnalysisStrengthened:
     def test_auto_renewal_counted(self) -> None:
         """Auto-renewal finding should increment auto count."""
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 findings=[
                     _finding(
@@ -750,7 +750,7 @@ class TestRenewalAnalysisStrengthened:
     def test_manual_renewal_counted(self) -> None:
         """Manual renewal finding should increment manual count."""
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 findings=[
                     _finding(
@@ -771,7 +771,7 @@ class TestRenewalAnalysisStrengthened:
         """'expir' should match 'expires', 'expiration', 'expiry'."""
         for word in ["expires", "expiration date", "contract expiry"]:
             merged = {
-                "a": _customer(
+                "a": _subject(
                     "A",
                     findings=[_finding(f"Contract {word} December 2026", agent="commercial")],
                 ),
@@ -787,7 +787,7 @@ class TestComplianceAnalysisStrengthened:
     def test_dpa_category_match(self) -> None:
         """Finding with 'dpa' in text should be counted as DPA finding."""
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 findings=[
                     _finding(
@@ -806,7 +806,7 @@ class TestComplianceAnalysisStrengthened:
     def test_jurisdiction_keyword_match(self) -> None:
         """Jurisdiction keywords should be classified correctly."""
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 findings=[
                     _finding(
@@ -825,7 +825,7 @@ class TestComplianceAnalysisStrengthened:
     def test_regulatory_keyword_fcpa(self) -> None:
         """FCPA should be detected as regulatory finding."""
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 findings=[
                     _finding(
@@ -844,7 +844,7 @@ class TestComplianceAnalysisStrengthened:
     def test_non_compliance_finding_excluded(self) -> None:
         """Finding without compliance keywords should not be counted."""
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 findings=[_finding("Change of control clause", category="coc", agent="legal")],
             ),
@@ -860,7 +860,7 @@ class TestEntityDistributionStrengthened:
     def test_subsidiary_keyword_detected(self) -> None:
         """'subsidiary' in finding should count as entity finding."""
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 findings=[
                     _finding(
@@ -879,7 +879,7 @@ class TestEntityDistributionStrengthened:
     def test_non_entity_finding_excluded(self) -> None:
         """Finding without entity keywords should not be counted."""
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 findings=[
                     _finding(
@@ -901,7 +901,7 @@ class TestTimelineStrengthened:
     def test_iso_date_detected(self) -> None:
         """ISO format 2026-12-31 should be detected."""
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 findings=[
                     _finding(
@@ -920,7 +920,7 @@ class TestTimelineStrengthened:
     def test_us_date_detected(self) -> None:
         """US format 12/31/2026 should be detected."""
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 findings=[
                     _finding(
@@ -939,7 +939,7 @@ class TestTimelineStrengthened:
     def test_month_name_date_detected(self) -> None:
         """Month name format 'December 2026' should be detected."""
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 findings=[
                     _finding(
@@ -958,7 +958,7 @@ class TestTimelineStrengthened:
     def test_month_day_year_detected(self) -> None:
         """'January 15, 2025' format should be detected."""
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 findings=[
                     _finding(
@@ -977,7 +977,7 @@ class TestTimelineStrengthened:
     def test_no_dates_zero_count(self) -> None:
         """Finding without dates should not increment date count."""
         merged = {
-            "a": _customer(
+            "a": _subject(
                 "A",
                 findings=[
                     _finding(

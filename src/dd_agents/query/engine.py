@@ -66,8 +66,8 @@ class QueryEngine:
         (r"how many (p0|p1|p2|p3|p4) (findings?|issues?|risks?)", "severity_count"),
         (r"how many findings?", "total_count"),
         (r"total (findings?|issues?|risks?)", "total_count"),
-        (r"how many customers?", "customer_count"),
-        (r"how many (entities|companies|contracts)", "customer_count"),
+        (r"how many (customers?|subjects?)", "subject_count"),
+        (r"how many (entities|companies|contracts)", "subject_count"),
     ]
 
     def _try_keyword_query(self, question: str) -> QueryResult | None:
@@ -97,10 +97,10 @@ class QueryEngine:
                     query_type="keyword",
                 )
 
-            if qtype == "customer_count":
-                count = len(self.index.by_customer)
+            if qtype == "subject_count":
+                count = len(self.index.by_subject)
                 return QueryResult(
-                    answer=f"There are {count} entities (customers) in the analysis.",
+                    answer=f"There are {count} entities (subjects) in the analysis.",
                     sources=[],
                     confidence="high",
                     query_type="keyword",
@@ -115,7 +115,7 @@ class QueryEngine:
             {
                 "title": self.index.findings[i].get("title", ""),
                 "severity": severity,
-                "customer": self.index.findings[i].get("_customer_safe_name", ""),
+                "subject": self.index.findings[i].get("_subject_safe_name", ""),
                 "category": self.index.findings[i].get("category", ""),
             }
             for i in indices
@@ -181,7 +181,7 @@ class QueryEngine:
                         {
                             "title": f.get("title", ""),
                             "severity": f.get("severity", ""),
-                            "customer": f.get("_customer_safe_name", ""),
+                            "subject": f.get("_subject_safe_name", ""),
                             "category": f.get("category", ""),
                             "description": f.get("description", ""),
                         }
@@ -195,7 +195,7 @@ class QueryEngine:
         for r in relevant:
             lines.append(
                 f"- [{r.get('severity', 'P3')}] {r.get('title', '')} "
-                f"(customer: {r.get('customer', 'unknown')}, category: {r.get('category', '')})"
+                f"(subject: {r.get('subject', 'unknown')}, category: {r.get('category', '')})"
             )
             desc = r.get("description", "")
             if desc:
@@ -223,7 +223,7 @@ class QueryEngine:
                 {
                     "title": f.get("title", ""),
                     "severity": f.get("severity", ""),
-                    "customer": f.get("_customer_safe_name", ""),
+                    "subject": f.get("_subject_safe_name", ""),
                     "category": f.get("category", ""),
                     "description": f.get("description", ""),
                 }

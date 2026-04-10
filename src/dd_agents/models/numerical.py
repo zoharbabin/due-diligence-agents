@@ -12,7 +12,7 @@ class ManifestEntry(BaseModel):
     """
 
     id: str = Field(description="Manifest entry identifier (e.g. N001, N002)")
-    label: str = Field(description="Human-readable label (e.g. total_customers, total_files)")
+    label: str = Field(description="Human-readable label (e.g. total_subjects, total_files)")
     value: int | float = Field(description="The numeric value being tracked")
     source_file: str = Field(description="Path to the source data file")
     derivation: str = Field(description="How the number was computed (formula or method)")

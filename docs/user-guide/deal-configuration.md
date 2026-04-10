@@ -111,7 +111,7 @@ This checks all required fields, value constraints, and version compatibility.
     }
   },
   "source_of_truth": {
-    "customer_database": null
+    "subject_database": null
   },
   "key_executives": [
     {"name": "Jane Doe", "title": "CEO", "company": "Target Inc"}
@@ -216,11 +216,11 @@ false matches.
 
 Authoritative data source for contract date reconciliation (step 11):
 
-- `customer_database`: reference spreadsheet with contract dates and ARR data
+- `subject_database`: reference spreadsheet with contract dates and ARR data
   - `file`: path to the spreadsheet
   - `sheet`: sheet name (optional)
   - `header_row`: 1-based row number of column headers (default: 1)
-  - `columns`: column index mapping (`customer_name`, `parent_account`, `entity`, `contract_start`, `contract_end`, `arr`)
+  - `columns`: column index mapping (`subject_name`, `parent_account`, `entity`, `contract_start`, `contract_end`, `arr`)
   - `active_filter`: criteria to identify active customers (`arr_column`, `arr_condition`, `end_date_condition`)
 
 When absent, contract date reconciliation (step 11) is skipped.

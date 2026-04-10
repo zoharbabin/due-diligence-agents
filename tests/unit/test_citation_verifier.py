@@ -9,7 +9,7 @@ Tests cover:
 - Whitespace normalization (Issue #24)
 - Cross-file quote correction (Issue #24)
 - Verification summary computation
-- Integration with SearchCustomerResult
+- Integration with SearchSubjectResult
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 from dd_agents.models.search import (
     SearchCitation,
     SearchColumnResult,
-    SearchCustomerResult,
+    SearchSubjectResult,
 )
 from dd_agents.search.chunker import FileText
 from dd_agents.search.citation_verifier import (
@@ -98,10 +98,10 @@ def _make_result_with_citation(
     page: str = "5",
     section_ref: str = "Section 12.3",
     exact_quote: str = "Upon change of control, the agreement terminates.",
-) -> SearchCustomerResult:
-    """Create a SearchCustomerResult with a single citation."""
-    return SearchCustomerResult(
-        customer_name="Test Customer",
+) -> SearchSubjectResult:
+    """Create a SearchSubjectResult with a single citation."""
+    return SearchSubjectResult(
+        subject_name="Test Customer",
         group="GroupA",
         files_analyzed=1,
         total_files=1,
@@ -312,8 +312,8 @@ class TestCitationVerifier:
             )
         ]
 
-        result = SearchCustomerResult(
-            customer_name="Test",
+        result = SearchSubjectResult(
+            subject_name="Test",
             group="GroupA",
             columns={
                 "Q1": SearchColumnResult(
@@ -353,8 +353,8 @@ class TestVerificationSummary:
     """Tests for compute_verification_summary."""
 
     def test_all_verified(self) -> None:
-        result = SearchCustomerResult(
-            customer_name="Test",
+        result = SearchSubjectResult(
+            subject_name="Test",
             columns={
                 "Q1": SearchColumnResult(
                     answer="YES",
@@ -369,8 +369,8 @@ class TestVerificationSummary:
         assert summary == {"verified": 2, "failed": 0, "unverifiable": 0}
 
     def test_mixed_results(self) -> None:
-        result = SearchCustomerResult(
-            customer_name="Test",
+        result = SearchSubjectResult(
+            subject_name="Test",
             columns={
                 "Q1": SearchColumnResult(
                     answer="YES",
@@ -386,8 +386,8 @@ class TestVerificationSummary:
         assert summary == {"verified": 1, "failed": 1, "unverifiable": 1}
 
     def test_no_citations(self) -> None:
-        result = SearchCustomerResult(
-            customer_name="Test",
+        result = SearchSubjectResult(
+            subject_name="Test",
             columns={
                 "Q1": SearchColumnResult(answer="NOT_ADDRESSED"),
             },

@@ -1,4 +1,4 @@
-"""Customer profiles renderer — per-customer expandable sections (Issue #105)."""
+"""Subject profiles renderer — per-subject expandable sections (Issue #105)."""
 
 from __future__ import annotations
 
@@ -16,22 +16,22 @@ from dd_agents.reporting.html_base import (
 )
 
 
-class CustomerRenderer(SectionRenderer):
-    """Render per-customer detail sections."""
+class SubjectRenderer(SectionRenderer):
+    """Render per-subject detail sections."""
 
     def render(self) -> str:
         parts: list[str] = [
-            "<section id='sec-customers' class='report-section'>",
+            "<section id='sec-subjects' class='report-section'>",
             "<h2>Entity Detail</h2>",
         ]
-        for customer, data in sorted(self.merged_data.items()):
-            parts.append(self._render_customer_section(customer, data))
+        for csn, data in sorted(self.merged_data.items()):
+            parts.append(self._render_subject_section(csn, data))
         parts.append("</section>")
         return "\n".join(parts)
 
-    def _render_customer_section(self, customer: str, data: Any) -> str:
-        raw_name = data.get("customer", customer) if isinstance(data, dict) else customer
-        customer_name = self.data.display_names.get(customer, raw_name) if self.data else raw_name
+    def _render_subject_section(self, csn: str, data: Any) -> str:
+        raw_name = data.get("subject", csn) if isinstance(data, dict) else csn
+        subject_name = self.data.display_names.get(csn, raw_name) if self.data else raw_name
         raw_findings = data.get("findings", []) if isinstance(data, dict) else []
         gaps = data.get("gaps", []) if isinstance(data, dict) else []
         xrefs = data.get("cross_references", []) if isinstance(data, dict) else []
@@ -43,7 +43,7 @@ class CustomerRenderer(SectionRenderer):
         for f in raw_findings:
             if isinstance(f, dict):
                 enriched = ReportDataComputer._recalibrate_severity(f)
-                enriched = {**enriched, "_customer_safe_name": customer, "_customer": raw_name}
+                enriched = {**enriched, "_subject_safe_name": csn, "_subject": raw_name}
                 findings.append(enriched)
 
         finding_count = len(findings)
@@ -58,13 +58,13 @@ class CustomerRenderer(SectionRenderer):
         )
 
         parts: list[str] = [
-            "<div class='customer-section'>",
-            f"<div class='customer-header' tabindex='0' role='button' aria-expanded='false'>"
-            f"<span><strong>{html.escape(customer_name)}</strong> "
+            "<div class='subject-section'>",
+            f"<div class='subject-header' tabindex='0' role='button' aria-expanded='false'>"
+            f"<span><strong>{html.escape(subject_name)}</strong> "
             f"({finding_count} finding{'s' if finding_count != 1 else ''}, "
             f"{len(gaps)} gap{'s' if len(gaps) != 1 else ''}) {sev_str}</span>"
             f"<span class='arrow'>&#9654;</span></div>",
-            "<div class='customer-body'>",
+            "<div class='subject-body'>",
         ]
 
         # Governance score

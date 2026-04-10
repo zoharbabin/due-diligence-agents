@@ -23,7 +23,7 @@ class FindingIndex(BaseModel):
     """In-memory index over merged DD findings."""
 
     findings: list[dict[str, Any]] = Field(default_factory=list, description="All indexed findings")
-    by_customer: dict[str, list[int]] = Field(default_factory=dict, description="Customer safe name → finding indices")
+    by_subject: dict[str, list[int]] = Field(default_factory=dict, description="Subject safe name → finding indices")
     by_category: dict[str, list[int]] = Field(default_factory=dict, description="Category → finding indices")
     by_severity: dict[str, list[int]] = Field(default_factory=dict, description="Severity → finding indices")
     by_domain: dict[str, list[int]] = Field(default_factory=dict, description="Domain → finding indices")
@@ -69,15 +69,15 @@ class FindingIndexer:
 
     def index_findings(self, findings: list[dict[str, Any]]) -> FindingIndex:
         """Build an index from a list of finding dicts."""
-        by_customer: dict[str, list[int]] = defaultdict(list)
+        by_subject: dict[str, list[int]] = defaultdict(list)
         by_category: dict[str, list[int]] = defaultdict(list)
         by_severity: dict[str, list[int]] = defaultdict(list)
         by_domain: dict[str, list[int]] = defaultdict(list)
 
         for idx, f in enumerate(findings):
-            csn = str(f.get("_customer_safe_name", f.get("customer", "")))
+            csn = str(f.get("_subject_safe_name", f.get("subject", "")))
             if csn:
-                by_customer[csn].append(idx)
+                by_subject[csn].append(idx)
 
             cat = str(f.get("category", ""))
             if cat:
@@ -95,7 +95,7 @@ class FindingIndexer:
 
         return FindingIndex(
             findings=findings,
-            by_customer=dict(by_customer),
+            by_subject=dict(by_subject),
             by_category=dict(by_category),
             by_severity=dict(by_severity),
             by_domain=dict(by_domain),

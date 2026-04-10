@@ -10,8 +10,6 @@ from dd_agents.models.config import (
     ActiveFilter,
     BuyerInfo,
     CustomDomain,
-    CustomerDatabase,
-    CustomerDatabaseColumns,
     DealConfig,
     EntityAliases,
     ExecutionConfig,
@@ -20,6 +18,8 @@ from dd_agents.models.config import (
     ReportingConfig,
     SamplingRates,
     SourceOfTruth,
+    SubjectDatabase,
+    SubjectDatabaseColumns,
     TargetInfo,
 )
 from dd_agents.models.enums import AgentName, DealType, ExecutionMode
@@ -77,12 +77,12 @@ def _full_deal_config_data() -> dict:
             "parent_child": {"TargetCo Ltd.": ["SubA", "SubB"]},
         },
         "source_of_truth": {
-            "customer_database": {
+            "subject_database": {
                 "file": "data/customers.xlsx",
                 "sheet": "Active",
                 "header_row": 2,
                 "columns": {
-                    "customer_name": 1,
+                    "subject_name": 1,
                     "parent_account": 2,
                     "entity": 3,
                     "platform": 4,
@@ -207,7 +207,7 @@ class TestDealConfigValid:
         assert config.entity_aliases.short_name_guard == []
         assert config.entity_aliases.exclusions == []
         assert config.entity_aliases.parent_child == {}
-        assert config.source_of_truth.customer_database is None
+        assert config.source_of_truth.subject_database is None
         assert config.key_executives == []
         assert config.deal.type == DealType.ACQUISITION
         assert config.deal.focus_areas == ["contract_review"]
@@ -467,38 +467,38 @@ class TestDealConfigInvalid:
         with pytest.raises(ValidationError, match="YYYY-MM-DD"):
             DealConfig.model_validate(data)
 
-    def test_customer_database_column_below_one(self):
-        """customer_name column < 1 should raise ValidationError."""
+    def test_subject_database_column_below_one(self):
+        """subject_name column < 1 should raise ValidationError."""
         data = _minimal_deal_config_data()
         data["source_of_truth"] = {
-            "customer_database": {
+            "subject_database": {
                 "file": "data.xlsx",
-                "columns": {"customer_name": 0},
+                "columns": {"subject_name": 0},
             }
         }
         with pytest.raises(ValidationError):
             DealConfig.model_validate(data)
 
-    def test_customer_database_header_row_below_one(self):
+    def test_subject_database_header_row_below_one(self):
         """header_row < 1 should raise ValidationError."""
         data = _minimal_deal_config_data()
         data["source_of_truth"] = {
-            "customer_database": {
+            "subject_database": {
                 "file": "data.xlsx",
                 "header_row": 0,
-                "columns": {"customer_name": 1},
+                "columns": {"subject_name": 1},
             }
         }
         with pytest.raises(ValidationError):
             DealConfig.model_validate(data)
 
-    def test_customer_database_empty_file(self):
+    def test_subject_database_empty_file(self):
         """Empty file string should raise ValidationError (min_length=1)."""
         data = _minimal_deal_config_data()
         data["source_of_truth"] = {
-            "customer_database": {
+            "subject_database": {
                 "file": "",
-                "columns": {"customer_name": 1},
+                "columns": {"subject_name": 1},
             }
         }
         with pytest.raises(ValidationError):
@@ -562,7 +562,7 @@ class TestDealConfigDefaults:
     def test_source_of_truth_defaults(self):
         """SourceOfTruth should have correct defaults."""
         sot = SourceOfTruth()
-        assert sot.customer_database is None
+        assert sot.subject_database is None
 
     def test_buyer_info_defaults(self):
         """BuyerInfo should have correct defaults for optional fields."""
@@ -703,21 +703,21 @@ class TestAcquiredEntityDateValidation:
 
 
 # ---------------------------------------------------------------------------
-# CustomerDatabase Validation Tests
+# SubjectDatabase Validation Tests
 # ---------------------------------------------------------------------------
 
 
-class TestCustomerDatabaseValidation:
-    """Tests for CustomerDatabase and related models."""
+class TestSubjectDatabaseValidation:
+    """Tests for SubjectDatabase and related models."""
 
-    def test_valid_customer_database(self):
-        """Valid CustomerDatabase should be accepted."""
-        db = CustomerDatabase(
+    def test_valid_subject_database(self):
+        """Valid SubjectDatabase should be accepted."""
+        db = SubjectDatabase(
             file="data/customers.xlsx",
             sheet="Active",
             header_row=2,
-            columns=CustomerDatabaseColumns(
-                customer_name=1,
+            columns=SubjectDatabaseColumns(
+                subject_name=1,
                 parent_account=2,
                 arr=7,
             ),
@@ -727,21 +727,21 @@ class TestCustomerDatabaseValidation:
             ),
         )
         assert db.file == "data/customers.xlsx"
-        assert db.columns.customer_name == 1
+        assert db.columns.subject_name == 1
         assert db.columns.parent_account == 2
         assert db.columns.arr == 7
         assert db.active_filter is not None
         assert db.active_filter.arr_column == 7
 
-    def test_minimal_customer_database(self):
-        """Minimal CustomerDatabase with only required fields."""
-        db = CustomerDatabase(
+    def test_minimal_subject_database(self):
+        """Minimal SubjectDatabase with only required fields."""
+        db = SubjectDatabase(
             file="data.xlsx",
-            columns=CustomerDatabaseColumns(customer_name=1),
+            columns=SubjectDatabaseColumns(subject_name=1),
         )
         assert db.file == "data.xlsx"
         assert db.sheet == ""
         assert db.header_row == 1
-        assert db.columns.customer_name == 1
+        assert db.columns.subject_name == 1
         assert db.columns.parent_account is None
         assert db.active_filter is None

@@ -216,8 +216,8 @@ class ExecutiveSummaryRenderer(SectionRenderer):
             title = html.escape(str(f.get("title", "Untitled")))
             desc = html.escape(str(f.get("description", "")))
             display_name = self._resolve_display_name(f)
-            customer = html.escape(display_name)
-            parts.append(f"<li><strong>{title}</strong> <span class='text-small text-muted'>({customer})</span>")
+            entity_name = html.escape(display_name)
+            parts.append(f"<li><strong>{title}</strong> <span class='text-small text-muted'>({entity_name})</span>")
             if desc:
                 parts.append(f"<br><span class='text-small'>{desc}</span>")
             parts.append("</li>")
@@ -244,7 +244,7 @@ class ExecutiveSummaryRenderer(SectionRenderer):
             metrics += (
                 f"<div class='text-small text-muted' style='margin-bottom:12px'>"
                 f"This analysis covers {d.material_count} material findings across "
-                f"{d.total_customers} data room sections. "
+                f"{d.total_subjects} data room sections. "
                 f"{d.noise_count} data quality observations are documented in the "
                 f"<a href='#sec-governance' style='color:inherit'>appendix</a>.</div>"
             )

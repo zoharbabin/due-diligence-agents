@@ -5,16 +5,14 @@ strategic lens.  Produces structured intelligence consumed by StrategyRenderer.
 
 This agent is fundamentally different from the 4 specialist agents:
 - Specialists analyse raw documents (multi-turn, file-reading, 100+ turns).
-- Acquirer Intelligence analyses pre-merged findings (single-pass, read-only, ~5 turns).
+- Acquirer Intelligence analyses pre-merged findings (single-pass, read-only, ~15 turns).
 
 Only runs when ``buyer_strategy`` is present in deal config.
 """
 
 from __future__ import annotations
 
-import json
 import logging
-import re
 from typing import Any
 
 from pydantic import BaseModel, Field  # noqa: TC001 — runtime use for output schema
@@ -66,7 +64,7 @@ class AcquirerIntelligenceAgent(BaseAgentRunner):
 
     This is a synthesis agent — it reads pre-existing merged findings and
     produces strategic intelligence.  It does NOT read raw documents or
-    produce per-customer findings.
+    produce per-subject findings.
 
     Output schema::
 
@@ -85,10 +83,12 @@ class AcquirerIntelligenceAgent(BaseAgentRunner):
         }
     """
 
-    # Single-pass synthesis — very few turns needed.
-    max_turns: int = 5
-    max_budget_usd: float = 1.0
-    timeout_seconds: int = 120
+    # Synthesis agent — reads all merged findings (16+ subject files) via
+    # Read/Glob/Grep tools then produces buyer-lens JSON output.  With 14+
+    # subjects the agent needs ~40-60 tool turns for reading alone.
+    max_turns: int = 75
+    max_budget_usd: float = 3.0
+    timeout_seconds: int = 300
 
     def get_agent_name(self) -> str:
         return "acquirer_intelligence"
@@ -169,52 +169,3 @@ class AcquirerIntelligenceAgent(BaseAgentRunner):
         )
 
         return "\n".join(sections)
-
-    def parse_acquirer_output(self, raw_output: str) -> dict[str, Any]:
-        """Parse the acquirer intelligence agent's JSON output.
-
-        Uses Pydantic validation to normalise partial LLM output — missing
-        fields get safe defaults.  Returns an empty dict if parsing fails
-        entirely (this is a non-blocking agent).
-        """
-        if not raw_output or not raw_output.strip():
-            return {}
-
-        text = raw_output.strip()
-
-        # Strip markdown fences
-        fence_pattern = re.compile(r"```(?:json)?\s*\n(.*?)\n\s*```", re.DOTALL)
-        fence_match = fence_pattern.search(text)
-        if fence_match:
-            text = fence_match.group(1)
-
-        data: dict[str, Any] | None = None
-
-        try:
-            parsed = json.loads(text)
-            if isinstance(parsed, dict):
-                data = parsed
-        except (json.JSONDecodeError, ValueError):
-            pass
-
-        # Try repair if first parse failed
-        if data is None:
-            repaired = self._repair_json_text(text)
-            try:
-                parsed = json.loads(repaired)
-                if isinstance(parsed, dict):
-                    data = parsed
-            except (json.JSONDecodeError, ValueError):
-                logger.warning("Failed to parse acquirer intelligence output (%d chars)", len(raw_output))
-                return {}
-
-        if data is None:
-            return {}
-
-        # Validate through Pydantic — fills missing fields with safe defaults
-        try:
-            validated = AcquirerIntelligenceOutput.model_validate(data)
-            return validated.model_dump()
-        except (ValueError, TypeError):
-            logger.debug("Pydantic validation of acquirer output failed; returning raw dict")
-            return data

@@ -58,16 +58,16 @@ class PipelineProgressTracker:
     def update_agent_progress(
         self,
         agent: str,
-        customers_processed: int,
-        total_customers: int,
-        current_customer: str = "",
+        subjects_processed: int,
+        total_subjects: int,
+        current_subject: str = "",
     ) -> None:
         """Update progress for a specific agent."""
         self._agent_progress[agent] = {
-            "customers_processed": customers_processed,
-            "total_customers": total_customers,
-            "current_customer": current_customer,
-            "pct": round(100 * customers_processed / total_customers, 1) if total_customers > 0 else 0.0,
+            "subjects_processed": subjects_processed,
+            "total_subjects": total_subjects,
+            "current_subject": current_subject,
+            "pct": round(100 * subjects_processed / total_subjects, 1) if total_subjects > 0 else 0.0,
         }
 
     def update_finding_counts(self, counts: dict[str, int]) -> None:

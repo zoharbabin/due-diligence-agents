@@ -14,10 +14,10 @@ corruption from partial writes.
 
 Sub-checkpoints (Issue #51)
 ---------------------------
-Long-running steps (e.g. step 16 agent analysis) can write per-customer
+Long-running steps (e.g. step 16 agent analysis) can write per-subject
 sub-checkpoints so that progress within a step is not lost on crash::
 
-    checkpoints/step_16/customer_<safe_name>.json
+    checkpoints/step_16/subject_<safe_name>.json
 
 Corruption recovery (Issue #51)
 -------------------------------
@@ -219,9 +219,9 @@ def save_sub_checkpoint(
 ) -> Path:
     """Write a sub-checkpoint for a given step and key.
 
-    Sub-checkpoints allow per-customer progress tracking within long-running
+    Sub-checkpoints allow per-subject progress tracking within long-running
     steps (e.g. step 16 agent analysis).  On resume, previously completed
-    customers can be skipped.
+    subjects can be skipped.
 
     Parameters
     ----------
@@ -230,7 +230,7 @@ def save_sub_checkpoint(
     step:
         Step identifier (e.g. ``"step_16"``).
     key:
-        Sub-checkpoint key, typically the customer safe name.
+        Sub-checkpoint key, typically the subject safe name.
     data:
         Data to persist (must be JSON-serialisable).
 
@@ -242,7 +242,7 @@ def save_sub_checkpoint(
     sub_dir = checkpoint_dir / step
     sub_dir.mkdir(parents=True, exist_ok=True)
 
-    filename = f"customer_{key}.json"
+    filename = f"subject_{key}.json"
     path = sub_dir / filename
     tmp_path = path.with_suffix(".tmp")
 
@@ -263,8 +263,8 @@ def load_sub_checkpoints(
 ) -> dict[str, dict[str, Any]]:
     """Load all sub-checkpoints for a given step.
 
-    Returns a dict mapping customer key to its checkpoint data.  Keys are
-    extracted from the filename pattern ``customer_<key>.json``.
+    Returns a dict mapping subject key to its checkpoint data.  Keys are
+    extracted from the filename pattern ``subject_<key>.json``.
 
     Parameters
     ----------
@@ -284,8 +284,8 @@ def load_sub_checkpoints(
         return {}
 
     results: dict[str, dict[str, Any]] = {}
-    for f in sorted(sub_dir.glob("customer_*.json")):
-        key = f.stem.removeprefix("customer_")
+    for f in sorted(sub_dir.glob("subject_*.json")):
+        key = f.stem.removeprefix("subject_")
         try:
             data: dict[str, Any] = json.loads(f.read_text(encoding="utf-8"))
             results[key] = data

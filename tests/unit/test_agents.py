@@ -45,7 +45,7 @@ from dd_agents.agents.specialists import (
     ProductTechAgent,
 )
 from dd_agents.models.audit import AgentScoreDimensions, QualityScores
-from dd_agents.models.inventory import CustomerEntry, ReferenceFile
+from dd_agents.models.inventory import ReferenceFile, SubjectEntry
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -74,10 +74,10 @@ def run_id() -> str:
 
 
 @pytest.fixture
-def sample_customers() -> list[CustomerEntry]:
-    """Minimal customer list for prompt testing."""
+def sample_subjects() -> list[SubjectEntry]:
+    """Minimal subject list for prompt testing."""
     return [
-        CustomerEntry(
+        SubjectEntry(
             group="Above 200K USD",
             name="Acme Corp",
             safe_name="acme_corp",
@@ -88,7 +88,7 @@ def sample_customers() -> list[CustomerEntry]:
                 "./Above 200K USD/Acme Corp/DPA.pdf",
             ],
         ),
-        CustomerEntry(
+        SubjectEntry(
             group="Below 200K USD",
             name="Beta Inc",
             safe_name="beta",
@@ -108,8 +108,8 @@ def sample_reference_files() -> list[ReferenceFile]:
             category="Financial",
             subcategory="revenue_by_customer",
             description="Customer revenue cube Q4 2024",
-            customers_mentioned=["Acme Corp", "Beta Inc"],
-            customers_mentioned_count=2,
+            subjects_mentioned=["Acme Corp", "Beta Inc"],
+            subjects_mentioned_count=2,
             assigned_to_agents=["finance"],
         ),
     ]
@@ -135,12 +135,12 @@ class TestPromptBuilder:
     def test_build_specialist_prompt_includes_required_sections(
         self,
         builder: PromptBuilder,
-        sample_customers: list[CustomerEntry],
+        sample_subjects: list[SubjectEntry],
         sample_reference_files: list[ReferenceFile],
     ) -> None:
         prompt = builder.build_specialist_prompt(
             agent_name="legal",
-            customers=sample_customers,
+            subjects=sample_subjects,
             reference_files=sample_reference_files,
         )
 
@@ -153,7 +153,7 @@ class TestPromptBuilder:
         assert "acme_corp" in prompt
         assert "Beta Inc" in prompt
         assert "beta" in prompt
-        assert "ALL CUSTOMERS" in prompt
+        assert "ALL SUBJECTS" in prompt
 
         # Reference files
         assert "Customers Cube" in prompt
@@ -165,7 +165,7 @@ class TestPromptBuilder:
 
         # Output format
         assert "OUTPUT FORMAT" in prompt
-        assert "customer_safe_name" in prompt
+        assert "subject_safe_name" in prompt
 
         # Manifest
         assert "COVERAGE MANIFEST" in prompt
@@ -174,11 +174,11 @@ class TestPromptBuilder:
     def test_build_specialist_prompt_finance(
         self,
         builder: PromptBuilder,
-        sample_customers: list[CustomerEntry],
+        sample_subjects: list[SubjectEntry],
     ) -> None:
         prompt = builder.build_specialist_prompt(
             agent_name="finance",
-            customers=sample_customers,
+            subjects=sample_subjects,
         )
         assert "FINANCE SPECIALIST AGENT" in prompt
         assert "Cross-reference" in prompt
@@ -186,11 +186,11 @@ class TestPromptBuilder:
     def test_build_specialist_prompt_commercial(
         self,
         builder: PromptBuilder,
-        sample_customers: list[CustomerEntry],
+        sample_subjects: list[SubjectEntry],
     ) -> None:
         prompt = builder.build_specialist_prompt(
             agent_name="commercial",
-            customers=sample_customers,
+            subjects=sample_subjects,
         )
         assert "COMMERCIAL SPECIALIST AGENT" in prompt
         assert "renewal" in prompt.lower()
@@ -198,11 +198,11 @@ class TestPromptBuilder:
     def test_build_specialist_prompt_producttech(
         self,
         builder: PromptBuilder,
-        sample_customers: list[CustomerEntry],
+        sample_subjects: list[SubjectEntry],
     ) -> None:
         prompt = builder.build_specialist_prompt(
             agent_name="producttech",
-            customers=sample_customers,
+            subjects=sample_subjects,
         )
         assert "PRODUCTTECH SPECIALIST AGENT" in prompt
         assert "DPA" in prompt
@@ -210,11 +210,11 @@ class TestPromptBuilder:
     def test_build_specialist_prompt_no_reference_files(
         self,
         builder: PromptBuilder,
-        sample_customers: list[CustomerEntry],
+        sample_subjects: list[SubjectEntry],
     ) -> None:
         prompt = builder.build_specialist_prompt(
             agent_name="legal",
-            customers=sample_customers,
+            subjects=sample_subjects,
             reference_files=None,
         )
         assert "No reference files assigned" in prompt
@@ -232,6 +232,21 @@ class TestPromptBuilder:
         assert "SPOT-CHECK PROTOCOL" in prompt
         assert "quality_scores.json" in prompt
 
+    def test_judge_prompt_includes_structured_schema(self, builder: PromptBuilder) -> None:
+        """Judge prompt must include structured JSON schema for agent_scores."""
+        prompt = builder.build_judge_prompt()
+        assert "agent_scores" in prompt
+        assert "citation_verification" in prompt
+        assert "contextual_validation" in prompt
+        assert "financial_accuracy" in prompt
+        assert "cross_agent_consistency" in prompt
+        assert "completeness" in prompt
+        assert "quality_tier" in prompt
+        assert "spot_checks" in prompt
+        assert "contradictions" in prompt
+        assert "overall_quality" in prompt
+        assert "ONLY the JSON object" in prompt
+
     def test_estimate_tokens(self) -> None:
         text = "a" * 400
         assert PromptBuilder.estimate_tokens(text) == 100
@@ -239,17 +254,17 @@ class TestPromptBuilder:
     def test_estimate_tokens_empty(self) -> None:
         assert PromptBuilder.estimate_tokens("") == 0
 
-    def test_batch_customers_single_batch(self, sample_customers: list[CustomerEntry]) -> None:
-        batches = PromptBuilder.batch_customers(sample_customers, max_tokens=80_000)
+    def test_batch_subjects_single_batch(self, sample_subjects: list[SubjectEntry]) -> None:
+        batches = PromptBuilder.batch_subjects(sample_subjects, max_tokens=80_000)
         assert len(batches) == 1
         assert len(batches[0]) == 2
 
-    def test_batch_customers_multiple_batches(self, sample_customers: list[CustomerEntry]) -> None:
+    def test_batch_subjects_multiple_batches(self, sample_subjects: list[SubjectEntry]) -> None:
         # Force splitting by setting a very low max_tokens.
-        batches = PromptBuilder.batch_customers(
-            sample_customers,
+        batches = PromptBuilder.batch_subjects(
+            sample_subjects,
             max_tokens=100,
-            tokens_per_customer=50,
+            tokens_per_subject=50,
             overhead_tokens=10,
         )
         # With 90 available tokens and 50 per customer, max 1 per batch.
@@ -257,24 +272,24 @@ class TestPromptBuilder:
         assert len(batches[0]) == 1
         assert len(batches[1]) == 1
 
-    def test_batch_customers_empty(self) -> None:
-        batches = PromptBuilder.batch_customers([])
+    def test_batch_subjects_empty(self) -> None:
+        batches = PromptBuilder.batch_subjects([])
         assert batches == []
 
-    def test_batch_customers_large_overhead(self, sample_customers: list[CustomerEntry]) -> None:
+    def test_batch_subjects_large_overhead(self, sample_subjects: list[SubjectEntry]) -> None:
         """When overhead exceeds max_tokens, still returns at least 1 per batch."""
-        batches = PromptBuilder.batch_customers(
-            sample_customers,
+        batches = PromptBuilder.batch_subjects(
+            sample_subjects,
             max_tokens=100,
-            tokens_per_customer=50,
+            tokens_per_subject=50,
             overhead_tokens=200,  # exceeds max_tokens
         )
         # Falls back to max_tokens as available => max 2 per batch.
         assert len(batches) >= 1
 
-    def test_estimate_customer_tokens(self) -> None:
+    def test_estimate_subject_tokens(self) -> None:
         """Data-driven estimate accounts for file listing size."""
-        small = CustomerEntry(
+        small = SubjectEntry(
             group="",
             name="A",
             safe_name="a",
@@ -282,7 +297,7 @@ class TestPromptBuilder:
             file_count=1,
             files=["/a.pdf"],
         )
-        large = CustomerEntry(
+        large = SubjectEntry(
             group="",
             name="B",
             safe_name="b",
@@ -290,41 +305,41 @@ class TestPromptBuilder:
             file_count=50,
             files=[f"/dir/very_long_filename_{i}.pdf" for i in range(50)],
         )
-        small_tokens = PromptBuilder._estimate_customer_tokens(small)
-        large_tokens = PromptBuilder._estimate_customer_tokens(large)
+        small_tokens = PromptBuilder._estimate_subject_tokens(small)
+        large_tokens = PromptBuilder._estimate_subject_tokens(large)
 
         assert small_tokens >= 40  # header only
         assert large_tokens > small_tokens * 5  # many files = much higher
         assert large_tokens > 200  # non-trivial estimate
 
-    def test_batch_customers_data_driven_splitting(self) -> None:
-        """Data-driven batching splits large customer lists correctly."""
-        # Create 10 customers with ~500 tokens each (long file lists).
-        customers = [
-            CustomerEntry(
+    def test_batch_subjects_data_driven_splitting(self) -> None:
+        """Data-driven batching splits large subject lists correctly."""
+        # Create 10 subjects with ~500 tokens each (long file lists).
+        subjects = [
+            SubjectEntry(
                 group="g",
                 name=f"Cust {i}",
                 safe_name=f"cust_{i}",
-                path=f"/path/to/customer_{i}",
+                path=f"/path/to/subject_{i}",
                 file_count=40,
-                files=[f"/path/to/customer_{i}/file_{j}_with_long_name.pdf" for j in range(40)],
+                files=[f"/path/to/subject_{i}/file_{j}_with_long_name.pdf" for j in range(40)],
             )
             for i in range(10)
         ]
 
         # With ~500 tokens each and max_tokens=3000, overhead=500 → ~2500 available.
         # Should get ~5 per batch → 2 batches.
-        batches = PromptBuilder.batch_customers(
-            customers,
+        batches = PromptBuilder.batch_subjects(
+            subjects,
             max_tokens=3000,
             overhead_tokens=500,
         )
         assert len(batches) >= 2
-        # All customers accounted for.
+        # All subjects accounted for.
         total = sum(len(b) for b in batches)
         assert total == 10
 
-    def test_estimate_customer_tokens_with_text_dir(self, tmp_path: Path) -> None:
+    def test_estimate_subject_tokens_with_text_dir(self, tmp_path: Path) -> None:
         """Text-dir-aware estimation reads actual extracted file sizes."""
         text_dir = tmp_path / "text"
         text_dir.mkdir()
@@ -332,7 +347,7 @@ class TestPromptBuilder:
         (text_dir / "small.pdf.md").write_text("x" * 400)  # 400 chars
         (text_dir / "big.pdf.md").write_text("x" * 40_000)  # 40K chars
 
-        customer = CustomerEntry(
+        subject = SubjectEntry(
             group="g",
             name="Test",
             safe_name="test",
@@ -342,9 +357,9 @@ class TestPromptBuilder:
         )
 
         # Without text_dir: estimate based on path lengths (~50 tokens)
-        no_dir_est = PromptBuilder._estimate_customer_tokens(customer)
+        no_dir_est = PromptBuilder._estimate_subject_tokens(subject)
         # With text_dir: estimate based on actual file sizes (~10K tokens)
-        with_dir_est = PromptBuilder._estimate_customer_tokens(customer, text_dir=text_dir)
+        with_dir_est = PromptBuilder._estimate_subject_tokens(subject, text_dir=text_dir)
 
         assert with_dir_est > no_dir_est * 10, (
             f"Text-dir estimate ({with_dir_est}) should be much larger than path estimate ({no_dir_est})"
@@ -352,17 +367,17 @@ class TestPromptBuilder:
         # 40400 chars + 160 header ≈ 10140 tokens
         assert with_dir_est > 10_000
 
-    def test_batch_customers_text_dir_splits_more(self, tmp_path: Path) -> None:
+    def test_batch_subjects_text_dir_splits_more(self, tmp_path: Path) -> None:
         """With actual text sizes, large files cause more batches."""
         text_dir = tmp_path / "text"
         text_dir.mkdir()
 
-        customers = []
+        subjects = []
         for i in range(5):
             fname = f"doc_{i}.pdf"
             (text_dir / f"{fname}.md").write_text("x" * 80_000)  # 80K chars each
-            customers.append(
-                CustomerEntry(
+            subjects.append(
+                SubjectEntry(
                     group="g",
                     name=f"C{i}",
                     safe_name=f"c{i}",
@@ -373,9 +388,9 @@ class TestPromptBuilder:
             )
 
         # Without text_dir: all fit in one batch (tiny path estimates)
-        batches_no_dir = PromptBuilder.batch_customers(customers, max_tokens=40_000)
+        batches_no_dir = PromptBuilder.batch_subjects(subjects, max_tokens=40_000)
         # With text_dir: ~20K tokens each, only ~1-2 per batch
-        batches_with_dir = PromptBuilder.batch_customers(customers, max_tokens=40_000, text_dir=text_dir)
+        batches_with_dir = PromptBuilder.batch_subjects(subjects, max_tokens=40_000, text_dir=text_dir)
 
         assert len(batches_with_dir) > len(batches_no_dir), (
             f"Text-aware batching ({len(batches_with_dir)} batches) should split more than"
@@ -396,12 +411,12 @@ class TestPromptBuilder:
     def test_output_format_includes_cross_reference_schema(
         self,
         builder: PromptBuilder,
-        sample_customers: list[CustomerEntry],
+        sample_subjects: list[SubjectEntry],
     ) -> None:
         """Prompt must include explicit cross-reference entry schema."""
         prompt = builder.build_specialist_prompt(
             agent_name="finance",
-            customers=sample_customers,
+            subjects=sample_subjects,
         )
         assert "Cross-Reference Entry Schema" in prompt
         assert "data_point" in prompt
@@ -411,12 +426,12 @@ class TestPromptBuilder:
     def test_cross_reference_schema_forbids_empty_placeholders(
         self,
         builder: PromptBuilder,
-        sample_customers: list[CustomerEntry],
+        sample_subjects: list[SubjectEntry],
     ) -> None:
         """Prompt must explicitly forbid empty-placeholder cross-references."""
         prompt = builder.build_specialist_prompt(
             agent_name="finance",
-            customers=sample_customers,
+            subjects=sample_subjects,
         )
         assert "NEVER create empty placeholders" in prompt
         assert "ONLY create a cross-reference when you have an actual data point" in prompt
@@ -424,12 +439,12 @@ class TestPromptBuilder:
     def test_output_format_includes_gap_schema(
         self,
         builder: PromptBuilder,
-        sample_customers: list[CustomerEntry],
+        sample_subjects: list[SubjectEntry],
     ) -> None:
         """Prompt must include explicit gap entry schema."""
         prompt = builder.build_specialist_prompt(
             agent_name="legal",
-            customers=sample_customers,
+            subjects=sample_subjects,
         )
         assert "Gap Entry Schema" in prompt
         assert "missing_item" in prompt
@@ -439,12 +454,12 @@ class TestPromptBuilder:
     def test_output_format_includes_finding_schema_with_citations(
         self,
         builder: PromptBuilder,
-        sample_customers: list[CustomerEntry],
+        sample_subjects: list[SubjectEntry],
     ) -> None:
         """Prompt must include finding schema with nested citations array."""
         prompt = builder.build_specialist_prompt(
             agent_name="commercial",
-            customers=sample_customers,
+            subjects=sample_subjects,
         )
         assert "Finding Entry Schema" in prompt
         assert '"citations"' in prompt
@@ -465,12 +480,12 @@ class TestPromptBuilder:
     def test_completeness_checklist_enforces_citations(
         self,
         builder: PromptBuilder,
-        sample_customers: list[CustomerEntry],
+        sample_subjects: list[SubjectEntry],
     ) -> None:
         """Completeness checklist should require non-empty citations on every finding."""
         prompt = builder.build_specialist_prompt(
             agent_name="finance",
-            customers=sample_customers,
+            subjects=sample_subjects,
         )
         assert "non-empty `citations` array" in prompt
         assert "P0/P1 finding has `exact_quote`" in prompt
@@ -563,7 +578,7 @@ class TestFinanceAgent:
         agent = FinanceAgent(tmp_project, tmp_run_dir, run_id)
         tools = agent.get_tools()
         assert "validate_finding" in tools
-        assert "get_customer_files" in tools
+        assert "get_subject_files" in tools
 
     def test_reference_categories(self, tmp_project: Path, tmp_run_dir: Path, run_id: str) -> None:
         agent = FinanceAgent(tmp_project, tmp_run_dir, run_id)
@@ -754,7 +769,7 @@ class TestJudgeAgent:
         agent = JudgeAgent(tmp_project, tmp_run_dir, run_id)
         tools = agent.get_tools()
         assert "verify_citation" in tools
-        assert "get_customer_files" in tools
+        assert "get_subject_files" in tools
         # Judge should NOT have specialist-only tools.
         assert "validate_finding" not in tools
         assert "resolve_entity" not in tools
@@ -876,7 +891,7 @@ class TestParseAgentOutput:
 
     def test_parse_markdown_wrapped_json(self) -> None:
         """JSON wrapped in ```json fences is extracted correctly."""
-        inner = {"customer_safe_name": "acme", "risk": "high"}
+        inner = {"subject_safe_name": "acme", "risk": "high"}
         raw = "Here is the output:\n```json\n" + json.dumps(inner) + "\n```\nDone."
         result = BaseAgentRunner._parse_agent_output(raw)
         assert result == [inner]
@@ -1714,7 +1729,7 @@ class TestRobustnessInstructions:
     def test_robustness_includes_completeness_checklist(self) -> None:
         text = PromptBuilder.robustness_instructions()
         assert "Completeness Checklist" in text
-        assert "ALL customers" in text
+        assert "ALL subjects" in text
         assert "ALL files" in text
         # Replaced completeness bias with quality calibration (Issue #113)
         assert "Quality Calibration Check" in text
@@ -1729,13 +1744,13 @@ class TestRobustnessInstructions:
     def test_robustness_in_specialist_prompt(
         self,
         builder: PromptBuilder,
-        sample_customers: list[CustomerEntry],
+        sample_subjects: list[SubjectEntry],
     ) -> None:
         """Robustness instructions are appended to every specialist prompt."""
         for agent_name in ("legal", "finance", "commercial", "producttech"):
             prompt = builder.build_specialist_prompt(
                 agent_name=agent_name,
-                customers=sample_customers,
+                subjects=sample_subjects,
             )
             assert "ROBUSTNESS INSTRUCTIONS" in prompt
             assert "Anti-Hallucination" in prompt

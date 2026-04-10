@@ -4,7 +4,7 @@ This guide walks you through running the due-diligence agent pipeline on a minim
 
 ## What You'll Build
 
-You will run `dd-agents` against a small data room with four contracts spread across two customer groups, plus a reference document. The pipeline will:
+You will run `dd-agents` against a small data room with four contracts spread across two subject groups, plus a reference document. The pipeline will:
 
 1. Discover and inventory every document.
 2. Extract clauses, financials, and governance structures.
@@ -130,12 +130,12 @@ _dd/
 └── forensic-dd/
     ├── index/
     │   └── text/                    # Extracted text (PERMANENT, cached across runs)
-    │       ├── customer_1.md
+    │       ├── subject_1.md
     │       └── ...
     ├── inventory/                   # File discovery (FRESH, rebuilt each run)
     │   ├── tree.txt
     │   ├── files.txt
-    │   ├── customers.csv
+    │   ├── subjects.csv
     │   ├── counts.json
     │   └── entity_matches.json
     ├── entity_resolution_cache.json # Entity cache (PERMANENT)
@@ -144,10 +144,10 @@ _dd/
         ├── latest -> 20260222_143000/
         └── 20260222_143000/         # Per-run output (VERSIONED, immutable)
             ├── findings/
-            │   ├── legal/           # Legal specialist findings per customer
-            │   ├── finance/         # Finance specialist findings per customer
-            │   ├── commercial/      # Commercial specialist findings per customer
-            │   ├── producttech/     # ProductTech specialist findings per customer
+            │   ├── legal/           # Legal specialist findings per subject
+            │   ├── finance/         # Finance specialist findings per subject
+            │   ├── commercial/      # Commercial specialist findings per subject
+            │   ├── producttech/     # ProductTech specialist findings per subject
             │   └── merged/          # Deduplicated findings across all agents
             ├── report/
             │   ├── dd_report.html   # Interactive cross-domain HTML report
@@ -163,8 +163,8 @@ Key outputs:
 
 - **`runs/latest/report/dd_report.html`** -- The interactive HTML report with cross-domain findings, risk heatmaps, and drill-down to exact contract clauses. **Review all high-severity findings with your domain experts before acting on them.**
 - **`runs/latest/report/dd_report.xlsx`** -- The 14-sheet Excel companion report with findings, risk matrix, entity map, financial summaries, and more.
-- **`runs/latest/findings/`** -- Per-customer JSON findings from each specialist agent (legal, finance, commercial, producttech) plus merged results.
-- **`inventory/`** -- File discovery, customer registry, and entity resolution matches.
+- **`runs/latest/findings/`** -- Per-subject JSON findings from each specialist agent (legal, finance, commercial, producttech) plus merged results.
+- **`inventory/`** -- File discovery, subject registry, and entity resolution matches.
 - **`runs/latest/audit.json`** -- QA audit trail and Definition of Done checks.
 
 ## Troubleshooting

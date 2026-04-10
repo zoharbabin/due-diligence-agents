@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
-from dd_agents.tools.get_customer_files import get_customer_files
+from dd_agents.tools.get_subject_files import get_subject_files
 from dd_agents.tools.report_progress import report_progress
 from dd_agents.tools.resolve_entity import resolve_entity
 from dd_agents.tools.server import (
@@ -92,7 +92,12 @@ class TestValidateFinding:
         assert result["valid"] is False
         assert any("category" in e for e in result["errors"])
 
-    def test_p0_without_exact_quote(self) -> None:
+    def test_p0_without_exact_quote_auto_downgraded(self) -> None:
+        """P0 without exact_quote is auto-downgraded to P2 by AgentFinding model.
+
+        The AgentFinding model validator now catches this at parse time,
+        so validate_finding sees a P2 finding which is valid without exact_quote.
+        """
         finding = {
             "severity": "P0",
             "category": "change_of_control",
@@ -108,8 +113,8 @@ class TestValidateFinding:
             "confidence": "high",
         }
         result = validate_finding(finding)
-        assert result["valid"] is False
-        assert any("exact_quote" in e for e in result["errors"])
+        # Finding is valid because AgentFinding auto-downgraded P0→P2
+        assert result["valid"] is True
 
     def test_p3_without_exact_quote_allowed(self) -> None:
         finding = {
@@ -140,7 +145,7 @@ class TestValidateGap:
 
     def test_valid_gap(self) -> None:
         gap = {
-            "customer": "Acme Corp",
+            "subject": "Acme Corp",
             "priority": "P1",
             "gap_type": "Missing_Doc",
             "missing_item": "Master Services Agreement",
@@ -155,7 +160,7 @@ class TestValidateGap:
 
     def test_invalid_gap_missing_fields(self) -> None:
         gap = {
-            "customer": "Acme Corp",
+            "subject": "Acme Corp",
             "priority": "P1",
             # missing many required fields
         }
@@ -165,7 +170,7 @@ class TestValidateGap:
 
     def test_invalid_gap_type(self) -> None:
         gap = {
-            "customer": "Acme Corp",
+            "subject": "Acme Corp",
             "priority": "P1",
             "gap_type": "Invalid_Type",  # not a valid GapType
             "missing_item": "Some doc",
@@ -180,7 +185,7 @@ class TestValidateGap:
 
     def test_invalid_detection_method(self) -> None:
         gap = {
-            "customer": "Acme Corp",
+            "subject": "Acme Corp",
             "priority": "P1",
             "gap_type": "Missing_Doc",
             "missing_item": "Some doc",
@@ -214,7 +219,7 @@ class TestValidateManifest:
                 {"path": "a.pdf", "extraction_quality": "primary"},
                 {"path": "b.pdf", "extraction_quality": "primary"},
             ],
-            "customers": [
+            "subjects": [
                 {"name": "Acme", "status": "complete"},
                 {"name": "Globex", "status": "complete"},
             ],
@@ -381,49 +386,49 @@ class TestVerifyCitation:
 
 
 # ===================================================================
-# get_customer_files
+# get_subject_files
 # ===================================================================
 
 
-class TestGetCustomerFiles:
-    """Tests for get_customer_files tool."""
+class TestGetSubjectFiles:
+    """Tests for get_subject_files tool."""
 
     def test_returns_correct_file_list(self) -> None:
-        customers_csv = [
+        subjects_csv = [
             {
-                "customer_safe_name": "acme_corp",
+                "subject_safe_name": "acme_corp",
                 "file_list": ["MSA.pdf", "SOW.pdf", "NDA.pdf"],
             },
             {
-                "customer_safe_name": "globex",
+                "subject_safe_name": "globex",
                 "file_list": ["Agreement.pdf"],
             },
         ]
-        result = get_customer_files("acme_corp", customers_csv)
-        assert result["customer"] == "acme_corp"
+        result = get_subject_files("acme_corp", subjects_csv)
+        assert result["subject"] == "acme_corp"
         assert result["file_count"] == 3
         assert result["files"] == ["MSA.pdf", "SOW.pdf", "NDA.pdf"]
 
-    def test_unknown_customer(self) -> None:
-        customers_csv = [{"customer_safe_name": "acme_corp", "file_list": ["a.pdf"]}]
-        result = get_customer_files("nonexistent", customers_csv)
-        assert result["error"] == "unknown_customer"
+    def test_unknown_subject(self) -> None:
+        subjects_csv = [{"subject_safe_name": "acme_corp", "file_list": ["a.pdf"]}]
+        result = get_subject_files("nonexistent", subjects_csv)
+        assert result["error"] == "unknown_subject"
         assert result["name"] == "nonexistent"
 
     def test_empty_file_list(self) -> None:
-        customers_csv = [{"customer_safe_name": "empty_corp", "file_list": []}]
-        result = get_customer_files("empty_corp", customers_csv)
+        subjects_csv = [{"subject_safe_name": "empty_corp", "file_list": []}]
+        result = get_subject_files("empty_corp", subjects_csv)
         assert result["file_count"] == 0
         assert result["files"] == []
 
     def test_comma_separated_file_list(self) -> None:
-        customers_csv = [
+        subjects_csv = [
             {
-                "customer_safe_name": "csv_corp",
+                "subject_safe_name": "csv_corp",
                 "file_list": "MSA.pdf, SOW.pdf",  # string instead of list
             }
         ]
-        result = get_customer_files("csv_corp", customers_csv)
+        result = get_subject_files("csv_corp", subjects_csv)
         assert result["file_count"] == 2
         assert "MSA.pdf" in result["files"]
         assert "SOW.pdf" in result["files"]
@@ -489,23 +494,23 @@ class TestReportProgress:
     def test_in_progress(self) -> None:
         result = report_progress(
             agent_name="legal",
-            customers_processed=5,
-            total_customers=10,
-            current_customer="acme_corp",
+            subjects_processed=5,
+            total_subjects=10,
+            current_subject="acme_corp",
         )
         assert result["agent"] == "legal"
-        assert result["customers_processed"] == 5
-        assert result["total_customers"] == 10
-        assert result["current_customer"] == "acme_corp"
+        assert result["subjects_processed"] == 5
+        assert result["total_subjects"] == 10
+        assert result["current_subject"] == "acme_corp"
         assert result["progress_pct"] == 50.0
         assert result["status"] == "in_progress"
 
     def test_complete(self) -> None:
         result = report_progress(
             agent_name="finance",
-            customers_processed=10,
-            total_customers=10,
-            current_customer="last_one",
+            subjects_processed=10,
+            total_subjects=10,
+            current_subject="last_one",
         )
         assert result["progress_pct"] == 100.0
         assert result["status"] == "complete"
@@ -513,9 +518,9 @@ class TestReportProgress:
     def test_starting(self) -> None:
         result = report_progress(
             agent_name="commercial",
-            customers_processed=0,
-            total_customers=10,
-            current_customer="",
+            subjects_processed=0,
+            total_subjects=10,
+            current_subject="",
         )
         assert result["progress_pct"] == 0.0
         assert result["status"] == "starting"
@@ -523,9 +528,9 @@ class TestReportProgress:
     def test_zero_total(self) -> None:
         result = report_progress(
             agent_name="producttech",
-            customers_processed=0,
-            total_customers=0,
-            current_customer="",
+            subjects_processed=0,
+            total_subjects=0,
+            current_subject="",
         )
         assert result["progress_pct"] == 0.0
 
@@ -546,7 +551,7 @@ class TestCreateToolDefinitions:
             "validate_gap",
             "validate_manifest",
             "verify_citation",
-            "get_customer_files",
+            "get_subject_files",
             "resolve_entity",
             "search_similar",
             "read_office",

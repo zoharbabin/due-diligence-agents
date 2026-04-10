@@ -2,7 +2,7 @@
 
 Covers:
 - #87: File access instructions in specialist prompts
-- #88: Safe name enforcement in prompts + merge_all expected_customers fuzzy matching
+- #88: Safe name enforcement in prompts + merge_all expected_subjects fuzzy matching
 - #89: Entity cache save() requires run_id (tested via orchestrator)
 - #90: JSON output constraint in system prompt
 - #91: Coverage gate retries all missing customers
@@ -30,7 +30,7 @@ from dd_agents.agents.specialists import (
     ProductTechAgent,
 )
 from dd_agents.models.finding import Citation
-from dd_agents.models.inventory import CustomerEntry
+from dd_agents.models.inventory import SubjectEntry
 from dd_agents.reporting.merge import FindingMerger
 from dd_agents.tools.server import (
     JUDGE_CUSTOM_TOOLS,
@@ -72,9 +72,9 @@ def builder(tmp_project: Path, tmp_run_dir: Path, run_id: str) -> PromptBuilder:
 
 
 @pytest.fixture
-def sample_customers() -> list[CustomerEntry]:
+def sample_subjects() -> list[SubjectEntry]:
     return [
-        CustomerEntry(
+        SubjectEntry(
             group="Above 200K USD",
             name="Acme Corp",
             safe_name="acme_corp",
@@ -85,7 +85,7 @@ def sample_customers() -> list[CustomerEntry]:
                 "./Above 200K USD/Acme Corp/DPA.pdf",
             ],
         ),
-        CustomerEntry(
+        SubjectEntry(
             group="Below 200K USD",
             name="Beta Inc",
             safe_name="beta",
@@ -158,12 +158,12 @@ class TestFileAccessInstructions:
     def test_file_access_in_specialist_prompt(
         self,
         builder: PromptBuilder,
-        sample_customers: list[CustomerEntry],
+        sample_subjects: list[SubjectEntry],
     ) -> None:
         """File access instructions appear in the specialist prompt."""
         prompt = builder.build_specialist_prompt(
             agent_name="legal",
-            customers=sample_customers,
+            subjects=sample_subjects,
         )
         assert "HOW TO READ FILES" in prompt
         assert "Read tool" in prompt
@@ -171,13 +171,13 @@ class TestFileAccessInstructions:
     def test_file_access_in_all_specialist_prompts(
         self,
         builder: PromptBuilder,
-        sample_customers: list[CustomerEntry],
+        sample_subjects: list[SubjectEntry],
     ) -> None:
         """All four specialist agents get file access instructions."""
         for agent_name in ("legal", "finance", "commercial", "producttech"):
             prompt = builder.build_specialist_prompt(
                 agent_name=agent_name,
-                customers=sample_customers,
+                subjects=sample_subjects,
             )
             assert "HOW TO READ FILES" in prompt, f"Missing in {agent_name} prompt"
 
@@ -200,26 +200,26 @@ class TestSafeNameEnforcement:
     def test_prompt_contains_critical_filename_instruction(
         self,
         builder: PromptBuilder,
-        sample_customers: list[CustomerEntry],
+        sample_subjects: list[SubjectEntry],
     ) -> None:
         """Prompt includes CRITICAL filename instruction for each customer."""
         prompt = builder.build_specialist_prompt(
             agent_name="legal",
-            customers=sample_customers,
+            subjects=sample_subjects,
         )
         assert "CRITICAL" in prompt
         assert "OUTPUT FILENAMES" in prompt or "output filename" in prompt.lower()
         assert "character-for-character" in prompt
 
-    def test_merge_all_without_expected_customers(self, tmp_path: Path) -> None:
-        """merge_all works fine without expected_customers (backward compat)."""
+    def test_merge_all_without_expected_subjects(self, tmp_path: Path) -> None:
+        """merge_all works fine without expected_subjects (backward compat)."""
         findings_dir = tmp_path / "findings"
         legal_dir = findings_dir / "legal"
         legal_dir.mkdir(parents=True)
 
         output = {
-            "customer": "Acme Corp",
-            "customer_safe_name": "acme_corp",
+            "subject": "Acme Corp",
+            "subject_safe_name": "acme_corp",
             "findings": [_make_finding()],
             "governance_graph": {"edges": []},
             "cross_references": [],
@@ -230,15 +230,15 @@ class TestSafeNameEnforcement:
         results = merger.merge_all(findings_dir)
         assert "acme_corp" in results
 
-    def test_merge_all_with_matching_expected_customers(self, tmp_path: Path) -> None:
+    def test_merge_all_with_matching_expected_subjects(self, tmp_path: Path) -> None:
         """merge_all succeeds when discovered stems match expected list."""
         findings_dir = tmp_path / "findings"
         legal_dir = findings_dir / "legal"
         legal_dir.mkdir(parents=True)
 
         output = {
-            "customer": "Acme Corp",
-            "customer_safe_name": "acme_corp",
+            "subject": "Acme Corp",
+            "subject_safe_name": "acme_corp",
             "findings": [_make_finding()],
             "governance_graph": {"edges": []},
             "cross_references": [],
@@ -248,7 +248,7 @@ class TestSafeNameEnforcement:
         merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
         results = merger.merge_all(
             findings_dir,
-            expected_customers=["acme_corp"],
+            expected_subjects=["acme_corp"],
         )
         assert "acme_corp" in results
 
@@ -260,8 +260,8 @@ class TestSafeNameEnforcement:
 
         # Agent wrote "acme" instead of "acme_corp" — fuzzy match should correct it
         output = {
-            "customer": "Acme Corp",
-            "customer_safe_name": "acme_corp",
+            "subject": "Acme Corp",
+            "subject_safe_name": "acme_corp",
             "findings": [_make_finding()],
             "governance_graph": {"edges": []},
             "cross_references": [],
@@ -271,7 +271,7 @@ class TestSafeNameEnforcement:
         merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
         results = merger.merge_all(
             findings_dir,
-            expected_customers=["acme_corp"],
+            expected_subjects=["acme_corp"],
         )
         # If rapidfuzz scored >= 80%, the file should be renamed
         # and the result should contain acme_corp
@@ -284,8 +284,8 @@ class TestSafeNameEnforcement:
         legal_dir.mkdir(parents=True)
 
         output = {
-            "customer": "Acme Corp",
-            "customer_safe_name": "acme_corp",
+            "subject": "Acme Corp",
+            "subject_safe_name": "acme_corp",
             "findings": [_make_finding()],
             "governance_graph": {"edges": []},
             "cross_references": [],
@@ -296,7 +296,7 @@ class TestSafeNameEnforcement:
         # "missing_customer" is expected but has no findings
         results = merger.merge_all(
             findings_dir,
-            expected_customers=["acme_corp", "missing_customer"],
+            expected_subjects=["acme_corp", "missing_customer"],
         )
         assert "acme_corp" in results
         # missing_customer should not appear in results
@@ -343,26 +343,26 @@ class TestPerAgentBatchSizing:
     """Tests for per-agent batch sizing."""
 
     def test_base_defaults(self) -> None:
-        """BaseAgentRunner defaults are 20 customers, 40K tokens."""
-        assert BaseAgentRunner.max_customers_per_batch == 20
+        """BaseAgentRunner defaults are 20 subjects, 40K tokens."""
+        assert BaseAgentRunner.max_subjects_per_batch == 20
         assert BaseAgentRunner.max_tokens_per_batch == 40_000
 
     def test_finance_overrides(self) -> None:
         """FinanceAgent uses smaller batches."""
-        assert FinanceAgent.max_customers_per_batch == 10
+        assert FinanceAgent.max_subjects_per_batch == 10
         assert FinanceAgent.max_tokens_per_batch == 25_000
 
     def test_legal_inherits_defaults(self) -> None:
         """LegalAgent inherits the base defaults."""
-        assert LegalAgent.max_customers_per_batch == 20
+        assert LegalAgent.max_subjects_per_batch == 20
         assert LegalAgent.max_tokens_per_batch == 40_000
 
     def test_commercial_inherits_defaults(self) -> None:
-        assert CommercialAgent.max_customers_per_batch == 20
+        assert CommercialAgent.max_subjects_per_batch == 20
         assert CommercialAgent.max_tokens_per_batch == 40_000
 
     def test_producttech_inherits_defaults(self) -> None:
-        assert ProductTechAgent.max_customers_per_batch == 20
+        assert ProductTechAgent.max_subjects_per_batch == 20
         assert ProductTechAgent.max_tokens_per_batch == 40_000
 
     def test_instance_attributes(
@@ -373,11 +373,11 @@ class TestPerAgentBatchSizing:
     ) -> None:
         """Batch sizing is accessible on instances."""
         finance = FinanceAgent(tmp_project, tmp_run_dir, run_id)
-        assert finance.max_customers_per_batch == 10
+        assert finance.max_subjects_per_batch == 10
         assert finance.max_tokens_per_batch == 25_000
 
         legal = LegalAgent(tmp_project, tmp_run_dir, run_id)
-        assert legal.max_customers_per_batch == 20
+        assert legal.max_subjects_per_batch == 20
 
 
 # ===========================================================================
@@ -438,12 +438,12 @@ class TestCitationVerification:
     def test_citation_verification_mandate_in_prompt(
         self,
         builder: PromptBuilder,
-        sample_customers: list[CustomerEntry],
+        sample_subjects: list[SubjectEntry],
     ) -> None:
         """Citation verification mandate appears in specialist prompts."""
         prompt = builder.build_specialist_prompt(
             agent_name="legal",
-            customers=sample_customers,
+            subjects=sample_subjects,
         )
         assert "Citation Verification" in prompt
         assert "MANDATORY" in prompt
@@ -463,7 +463,7 @@ class TestToolListNaming:
     def test_specialist_custom_tools_exist(self) -> None:
         assert isinstance(SPECIALIST_CUSTOM_TOOLS, list)
         assert "validate_finding" in SPECIALIST_CUSTOM_TOOLS
-        assert "get_customer_files" in SPECIALIST_CUSTOM_TOOLS
+        assert "get_subject_files" in SPECIALIST_CUSTOM_TOOLS
         # Custom tools should NOT include SDK built-in tools
         assert "Read" not in SPECIALIST_CUSTOM_TOOLS
         assert "Write" not in SPECIALIST_CUSTOM_TOOLS
@@ -527,7 +527,7 @@ class TestDodCheck12bAssignments:
 
         # Write metadata with partial assignment
         metadata = {
-            "customer_assignments": {
+            "subject_assignments": {
                 "acme_corp": ["finance", "legal"],
             }
         }
@@ -535,8 +535,8 @@ class TestDodCheck12bAssignments:
 
         # Write merged output with only finance + legal findings
         merged_output = {
-            "customer": "Acme Corp",
-            "customer_safe_name": "acme_corp",
+            "subject": "Acme Corp",
+            "subject_safe_name": "acme_corp",
             "findings": [
                 _make_finding() | {"agent": "finance"},
                 _make_finding() | {"agent": "legal"},
@@ -548,7 +548,7 @@ class TestDodCheck12bAssignments:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=tmp_path / "inventory",
-            customer_safe_names=["acme_corp"],
+            subject_safe_names=["acme_corp"],
         )
         result = checker.check_12b_agent_coverage_in_merged()
         assert result.passed, f"Should pass but got: {result.details}"
@@ -562,15 +562,15 @@ class TestDodCheck12bAssignments:
         merged_dir.mkdir(parents=True)
 
         metadata = {
-            "customer_assignments": {
+            "subject_assignments": {
                 "acme_corp": ["finance", "legal", "commercial"],
             }
         }
         (run_dir / "metadata.json").write_text(json.dumps(metadata))
 
         merged_output = {
-            "customer": "Acme Corp",
-            "customer_safe_name": "acme_corp",
+            "subject": "Acme Corp",
+            "subject_safe_name": "acme_corp",
             "findings": [
                 _make_finding() | {"agent": "finance"},
                 _make_finding() | {"agent": "legal"},
@@ -582,11 +582,11 @@ class TestDodCheck12bAssignments:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=tmp_path / "inventory",
-            customer_safe_names=["acme_corp"],
+            subject_safe_names=["acme_corp"],
         )
         result = checker.check_12b_agent_coverage_in_merged()
         assert not result.passed
-        assert result.details["customers_missing_agents"] == 1
+        assert result.details["subjects_missing_agents"] == 1
 
     def test_12b_falls_back_to_all_agents_without_metadata(self, tmp_path: Path) -> None:
         """Without metadata.json, check falls back to expecting all 4 agents."""
@@ -598,8 +598,8 @@ class TestDodCheck12bAssignments:
 
         # No metadata.json — fallback to all 4 agents expected
         merged_output = {
-            "customer": "Acme Corp",
-            "customer_safe_name": "acme_corp",
+            "subject": "Acme Corp",
+            "subject_safe_name": "acme_corp",
             "findings": [
                 _make_finding() | {"agent": "finance"},
                 _make_finding() | {"agent": "legal"},
@@ -611,8 +611,8 @@ class TestDodCheck12bAssignments:
         checker = DefinitionOfDoneChecker(
             run_dir=run_dir,
             inventory_dir=tmp_path / "inventory",
-            customer_safe_names=["acme_corp"],
+            subject_safe_names=["acme_corp"],
         )
         result = checker.check_12b_agent_coverage_in_merged()
         assert not result.passed
-        assert result.details["customers_missing_agents"] == 1
+        assert result.details["subjects_missing_agents"] == 1

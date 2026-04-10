@@ -70,7 +70,7 @@ def sample_data_room_path(tmp_path: Path) -> Path:
 def sample_agent_outputs() -> dict[str, dict[str, Any]]:
     """Pre-recorded agent outputs for integration tests.
 
-    Returns a nested dict: {agent_name: {customer_name: output_dict}}.
+    Returns a nested dict: {agent_name: {subject_name: output_dict}}.
     """
     outputs: dict[str, dict[str, Any]] = {}
     outputs_dir = FIXTURES_DIR / "sample_agent_outputs"
@@ -90,8 +90,8 @@ def sample_agent_outputs() -> dict[str, dict[str, Any]]:
 
 
 @pytest.fixture
-def sample_customer_list() -> list[str]:
-    """Standard customer list for entity resolution tests."""
+def sample_subject_list() -> list[str]:
+    """Standard subject list for entity resolution tests."""
     return [
         "Acme Corporation",
         "Global Analytics Group",
@@ -112,8 +112,8 @@ def sample_finding_dict() -> dict[str, Any]:
     """A valid finding dict that should pass Finding model validation."""
     return {
         "id": "forensic-dd_legal_acme_corporation_0001",
-        "customer": "Acme Corporation",
-        "customer_safe_name": "acme_corporation",
+        "subject": "Acme Corporation",
+        "subject_safe_name": "acme_corporation",
         "agent": "legal",
         "domain": "change_of_control",
         "title": "Change of control clause allows termination without cure period",

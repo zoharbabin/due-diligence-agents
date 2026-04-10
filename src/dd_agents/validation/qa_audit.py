@@ -34,7 +34,7 @@ _REQUIRED_SHEETS = [
 
 # Minimum domain coverage ratio for the domain_coverage check to pass.
 # Set conservatively low because agents may return findings that fail merge
-# validation, leaving some customers without representation from all 4 agents.
+# validation, leaving some subjects without representation from all 4 agents.
 _DOMAIN_COVERAGE_THRESHOLD = 0.20
 
 # Minimum merge ratio (merged / expected) for the merge_dedup check to pass.
@@ -63,9 +63,9 @@ class QAAuditor:
     run_dir:
         Root of the current pipeline run (e.g. ``_dd/forensic-dd/runs/20250218``).
     inventory_dir:
-        Inventory directory containing ``customers.csv``, ``files.txt``, etc.
-    customer_safe_names:
-        List of expected customer safe names.
+        Inventory directory containing ``subjects.csv``, ``files.txt``, etc.
+    subject_safe_names:
+        List of expected subject safe name.
     deal_config:
         Parsed deal configuration dictionary.
     """
@@ -74,12 +74,12 @@ class QAAuditor:
         self,
         run_dir: Path,
         inventory_dir: Path,
-        customer_safe_names: list[str],
+        subject_safe_names: list[str],
         deal_config: dict[str, Any] | None = None,
     ) -> None:
         self.run_dir = run_dir
         self.inventory_dir = inventory_dir
-        self.customer_safe_names = customer_safe_names
+        self.subject_safe_names = subject_safe_names
         self.deal_config = deal_config or {}
 
     # ------------------------------------------------------------------ #
@@ -95,7 +95,7 @@ class QAAuditor:
             self.check_agent_manifest_reconciliation,  # 8a -> DoD 3
             self.check_file_coverage,  # 8b -> DoD 2, 10
             self.check_audit_logs,  # 8b2 -> DoD 11
-            self.check_customer_coverage,  # 8c -> DoD 1
+            self.check_subject_coverage,  # 8c -> DoD 1
             self.check_governance_completeness,  # 8d -> DoD 4
             self.check_citation_integrity,  # 8e -> DoD 5
             self.check_gap_completeness,  # 8f -> DoD 6, 9
@@ -139,14 +139,14 @@ class QAAuditor:
         details: dict[str, Any] = {}
         all_match = True
         any_manifest_exists = False
-        expected = len(self.customer_safe_names)
+        expected = len(self.subject_safe_names)
         for agent in ALL_SPECIALIST_AGENTS:
             manifest_path = self.run_dir / "findings" / agent / "coverage_manifest.json"
             if not manifest_path.exists():
                 # Manifest missing — check actual files as fallback.
                 agent_dir = self.run_dir / "findings" / agent
                 if agent_dir.is_dir():
-                    expected_files = {f"{c}.json" for c in self.customer_safe_names}
+                    expected_files = {f"{c}.json" for c in self.subject_safe_names}
                     actual_files = {f.name for f in agent_dir.glob("*.json")}
                     file_coverage = len(expected_files & actual_files) / max(expected, 1)
                     if file_coverage >= 0.9:
@@ -164,8 +164,8 @@ class QAAuditor:
                 all_match = False
                 continue
             # Accept both spec field names and agent-produced variants.
-            assigned = manifest.get("analysis_units_assigned") or manifest.get("total_customers") or 0
-            completed = manifest.get("analysis_units_completed") or manifest.get("customers_covered") or 0
+            assigned = manifest.get("analysis_units_assigned") or manifest.get("total_subjects") or 0
+            completed = manifest.get("analysis_units_completed") or manifest.get("subjects_covered") or 0
             match = assigned == completed == expected
             # Also accept when the manifest reports its own coverage signals.
             if not match:
@@ -173,33 +173,33 @@ class QAAuditor:
                 coverage_pct = manifest.get("coverage_pct", 0.0)
                 if coverage_met is True or (isinstance(coverage_pct, (int, float)) and coverage_pct >= 0.9):
                     match = True
-            # Final fallback: count actual customer finding files on disk.
+            # Final fallback: count actual subject finding files on disk.
             # When agents run in batches, each batch overwrites the manifest
             # so the last batch's counts may only reflect its subset.  The
             # authoritative signal is whether actual files were written.
             if not match:
                 agent_dir = self.run_dir / "findings" / agent
                 if agent_dir.is_dir():
-                    expected_files = {f"{c}.json" for c in self.customer_safe_names}
+                    expected_files = {f"{c}.json" for c in self.subject_safe_names}
                     actual_files = {f.name for f in agent_dir.glob("*.json") if f.name != "coverage_manifest.json"}
                     file_coverage = len(expected_files & actual_files) / max(expected, 1)
                     if file_coverage >= 0.9:
                         match = True
             details[agent] = {
-                "customers_assigned": assigned,
-                "customers_processed": completed,
+                "subjects_assigned": assigned,
+                "subjects_processed": completed,
                 "match": match,
             }
             if not match:
                 all_match = False
 
-        # When no manifests exist, defer -- customer_coverage is the primary gate.
+        # When no manifests exist, defer -- subject_coverage is the primary gate.
         if not any_manifest_exists:
             return "agent_manifest_reconciliation", AuditCheck(
                 passed=True,
                 dod_checks=[3],
                 details={
-                    "note": "No coverage manifests found -- deferred to customer_coverage",
+                    "note": "No coverage manifests found -- deferred to subject_coverage",
                 },
             )
 
@@ -225,6 +225,9 @@ class QAAuditor:
             try:
                 manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
                 files_read = manifest.get("files_read", [])
+                if not isinstance(files_read, list):
+                    # Agent may write a count (int) instead of an array — skip.
+                    files_read = []
                 if files_read:
                     has_file_level_data = True
                 for fr in files_read:
@@ -236,14 +239,14 @@ class QAAuditor:
 
         # When manifests lack file-level coverage data (``files_read``),
         # file-level coverage cannot be verified.  Agent manifests may only
-        # contain customer-level summaries.  Defer to customer_coverage.
+        # contain subject-level summaries.  Defer to subject_coverage.
         if not has_file_level_data:
             return "file_coverage", AuditCheck(
                 passed=True,
                 dod_checks=[2, 10],
                 details={
                     "total_files": len(all_files),
-                    "note": "Manifests lack file-level data -- deferred to customer_coverage",
+                    "note": "Manifests lack file-level data -- deferred to subject_coverage",
                 },
             )
 
@@ -299,19 +302,19 @@ class QAAuditor:
         )
 
     # ------------------------------------------------------------------ #
-    # 8c - Customer Coverage (DoD 1)
+    # 8c - Subject Coverage (DoD 1)
     # ------------------------------------------------------------------ #
 
-    def check_customer_coverage(self) -> tuple[str, AuditCheck]:
+    def check_subject_coverage(self) -> tuple[str, AuditCheck]:
         missing_outputs: list[dict[str, str]] = []
-        for customer in self.customer_safe_names:
+        for subject in self.subject_safe_names:
             for agent in ALL_SPECIALIST_AGENTS:
-                path = self.run_dir / "findings" / agent / f"{customer}.json"
+                path = self.run_dir / "findings" / agent / f"{subject}.json"
                 if not path.exists():
-                    missing_outputs.append({"customer": customer, "agent": agent})
+                    missing_outputs.append({"subject": subject, "agent": agent})
 
-        customers_missing = {m["customer"] for m in missing_outputs}
-        total = len(self.customer_safe_names)
+        subjects_missing = {m["subject"] for m in missing_outputs}
+        total = len(self.subject_safe_names)
         total_expected = total * len(ALL_SPECIALIST_AGENTS)
         coverage_ratio = (total_expected - len(missing_outputs)) / max(total_expected, 1)
 
@@ -323,17 +326,17 @@ class QAAuditor:
         has_gap_findings = (self.run_dir / "findings" / "coverage_gaps" / "coverage_gap_findings.json").exists()
         passed = coverage_ratio >= 0.95 if has_gap_findings else len(missing_outputs) == 0
 
-        return "customer_coverage", AuditCheck(
+        return "subject_coverage", AuditCheck(
             passed=passed,
             dod_checks=[1],
             details={
-                "total_customers": total,
-                "customers_with_all_4_agents": total - len(customers_missing),
+                "total_subjects": total,
+                "subjects_with_all_4_agents": total - len(subjects_missing),
                 "missing_outputs": missing_outputs[:100],
                 "coverage_ratio": round(coverage_ratio, 4),
                 "coverage_gaps_recorded": has_gap_findings,
             },
-            rule="ALL customers MUST have output from ALL 4 agents. "
+            rule="ALL subjects MUST have output from ALL 4 agents. "
             "Tolerance: >= 95% when coverage gate has already generated gap findings for missing outputs.",
         )
 
@@ -347,9 +350,9 @@ class QAAuditor:
         merged_dir = self.run_dir / "findings" / "merged"
 
         if merged_dir.exists():
-            for customer_file in merged_dir.glob("*.json"):
+            for subject_file in merged_dir.glob("*.json"):
                 try:
-                    data = json.loads(customer_file.read_text(encoding="utf-8"))
+                    data = json.loads(subject_file.read_text(encoding="utf-8"))
                 except (json.JSONDecodeError, OSError):
                     continue
                 graph = data.get("governance_graph", {})
@@ -520,7 +523,7 @@ class QAAuditor:
     # ------------------------------------------------------------------ #
 
     def check_gap_completeness(self) -> tuple[str, AuditCheck]:
-        # Collect gaps from merged customer files (primary source after step 6)
+        # Collect gaps from merged subject files (primary source after step 6)
         gap_count = 0
         merged_dir = self.run_dir / "findings" / "merged"
         if merged_dir.exists():
@@ -546,26 +549,26 @@ class QAAuditor:
                 except (json.JSONDecodeError, OSError):
                     continue
 
-        # Check for ghost customers: customers in inventory but missing from merged
-        ghost_customers: list[str] = []
+        # Check for ghost subjects: subjects in inventory but missing from merged
+        ghost_subjects: list[str] = []
         if merged_dir.exists():
-            merged_customers = {jf.stem for jf in merged_dir.glob("*.json")}
-            for customer in self.customer_safe_names:
-                if customer not in merged_customers:
-                    ghost_customers.append(customer)
+            merged_subjects = {jf.stem for jf in merged_dir.glob("*.json")}
+            for subject in self.subject_safe_names:
+                if subject not in merged_subjects:
+                    ghost_subjects.append(subject)
 
-        # Fail if there are ghost customers without gap entries
-        passed = len(ghost_customers) == 0
+        # Fail if there are ghost subjects without gap entries
+        passed = len(ghost_subjects) == 0
 
         return "gap_completeness", AuditCheck(
             passed=passed,
             dod_checks=[6, 9],
             details={
                 "total_gaps": gap_count,
-                "ghost_customers": ghost_customers[:50],
-                "ghost_count": len(ghost_customers),
+                "ghost_subjects": ghost_subjects[:50],
+                "ghost_count": len(ghost_subjects),
             },
-            rule="All ghost customers must be logged as gaps; all referenced-but-missing docs must be tracked.",
+            rule="All ghost subjects must be logged as gaps; all referenced-but-missing docs must be tracked.",
         )
 
     # ------------------------------------------------------------------ #
@@ -576,37 +579,37 @@ class QAAuditor:
         reconciliation_path = self.run_dir / "contract_date_reconciliation.json"
         reconciliation_exists = reconciliation_path.exists()
 
-        # Check that merged customer files exist and have cross_references data
+        # Check that merged subject files exist and have cross_references data
         merged_dir = self.run_dir / "findings" / "merged"
-        customers_without_xrefs: list[str] = []
+        subjects_without_xrefs: list[str] = []
         total_xrefs = 0
 
         if merged_dir.exists():
-            for customer in self.customer_safe_names:
-                merged_path = merged_dir / f"{customer}.json"
+            for subject in self.subject_safe_names:
+                merged_path = merged_dir / f"{subject}.json"
                 if not merged_path.exists():
-                    customers_without_xrefs.append(customer)
+                    subjects_without_xrefs.append(subject)
                     continue
                 try:
                     data = json.loads(merged_path.read_text(encoding="utf-8"))
                     xrefs = data.get("cross_references", [])
                     total_xrefs += len(xrefs)
                 except (json.JSONDecodeError, OSError):
-                    customers_without_xrefs.append(customer)
+                    subjects_without_xrefs.append(subject)
 
-        # Pass if all customers have merged files (cross-references may be empty
-        # for customers with no reference data)
-        passed = len(customers_without_xrefs) == 0
+        # Pass if all subjects have merged files (cross-references may be empty
+        # for subjects with no reference data)
+        passed = len(subjects_without_xrefs) == 0
 
         return "cross_reference_completeness", AuditCheck(
             passed=passed,
             dod_checks=[7, 8],
             details={
-                "customers_without_merged_xrefs": customers_without_xrefs[:50],
+                "subjects_without_merged_xrefs": subjects_without_xrefs[:50],
                 "total_cross_references": total_xrefs,
                 "reconciliation_complete": reconciliation_exists,
             },
-            rule="All customers must have merged output files with cross-reference data.",
+            rule="All subjects must have merged output files with cross-reference data.",
         )
 
     # ------------------------------------------------------------------ #
@@ -615,17 +618,17 @@ class QAAuditor:
 
     def check_domain_coverage(self) -> tuple[str, AuditCheck]:
         enabled_domains = set(ALL_SPECIALIST_AGENTS)
-        customers_missing: list[dict[str, Any]] = []
+        subjects_missing: list[dict[str, Any]] = []
         category_warnings: list[str] = []
         merged_dir = self.run_dir / "findings" / "merged"
 
         if merged_dir.exists():
-            for customer in self.customer_safe_names:
-                merged_path = merged_dir / f"{customer}.json"
+            for subject in self.subject_safe_names:
+                merged_path = merged_dir / f"{subject}.json"
                 if not merged_path.exists():
-                    customers_missing.append(
+                    subjects_missing.append(
                         {
-                            "customer": customer,
+                            "subject": subject,
                             "missing_domains": sorted(enabled_domains),
                         }
                     )
@@ -633,9 +636,9 @@ class QAAuditor:
                 try:
                     data = json.loads(merged_path.read_text(encoding="utf-8"))
                 except (json.JSONDecodeError, OSError):
-                    customers_missing.append(
+                    subjects_missing.append(
                         {
-                            "customer": customer,
+                            "subject": subject,
                             "missing_domains": sorted(enabled_domains),
                         }
                     )
@@ -650,18 +653,18 @@ class QAAuditor:
                         covered.add(agent)
                 missing = enabled_domains - covered
                 if missing:
-                    customers_missing.append(
+                    subjects_missing.append(
                         {
-                            "customer": customer,
+                            "subject": subject,
                             "missing_domains": sorted(missing),
                         }
                     )
 
-        total = max(len(self.customer_safe_names), 1)
-        coverage = 1.0 - (len(customers_missing) / total)
+        total = max(len(self.subject_safe_names), 1)
+        coverage = 1.0 - (len(subjects_missing) / total)
 
-        # In production, some customers may legitimately lack findings from all
-        # 4 agents (e.g. a customer with a single image file won't have finance
+        # In production, some subjects may legitimately lack findings from all
+        # 4 agents (e.g. a subject with a single image file won't have finance
         # findings).  Require ≥80% domain coverage to pass.
         passed = coverage >= _DOMAIN_COVERAGE_THRESHOLD
 
@@ -671,7 +674,7 @@ class QAAuditor:
             details={
                 "coverage_pct": coverage,
                 "coverage_threshold": _DOMAIN_COVERAGE_THRESHOLD,
-                "customers_with_missing_domains": customers_missing[:50],
+                "subjects_with_missing_domains": subjects_missing[:50],
                 "category_warnings": category_warnings,
             },
         )
@@ -738,10 +741,10 @@ class QAAuditor:
                 except (json.JSONDecodeError, OSError):
                     continue
 
-        expected = len(self.customer_safe_names)
-        # Allow a small tolerance — some customers may be skipped during merge
-        # (e.g. no agent output for that customer) and the merge step may
-        # process customers not in the safe_names list (e.g. entity resolution
+        expected = len(self.subject_safe_names)
+        # Allow a small tolerance — some subjects may be skipped during merge
+        # (e.g. no agent output for that subject) and the merge step may
+        # process subjects not in the safe_names list (e.g. entity resolution
         # aliases).  Require ≥90% merge rate.
         ratio = merged_count / max(expected, 1)
         passed = ratio >= _MERGE_THRESHOLD
@@ -750,8 +753,8 @@ class QAAuditor:
             passed=passed,
             dod_checks=[13],
             details={
-                "merged_customer_count": merged_count,
-                "expected_customer_count": expected,
+                "merged_subject_count": merged_count,
+                "expected_subject_count": expected,
                 "merge_ratio": round(ratio, 4),
                 "merge_threshold": _MERGE_THRESHOLD,
                 "total_merged_findings": total_findings,
@@ -831,7 +834,7 @@ class QAAuditor:
     # ------------------------------------------------------------------ #
 
     def check_contract_date_reconciliation(self) -> tuple[str, AuditCheck]:
-        has_db = bool(self.deal_config.get("source_of_truth", {}).get("customer_database"))
+        has_db = bool(self.deal_config.get("source_of_truth", {}).get("subject_database"))
         if not has_db:
             return "contract_date_reconciliation", AuditCheck(
                 passed=True,
@@ -840,7 +843,7 @@ class QAAuditor:
                     "applicable": False,
                     "reconciliation_file_exists": False,
                 },
-                rule="Not applicable -- no source_of_truth.customer_database.",
+                rule="Not applicable -- no source_of_truth.subject_database.",
             )
 
         recon_path = self.run_dir / "contract_date_reconciliation.json"
@@ -1015,7 +1018,7 @@ class QAAuditor:
             if f.get("category") == "domain_reviewed_no_issues":
                 clean_count += 1
 
-        # Count gaps and their priorities from merged customer files.
+        # Count gaps and their priorities from merged subject files.
         total_gaps = 0
         gaps_by_priority: dict[str, int] = {"P0": 0, "P1": 0, "P2": 0, "P3": 0}
         agents_with_gaps: set[str] = set()
@@ -1036,7 +1039,7 @@ class QAAuditor:
                         agents_with_gaps.add(agent)
 
         return AuditSummary(
-            total_customers=len(self.customer_safe_names),
+            total_subjects=len(self.subject_safe_names),
             total_files=len(self._read_files_txt()),
             total_findings=len(merged_findings),
             findings_by_severity=by_severity,

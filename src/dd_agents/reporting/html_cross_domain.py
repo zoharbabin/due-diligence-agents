@@ -42,7 +42,7 @@ class CrossDomainRenderer(SectionRenderer):
         # Compound risk table
         parts.append("<h3>Compound Risk Summary</h3>")
         parts.append(
-            "<table class='customer-table sortable'><thead><tr>"
+            "<table class='subject-table sortable'><thead><tr>"
             "<th scope='col'>Entity</th>"
             "<th scope='col'>Domains</th>"
             "<th scope='col'>Findings</th>"

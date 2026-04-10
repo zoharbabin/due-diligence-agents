@@ -420,7 +420,7 @@ class TestVersionChainBuilder:
         assert groups[0].files[0].is_latest_version is True
         assert groups[0].files[0].superseded_by == ""
 
-    def test_different_customers_not_grouped(self) -> None:
+    def test_different_subjects_not_grouped(self) -> None:
         """Files from different customer paths are never grouped."""
         entries = [
             _fe("CustomerA/MSA_v1.pdf"),
@@ -593,7 +593,7 @@ class TestPrecedenceInPrompts:
     def test_prompt_includes_precedence_annotations(self) -> None:
         """Customer file list should show precedence status markers."""
         from dd_agents.agents.prompt_builder import PromptBuilder
-        from dd_agents.models.inventory import CustomerEntry
+        from dd_agents.models.inventory import SubjectEntry
 
         builder = PromptBuilder(
             project_dir=Path("/tmp/proj"),
@@ -602,7 +602,7 @@ class TestPrecedenceInPrompts:
         )
 
         customers = [
-            CustomerEntry(
+            SubjectEntry(
                 group="GroupA",
                 name="Acme Corp",
                 safe_name="acme_corp",
@@ -648,7 +648,7 @@ class TestPrecedenceInPrompts:
     def test_prompt_without_precedence_still_works(self) -> None:
         """Prompt builds correctly without precedence data (backward compatible)."""
         from dd_agents.agents.prompt_builder import PromptBuilder
-        from dd_agents.models.inventory import CustomerEntry
+        from dd_agents.models.inventory import SubjectEntry
 
         builder = PromptBuilder(
             project_dir=Path("/tmp/proj"),
@@ -657,7 +657,7 @@ class TestPrecedenceInPrompts:
         )
 
         customers = [
-            CustomerEntry(
+            SubjectEntry(
                 group="GroupA",
                 name="Acme Corp",
                 safe_name="acme_corp",
@@ -896,10 +896,10 @@ class TestEdgeCases:
 
     def test_windows_backslash_paths(self) -> None:
         """Windows-style backslash paths are handled correctly."""
-        from dd_agents.precedence.version_chains import _base_name, _customer_prefix
+        from dd_agents.precedence.version_chains import _base_name, _subject_prefix
 
         assert _base_name("Customer\\Executed\\MSA.pdf") == "msa"
-        assert _customer_prefix("Customer\\Executed\\MSA.pdf") == "Customer/Executed"
+        assert _subject_prefix("Customer\\Executed\\MSA.pdf") == "Customer/Executed"
 
     def test_checkpoint_roundtrip_preserves_precedence(self) -> None:
         """PipelineState file_precedence survives checkpoint serialization."""

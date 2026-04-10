@@ -37,8 +37,8 @@ def _make_finding(
     return {
         "severity": severity,
         "title": title,
-        "_customer": customer,
-        "_customer_safe_name": "customer_a",
+        "_subject": customer,
+        "_subject_safe_name": "customer_a",
     }
 
 
@@ -57,8 +57,8 @@ class TestSaaSMetricsRenderer:
         data = _make_data(
             total_contracted_arr=1_000_000.0,
             saas_metrics={
-                "total_customers": 10,
-                "customers_with_revenue": 8,
+                "total_subjects": 10,
+                "subjects_with_revenue": 8,
                 "avg_contract_value": 100_000.0,
                 "top_customer_pct": 20.0,
                 "tier_distribution": {},
@@ -81,8 +81,8 @@ class TestSaaSMetricsRenderer:
         data = _make_data(
             total_contracted_arr=500_000.0,
             saas_metrics={
-                "total_customers": 5,
-                "customers_with_revenue": 5,
+                "total_subjects": 5,
+                "subjects_with_revenue": 5,
                 "avg_contract_value": 100_000.0,
                 "top_customer_pct": 10.0,
                 "tier_distribution": {},
@@ -98,8 +98,8 @@ class TestSaaSMetricsRenderer:
         data = _make_data(
             total_contracted_arr=500_000.0,
             saas_metrics={
-                "total_customers": 5,
-                "customers_with_revenue": 5,
+                "total_subjects": 5,
+                "subjects_with_revenue": 5,
                 "avg_contract_value": 100_000.0,
                 "top_customer_pct": 10.0,
                 "tier_distribution": {},
@@ -115,8 +115,8 @@ class TestSaaSMetricsRenderer:
         data = _make_data(
             total_contracted_arr=1_000_000.0,
             saas_metrics={
-                "total_customers": 10,
-                "customers_with_revenue": 8,
+                "total_subjects": 10,
+                "subjects_with_revenue": 8,
                 "avg_contract_value": 125_000.0,
                 "top_customer_pct": 15.0,
                 "tier_distribution": {},
@@ -139,8 +139,8 @@ class TestSaaSMetricsRenderer:
         data = _make_data(
             total_contracted_arr=500_000.0,
             saas_metrics={
-                "total_customers": 5,
-                "customers_with_revenue": 5,
+                "total_subjects": 5,
+                "subjects_with_revenue": 5,
                 "avg_contract_value": 100_000.0,
                 "top_customer_pct": 10.0,
                 "tier_distribution": {},

@@ -214,10 +214,10 @@ def file_size_guard(
 BLOCKED_FILENAMES: list[str] = [
     "_global.json",
     "batch_summary.json",
-    "other_customers.json",
+    "other_subjects.json",
     "pipeline_items.json",
-    "remaining_customers.json",
-    "all_customers.json",
+    "remaining_subjects.json",
+    "all_subjects.json",
     "combined.json",
     "summary.json",
     "batch_1.json",

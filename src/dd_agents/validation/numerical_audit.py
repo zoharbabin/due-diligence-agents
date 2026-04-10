@@ -38,7 +38,7 @@ class NumericalAuditor:
     ------
     1. Source traceability  -- every number traces to a source file.
     2. Arithmetic           -- re-derive values from source.
-    3. Cross-source         -- ``customers.csv`` vs ``counts.json`` vs findings.
+    3. Cross-source         -- ``subjects.csv`` vs ``counts.json`` vs findings.
     4. Cross-format parity  -- spot-check Excel vs JSON (post-generation only).
     5. Semantic              -- flag implausible values.
     6. Financial citation   -- dollar amounts in P0/P1 findings match source docs.
@@ -137,16 +137,16 @@ class NumericalAuditor:
         """Numbers that appear in multiple sources must agree."""
         failures: list[str] = []
 
-        # Cross-check: customers.csv row count == counts.json total_customers
-        csv_count = self._count_csv_rows("customers.csv")
-        counts_total = self._read_counts_json_field("total_customers")
+        # Cross-check: subjects.csv row count == counts.json total_subjects
+        csv_count = self._count_csv_rows("subjects.csv")
+        counts_total = self._read_counts_json_field("total_subjects")
         n001 = _manifest_get(manifest, "N001")
 
         if csv_count is not None and counts_total is not None and csv_count != counts_total:
-            failures.append(f"customers.csv rows ({csv_count}) != counts.json total_customers ({counts_total})")
+            failures.append(f"subjects.csv rows ({csv_count}) != counts.json total_subjects ({counts_total})")
 
         if csv_count is not None and n001 is not None and csv_count != n001.value:
-            failures.append(f"customers.csv rows ({csv_count}) != manifest N001 ({n001.value})")
+            failures.append(f"subjects.csv rows ({csv_count}) != manifest N001 ({n001.value})")
 
         # Cross-check: severity sum == total findings
         n003 = _manifest_get(manifest, "N003")
@@ -258,7 +258,7 @@ class NumericalAuditor:
         if n003 and n004 and n004.value > n003.value:
             failures.append("P0 findings count > total findings count")
 
-        # Customer count change >20% between runs
+        # Subject count change >20% between runs
         if self.prior_manifest:
             prior_n001 = _manifest_get(self.prior_manifest, "N001")
             curr_n001 = _manifest_get(manifest, "N001")
@@ -266,7 +266,7 @@ class NumericalAuditor:
                 pct_change = abs(curr_n001.value - prior_n001.value) / max(prior_n001.value, 1)
                 if pct_change > 0.20:
                     failures.append(
-                        f"Customer count changed by {pct_change:.0%} ({prior_n001.value} -> {curr_n001.value})"
+                        f"Subject count changed by {pct_change:.0%} ({prior_n001.value} -> {curr_n001.value})"
                     )
 
         # Gap count decreased between runs
@@ -433,7 +433,7 @@ class NumericalAuditor:
 
         # Try to find the extracted text file.
         # Source path might be like "1. Due Diligence/Finance/file.xlsx"
-        # Extracted text would be at text_dir/customer/file.xlsx.md
+        # Extracted text would be at text_dir/subject/file.xlsx.md
         basename = source_path.rsplit("/", 1)[-1] if "/" in source_path else source_path
         # Search text_dir recursively for the basename (with .md suffix).
         for suffix in [".md", ""]:
@@ -468,7 +468,7 @@ class NumericalAuditor:
         """Attempt to re-derive a manifest entry value from source."""
         match entry.id:
             case "N001":
-                return self._count_csv_rows("customers.csv")
+                return self._count_csv_rows("subjects.csv")
             case "N002":
                 return self._count_file_lines("files.txt")
             case "N003":
@@ -531,11 +531,11 @@ class NumericalAuditor:
         return sum(1 for f in self._cached_findings() if f.get("category") == "domain_reviewed_no_issues")
 
     def _count_total_gaps(self) -> int:
-        """N009: count total gaps from merged customer files.
+        """N009: count total gaps from merged subject files.
 
-        Gaps are stored inside each merged customer JSON (``data.gaps[]``),
+        Gaps are stored inside each merged subject JSON (``data.gaps[]``),
         not as separate files in ``merged/gaps/``.  This counts all gaps
-        across all merged customer files.
+        across all merged subject files.
         """
         merged_dir = self.run_dir / "findings" / "merged"
         if not merged_dir.exists():

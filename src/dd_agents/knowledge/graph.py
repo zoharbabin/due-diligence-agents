@@ -103,7 +103,7 @@ class DealKnowledgeGraph:
         Parameters
         ----------
         safe_name:
-            The entity's customer_safe_name.
+            The entity's subject_safe_name.
         display_name:
             Human-readable entity name.
         **meta:

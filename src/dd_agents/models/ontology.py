@@ -81,7 +81,7 @@ class ClauseNode(BaseModel):
 
     id: str = Field(description="Unique clause ID (file_path:section:clause_type)")
     document_path: str = Field(description="Source document path")
-    customer_safe_name: str = Field(default="", description="Customer this clause belongs to")
+    subject_safe_name: str = Field(default="", description="Subject this clause belongs to")
     clause_type: ClauseType = Field(default=ClauseType.UNKNOWN, description="Semantic type of the clause")
     section_ref: str = Field(default="", description="Section reference in the document")
     summary: str = Field(default="", description="Brief clause summary")
@@ -119,7 +119,7 @@ class Obligation(BaseModel):
 
     id: str = Field(description="Unique obligation ID")
     clause_id: str = Field(description="Source clause ID")
-    customer_safe_name: str = Field(default="", description="Customer this obligation belongs to")
+    subject_safe_name: str = Field(default="", description="Subject this obligation belongs to")
     obligor: str = Field(description="Who owes the obligation")
     obligee: str = Field(description="Who is owed")
     description: str = Field(description="What is required")

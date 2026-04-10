@@ -95,22 +95,22 @@ def _verify_citation_definition() -> dict[str, Any]:
     }
 
 
-def _get_customer_files_definition() -> dict[str, Any]:
-    """Tool definition for get_customer_files."""
+def _get_subject_files_definition() -> dict[str, Any]:
+    """Tool definition for get_subject_files."""
     return {
-        "name": "get_customer_files",
-        "description": ("Return the file list and count for a customer. Use customer_safe_name (e.g., 'acme_corp')."),
+        "name": "get_subject_files",
+        "description": ("Return the file list and count for a subject. Use subject_safe_name (e.g., 'acme_corp')."),
         "input_schema": {
             "type": "object",
             "properties": {
-                "customer_safe_name": {
+                "subject_safe_name": {
                     "type": "string",
-                    "description": "The customer_safe_name from the assignment",
+                    "description": "The subject_safe_name from the assignment",
                 }
             },
-            "required": ["customer_safe_name"],
+            "required": ["subject_safe_name"],
         },
-        "handler": "dd_agents.tools.get_customer_files.get_customer_files",
+        "handler": "dd_agents.tools.get_subject_files.get_subject_files",
     }
 
 
@@ -120,7 +120,7 @@ def _resolve_entity_definition() -> dict[str, Any]:
         "name": "resolve_entity",
         "description": (
             "Look up a name in the entity resolution cache to find the "
-            "canonical customer name. Returns the canonical name and match "
+            "canonical subject name. Returns the canonical name and match "
             "method, or 'unresolved'."
         ),
         "input_schema": {
@@ -184,24 +184,24 @@ def _report_progress_definition() -> dict[str, Any]:
                     "type": "string",
                     "description": "Name of the reporting agent",
                 },
-                "customers_processed": {
+                "subjects_processed": {
                     "type": "integer",
-                    "description": "Count of customers completed so far",
+                    "description": "Count of subjects completed so far",
                 },
-                "total_customers": {
+                "total_subjects": {
                     "type": "integer",
-                    "description": "Total customers assigned",
+                    "description": "Total subjects assigned",
                 },
-                "current_customer": {
+                "current_subject": {
                     "type": "string",
-                    "description": "Customer currently being processed",
+                    "description": "Subject currently being processed",
                 },
             },
             "required": [
                 "agent_name",
-                "customers_processed",
-                "total_customers",
-                "current_customer",
+                "subjects_processed",
+                "total_subjects",
+                "current_subject",
             ],
         },
         "handler": "dd_agents.tools.report_progress.report_progress",
@@ -235,7 +235,7 @@ def create_tool_definitions() -> list[dict[str, Any]]:
             _validate_gap_definition(),
             _validate_manifest_definition(),
             _verify_citation_definition(),
-            _get_customer_files_definition(),
+            _get_subject_files_definition(),
             _resolve_entity_definition(),
             _search_similar_definition(),
             _read_office_definition(),
@@ -260,7 +260,7 @@ SPECIALIST_CUSTOM_TOOLS: list[str] = [
     "validate_gap",
     "validate_manifest",
     "verify_citation",
-    "get_customer_files",
+    "get_subject_files",
     "resolve_entity",
     "search_similar",
     "read_office",

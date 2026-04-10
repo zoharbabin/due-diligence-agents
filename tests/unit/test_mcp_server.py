@@ -58,7 +58,7 @@ class TestBuildMcpServer:
             "specialist",
             text_dir=text_dir,
             files_list=["a.pdf", "b.pdf"],
-            customers_csv=[{"customer_safe_name": "acme", "file_list": ["a.pdf"]}],
+            subjects_csv=[{"subject_safe_name": "acme", "file_list": ["a.pdf"]}],
             cache_path=cache_path,
             allowed_dir=tmp_path,
         )
@@ -70,7 +70,7 @@ class TestBuildMcpServer:
             "specialist",
             text_dir=None,
             files_list=None,
-            customers_csv=None,
+            subjects_csv=None,
             cache_path=None,
             allowed_dir=None,
         )
@@ -104,7 +104,7 @@ class TestBuildRuntimeContext:
         ctx = _build_runtime_context(project_dir, run_dir)
         assert "text_dir" in ctx
         assert "files_list" in ctx
-        assert "customers_csv" in ctx
+        assert "subjects_csv" in ctx
         assert "cache_path" in ctx
         assert "allowed_dir" in ctx
 
@@ -170,13 +170,13 @@ class TestBuildRuntimeContext:
         ctx = _build_runtime_context(project_dir, run_dir)
         assert ctx["files_list"] is None
 
-    def test_passes_customers_csv_through(self, tmp_path: Path) -> None:
-        """customers_csv param should be passed through unchanged."""
+    def test_passes_subjects_csv_through(self, tmp_path: Path) -> None:
+        """subjects_csv param should be passed through unchanged."""
         project_dir = tmp_path / "project"
         run_dir = tmp_path / "run"
         project_dir.mkdir()
         run_dir.mkdir()
 
-        customers = [{"customer_safe_name": "acme", "file_list": ["a.pdf"]}]
-        ctx = _build_runtime_context(project_dir, run_dir, customers_csv=customers)
-        assert ctx["customers_csv"] is customers
+        customers = [{"subject_safe_name": "acme", "file_list": ["a.pdf"]}]
+        ctx = _build_runtime_context(project_dir, run_dir, subjects_csv=customers)
+        assert ctx["subjects_csv"] is customers

@@ -36,7 +36,7 @@ def _make_search_results(
     customer_name: str = "Customer A",
     columns: dict[str, dict[str, object]] | None = None,
 ) -> list[dict[str, object]]:
-    """Build a minimal search results list matching SearchCustomerResult schema."""
+    """Build a minimal search results list matching SearchSubjectResult schema."""
     if columns is None:
         columns = {
             "Revenue Growth": {
@@ -53,7 +53,7 @@ def _make_search_results(
                 ],
             },
         }
-    return [{"customer_name": customer_name, "columns": columns}]
+    return [{"subject_name": customer_name, "columns": columns}]
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +169,7 @@ class TestFileSearchResults:
         count = file_search_results(kb, [], "test_prompts", TIMESTAMP)
         assert count == 0
 
-    def test_multiple_customers(self, kb: DealKnowledgeBase) -> None:
+    def test_multiple_subjects(self, kb: DealKnowledgeBase) -> None:
         results = [
             *_make_search_results(customer_name="Customer A"),
             *_make_search_results(customer_name="Customer B"),

@@ -55,19 +55,17 @@ class DomainRenderer(SectionRenderer):
             )
             for cat, cat_findings in sorted(categories.items(), key=lambda x: -len(x[1])):
                 cat_sev: dict[str, int] = defaultdict(int)
-                customer_counts: dict[str, int] = defaultdict(int)
+                subject_counts: dict[str, int] = defaultdict(int)
                 for cf in cat_findings:
                     cat_sev[cf.get("severity", "P3")] += 1
-                    customer_counts[str(cf.get("_customer_safe_name", cf.get("_customer", "")))] += 1
-                top_customer_raw = (
-                    max(customer_counts, key=lambda c: customer_counts.get(c, 0)) if customer_counts else ""
-                )
-                top_customer_display = self.data.display_names.get(top_customer_raw, top_customer_raw)
+                    subject_counts[str(cf.get("_subject_safe_name", cf.get("_subject", "")))] += 1
+                top_subject_raw = max(subject_counts, key=lambda c: subject_counts.get(c, 0)) if subject_counts else ""
+                top_subject_display = self.data.display_names.get(top_subject_raw, top_subject_raw)
                 sev_mix = ", ".join(f"{k}:{v}" for k, v in sorted(cat_sev.items()) if v > 0)
 
                 parts.append(
                     f"<tr><td>{html.escape(cat)}</td><td>{len(cat_findings)}</td>"
-                    f"<td>{html.escape(sev_mix)}</td><td>{html.escape(top_customer_display)}</td></tr>"
+                    f"<td>{html.escape(sev_mix)}</td><td>{html.escape(top_subject_display)}</td></tr>"
                 )
             parts.append("</tbody></table>")
 

@@ -1,7 +1,7 @@
 """Inventory integrity verifier.
 
 Checks that the data room inventory is internally consistent:
-  - total files = customer files + reference files
+  - total files = subject files + reference files
   - no orphan files (every file is accounted for)
   - all files are classified
 """
@@ -23,7 +23,7 @@ class InventoryIntegrityVerifier:
     def verify(
         self,
         all_files: list[FileEntry],
-        customer_files: list[FileEntry],
+        subject_files: list[FileEntry],
         reference_files: list[ReferenceFile],
     ) -> list[str]:
         """Run all integrity checks and return a list of issues.
@@ -32,8 +32,8 @@ class InventoryIntegrityVerifier:
         ----------
         all_files:
             Complete set of discovered files.
-        customer_files:
-            Files that belong to customer directories.
+        subject_files:
+            Files that belong to subject directories.
         reference_files:
             Classified reference files.
 
@@ -45,33 +45,33 @@ class InventoryIntegrityVerifier:
         """
         issues: list[str] = []
 
-        # 1. Total = customer + reference
-        total_expected = len(customer_files) + len(reference_files)
+        # 1. Total = subject + reference
+        total_expected = len(subject_files) + len(reference_files)
         if len(all_files) != total_expected:
             issues.append(
                 f"File count mismatch: total={len(all_files)} "
-                f"!= customer({len(customer_files)}) + reference({len(reference_files)}) "
+                f"!= subject({len(subject_files)}) + reference({len(reference_files)}) "
                 f"= {total_expected}"
             )
 
         # 2. No orphan files
         all_paths = {entry.path for entry in all_files}
-        customer_paths = {entry.path for entry in customer_files}
+        subject_paths = {entry.path for entry in subject_files}
         reference_paths = {rf.file_path for rf in reference_files}
-        accounted = customer_paths | reference_paths
+        accounted = subject_paths | reference_paths
 
         orphans = all_paths - accounted
         if orphans:
             sample = sorted(orphans)[:5]
             issues.append(
-                f"{len(orphans)} orphan file(s) not classified as customer or reference: "
+                f"{len(orphans)} orphan file(s) not classified as subject or reference: "
                 f"{sample}{'...' if len(orphans) > 5 else ''}"
             )
 
-        # Files in customer/reference but not in all_files (should not happen)
-        extra_customer = customer_paths - all_paths
-        if extra_customer:
-            issues.append(f"{len(extra_customer)} customer file(s) not in all_files: {sorted(extra_customer)[:3]}")
+        # Files in subject/reference but not in all_files (should not happen)
+        extra_subject = subject_paths - all_paths
+        if extra_subject:
+            issues.append(f"{len(extra_subject)} subject file(s) not in all_files: {sorted(extra_subject)[:3]}")
 
         extra_reference = reference_paths - all_paths
         if extra_reference:

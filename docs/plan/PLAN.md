@@ -3,6 +3,8 @@
 > Status: Implemented — pipeline and search command operational
 > Package: `dd_agents` under `src/dd_agents/`
 > SDK: `claude-agent-sdk` v0.1.39+ (Python 3.12+)
+>
+> **Terminology note (v1.0.0)**: These spec docs use "customer" to refer to DD investigation targets. As of v1.0.0 (Issue #187), all code uses "subject" instead. When reading these specs, mentally substitute "subject" for "customer" in code identifiers (e.g., `customer_safe_name` → `subject_safe_name`, `customers.csv` → `subjects.csv`).
 
 ---
 

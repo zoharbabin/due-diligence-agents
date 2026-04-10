@@ -30,7 +30,7 @@ class SeverityOverride(BaseModel):
     """A recommendation to reclassify a finding's severity."""
 
     finding_title: str = Field(default="", description="Title of the finding being reclassified")
-    entity: str = Field(default="", description="Entity/customer the finding relates to")
+    entity: str = Field(default="", description="Entity/subject the finding relates to")
     original_severity: str = Field(default="", description="Original severity (P0, P1)")
     recommended_severity: str = Field(default="", description="Recommended severity (P0, P1, P2, P3)")
     rationale: str = Field(default="", description="Rationale for the severity reclassification")
@@ -41,7 +41,7 @@ class RankedDealBreaker(BaseModel):
 
     rank: int = Field(default=0, description="Rank order of this deal breaker (1 = most impactful)")
     title: str = Field(default="", description="Title of the deal-breaking issue")
-    entity: str = Field(default="", description="Entity/customer the issue relates to")
+    entity: str = Field(default="", description="Entity/subject the issue relates to")
     impact_description: str = Field(default="", description="Business impact of this deal breaker")
     remediation: str = Field(default="", description="Recommended remediation or mitigation")
 
@@ -99,16 +99,15 @@ class ExecutiveSynthesisAgent(BaseAgentRunner):
 
     This is a synthesis agent — it reads pre-existing merged findings and
     produces a calibrated Go/No-Go recommendation with executive narrative.
-    It does NOT read raw documents or produce per-customer findings.
+    It does NOT read raw documents or produce per-subject findings.
     """
 
-    # Synthesis agent — needs enough turns to read merged findings via
-    # Read/Glob/Grep tools and then produce the JSON output.  The prior
-    # value of 5 was too low: the agent spent all turns on tool calls
-    # and hit the hard limit (15 messages) with 0 text output.
-    max_turns: int = 15
+    # Synthesis agent — reads all merged findings (16+ subject files) via
+    # Read/Glob/Grep tools then produces calibrated JSON output.  With 14+
+    # subjects the agent needs ~40-60 tool turns for reading alone.
+    max_turns: int = 75
     max_budget_usd: float = 3.0
-    timeout_seconds: int = 180
+    timeout_seconds: int = 300
 
     def get_agent_name(self) -> str:
         return "executive_synthesis"
