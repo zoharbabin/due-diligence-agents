@@ -85,7 +85,7 @@ def _mlx_whisper_available() -> bool:
 def _whisperx_available() -> bool:
     """Check if whisperx Python package is importable."""
     try:
-        import whisperx  # type: ignore[import-untyped]  # noqa: F401
+        import whisperx  # type: ignore[import-not-found]  # noqa: F401
 
         return True
     except ImportError:
@@ -95,7 +95,7 @@ def _whisperx_available() -> bool:
 def _openai_whisper_available() -> bool:
     """Check if openai-whisper Python package is importable."""
     try:
-        import whisper  # type: ignore[import-untyped]  # noqa: F401
+        import whisper  # type: ignore[import-not-found]  # noqa: F401
 
         return True
     except ImportError:
@@ -195,11 +195,11 @@ def _transcribe_mlx(filepath: Path, model: str) -> TranscriptionResult:
 
 def _transcribe_whisperx(filepath: Path, model: str) -> TranscriptionResult:
     """Transcribe using whisperx Python API."""
-    import whisperx  # type: ignore[import-untyped]
+    import whisperx  # type: ignore[import-not-found]
 
     device = "cpu"
     try:
-        import torch  # type: ignore[import-untyped]
+        import torch  # type: ignore[import-not-found]
 
         if torch.cuda.is_available():
             device = "cuda"
@@ -222,7 +222,7 @@ def _transcribe_whisperx(filepath: Path, model: str) -> TranscriptionResult:
 
 def _transcribe_openai(filepath: Path, model: str) -> TranscriptionResult:
     """Transcribe using openai-whisper Python API."""
-    import whisper  # type: ignore[import-untyped]
+    import whisper  # type: ignore[import-not-found]
 
     wh_model = whisper.load_model(model)
     result = wh_model.transcribe(str(filepath))
