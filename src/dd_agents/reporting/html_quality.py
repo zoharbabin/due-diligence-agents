@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import html
 import json
 import logging
 from typing import TYPE_CHECKING, Any
@@ -64,7 +63,7 @@ class QualityRenderer(SectionRenderer):
             width = max(min(pct, 100), 0)
             parts.append(
                 f"<div class='gov-bar-container'>"
-                f"<span class='gov-label'>{html.escape(name)}</span>"
+                f"<span class='gov-label'>{self.escape(name)}</span>"
                 f"<div style='flex:1;background:#e9ecef;border-radius:4px;height:20px'>"
                 f"<div class='gov-bar' style='width:{width:.0f}%;background:{color}'></div>"
                 f"</div>"
@@ -104,9 +103,9 @@ class QualityRenderer(SectionRenderer):
                         score_val = score_data
                         details = ""
                     parts.append(
-                        f"<tr><td>{html.escape(str(agent_name))}</td>"
-                        f"<td>{html.escape(str(score_val))}</td>"
-                        f"<td>{html.escape(str(details))}</td></tr>"
+                        f"<tr><td>{self.escape(str(agent_name))}</td>"
+                        f"<td>{self.escape(str(score_val))}</td>"
+                        f"<td>{self.escape(str(details))}</td></tr>"
                     )
                 parts.append("</tbody></table>")
 
@@ -134,16 +133,16 @@ class QualityRenderer(SectionRenderer):
         for check in checks:
             if not isinstance(check, dict):
                 continue
-            name = html.escape(str(check.get("name", "")))
+            name = self.escape(str(check.get("name", "")))
             status = str(check.get("status", "")).lower()
-            detail = html.escape(str(check.get("detail", "")))
+            detail = self.escape(str(check.get("detail", "")))
 
             if status == "pass":
                 badge = "<span class='verification-badge vb-verified'>pass</span>"
             elif status == "fail":
                 badge = "<span class='verification-badge vb-failed'>fail</span>"
             else:
-                badge = f"<span class='verification-badge vb-unchecked'>{html.escape(status)}</span>"
+                badge = f"<span class='verification-badge vb-unchecked'>{self.escape(status)}</span>"
 
             parts.append(f"<tr><td>{name}</td><td>{badge}</td><td>{detail}</td></tr>")
 

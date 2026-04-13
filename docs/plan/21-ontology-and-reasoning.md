@@ -20,7 +20,7 @@ The Addleshaw Goddard (AG) RAG report evaluated LLM performance on contract revi
 
 - **Baseline accuracy**: 74% on contract provision extraction and analysis. This means roughly 1 in 4 contract provisions are missed, misidentified, or incorrectly characterized.
 - **Optimized accuracy**: 95% after applying clause-aware chunking (3,500 characters with 700-character overlap), hybrid retrieval (keyword + semantic), provision-specific prompts, and follow-up verification prompts.
-- **Implication**: A naive "send the contract to the LLM" approach fails on every fourth clause. For M&A due diligence reviewing 400 documents across 200 customers, a 26% error rate produces hundreds of incorrect findings -- unacceptable for legal-grade output.
+- **Implication**: A naive "send the contract to the LLM" approach fails on every fourth clause. For M&A due diligence reviewing 400 documents across 200 subjects, a 26% error rate produces hundreds of incorrect findings -- unacceptable for legal-grade output.
 
 ### 1.2 Hallucination Is Structural, Not Incidental
 
@@ -62,7 +62,7 @@ Even models advertising 128K token context windows show measurable accuracy degr
 | 74% baseline accuracy | AG report | Clause-aware chunking, provision-specific prompts, follow-up verification prompts (Section 5) |
 | 17-33% hallucination rate | Stanford study | Citation verification hook, dual-citation requirement, deterministic graph operations (Section 6) |
 | Agentic error compounding | 10% per step | Deterministic Python gates, independent validation at each gate, Judge as independent verifier (Section 8) |
-| Context window degradation at 64K | Lost-in-the-middle | Customer batching, per-customer analysis, reference file routing, 80K token prompt ceiling (Section 7) |
+| Context window degradation at 64K | Lost-in-the-middle | Subject batching, per-subject analysis, reference file routing, 80K token prompt ceiling (Section 7) |
 | Fabricated cross-references | Stanford study | Graph-based provenance tracking, amendment chain traversal, contradiction detection (Section 3) |
 
 The core design principle: **replace probabilistic LLM reasoning with deterministic computation wherever possible**. The LLM reads contracts and extracts structured data. Python validates that data. NetworkX reasons over relationships. The LLM never decides whether to validate -- Python always validates.
@@ -71,7 +71,7 @@ The core design principle: **replace probabilistic LLM reasoning with determinis
 
 ## 2. Contract Ontology Schema
 
-A lightweight ontology for contract documents at the project's scale (~200 customers, ~400 documents, ~1,000 governance edges). This is not an enterprise knowledge graph -- it is a typed vocabulary that ensures agents, validators, and graph operations share a common language.
+A lightweight ontology for contract documents at the project's scale (~200 subjects, ~400 documents, ~1,000 governance edges). This is not an enterprise knowledge graph -- it is a typed vocabulary that ensures agents, validators, and graph operations share a common language.
 
 ### 2.1 Document Types
 
@@ -100,7 +100,7 @@ class DocumentType(str, Enum):
     UNKNOWN = "Unknown"                      # Unclassifiable document
 ```
 
-**Hierarchy**: MSA is the root document type. All other types either reference, modify, or operate under an MSA. If no MSA exists for a customer, the most comprehensive agreement (often the first signed contract) takes the MSA role with `governed_by: "SELF"`.
+**Hierarchy**: MSA is the root document type. All other types either reference, modify, or operate under an MSA. If no MSA exists for a subject, the most comprehensive agreement (often the first signed contract) takes the MSA role with `governed_by: "SELF"`.
 
 ### 2.2 Clause Types
 
@@ -159,7 +159,7 @@ class RelationshipType(str, Enum):
 class PartyRole(str, Enum):
     """Roles that entities play in contract relationships."""
     SERVICE_PROVIDER = "ServiceProvider"  # The target company (being acquired)
-    CUSTOMER = "Customer"                # Counterparty receiving services
+    SUBJECT = "Subject"                 # Counterparty receiving services
     GUARANTOR = "Guarantor"              # Entity guaranteeing obligations
     ASSIGNEE = "Assignee"                # Entity receiving assigned rights
     SUBSIDIARY = "Subsidiary"            # Controlled entity
@@ -173,12 +173,12 @@ class ContractNode(BaseModel):
     """A node in the contract ontology graph representing a document."""
     model_config = ConfigDict(extra="forbid")
 
-    document_id: str                         # Unique ID: customer_safe_name + filename hash
+    document_id: str                         # Unique ID: subject_safe_name + filename hash
     file_path: str                           # Original file path in data room
     text_path: str | None = None             # Path to pre-extracted text
     doc_type: DocumentType
-    customer: str                            # Canonical customer name
-    customer_safe_name: str
+    subject: str                            # Canonical subject name
+    subject_safe_name: str
     effective_date: str | None = None        # YYYY-MM-DD
     expiry_date: str | None = None           # YYYY-MM-DD
     parties: list[str] = Field(default_factory=list)
@@ -246,7 +246,7 @@ from dd_agents.models.governance import GovernanceGraph, GovernanceEdge
 
 
 class ContractReasoningGraph:
-    """NetworkX-backed contract reasoning graph for a single customer.
+    """NetworkX-backed contract reasoning graph for a single subject.
 
     Nodes: documents (ContractNode), clauses (ClauseNode), parties (PartyNode)
     Edges: typed relationships (OntologyEdge)
@@ -254,9 +254,9 @@ class ContractReasoningGraph:
     All queries are deterministic graph traversals, not LLM inferences.
     """
 
-    def __init__(self, customer: str, customer_safe_name: str):
-        self.customer = customer
-        self.customer_safe_name = customer_safe_name
+    def __init__(self, subject: str, subject_safe_name: str):
+        self.subject = subject
+        self.subject_safe_name = subject_safe_name
         self.G = nx.DiGraph()
 
     def add_document(self, node: ContractNode) -> None:
@@ -301,12 +301,12 @@ class ContractReasoningGraph:
     @classmethod
     def from_governance_graph(
         cls,
-        customer: str,
-        customer_safe_name: str,
+        subject: str,
+        subject_safe_name: str,
         gov_graph: GovernanceGraph,
     ) -> "ContractReasoningGraph":
         """Build from existing GovernanceGraph (04-data-models.md)."""
-        crg = cls(customer, customer_safe_name)
+        crg = cls(subject, subject_safe_name)
         for edge in gov_graph.edges:
             crg.G.add_node(edge.from_file, node_type="document", file_path=edge.from_file)
             crg.G.add_node(edge.to_file, node_type="document", file_path=edge.to_file)
@@ -557,7 +557,7 @@ Traverse CONTROLS edges from the target entity and identify all contracts with c
         3. Filter for contracts with ChangeOfControl or Assignment clauses
         4. Return the affected contracts with their CoC clause details
 
-        This is the core analysis for M&A due diligence: which customer
+        This is the core analysis for M&A due diligence: which subject
         contracts could be terminated or renegotiated upon acquisition?
         """
         affected = []
@@ -684,7 +684,7 @@ example_chain = ReasoningChain(
             clause_type=ClauseType.TERMINATION,
             relationship=RelationshipType.AMENDS,
             exact_quote="Section 4.2 of the Agreement is hereby amended to add: "
-                        "'provided, however, that Customer may not terminate during "
+                        "'provided, however, that Subject may not terminate during "
                         "the first twelve (12) months of any Order Form.'",
             summary="Amendment #2 adds termination lock-in period for Order Forms",
         ),
@@ -695,7 +695,7 @@ example_chain = ReasoningChain(
             clause_type=ClauseType.TERMINATION,
             relationship=RelationshipType.WAIVES,
             exact_quote="Notwithstanding anything in the Agreement to the contrary, "
-                        "Customer shall have the right to terminate this Order Form "
+                        "Subject shall have the right to terminate this Order Form "
                         "at any time without cause upon fifteen (15) days notice.",
             summary="Order Form #3 waives the lock-in period entirely",
         ),
@@ -720,7 +720,7 @@ example_chain = ReasoningChain(
 
 ### 4.3 Reasoning Chain Storage
 
-Reasoning chains are stored as JSON alongside the finding in the merged customer output:
+Reasoning chains are stored as JSON alongside the finding in the merged subject output:
 
 ```json
 {
@@ -782,7 +782,7 @@ This ensures lawyers reviewing the report can trace every P0/P1 finding back to 
 
 The Judge agent validates reasoning chains as part of its spot-check protocol (see `06-agents.md` Section 10.4). For each sampled finding that includes a reasoning chain:
 
-1. **Chain traversability**: Every step references a document that exists in the customer's file list
+1. **Chain traversability**: Every step references a document that exists in the subject's file list
 2. **Citation verification**: Every `exact_quote` in the chain is verified against the source document (via the `verify_citation` MCP tool)
 3. **Relationship validity**: Each relationship type is logically valid for the document types involved (e.g., an MSA cannot AMEND an Order Form -- only the reverse)
 4. **Conclusion support**: The conclusion logically follows from the chain steps
@@ -797,8 +797,8 @@ class ChainValidator:
     """Deterministic validation of reasoning chains.
     Runs as part of the QA audit (pipeline step 28)."""
 
-    def __init__(self, customer_files: set[str], text_dir: Path):
-        self.customer_files = customer_files
+    def __init__(self, subject_files: set[str], text_dir: Path):
+        self.subject_files = subject_files
         self.text_dir = text_dir
 
     def validate(self, chain: ReasoningChain) -> list[str]:
@@ -807,10 +807,10 @@ class ChainValidator:
 
         # Check 1: All referenced documents exist
         for step in chain.steps:
-            if step.document not in self.customer_files:
+            if step.document not in self.subject_files:
                 errors.append(
                     f"Step {step.step_number}: document '{step.document}' "
-                    f"not in customer file list"
+                    f"not in subject file list"
                 )
 
         # Check 2: All quotes can be found in source text
@@ -978,7 +978,7 @@ Different analysis types receive different prompt sections, following the AG fin
 ```python
 # Agent prompt templates for specific provision types
 # These are appended to the base specialist prompt based on
-# which clause types are detected in the customer's documents
+# which clause types are detected in the subject's documents
 
 PROVISION_PROMPTS = {
     "termination": (
@@ -1033,8 +1033,8 @@ these verification checks:
    means you are most likely to have missed information in documents you
    read in the middle of your analysis session.
 
-2. For each customer with ZERO findings, ask yourself: "Is it truly the
-   case that this customer's contracts contain no issues, or did I skip
+2. For each subject with ZERO findings, ask yourself: "Is it truly the
+   case that this subject's contracts contain no issues, or did I skip
    something?" If you skipped analysis, go back and read the files.
 
 3. For each P0/P1 finding, verify the exact_quote by re-reading the
@@ -1044,11 +1044,11 @@ these verification checks:
 4. Check your governance graph: is every file's governed_by field set to
    a valid value? "UNRESOLVED" must have a corresponding gap.
 
-5. Have you cross-referenced EVERY customer against the reference files
-   assigned to you? Customers that appear in reference files but have no
+5. Have you cross-referenced EVERY subject against the reference files
+   assigned to you? Subjects that appear in reference files but have no
    cross-reference data in your output need attention.
 
-I ACCUSE YOU OF HAVING MISSED INFORMATION in at least one customer's
+I ACCUSE YOU OF HAVING MISSED INFORMATION in at least one subject's
 analysis. Prove me wrong by re-checking, or fix the gaps.
 """
 ```
@@ -1160,7 +1160,7 @@ The 6-layer numerical validation framework (`11-qa-validation.md`) catches fabri
 
 ### 6.5 Coverage Gate
 
-The coverage gate (pipeline step 17) ensures no customers are skipped. Every customer must have output from all 4 specialist agents. This prevents the failure mode where agents "summarize" multiple customers into a single aggregate file.
+The coverage gate (pipeline step 17) ensures no subjects are skipped. Every subject must have output from all 4 specialist agents. This prevents the failure mode where agents "summarize" multiple subjects into a single aggregate file.
 
 ### 6.6 Adversarial Follow-Up Prompts
 
@@ -1186,13 +1186,13 @@ RELIABLE_THRESHOLD = 80_000  # Prompt ceiling for reliable instruction-following
 CHARS_PER_TOKEN = 4
 ```
 
-### 7.2 Customer Batching
+### 7.2 Subject Batching
 
-When a specialist's prompt exceeds `RELIABLE_THRESHOLD` tokens (80K), customers are split into batches. Each batch receives the same rules, reference files, and instructions but a subset of customers. See `06-agents.md` Section 6.2 for the splitting implementation.
+When a specialist's prompt exceeds `RELIABLE_THRESHOLD` tokens (80K), subjects are split into batches. Each batch receives the same rules, reference files, and instructions but a subset of subjects. See `06-agents.md` Section 6.2 for the splitting implementation.
 
-### 7.3 Per-Customer Analysis
+### 7.3 Per-Subject Analysis
 
-Agents analyze one customer at a time within their prompt scope. They do not perform bulk analysis across all customers simultaneously. The prompt structure (Section 5.3 of `06-agents.md`) lists all customers but instructs the agent to process each one sequentially, writing the per-customer JSON before moving to the next.
+Agents analyze one subject at a time within their prompt scope. They do not perform bulk analysis across all subjects simultaneously. The prompt structure (Section 5.3 of `06-agents.md`) lists all subjects but instructs the agent to process each one sequentially, writing the per-subject JSON before moving to the next.
 
 ### 7.4 Reference File Routing
 
@@ -1204,12 +1204,12 @@ Agents read pre-extracted markdown text (`_dd/forensic-dd/index/text/*.md`), not
 
 ### 7.6 Progressive Summarization
 
-For very large customer portfolios (>200 customers, >500 documents), the system applies progressive summarization:
+For very large subject portfolios (>200 subjects, >500 documents), the system applies progressive summarization:
 
-1. **First pass**: Full analysis of each customer's documents
-2. **Summary extraction**: Key findings are summarized to ~500 tokens per customer
-3. **Cross-customer comparison**: The summary set (200 customers x 500 tokens = 100K tokens) is used for cross-customer pattern detection
-4. **Detail retrieval**: When patterns are found, the full findings for affected customers are loaded on demand
+1. **First pass**: Full analysis of each subject's documents
+2. **Summary extraction**: Key findings are summarized to ~500 tokens per subject
+3. **Cross-subject comparison**: The summary set (200 subjects x 500 tokens = 100K tokens) is used for cross-subject pattern detection
+4. **Detail retrieval**: When patterns are found, the full findings for affected subjects are loaded on demand
 
 This keeps every agent invocation within the 80K-token reliable-instruction-following window.
 
@@ -1226,13 +1226,13 @@ Every gate between pipeline steps is a Python `if/else` statement, not an LLM de
 ```python
 # Example: Coverage gate (step 17) -- from 05-orchestrator.md
 async def step_17_coverage_gate(state: PipelineState) -> PipelineState:
-    """BLOCKING GATE: Every customer must have output from all 4 agents."""
+    """BLOCKING GATE: Every subject must have output from all 4 agents."""
     missing = []
-    for customer in state.customer_safe_names:
+    for subject in state.subject_safe_names:
         for agent in ["legal", "finance", "commercial", "producttech"]:
-            path = state.run_dir / "findings" / agent / f"{customer}.json"
+            path = state.run_dir / "findings" / agent / f"{subject}.json"
             if not path.exists():
-                missing.append({"customer": customer, "agent": agent})
+                missing.append({"subject": subject, "agent": agent})
 
     if missing:
         raise BlockingGateError(
@@ -1265,9 +1265,9 @@ The `verify_citation` tool (`07-tools-and-hooks.md` Section 1.5) performs exact 
 
 When the Judge scores an agent below threshold, the orchestrator triggers a targeted re-analysis (Section 10.7 of `06-agents.md`). The re-analysis prompt:
 
-1. Includes only the failing customers (not all customers)
+1. Includes only the failing subjects (not all subjects)
 2. Includes specific feedback from the Judge's spot-check results
-3. Instructs the agent to overwrite its previous output for those customers only
+3. Instructs the agent to overwrite its previous output for those subjects only
 4. Is followed by a second Judge review round
 
 This pattern limits the blast radius of errors: only the identified problems are re-processed, not the entire pipeline.
@@ -1286,7 +1286,7 @@ How the ontology, reasoning, and explainability components integrate with existi
 | 14 (Prepare Prompts) | Provision-specific prompts | Append `PROVISION_PROMPTS` based on detected document types |
 | 14 (Prepare Prompts) | Follow-up verification prompt | Append `FOLLOW_UP_VERIFICATION_PROMPT` to all specialist prompts |
 | 16 (Spawn Specialists) | Reasoning chain generation | Agents produce `reasoning_chain` in finding output |
-| 17 (Coverage Gate) | No change | Existing gate already validates per-customer output |
+| 17 (Coverage Gate) | No change | Existing gate already validates per-subject output |
 | 19-22 (Judge) | Chain validation | Judge validates reasoning chains as part of spot-checks |
 | 24 (Merge/Dedup) | Chain preservation | Reasoning chains carried through merge into final findings |
 | 27 (Numerical Audit) | No change | Existing 6-layer validation already prevents fabricated numbers |
@@ -1397,7 +1397,7 @@ Reasoning chain traversability and graph integrity. Deterministic via NetworkX.
 
 | Check | Implementation | Failure Action |
 |-------|---------------|----------------|
-| Chain traversable | All chain documents exist in customer files | Flag finding |
+| Chain traversable | All chain documents exist in subject files | Flag finding |
 | No broken links | Every edge target exists as a node | Flag governance gap |
 | Amendment chain valid | `get_amendment_chain()` returns non-empty | Warning if empty |
 | No governance cycles | `nx.find_cycle()` raises NoCycle | Flag contradiction |

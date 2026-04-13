@@ -9,6 +9,8 @@ from __future__ import annotations
 import time
 from typing import Any, TypedDict
 
+from dd_agents.utils.constants import _sev_count_init
+
 
 class ProgressSnapshot(TypedDict):
     """Snapshot of current pipeline progress state."""
@@ -38,7 +40,7 @@ class PipelineProgressTracker:
         self._step_start_time: float = 0.0
         self._pipeline_start_time: float = time.monotonic()
         self._step_durations: list[float] = []
-        self._finding_counts: dict[str, int] = {"P0": 0, "P1": 0, "P2": 0, "P3": 0}
+        self._finding_counts: dict[str, int] = _sev_count_init()
         self._agent_progress: dict[str, dict[str, Any]] = {}
 
     def start_step(self, step_number: int, step_name: str) -> None:

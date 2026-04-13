@@ -60,7 +60,7 @@ These were established early and validated by production failures:
    nothing. A 0.5-confidence OCR extraction is infinitely more useful
    than a 0.0-confidence blank.
 
-6. **Completeness over perfection** — Every customer in the input must
+6. **Completeness over perfection** — Every subject in the input must
    appear in the output. Every question must get an answer. Missing data
    is flagged visually (orange/red in Excel), never silently dropped.
 
@@ -247,15 +247,15 @@ Text extractors (pymupdf, pdftotext) return near-empty output.
 
 **Real-world examples from production:**
 
-| Customer | File | Source Size | pymupdf Chars | Root Cause |
+| Subject | File | Source Size | pymupdf Chars | Root Cause |
 |----------|------|-------------|---------------|------------|
-| Customer G | PO | 567 KB | 0 | Pure image scan |
-| Customer N | PO | 1.2 MB | 0 | Pure image scan |
-| Customer E | MSA + 3 POs | 0.9–18.7 MB | 0 | Pure image scan |
-| Customer D1 | 2 MSSAs | 1.5 MB ea | 401 | Sparse headers across 32 pages |
-| Customer D2 | Signed PO | 240 KB | 68 | Signature fragment only |
-| Customer B | Asset Purchase | 357 KB | 42 | Signature fragment only |
-| Customer NF | NDA | 1.9 MB | 49 | Signature fragment only |
+| Subject G | PO | 567 KB | 0 | Pure image scan |
+| Subject N | PO | 1.2 MB | 0 | Pure image scan |
+| Subject E | MSA + 3 POs | 0.9–18.7 MB | 0 | Pure image scan |
+| Subject D1 | 2 MSSAs | 1.5 MB ea | 401 | Sparse headers across 32 pages |
+| Subject D2 | Signed PO | 240 KB | 68 | Signature fragment only |
+| Subject B | Asset Purchase | 357 KB | 42 | Signature fragment only |
+| Subject NF | NDA | 1.9 MB | 49 | Signature fragment only |
 
 ### 4.2 Detection Strategy: Two-Level Check
 
@@ -270,7 +270,7 @@ Any extraction returning < 100 characters is rejected immediately.
 _MIN_CHARS_PER_PAGE = 50  # chars per page
 ```
 A multi-page PDF might extract > 100 chars total but still be scanned.
-Example: Customer D1 extracted 401 chars across 32 pages = 12.5
+Example: Subject D1 extracted 401 chars across 32 pages = 12.5
 chars/page (scattered headers/footers). The density check catches this:
 
 ```python
@@ -284,7 +284,7 @@ is_dense_enough = (
 
 Initially, the density check was only applied to pymupdf output. But
 pdftotext can also return sparse text from scanned PDFs (signature
-fragments, header/footer text). Customer D2's Signed PO returned 151 chars via
+fragments, header/footer text). Subject D2's Signed PO returned 151 chars via
 pdftotext — above the 100-char threshold but clearly not a real
 extraction. **Both pymupdf and pdftotext now apply the density check.**
 
@@ -315,7 +315,7 @@ When OCR is triggered:
 
 ### 5.1 Why Chunking Is Necessary
 
-A single customer may have an 18.7 MB MSA or 38 files totaling
+A single subject may have an 18.7 MB MSA or 38 files totaling
 millions of characters (38 chunks). LLM context windows
 (~200K tokens for Claude) cannot fit everything at once.
 
@@ -349,7 +349,7 @@ document analysis.
 
 ### 5.4 Bin-Packing Multiple Files
 
-Small files from the same customer are packed into a single chunk:
+Small files from the same subject are packed into a single chunk:
 
 ```
 Chunk 1: [msa.pdf (80K chars)] + [amendment.docx (30K chars)] + [nda.pdf (20K chars)]
@@ -363,10 +363,10 @@ Chunk 4: [large_exhibit.pdf part 2 (pages 45-100, 145K chars, 15% overlap)]
 Each chunk prompt includes metadata so the LLM knows it is seeing a subset:
 
 ```
-# Customer: Acme Corp (Group: Above 200K)
+# Subject: Acme Corp (Group: Above 200K)
 
 **Analysis Part 2 of 4**
-You are reviewing a SUBSET of this customer's documents.
+You are reviewing a SUBSET of this subject's documents.
 If a question cannot be answered from the documents below,
 answer "NOT_ADDRESSED" — another chunk may contain the answer.
 
@@ -475,7 +475,7 @@ using `rapidfuzz.fuzz.partial_ratio`. This runs locally — no API calls.
   spaces) is collapsed to single spaces before comparison, handling line
   breaks from PDF column layout, OCR, and markitdown reformatting.
 - **Section verification** — substring check for `section_ref` in the
-  full document text (any file in the customer's set).
+  full document text (any file in the subject's set).
 - **Non-blocking** — verification failures populate metadata fields but
   never block the pipeline.
 
@@ -490,7 +490,7 @@ while keeping attribution accurate:
    cross-page quotes and off-by-one page citations from the LLM.
 3. **Full document** — search the entire source file. Catches quotes
    where the page number is wrong but the file is correct.
-4. **Cross-file** — search ALL files in the customer's text set. Catches
+4. **Cross-file** — search ALL files in the subject's text set. Catches
    file misattributions from the LLM merge phase. When found, the
    citation's `file_path` and `page` are automatically corrected.
 
@@ -509,19 +509,19 @@ Fields on `SearchCitation`:
 
 ## 7. Completeness Enforcement
 
-### 7.1 Customer Completeness
+### 7.1 Subject Completeness
 
-**Guarantee:** Every customer in the input list appears in the output,
+**Guarantee:** Every subject in the input list appears in the output,
 even if analysis completely fails.
 
 Implementation:
 ```python
 # Safety net: exceptions wrapped, never raised
 try:
-    result = await self._analyze_customer(customer)
+    result = await self._analyze_subject(subject)
 except Exception as exc:
     result = SearchCustomerResult(
-        customer_name=customer.name,
+        subject_name=subject.name,
         error=f"Unexpected error: {exc}",
     )
 
@@ -532,7 +532,7 @@ if len(final) != len(customers):
 
 ### 7.2 Question Completeness
 
-**Guarantee:** Every question gets an answer for every customer.
+**Guarantee:** Every question gets an answer for every subject.
 
 The system prompt demands:
 > "Your JSON response MUST contain exactly these keys: {column_names}.
@@ -807,7 +807,7 @@ Extraction time: ~33 seconds for 995 files (33 ms/file average).
 
 | | |
 |---|---|
-| **Symptom** | Customer D1: 401 chars across 32 pages (12.5 chars/page) accepted as valid |
+| **Symptom** | Subject D1: 401 chars across 32 pages (12.5 chars/page) accepted as valid |
 | **Root cause** | Only total char count checked, not per-page density |
 | **Fix** | Added `_MIN_CHARS_PER_PAGE = 50` density check |
 | **Lesson** | Multi-page scanned PDFs can have > 100 total chars from headers/footers |
@@ -825,7 +825,7 @@ Extraction time: ~33 seconds for 995 files (33 ms/file average).
 
 | | |
 |---|---|
-| **Symptom** | Customer D2 Signed PO: 151 chars via pdftotext accepted (signature fragment) |
+| **Symptom** | Subject D2 Signed PO: 151 chars via pdftotext accepted (signature fragment) |
 | **Root cause** | Density check applied to pymupdf but not pdftotext |
 | **Fix** | Same density check (chars/page >= 50) applied to pdftotext output |
 | **Lesson** | Every extraction method that returns text needs the same quality gate |
@@ -843,7 +843,7 @@ Extraction time: ~33 seconds for 995 files (33 ms/file average).
 
 | | |
 |---|---|
-| **Symptom** | 3 files in Data Room B (Customer B1 OEM 5.4 MB, Customer C1 1.6 MB, Customer NF SOW 8.0 MB) contained raw PDF binary (`%PDF-1.3`, stream objects, binary image data) as "extracted text" |
+| **Symptom** | 3 files in Data Room B (Subject B1 OEM 5.4 MB, Subject C1 1.6 MB, Subject NF SOW 8.0 MB) contained raw PDF binary (`%PDF-1.3`, stream objects, binary image data) as "extracted text" |
 | **Root cause** | Markitdown on image-only scanned PDFs dumps the raw PDF binary as text. The binary passes `len(text.strip()) >= 100` because binary bytes count as characters |
 | **Fix** | Added `_is_readable_text()` that checks >= 85% printable character ratio. Applied at markitdown step in PDF chain and in cache gate (`_is_cached_output_readable`) |
 | **Lesson** | Length thresholds alone cannot distinguish binary from text. A printable-character ratio check is essential for any extraction method that might return raw file content |
@@ -852,7 +852,7 @@ Extraction time: ~33 seconds for 995 files (33 ms/file average).
 
 | | |
 |---|---|
-| **Symptom** | Customer D2 Signed PO (151 bytes) persisted through cache despite new pdftotext density check being deployed |
+| **Symptom** | Subject D2 Signed PO (151 bytes) persisted through cache despite new pdftotext density check being deployed |
 | **Root cause** | Cache gate only checked `st_size >= 100` and hash match — 151 bytes passes. New extraction logic never ran because cache hit returned first |
 | **Fix** | Added `_is_cached_output_readable()` to cache gate; also deleted stale `.md` output files to force immediate re-extraction |
 | **Lesson** | Cache gates must be upgraded alongside extraction logic. When deploying new quality checks, delete stale outputs for affected files |
@@ -944,7 +944,7 @@ Extraction time: ~33 seconds for 995 files (33 ms/file average).
 | No page markers in text | Paragraph-based splitting (`\n\n` → `\n` → `". "` → hard break) |
 | Continuous text with no breaks | Hard character break at TARGET_CHUNK_CHARS |
 | Single page exceeds target | Included as-is (no sub-page splitting) |
-| 38+ chunks for one customer | All chunks analyzed sequentially, merged, synthesized |
+| 38+ chunks for one subject | All chunks analyzed sequentially, merged, synthesized |
 | Overlap larger than MAX_OVERLAP | Capped at 60K chars |
 | Empty file list | Returns empty chunk list |
 
@@ -1369,7 +1369,7 @@ Additional APIs: `AnalyzeExpense` (invoices/receipts, $0.01/page),
 - S3 dependency for async (multi-page) processing — adds AWS credential
   management and S3 bucket provisioning to deployment
 - Sync API limited to single page — impractical for multi-page contracts
-- Cost at scale: a 200-customer deal with ~50 pages each = 10,000 pages.
+- Cost at scale: a 200-subject deal with ~50 pages each = 10,000 pages.
   At $0.015/page (tables) = $150/deal; at $0.065/page (tables+forms) =
   $650/deal. Adds up for repeated runs
 - Proprietary: no local/offline mode, no self-hosting, subject to AWS
@@ -2208,7 +2208,7 @@ Production deployment: 8-bit model, 1024px max dimension, 200 DPI.
    Full VLM-based image analysis remains P3 (§19.1).
 
 5. **LLM response caching** — Each run calls the API fresh. Caching
-   responses per (customer, prompt, document_hash) tuple would reduce
+   responses per (subject, prompt, document_hash) tuple would reduce
    cost for re-runs with unchanged prompts.
 
 6. **Parallel extraction** — Current extraction is serial. PDF extraction
@@ -2256,7 +2256,7 @@ Production deployment: 8-bit model, 1024px max dimension, 200 DPI.
 - How much does Phase 4 (validation) actually improve coverage? Measure
   the NOT_ADDRESSED → answered conversion rate across data rooms.
 
-- At what chunk count does answer quality degrade? One customer had 38
+- At what chunk count does answer quality degrade? One subject had 38
   chunks. Is there a point where more chunks hurt more than they help?
 
 - **PP-StructureV3 vs MinerU on our data rooms:** Both score well on
@@ -2296,7 +2296,7 @@ data_room/
           extraction_quality.json      # Per-file quality records
       inventory/
         checksums.sha256               # Content hash cache
-        customers.csv                  # Customer registry
+        subjects.csv                   # Subject registry
         tree.txt                       # Directory tree
         files.txt                      # All discovered files
   GroupA/

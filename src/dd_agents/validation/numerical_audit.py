@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from dd_agents.models.audit import AuditCheck
+from dd_agents.utils.constants import FILES_TXT, SEVERITY_P0, SEVERITY_P1, SEVERITY_P2, SEVERITY_P3, SUBJECTS_CSV
 
 if TYPE_CHECKING:
     from dd_agents.models.numerical import ManifestEntry, NumericalManifest
@@ -138,7 +139,7 @@ class NumericalAuditor:
         failures: list[str] = []
 
         # Cross-check: subjects.csv row count == counts.json total_subjects
-        csv_count = self._count_csv_rows("subjects.csv")
+        csv_count = self._count_csv_rows(SUBJECTS_CSV)
         counts_total = self._read_counts_json_field("total_subjects")
         n001 = _manifest_get(manifest, "N001")
 
@@ -322,8 +323,8 @@ class NumericalAuditor:
         )
 
         for f in findings:
-            severity = f.get("severity", "P3")
-            if severity not in ("P0", "P1"):
+            severity = f.get("severity", SEVERITY_P3)
+            if severity not in (SEVERITY_P0, SEVERITY_P1):
                 continue
 
             # Extract dollar amounts from the finding.
@@ -468,19 +469,19 @@ class NumericalAuditor:
         """Attempt to re-derive a manifest entry value from source."""
         match entry.id:
             case "N001":
-                return self._count_csv_rows("subjects.csv")
+                return self._count_csv_rows(SUBJECTS_CSV)
             case "N002":
-                return self._count_file_lines("files.txt")
+                return self._count_file_lines(FILES_TXT)
             case "N003":
                 return self._count_merged_findings()
             case "N004":
-                return self._count_findings_by_severity("P0")
+                return self._count_findings_by_severity(SEVERITY_P0)
             case "N005":
-                return self._count_findings_by_severity("P1")
+                return self._count_findings_by_severity(SEVERITY_P1)
             case "N006":
-                return self._count_findings_by_severity("P2")
+                return self._count_findings_by_severity(SEVERITY_P2)
             case "N007":
-                return self._count_findings_by_severity("P3")
+                return self._count_findings_by_severity(SEVERITY_P3)
             case "N008":
                 return self._count_clean_results()
             case "N009":
@@ -521,10 +522,20 @@ class NumericalAuditor:
     def _count_findings_by_severity(self, severity: str) -> int:
         """N004-N007: count findings matching a specific severity level.
 
+        Applies ``_recalibrate_severity`` so the rederived counts match the
+        manifest (which also applies recalibration).  Without this, Layer 2
+        fails whenever recalibration shifts findings between severity tiers.
+
         Excludes clean results (``domain_reviewed_no_issues``) so N007 (P3)
         does not double-count them.
         """
-        return sum(1 for f in self._load_merged_findings() if f.get("severity") == severity)
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+        return sum(
+            1
+            for f in self._load_merged_findings()
+            if ReportDataComputer._recalibrate_severity(f).get("severity") == severity
+        )
 
     def _count_clean_results(self) -> int:
         """N008: count findings with category='domain_reviewed_no_issues'."""
@@ -593,11 +604,20 @@ class NumericalAuditor:
             return None
 
     def _find_value_in_workbook(self, wb: Any, entry: ManifestEntry) -> bool:
-        """Search for a manifest entry's value in the workbook."""
+        """Search for a manifest entry's value in the workbook.
+
+        Handles type mismatches: the _Metadata sheet stores all values as
+        strings (via ``str(v)``), so numeric manifest entries like N010=148
+        must also match the string ``"148"``.
+        """
+        target = entry.value
+        str_target = str(target)
         for sheet_name in wb.sheetnames:
             ws = wb[sheet_name]
             for row in ws.iter_rows(values_only=True):
                 for cell_value in row:
-                    if cell_value == entry.value:
+                    if cell_value == target:
+                        return True
+                    if isinstance(cell_value, str) and cell_value == str_target:
                         return True
         return False

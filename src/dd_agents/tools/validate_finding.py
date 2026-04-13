@@ -91,10 +91,29 @@ def validate_finding(finding_json: dict[str, Any]) -> dict[str, Any]:
         }
 
     # Domain checks beyond Pydantic
+
+    # All findings must have at least one citation with a real source_path.
+    has_real_citation = any(
+        cit.source_path and not cit.source_path.startswith("[synthetic:") for cit in finding.citations
+    )
+    if not has_real_citation:
+        errors.append(
+            "citations: every finding requires at least one citation with a real source_path. "
+            "A finding without citations will be downgraded to P3 during merge."
+        )
+
+    # P0/P1 additionally require exact_quote on every citation.
     if finding.severity in (Severity.P0, Severity.P1):
         for idx, cit in enumerate(finding.citations):
             if not cit.exact_quote:
                 errors.append(f"citations[{idx}]: {finding.severity} finding requires non-empty exact_quote")
+
+    # P2 findings without exact_quote are downgraded to P3.
+    if finding.severity == Severity.P2 and all(not cit.exact_quote for cit in finding.citations):
+        errors.append(
+            "citations: P2 finding has no exact_quote on any citation — "
+            "will be downgraded to P3 during merge. Add exact_quote to preserve P2."
+        )
 
     if finding.category not in VALID_CATEGORIES:
         errors.append(f"category '{finding.category}' not in recognized categories")

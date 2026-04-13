@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os  # noqa: TCH003 - used at module level for env var reads
 
-from dd_agents.extraction._constants import IMAGE_EXTENSIONS
+from dd_agents.extraction._constants import IMAGE_EXTENSIONS, MEDIA_EXTENSIONS
 
 # ---------------------------------------------------------------------------
 # Directory structure constants
@@ -57,12 +57,20 @@ SEVERITY_P1 = "P1"
 SEVERITY_P2 = "P2"
 SEVERITY_P3 = "P3"
 
+ALL_SEVERITIES: tuple[str, ...] = (SEVERITY_P0, SEVERITY_P1, SEVERITY_P2, SEVERITY_P3)
+
 SEVERITY_ORDER: dict[str, int] = {
     SEVERITY_P0: 0,
     SEVERITY_P1: 1,
     SEVERITY_P2: 2,
     SEVERITY_P3: 3,
 }
+
+
+def _sev_count_init() -> dict[str, int]:
+    """Return a fresh ``{P0: 0, P1: 0, P2: 0, P3: 0}`` dict."""
+    return {s: 0 for s in ALL_SEVERITIES}
+
 
 # ---------------------------------------------------------------------------
 # File discovery exclude patterns
@@ -77,6 +85,11 @@ EXCLUDE_PATTERNS: list[str] = [
     ".svn",
     "~$*",  # Office temp files
     "~lock.*",  # LibreOffice lock files
+    "dd_output",  # claude-agent-sdk default output directory
+    ".python-version",  # pyenv version file
+    ".node-version",  # Node.js version file
+    ".ruby-version",  # Ruby version file
+    ".tool-versions",  # asdf version manager
 ]
 
 # Office/document formats unique to inventory scanning (not in extraction sets).
@@ -98,9 +111,21 @@ _OFFICE_EXTENSIONS: set[str] = {
 # expected in data rooms).
 _INVENTORY_PLAINTEXT: set[str] = {".txt", ".csv", ".md", ".json", ".xml"}
 
-# All extensions the inventory scanner discovers.  Image extensions are
-# imported from ``extraction._constants`` to avoid maintaining two copies.
-SUPPORTED_EXTENSIONS: set[str] = set(IMAGE_EXTENSIONS) | _OFFICE_EXTENSIONS | _INVENTORY_PLAINTEXT
+# All extensions the inventory scanner discovers.  Image and media extensions
+# are imported from ``extraction._constants`` to avoid maintaining two copies.
+SUPPORTED_EXTENSIONS: set[str] = (
+    set(IMAGE_EXTENSIONS) | set(MEDIA_EXTENSIONS) | _OFFICE_EXTENSIONS | _INVENTORY_PLAINTEXT
+)
+
+# ---------------------------------------------------------------------------
+# Well-known filenames (used by inventory, validation, and reporting)
+# ---------------------------------------------------------------------------
+
+COVERAGE_MANIFEST_JSON = "coverage_manifest.json"
+NUMERICAL_MANIFEST_JSON = "numerical_manifest.json"
+QUALITY_SCORES_JSON = "quality_scores.json"
+FILES_TXT = "files.txt"
+SUBJECTS_CSV = "subjects.csv"
 
 # ---------------------------------------------------------------------------
 # Batch naming (1-based per spec)
@@ -132,3 +157,23 @@ NON_SUBJECT_STEMS: frozenset[str] = frozenset(
         "metadata",
     }
 )
+
+# ---------------------------------------------------------------------------
+# Severity scoring weights (used for sorting and risk scoring)
+# ---------------------------------------------------------------------------
+
+# General-purpose sorting weight (higher = more severe).
+SEVERITY_WEIGHTS: dict[str, float] = {
+    SEVERITY_P0: 10.0,
+    SEVERITY_P1: 5.0,
+    SEVERITY_P2: 2.0,
+    SEVERITY_P3: 1.0,
+}
+
+# Risk score weights used for composite scoring (e.g. domain risk, SaaS health).
+SEVERITY_RISK_SCORE_WEIGHTS: dict[str, int] = {
+    SEVERITY_P0: 25,
+    SEVERITY_P1: 15,
+    SEVERITY_P2: 8,
+    SEVERITY_P3: 3,
+}

@@ -68,7 +68,7 @@ Key findings (with section references to the AG report):
 
 | # | Finding | Source | Implication |
 |---|---------|--------|------------|
-| C-1 | "Lost-in-the-middle" — information in the middle 40% of long contexts is recalled at lower rates than information at the beginning or end. | Liu et al. (2023), Pinecone research | Place critical instructions at prompt start and end. Place customer data in the middle (it's verified by coverage gate anyway). |
+| C-1 | "Lost-in-the-middle" — information in the middle 40% of long contexts is recalled at lower rates than information at the beginning or end. | Liu et al. (2023), Pinecone research | Place critical instructions at prompt start and end. Place subject data in the middle (it's verified by coverage gate anyway). |
 | C-2 | Even 200K-token context models degrade for facts beyond ~80K tokens. | Anthropic internal benchmarks | Cap agent prompts at 80K tokens (40% of 200K). Already specified in doc 06 as the safety margin. |
 | C-3 | Attention degrades proportionally to prompt length. Short prompts with precise context outperform long prompts with full context. | AG Report §3.1 (AG-1 above) | Reinforces: targeted extraction > full document dumps. |
 
@@ -87,7 +87,7 @@ Chunking is relevant at two points in the pipeline:
 
 Agents do NOT receive chunked text. They receive full extracted documents and use Read/Grep tools to navigate them. Chunking is only for the optional vector store.
 
-**Rationale** (from AG-1): RAG 10 outperforms full in-context because the retriever selects only relevant chunks. But our agents are specialists — they read entire customer files through their domain lens. The agent IS the retriever. Chunking the agent's input would fragment the structural context agents need for governance graph construction, override detection, and cross-reference reconciliation. Instead, we control context size at the customer-batch level (doc 06 §6).
+**Rationale** (from AG-1): RAG 10 outperforms full in-context because the retriever selects only relevant chunks. But our agents are specialists — they read entire subject files through their domain lens. The agent IS the retriever. Chunking the agent's input would fragment the structural context agents need for governance graph construction, override detection, and cross-reference reconciliation. Instead, we control context size at the subject-batch level (doc 06 §6).
 
 ### 2.2 Clause-Aware Chunking for Vector Store
 
@@ -211,9 +211,9 @@ The system manages context at three levels:
 
 | Level | Mechanism | Limit | Enforcement |
 |-------|-----------|-------|-------------|
-| **Prompt construction** | `PromptSizeEstimator` in `prompt_builder.py` | 80K tokens (40% of 200K context) | Python code splits customers into groups if exceeded |
-| **Agent runtime** | Agent processes customers sequentially; each customer's files are read on-demand via tools | No single customer file should exceed ~30K tokens | Extraction logs file sizes; orchestrator flags files >120KB of text |
-| **Output accumulation** | Agent writes one JSON per customer, keeping output incremental | No output accumulates in context | PostToolUse hooks prevent aggregate files |
+| **Prompt construction** | `PromptSizeEstimator` in `prompt_builder.py` | 80K tokens (40% of 200K context) | Python code splits subjects into groups if exceeded |
+| **Agent runtime** | Agent processes subjects sequentially; each subject's files are read on-demand via tools | No single subject file should exceed ~30K tokens | Extraction logs file sizes; orchestrator flags files >120KB of text |
+| **Output accumulation** | Agent writes one JSON per subject, keeping output incremental | No output accumulates in context | PostToolUse hooks prevent aggregate files |
 
 ### 3.2 Prompt Token Budget Breakdown
 
@@ -223,14 +223,14 @@ Per specialist agent, with 200K context window and 80% safety margin (160K usabl
 |-----------|--------|-------|
 | System prompt | ~200 | Short persona + task (per AG-5) |
 | Deal context | ~500 | Buyer, target, subsidiaries |
-| Customer list | 50 × N | N = customers in this group |
+| Subject list | 50 × N | N = subjects in this group |
 | Reference file texts | Variable | Measured per file; cap at 40K total |
 | Domain rules | ~3,000 | Extraction + governance + gap detection |
 | Output schema | ~600 | JSON schema for structured output |
 | Instructions | ~1,000 | File processing, manifest, output rules |
 | **Reserved for agent work** | **~115K** | Tool calls, file reads, reasoning, output |
 
-**Maximum customers per group**: If reference files consume 40K tokens, remaining prompt budget is ~35K tokens. At 50 tokens/customer, that's ~700 customers per group. In practice, groups are limited by agent processing capacity (agent must Read each customer's files), not prompt size.
+**Maximum subjects per group**: If reference files consume 40K tokens, remaining prompt budget is ~35K tokens. At 50 tokens/subject, that's ~700 subjects per group. In practice, groups are limited by agent processing capacity (agent must Read each subject's files), not prompt size.
 
 ### 3.3 Large File Handling
 
@@ -269,15 +269,15 @@ Agent prompt structure places critical content at the beginning and end:
   3. Strict output rules ("MUST" instructions)
 
 [MIDDLE — lower attention zone]
-  4. Customer list with file paths
-  5. Customer-mention index
+  4. Subject list with file paths
+  5. Subject-mention index
   6. Reference file texts
 
 [END — high attention zone]
   7. Domain rules (extraction, governance, gap detection)
   8. Output format (JSON schema)
   9. Manifest requirement
-  10. Repetition of key rules ("EVERY customer, EVERY file")
+  10. Repetition of key rules ("EVERY subject, EVERY file")
 ```
 
 This reorders the existing prompt sections (doc 06 §5.1) to place volatile data in the middle and invariant rules at the edges.
@@ -290,8 +290,8 @@ Agents cannot report their own context usage, but the orchestrator can detect co
 |--------|-----------|----------|
 | Agent stops producing output files | No new file writes for 5+ minutes (monitored via filesystem timestamps) | Status check via error recovery (doc 12 scenario 8) |
 | Agent produces empty/truncated JSON | PostToolUse hook detects malformed output | Block write, increment error count; if >3 errors, treat as context exhaustion |
-| Agent writes aggregate file | PostToolUse hook blocks `_global.json`, `batch_summary.json` patterns | Block and issue warning; if persists, terminate and re-spawn with smaller customer set |
-| Agent exits with incomplete manifest | Stop hook checks customer count in manifest vs assigned | Re-spawn for missing customers (doc 12 scenario 2) |
+| Agent writes aggregate file | PostToolUse hook blocks `_global.json`, `batch_summary.json` patterns | Block and issue warning; if persists, terminate and re-spawn with smaller subject set |
+| Agent exits with incomplete manifest | Stop hook checks subject count in manifest vs assigned | Re-spawn for missing subjects (doc 12 scenario 2) |
 
 ---
 
@@ -408,13 +408,13 @@ BEFORE YOU WRITE YOUR COVERAGE MANIFEST:
 
 Review your findings against this checklist:
 1. For each P0 finding: re-read the cited section. Is the quote exact? Is the severity justified?
-2. For each customer with zero findings: re-read their files. Did you skip a file?
-3. For each customer with only P3 findings: did you overlook higher-severity issues?
+2. For each subject with zero findings: re-read their files. Did you skip a file?
+3. For each subject with only P3 findings: did you overlook higher-severity issues?
 4. Check your manifest: does files_assigned match what you were given?
 5. Check: did you process ALL reference files listed in your prompt?
 
 YOU MAY HAVE MISSED CRITICAL INFORMATION. Go back and re-examine any
-customers where you produced fewer than expected findings relative to
+subjects where you produced fewer than expected findings relative to
 the number of files they have.
 ```
 
@@ -436,7 +436,7 @@ Every specialist prompt must include:
 NOT FOUND PROTOCOL:
 
 If you search for a specific clause or document and it genuinely does not exist
-in the customer's files, you MUST record this as a gap, NOT as a finding.
+in the subject's files, you MUST record this as a gap, NOT as a finding.
 
 DO NOT:
 - Fabricate clauses that you cannot find
@@ -459,7 +459,7 @@ EXAMPLE:
   "impact": "Unlimited liability exposure. MSA reviewed: all 24 pages,
             no limitation of liability section found. Amendment #1 also
             reviewed: no liability cap added.",
-  "files_searched": ["./customer/MSA.pdf", "./customer/Amendment_1.pdf"]
+  "files_searched": ["./subject/MSA.pdf", "./subject/Amendment_1.pdf"]
 }
 ```
 
@@ -468,11 +468,11 @@ This is already partially addressed in the gap detection rules (doc 06 §5 `SPEC
 ### 6.3 Validation
 
 The QA audit (doc 11) should verify:
-- Every customer has at least one finding OR at least one gap per specialist
-- Any customer with zero findings AND zero gaps from a specialist is flagged as "potentially incomplete analysis"
+- Every subject has at least one finding OR at least one gap per specialist
+- Any subject with zero findings AND zero gaps from a specialist is flagged as "potentially incomplete analysis"
 - Gap findings with `gap_type: "Not_Found"` must include `files_searched` array
 
-Compliance with the Not-Found protocol should be validated in the QA audit (`11-qa-validation.md`). The check verifies that for each customer, every required field in the finding schema either has a value or has an explicit `not_found: true` marker with a search description.
+Compliance with the Not-Found protocol should be validated in the QA audit (`11-qa-validation.md`). The check verifies that for each subject, every required field in the finding schema either has a value or has an explicit `not_found: true` marker with a search description.
 
 ---
 
@@ -549,12 +549,12 @@ def extract_excel_smart(file_path: str) -> str:
 The Finance agent's specialist focus (doc 06 §5) requires cross-referencing contract values against reference data (Revenue Cube, pricing). This is the highest-hallucination-risk task because:
 - Numbers may appear in different units ($K vs $)
 - Date ranges may not align (calendar year vs fiscal year vs contract year)
-- Customer names in spreadsheet may not match contract parties
+- Subject names in spreadsheet may not match contract parties
 
 Mitigations:
 1. **Pre-convert units**: Extraction pipeline normalizes all currency values to full units (not thousands)
 2. **Date alignment**: Finance agent prompt includes explicit guidance on date range matching
-3. **Entity resolution**: Customer names in spreadsheets run through the 6-pass entity matcher (doc 09) before cross-referencing
+3. **Entity resolution**: Subject names in spreadsheets run through the 6-pass entity matcher (doc 09) before cross-referencing
 4. **Dual-source requirement**: Any financial discrepancy must cite BOTH the contract clause AND the spreadsheet cell reference
 
 ### 7.4 Cross-Reference to Implementation
@@ -631,7 +631,7 @@ Every chunk stored in ChromaDB includes a `document_context` field (50-100 token
 ```
 Document: Master Service Agreement between Apex Digital Inc and Acme Corp
 Type: MSA | Effective: 2023-01-15 | Parties: Apex Digital Inc, Acme Corp
-Customer: acme_corp | Files: 3 total | This is the governing agreement.
+Subject: acme_corp | Files: 3 total | This is the governing agreement.
 ```
 
 This prevents Document-Level Retrieval Mismatch (D-1) by ensuring the retriever can distinguish boilerplate chunks from different documents.
@@ -680,7 +680,7 @@ For large spreadsheets (>100 data rows):
 2. Process data in chunks of 50 rows at a time
 3. For each chunk: extract relevant financial terms, flag discrepancies
 4. After all chunks: summarize findings, reconcile any chunk-boundary issues
-5. Write consolidated findings for the customer
+5. Write consolidated findings for the subject
 
 Do NOT attempt to read all rows at once — this will exhaust your context.
 ```
@@ -718,7 +718,7 @@ The `query()` SDK function does not expose a `seed` parameter (unlike OpenAI). R
 ### 12.1 The Risk
 
 In multi-stage pipelines, errors compound:
-- Stage 1: Entity resolution maps "Acme" to wrong canonical → all Acme findings are for wrong customer
+- Stage 1: Entity resolution maps "Acme" to wrong canonical → all Acme findings are for wrong subject
 - Stage 2: Agent cites wrong section number → Judge verifies wrong section → false PASS
 - Stage 3: Financial cross-reference uses wrong row from spreadsheet → numerical audit passes (numbers are consistent, just wrong)
 
@@ -728,9 +728,9 @@ In multi-stage pipelines, errors compound:
 |-----------|-----------|-----------|----------|
 | Entity resolution error | 6-pass matcher with confidence scores | Manual review queue for low-confidence matches | Re-run entity resolution after config correction |
 | Wrong citation | verify_citation tool (L2) | Judge spot-check (L4) | Re-analysis with targeted feedback |
-| Wrong financial data | Dual-source citation requirement | Numerical audit layer 3 (cross-source consistency) | Finance agent re-analysis for specific customer |
-| Aggregation error | PostToolUse hooks block aggregate files | Coverage gate checks per-customer output | Re-spawn for missing/aggregated customers |
-| Context exhaustion | Prompt size management (§3) | Runtime monitoring (§3.5) | Re-spawn with smaller customer set |
+| Wrong financial data | Dual-source citation requirement | Numerical audit layer 3 (cross-source consistency) | Finance agent re-analysis for specific subject |
+| Aggregation error | PostToolUse hooks block aggregate files | Coverage gate checks per-subject output | Re-spawn for missing/aggregated subjects |
+| Context exhaustion | Prompt size management (§3) | Runtime monitoring (§3.5) | Re-spawn with smaller subject set |
 
 ### 12.3 Pipeline Ordering as Error Prevention
 
@@ -740,9 +740,9 @@ The 35-step pipeline (doc 05) is specifically ordered to catch errors early:
 |-----------|---------|-------------------------|
 | 1-4 | Config validation, file discovery | Catch config errors before any LLM work |
 | 5-9 | Extraction, inventory, entity resolution | All deterministic — no LLM involvement. Errors are reproducible and debuggable. |
-| 10-12 | Classification, team creation, prompt prep | Deterministic customer routing. Prompt is validated before agent spawn. |
+| 10-12 | Classification, team creation, prompt prep | Deterministic subject routing. Prompt is validated before agent spawn. |
 | 13-16 | Agent analysis | First LLM stage. Errors caught by coverage gate (step 17). |
-| 17 | **BLOCKING GATE**: Coverage validation | Catches missing customers, aggregate files, incomplete manifests. Triggers re-spawn. |
+| 17 | **BLOCKING GATE**: Coverage validation | Catches missing subjects, aggregate files, incomplete manifests. Triggers re-spawn. |
 | 18-22 | Judge review (optional) | Second LLM stage. Catches hallucinations, severity errors, contradictions. |
 | 23-27 | Merge + audit | Third stage. Deterministic pre-merge validation catches financial errors. |
 | 28 | **BLOCKING GATE**: Numerical audit | 6-layer deterministic validation. Catches any number that can't be traced to source. |

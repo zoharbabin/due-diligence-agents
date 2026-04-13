@@ -33,7 +33,7 @@ dd-agents run CONFIG_PATH [OPTIONS]
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `--mode` | `full\|incremental` | from config | Override execution mode |
-| `--resume-from` | int (1-35) | 0 (beginning) | Resume from a specific step |
+| `--resume-from` | int (0-35) | 0 (beginning) | Resume from a specific step |
 | `--dry-run` | flag | off | Print step plan without executing |
 | `--quick-scan` | flag | off | Run steps 1-13 + Red Flag Scanner only |
 | `--model-profile` | `economy\|standard\|premium` | from config | Model quality: `economy` (fastest, cheapest), `standard` (balanced), `premium` (most accurate, most expensive) |
@@ -110,7 +110,7 @@ dd-agents init [OPTIONS]
 | `--data-room` | path | prompted | Path to the data room folder |
 | `--buyer` | string | prompted | Acquiring company name |
 | `--target` | string | prompted | Target company name |
-| `--deal-type` | choice | prompted | `acquisition`, `merger`, `divestiture`, `investment`, `joint_venture`, `other` |
+| `--deal-type` | choice | prompted | `acquisition`, `asset_sale`, `merger`, `divestiture`, `investment`, `joint_venture`, `other` |
 | `--focus-areas` | string | prompted | Comma-separated focus areas |
 | `--name-variants` | string | prompted | Comma-separated alternate target names |
 | `--output` | path | `deal-config.json` | Output file path |
@@ -195,7 +195,7 @@ converted to markdown and placed in `{data_room}/_buyer/` for agent access at ru
 
 ## search
 
-Search customer contracts using custom prompts. Produces an Excel report with
+Search subject contracts using custom prompts. Produces an Excel report with
 answers and precise citations without running the full pipeline.
 
 ```
@@ -212,7 +212,7 @@ dd-agents search PROMPTS_PATH [OPTIONS]
 | `--data-room` | path | required | Path to the data room folder |
 | `--output` | path | auto-named | Excel output path |
 | `--groups` | string | all | Comma-separated group names to include |
-| `--customers` | string | all | Comma-separated customer names to filter |
+| `--subjects` | string | all | Comma-separated subject names to filter |
 | `--concurrency` | int (1-20) | 5 | Maximum parallel API calls |
 | `--yes / -y` | flag | off | Skip cost confirmation prompt |
 | `--no-file` | flag | off | Skip filing search results back to Knowledge Base |
@@ -221,12 +221,12 @@ dd-agents search PROMPTS_PATH [OPTIONS]
 **Examples:**
 
 ```bash
-# Analyze all customers
+# Analyze all subjects
 dd-agents search prompts.json --data-room ./data_room
 
-# Filter to specific customers, skip confirmation
+# Filter to specific subjects, skip confirmation
 dd-agents search prompts.json --data-room ./data_room \
-  --customers "Acme,Beta Corp" -y
+  --subjects "Acme,Beta Corp" -y
 
 # Save to specific file with higher concurrency
 dd-agents search prompts.json --data-room ./data_room \
@@ -318,7 +318,7 @@ dd-agents query --report _dd/forensic-dd/runs/latest -q "How many P0 findings?"
 
 # Interactive REPL mode
 dd-agents query --report _dd/forensic-dd/runs/latest
-> How many customers have CoC risk?
+> How many subjects have CoC risk?
 > What are the top liability concerns?
 > quit
 ```
@@ -368,7 +368,7 @@ List all registered projects with status, finding counts, and risk scores.
 dd-agents portfolio list
 ```
 
-Displays a table with name, status, deal type, customer count, finding count,
+Displays a table with name, status, deal type, subject count, finding count,
 risk score, and last run date for each project.
 
 ### portfolio compare
@@ -467,17 +467,15 @@ dd-agents log [OPTIONS]
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `--project-dir` | path | `.` | Project directory |
-| `--type` | string | all | Filter by interaction type (pipeline_run, search, query, annotation, manual) |
-| `--entity` | string | all | Filter by entity safe name |
-| `--limit` | int | 50 | Maximum entries to display |
+| `--data-room` | path | required | Path to the data room folder |
+| `--type` | string | all | Filter by interaction type (pipeline_run, search, query, annotation) |
+| `--limit` | int | 20 | Maximum entries to display |
 
 **Examples:**
 
 ```bash
-dd-agents log
-dd-agents log --type search --limit 10
-dd-agents log --entity acme_corp
+dd-agents log --data-room ./data_room
+dd-agents log --data-room ./data_room --limit 5 --type search
 ```
 
 ---
@@ -487,23 +485,24 @@ dd-agents log --entity acme_corp
 Add a user annotation to the Deal Knowledge Base. Annotations capture analyst observations, corrections, or notes that enrich future analysis.
 
 ```
-dd-agents annotate ENTITY TEXT [OPTIONS]
+dd-agents annotate [OPTIONS] NOTE
 ```
 
 **Arguments:**
-- `ENTITY` -- Entity safe name (e.g., `acme_corp`)
-- `TEXT` -- Annotation text
+- `NOTE` -- Annotation text
 
 **Options:**
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `--project-dir` | path | `.` | Project directory |
+| `--data-room` | path | required | Path to the data room folder |
+| `--entity` | string | none | Entity safe_name to link this annotation to |
 
 **Examples:**
 
 ```bash
-dd-agents annotate acme_corp "CFO confirmed revenue recognition change in Q3 call"
+dd-agents annotate --data-room ./data_room "Key risk: vendor lock-in clause in Acme MSA"
+dd-agents annotate --data-room ./data_room --entity acme_corp "Needs legal review"
 ```
 
 ---
@@ -520,15 +519,19 @@ dd-agents lineage [OPTIONS]
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `--project-dir` | path | `.` | Project directory |
+| `--data-room` | path | required | Path to the data room folder |
 | `--entity` | string | all | Filter by entity safe name |
-| `--status` | string | all | Filter by status (active, resolved, recurring, escalated, de-escalated) |
+| `--active-only` | flag | off | Show only active findings |
+| `--format` | `table\|json\|csv` | `table` | Output format |
+| `--output` | path | stdout | Write output to file instead of stdout |
 
 **Examples:**
 
 ```bash
-dd-agents lineage
-dd-agents lineage --entity acme_corp --status escalated
+dd-agents lineage --data-room ./data_room
+dd-agents lineage --data-room ./data_room --entity acme_corp --active-only
+dd-agents lineage --data-room ./data_room --format json --output lineage.json
+dd-agents lineage --data-room ./data_room --format csv --output lineage.csv
 ```
 
 ---
@@ -545,15 +548,14 @@ dd-agents health [OPTIONS]
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `--project-dir` | path | `.` | Project directory |
+| `--data-room` | path | required | Path to the data room folder |
 | `--auto-fix` | flag | off | Automatically fix broken links and orphan articles |
-| `--verbose / -v` | flag | off | Enable debug logging |
 
 **Examples:**
 
 ```bash
-dd-agents health
-dd-agents health --auto-fix
+dd-agents health --data-room ./data_room
+dd-agents health --data-room ./data_room --auto-fix
 ```
 
 Checks 7 categories: staleness, orphans, broken links, missing coverage, citation drift, graph integrity, and lineage gaps.

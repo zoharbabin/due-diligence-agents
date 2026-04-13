@@ -17,13 +17,21 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from dd_agents.utils.constants import ALL_SPECIALIST_AGENTS, SEVERITY_ORDER
+from dd_agents.utils.constants import (
+    ALL_SPECIALIST_AGENTS,
+    SEVERITY_ORDER,
+    SEVERITY_P0,
+    SEVERITY_P1,
+    SEVERITY_P2,
+    SEVERITY_P3,
+    SEVERITY_RISK_SCORE_WEIGHTS,
+    SEVERITY_WEIGHTS,
+    _sev_count_init,
+)
 
 logger = logging.getLogger(__name__)
 
-# Severity weights used for sorting findings (wolf pack, domain lists).
-# Risk score uses a separate logarithmic formula in _compute_risk_score().
-_SEVERITY_WEIGHTS: dict[str, float] = {"P0": 10.0, "P1": 5.0, "P2": 2.0, "P3": 1.0}
+_SEVERITY_WEIGHTS = SEVERITY_WEIGHTS
 
 # Regex for extracting dollar amounts from finding text (D3)
 _DOLLAR_RE = re.compile(r"\$\s*([\d,]+(?:\.\d+)?)\s*([KMBkmb])?")
@@ -720,13 +728,13 @@ class ReportComputedData(BaseModel):
     """
 
     # Deal-level counts
-    total_findings: int = 0
-    total_gaps: int = 0
-    total_subjects: int = 0
-    subjects_analyzed: int = 0
+    total_findings: int = Field(default=0, description="Total number of findings across all agents")
+    total_gaps: int = Field(default=0, description="Total number of coverage gaps identified")
+    total_subjects: int = Field(default=0, description="Total number of subjects in the deal")
+    subjects_analyzed: int = Field(default=0, description="Number of subjects with at least one finding")
 
     # Severity breakdown
-    findings_by_severity: dict[str, int] = Field(default_factory=lambda: {"P0": 0, "P1": 0, "P2": 0, "P3": 0})
+    findings_by_severity: dict[str, int] = Field(default_factory=_sev_count_init)
 
     # Domain breakdown
     findings_by_domain: dict[str, int] = Field(default_factory=dict)
@@ -738,8 +746,8 @@ class ReportComputedData(BaseModel):
     category_groups: dict[str, dict[str, list[dict[str, Any]]]] = Field(default_factory=dict)
 
     # Risk scoring
-    deal_risk_score: float = 0.0
-    deal_risk_label: str = "Clean"
+    deal_risk_score: float = Field(default=0.0, description="Composite deal risk score (0-100)")
+    deal_risk_label: str = Field(default="Clean", description="Risk label: Clean, Low, Moderate, High, or Critical")
     domain_risk_scores: dict[str, float] = Field(default_factory=dict)
     domain_risk_labels: dict[str, str] = Field(default_factory=dict)
     subject_risk_scores: dict[str, float] = Field(default_factory=dict)
@@ -749,22 +757,24 @@ class ReportComputedData(BaseModel):
     domain_severity: dict[str, dict[str, int]] = Field(default_factory=dict)
 
     # Concentration
-    concentration_hhi: float = 0.0
+    concentration_hhi: float = Field(default=0.0, description="Herfindahl-Hirschman Index for revenue concentration")
 
     # Gaps
     gaps_by_priority: dict[str, int] = Field(default_factory=dict)
     gaps_by_type: dict[str, int] = Field(default_factory=dict)
 
     # Cross-reference
-    total_cross_refs: int = 0
-    cross_ref_matches: int = 0
-    cross_ref_mismatches: int = 0
-    match_rate: float = 0.0
+    total_cross_refs: int = Field(default=0, description="Total cross-reference checks performed")
+    cross_ref_matches: int = Field(default=0, description="Cross-references that matched across agents")
+    cross_ref_mismatches: int = Field(default=0, description="Cross-references with conflicting values")
+    match_rate: float = Field(default=0.0, description="Cross-reference match rate (0.0-1.0)")
 
     # Governance
-    avg_governance_pct: float = 0.0
+    avg_governance_pct: float = Field(
+        default=0.0, description="Average governance compliance percentage across subjects"
+    )
     governance_scores: dict[str, float] = Field(default_factory=dict)
-    unresolved_governance_count: int = 0
+    unresolved_governance_count: int = Field(default=0, description="Number of unresolved governance issues")
 
     # Wolf pack (P0+P1 findings, sorted)
     wolf_pack: list[dict[str, Any]] = Field(default_factory=list)
@@ -780,16 +790,16 @@ class ReportComputedData(BaseModel):
     severity_domain_matrix: dict[str, dict[str, int]] = Field(default_factory=dict)
 
     # Pre-merge / quality (optional, set externally)
-    pre_merge_passed: bool | None = None
-    qa_scores: dict[str, float] | None = None
-    numerical_audit_passed: bool | None = None
+    pre_merge_passed: bool | None = Field(default=None, description="Whether pre-merge validation passed")
+    qa_scores: dict[str, float] | None = Field(default=None, description="QA audit scores by check name")
+    numerical_audit_passed: bool | None = Field(default=None, description="Whether numerical audit passed")
 
     # Buyer context (optional, set externally)
-    buyer_strategy: dict[str, Any] | None = None
-    acquirer_intelligence: dict[str, Any] | None = None
+    buyer_strategy: dict[str, Any] | None = Field(default=None, description="Buyer strategy from deal config")
+    acquirer_intelligence: dict[str, Any] | None = Field(default=None, description="Acquirer intelligence agent output")
 
     # Executive synthesis (optional, set externally or via compute())
-    executive_synthesis: dict[str, Any] | None = None
+    executive_synthesis: dict[str, Any] | None = Field(default=None, description="Executive synthesis agent output")
 
     # --- Issue #113: Business-oriented analysis ---
 
@@ -806,11 +816,13 @@ class ReportComputedData(BaseModel):
 
     # TfC analysis (valuation concern, separate from termination)
     tfc_findings: list[dict[str, Any]] = Field(default_factory=list)
-    tfc_subjects_affected: int = 0
+    tfc_subjects_affected: int = Field(
+        default=0, description="Number of subjects with termination-for-convenience clauses"
+    )
 
     # CoC analysis
-    coc_subjects_affected: int = 0
-    consent_required_subjects: int = 0
+    coc_subjects_affected: int = Field(default=0, description="Number of subjects with change-of-control provisions")
+    consent_required_subjects: int = Field(default=0, description="Subjects requiring consent upon change of control")
 
     # Subject health tiers
     tier1_subjects: list[str] = Field(default_factory=list, description="P0 findings — immediate attention")
@@ -819,7 +831,7 @@ class ReportComputedData(BaseModel):
 
     # Financial extraction (best-effort regex from finding text)
     extracted_amounts: list[dict[str, Any]] = Field(default_factory=list)
-    total_arr_mentioned: float = 0.0
+    total_arr_mentioned: float = Field(default=0.0, description="Sum of ARR figures extracted from finding text")
 
     # Generated recommendations (deterministic from data patterns)
     recommendations: list[dict[str, str]] = Field(default_factory=list)
@@ -836,11 +848,11 @@ class ReportComputedData(BaseModel):
     # Material findings (noise filtered out)
     material_findings: list[dict[str, Any]] = Field(default_factory=list)
     noise_findings: list[dict[str, Any]] = Field(default_factory=list)
-    material_count: int = 0
-    noise_count: int = 0
+    material_count: int = Field(default=0, description="Number of material (non-noise) findings")
+    noise_count: int = Field(default=0, description="Number of findings classified as noise")
     data_quality_findings: list[dict[str, Any]] = Field(default_factory=list)
-    data_quality_count: int = 0
-    material_by_severity: dict[str, int] = Field(default_factory=lambda: {"P0": 0, "P1": 0, "P2": 0, "P3": 0})
+    data_quality_count: int = Field(default=0, description="Number of findings classified as data quality issues")
+    material_by_severity: dict[str, int] = Field(default_factory=_sev_count_init)
 
     # Material wolf pack (noise filtered)
     material_wolf_pack: list[dict[str, Any]] = Field(default_factory=list)
@@ -870,15 +882,19 @@ class ReportComputedData(BaseModel):
     )
 
     # --- Issue #125: Red Flag Scan (quick-scan mode) ---
-    red_flag_scan: dict[str, Any] | None = None
+    red_flag_scan: dict[str, Any] | None = Field(
+        default=None, description="Red flag scanner output for quick-scan mode"
+    )
 
     # --- Issue #102: Revenue-at-Risk & Financial Impact ---
-    revenue_by_subject: dict[str, float] = Field(default_factory=dict)
-    total_contracted_arr: float = 0.0
-    risk_adjusted_arr: float = 0.0
-    revenue_data_coverage: float = 0.0
-    risk_waterfall: dict[str, dict[str, Any]] = Field(default_factory=dict)
-    concentration_treemap: list[dict[str, Any]] = Field(default_factory=list)
+    revenue_by_subject: dict[str, float] = Field(default_factory=dict, description="ARR by subject safe name")
+    total_contracted_arr: float = Field(default=0.0, description="Total contracted annual recurring revenue")
+    risk_adjusted_arr: float = Field(default=0.0, description="ARR after risk deductions")
+    revenue_data_coverage: float = Field(default=0.0, description="Fraction of subjects with revenue data (0.0-1.0)")
+    risk_waterfall: dict[str, dict[str, Any]] = Field(default_factory=dict, description="Risk waterfall by category")
+    concentration_treemap: list[dict[str, Any]] = Field(
+        default_factory=list, description="Treemap data for entity revenue concentration"
+    )
 
     # --- Issue #145: Audit Trail & Finding Provenance ---
     provenance_stats: dict[str, Any] = Field(
@@ -985,7 +1001,7 @@ class ReportComputedData(BaseModel):
     )
 
     # --- Issue #116: Valuation Impact Bridge ---
-    valuation_bridge: dict[str, Any] = Field(default_factory=dict)
+    valuation_bridge: dict[str, Any] = Field(default_factory=dict, description="Valuation impact bridge data")
 
     # --- Issue #119: Clause Library ---
     clause_analysis: dict[str, Any] = Field(
@@ -1053,7 +1069,7 @@ class ReportDataComputer:
         rule's cap, the finding is downgraded and annotated with an audit trail.
         When multiple rules match, the mildest cap (highest P-number) wins.
         """
-        current_sev = str(finding.get("severity", "P3"))
+        current_sev = str(finding.get("severity", SEVERITY_P3))
         if current_sev not in SEVERITY_ORDER:
             return finding
 
@@ -1066,7 +1082,7 @@ class ReportDataComputer:
         best_reason: str = ""
 
         for rule in _RECALIBRATION_RULES:
-            max_sev = str(rule.get("max_severity", "P3"))
+            max_sev = str(rule.get("max_severity", SEVERITY_P3))
             require_all = bool(rule.get("require_all", False))
 
             # Collect which pattern groups are specified and whether they match
@@ -1112,24 +1128,24 @@ class ReportDataComputer:
     def _compute_risk_label(severity_counts: dict[str, int]) -> str:
         """Compute risk label from severity distribution.
 
-        Softened mechanical scoring (Issue #113):
+        Thresholds:
         - P0 >= 3 → Critical
-        - P0 1-2 → High (previously Critical for any P0)
+        - P0 1-2 → High
         - P1 >= 3 → High
         - P1 > 0 or P2 >= 5 → Medium
         - P2 > 0 or P3 > 0 → Low
         - Otherwise → Clean
         """
-        p0_count = severity_counts.get("P0", 0)
+        p0_count = severity_counts.get(SEVERITY_P0, 0)
         if p0_count >= 3:
             return "Critical"
         if p0_count > 0:
             return "High"
-        if severity_counts.get("P1", 0) >= 3:
+        if severity_counts.get(SEVERITY_P1, 0) >= 3:
             return "High"
-        if severity_counts.get("P1", 0) > 0 or severity_counts.get("P2", 0) >= 5:
+        if severity_counts.get(SEVERITY_P1, 0) > 0 or severity_counts.get(SEVERITY_P2, 0) >= 5:
             return "Medium"
-        if severity_counts.get("P2", 0) > 0 or severity_counts.get("P3", 0) > 0:
+        if severity_counts.get(SEVERITY_P2, 0) > 0 or severity_counts.get(SEVERITY_P3, 0) > 0:
             return "Low"
         return "Clean"
 
@@ -1142,10 +1158,10 @@ class ReportDataComputer:
         genuine P0 deal-breakers.
         """
         raw = (
-            25 * math.log1p(severity_counts.get("P0", 0))
-            + 8 * math.log1p(severity_counts.get("P1", 0))
-            + 3 * math.log1p(severity_counts.get("P2", 0))
-            + 1 * math.log1p(severity_counts.get("P3", 0))
+            25 * math.log1p(severity_counts.get(SEVERITY_P0, 0))
+            + 8 * math.log1p(severity_counts.get(SEVERITY_P1, 0))
+            + 3 * math.log1p(severity_counts.get(SEVERITY_P2, 0))
+            + 1 * math.log1p(severity_counts.get(SEVERITY_P3, 0))
         )
         return min(round(raw, 1), 100.0)
 
@@ -1169,11 +1185,9 @@ class ReportDataComputer:
         """Compute all metrics in one pass from merged subject output dicts."""
         total_findings = 0
         total_gaps = 0
-        severity_counts: dict[str, int] = {"P0": 0, "P1": 0, "P2": 0, "P3": 0}
+        severity_counts: dict[str, int] = _sev_count_init()
         domain_findings_count: dict[str, int] = defaultdict(int)
-        domain_severity: dict[str, dict[str, int]] = {
-            d: {"P0": 0, "P1": 0, "P2": 0, "P3": 0} for d in ALL_SPECIALIST_AGENTS
-        }
+        domain_severity: dict[str, dict[str, int]] = {d: _sev_count_init() for d in ALL_SPECIALIST_AGENTS}
         category_groups: dict[str, dict[str, list[dict[str, Any]]]] = {
             d: defaultdict(list) for d in ALL_SPECIALIST_AGENTS
         }
@@ -1184,7 +1198,7 @@ class ReportDataComputer:
         gap_type_counts: dict[str, int] = defaultdict(int)
         governance_scores: dict[str, float] = {}
         subject_finding_counts: dict[str, int] = defaultdict(int)
-        subject_risk_raw: dict[str, dict[str, int]] = defaultdict(lambda: {"P0": 0, "P1": 0, "P2": 0, "P3": 0})
+        subject_risk_raw: dict[str, dict[str, int]] = defaultdict(_sev_count_init)
 
         # Cross-reference tracking
         total_xrefs = 0
@@ -1237,7 +1251,7 @@ class ReportDataComputer:
                 if str(f.get("category", "")).lower() == "domain_reviewed_no_issues":
                     continue
                 f = self._recalibrate_severity(f)
-                sev = str(f.get("severity", "P3"))
+                sev = str(f.get("severity", SEVERITY_P3))
                 if sev in severity_counts:
                     severity_counts[sev] += 1
                 if sev in subject_risk_raw[csn]:
@@ -1259,7 +1273,7 @@ class ReportDataComputer:
                 category_domain_matrix[cat][domain] += 1
                 severity_domain_matrix[sev][domain] += 1
 
-                if sev in ("P0", "P1"):
+                if sev in (SEVERITY_P0, SEVERITY_P1):
                     wolf_pack.append(enriched)
 
                 all_findings.append(enriched)
@@ -1274,14 +1288,14 @@ class ReportDataComputer:
         # Sort wolf pack: P0 first, then by severity weight (highest impact first)
         wolf_pack.sort(
             key=lambda f: (
-                0 if f.get("severity") == "P0" else 1,
-                -_SEVERITY_WEIGHTS.get(str(f.get("severity", "P3")), 0),
+                0 if f.get("severity") == SEVERITY_P0 else 1,
+                -_SEVERITY_WEIGHTS.get(str(f.get("severity", SEVERITY_P3)), 0),
                 str(f.get("title", "")),
             )
         )
 
         # Wolf pack P0 only, capped at 15
-        all_p0 = [f for f in wolf_pack if f.get("severity") == "P0"]
+        all_p0 = [f for f in wolf_pack if f.get("severity") == SEVERITY_P0]
         wolf_pack_p0 = all_p0[:15]
         if len(all_p0) > 15:
             logger.warning(
@@ -1316,7 +1330,7 @@ class ReportDataComputer:
         material_findings: list[dict[str, Any]] = []
         noise_findings_list: list[dict[str, Any]] = []
         data_quality_findings_list: list[dict[str, Any]] = []
-        material_by_severity: dict[str, int] = {"P0": 0, "P1": 0, "P2": 0, "P3": 0}
+        material_by_severity: dict[str, int] = _sev_count_init()
         for f in all_findings:
             if _is_noise_finding(f):
                 noise_findings_list.append(f)
@@ -1324,12 +1338,12 @@ class ReportDataComputer:
                 data_quality_findings_list.append(f)
             else:
                 material_findings.append(f)
-                sev = str(f.get("severity", "P3"))
+                sev = str(f.get("severity", SEVERITY_P3))
                 if sev in material_by_severity:
                     material_by_severity[sev] += 1
 
         material_wolf = [f for f in wolf_pack if not _is_noise_finding(f) and not _is_data_quality_finding(f)]
-        material_wolf_p0 = [f for f in material_wolf if f.get("severity") == "P0"][:15]
+        material_wolf_p0 = [f for f in material_wolf if f.get("severity") == SEVERITY_P0][:15]
 
         # Display names
         display_names: dict[str, str] = {}
@@ -1340,7 +1354,7 @@ class ReportDataComputer:
         top_by_domain: dict[str, list[dict[str, Any]]] = {}
         for d in ALL_SPECIALIST_AGENTS:
             domain_material = [f for f in material_findings if self._agent_to_domain(str(f.get("agent", ""))) == d]
-            domain_material.sort(key=lambda f: -_SEVERITY_WEIGHTS.get(str(f.get("severity", "P3")), 0))
+            domain_material.sort(key=lambda f: -_SEVERITY_WEIGHTS.get(str(f.get("severity", SEVERITY_P3)), 0))
             top_by_domain[d] = domain_material[:10]
 
         # Material vs noise gaps
@@ -1447,7 +1461,7 @@ class ReportDataComputer:
             dom = self._agent_to_domain(f.get("agent", ""))
             if csn and dom:
                 entity_domains[csn].add(dom)
-                entity_sevs[csn].append(f.get("severity", "P3"))
+                entity_sevs[csn].append(f.get("severity", SEVERITY_P3))
         cross_domain_risks: list[dict[str, Any]] = []
         for csn, domains in entity_domains.items():
             if len(domains) >= 3:
@@ -1460,7 +1474,7 @@ class ReportDataComputer:
                         "domain_count": len(domains),
                         "finding_count": len(sevs),
                         "risk_score": round(score, 1),
-                        "has_p0": "P0" in sevs,
+                        "has_p0": SEVERITY_P0 in sevs,
                     }
                 )
         cross_domain_risks.sort(key=lambda x: x["risk_score"], reverse=True)
@@ -1680,7 +1694,7 @@ class ReportDataComputer:
                         "subject_safe_name": f.get("_subject_safe_name", ""),
                         "amount": amt,
                         "source_finding": f.get("title", ""),
-                        "severity": f.get("severity", "P3"),
+                        "severity": f.get("severity", SEVERITY_P3),
                     }
                 )
                 total += amt
@@ -1790,11 +1804,11 @@ class ReportDataComputer:
         treemap: list[dict[str, Any]] = []
         for csn, rev in revenue_by_subject.items():
             sev = subject_risk_raw.get(csn, {})
-            if sev.get("P0", 0) > 0:
+            if sev.get(SEVERITY_P0, 0) > 0:
                 risk = "critical"
-            elif sev.get("P1", 0) > 0:
+            elif sev.get(SEVERITY_P1, 0) > 0:
                 risk = "high"
-            elif sev.get("P2", 0) > 0:
+            elif sev.get(SEVERITY_P2, 0) > 0:
                 risk = "medium"
             else:
                 risk = "low"
@@ -1923,9 +1937,9 @@ class ReportDataComputer:
         tier3: list[str] = []
         for csn, sev_dict in subject_risk_raw.items():
             display = _clean_display_name(csn)
-            if sev_dict.get("P0", 0) > 0:
+            if sev_dict.get(SEVERITY_P0, 0) > 0:
                 tier1.append(display)
-            elif sev_dict.get("P1", 0) > 0:
+            elif sev_dict.get(SEVERITY_P1, 0) > 0:
                 tier2.append(display)
             else:
                 tier3.append(display)
@@ -1947,8 +1961,8 @@ class ReportDataComputer:
             findings = data.get("findings", [])
             if not isinstance(findings, list):
                 findings = []
-            p0_count = sev_dict.get("P0", 0)
-            p1_count = sev_dict.get("P1", 0)
+            p0_count = sev_dict.get(SEVERITY_P0, 0)
+            p1_count = sev_dict.get(SEVERITY_P1, 0)
             total = sum(sev_dict.values())
             # Collect first P0/P1 finding title as representative issue.
             # Apply recalibration so titles match the recalibrated counts in
@@ -1959,9 +1973,9 @@ class ReportDataComputer:
                 if not isinstance(f, dict):
                     continue
                 rf = ReportDataComputer._recalibrate_severity(f)
-                if rf.get("severity") == "P0" and not first_p0:
+                if rf.get("severity") == SEVERITY_P0 and not first_p0:
                     first_p0 = str(rf.get("title", ""))
-                if rf.get("severity") == "P1" and not first_p1:
+                if rf.get("severity") == SEVERITY_P1 and not first_p1:
                     first_p1 = str(rf.get("title", ""))
             if p0_count > 0:
                 p0_rows.append(
@@ -2000,7 +2014,7 @@ class ReportDataComputer:
         """Generate prioritized recommendations from data patterns."""
         recs: list[dict[str, str]] = []
 
-        p0_count = severity_counts.get("P0", 0)
+        p0_count = severity_counts.get(SEVERITY_P0, 0)
         coc_count = len(topic_findings.get("coc", []))
         privacy_count = len(topic_findings.get("privacy", []))
         security_count = len(topic_findings.get("security", []))
@@ -2144,7 +2158,7 @@ class ReportDataComputer:
                 f.get("_subject_safe_name")
                 for findings in topic_findings.values()
                 for f in findings
-                if f.get("severity") in ("P0", "P1")
+                if f.get("severity") in (SEVERITY_P0, SEVERITY_P1)
             }
         )
         if clean_subjects > 0:
@@ -2176,10 +2190,10 @@ class ReportDataComputer:
         rag: dict[str, str] = {}
 
         # Executive summary — softened thresholds (Issue #113)
-        p0_count = severity_counts.get("P0", 0)
+        p0_count = severity_counts.get(SEVERITY_P0, 0)
         if p0_count >= 3:
             rag["executive"] = "red"
-        elif p0_count > 0 or severity_counts.get("P1", 0) >= 3:
+        elif p0_count > 0 or severity_counts.get(SEVERITY_P1, 0) >= 3:
             rag["executive"] = "amber"
         else:
             rag["executive"] = "green"
@@ -2219,7 +2233,7 @@ class ReportDataComputer:
 
         # CoC — severity-aware: any P0 CoC finding is red
         coc = topic_findings.get("coc", [])
-        coc_has_p0 = any(f.get("severity") == "P0" for f in coc)
+        coc_has_p0 = any(f.get("severity") == SEVERITY_P0 for f in coc)
         if coc_has_p0 or len(coc) > 10:
             rag["coc"] = "red"
         elif len(coc) > 0:
@@ -2229,7 +2243,7 @@ class ReportDataComputer:
 
         # Privacy — severity-aware: any P0 privacy finding is red
         privacy = topic_findings.get("privacy", [])
-        privacy_has_p0 = any(f.get("severity") == "P0" for f in privacy)
+        privacy_has_p0 = any(f.get("severity") == SEVERITY_P0 for f in privacy)
         if privacy_has_p0 or len(privacy) > 5:
             rag["privacy"] = "red"
         elif len(privacy) > 0:
@@ -2568,8 +2582,8 @@ class ReportDataComputer:
         top_jurisdictions: list[dict[str, Any]] = _jur_list[:5]
 
         # --- Compliance risk score (0-100, severity-weighted) ---
-        score_weights = {"P0": 25, "P1": 15, "P2": 8, "P3": 3}
-        raw_score = sum(score_weights.get(str(f.get("severity", "P3")), 3) for f in all_compliance)
+        score_weights = SEVERITY_RISK_SCORE_WEIGHTS
+        raw_score = sum(score_weights.get(str(f.get("severity", SEVERITY_P3)), 3) for f in all_compliance)
         compliance_risk_score = min(100, raw_score)
         if compliance_risk_score >= 60:
             compliance_risk_label = "critical"
@@ -2915,15 +2929,15 @@ class ReportDataComputer:
             return {}
 
         # Churn risk scoring: weighted severity + contract risk factors
-        score_weights = {"P0": 25, "P1": 15, "P2": 8, "P3": 3}
+        score_weights = SEVERITY_RISK_SCORE_WEIGHTS
         coc_findings = topic_findings.get("coc", [])
         tfc_findings = topic_findings.get("tfc", [])
         concentration = topic_findings.get("concentration", [])
 
         # Base score from high-impact findings
-        coc_score = sum(score_weights.get(str(f.get("severity", "P3")), 3) for f in coc_findings)
-        tfc_score = sum(score_weights.get(str(f.get("severity", "P3")), 3) for f in tfc_findings)
-        concentration_score = sum(score_weights.get(str(f.get("severity", "P3")), 3) for f in concentration)
+        coc_score = sum(score_weights.get(str(f.get("severity", SEVERITY_P3)), 3) for f in coc_findings)
+        tfc_score = sum(score_weights.get(str(f.get("severity", SEVERITY_P3)), 3) for f in tfc_findings)
+        concentration_score = sum(score_weights.get(str(f.get("severity", SEVERITY_P3)), 3) for f in concentration)
 
         raw_score = coc_score + tfc_score + concentration_score
         churn_risk_score = min(100, raw_score)

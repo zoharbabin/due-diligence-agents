@@ -139,7 +139,7 @@ class ReferenceFileClassifier:
             # but are still included in the reference file list for inventory
             # integrity (prevents false-positive orphan warnings).
             if not agents:
-                logger.debug("DD output file (no agent routing): %s", entry.path)
+                logger.debug("Buyer work product (excluded from agent analysis): %s", entry.path)
 
             ref_file = ReferenceFile(
                 file_path=entry.path,

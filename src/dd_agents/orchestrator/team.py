@@ -4,14 +4,12 @@ Provides ``AgentTeam`` -- a high-level coordinator that spawns specialist
 agents in parallel, monitors their liveness, and collects results.  The
 actual agent SDK integration lives in ``dd_agents.agents``; this module
 wraps it with timeout / retry / liveness logic used by the orchestrator.
-
-Until the agent SDK integration is wired up, methods return **placeholder**
-results so the pipeline skeleton can be tested end-to-end.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from pathlib import Path
@@ -20,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 from dd_agents.utils.constants import (
     AGENT_JUDGE,
     ALL_SPECIALIST_AGENTS,
+    COVERAGE_MANIFEST_JSON,
 )
 
 if TYPE_CHECKING:
@@ -130,10 +129,11 @@ class AgentTeam:
             if n > max_batches:
                 max_batches = n
 
-        batch_concurrency = getattr(
-            getattr(getattr(self.state, "deal_config", None), "execution", None),
-            "batch_concurrency",
-            6,
+        _dc = self.state.deal_config or {}
+        batch_concurrency = (
+            _dc.get("execution", {}).get("batch_concurrency", 6)
+            if isinstance(_dc, dict)
+            else getattr(getattr(_dc, "execution", None), "batch_concurrency", 6)
         )
         # Effective sequential waves = ceil(batches / concurrency)
         effective_waves = max(1, -(-max_batches // max(1, batch_concurrency)))
@@ -170,7 +170,7 @@ class AgentTeam:
         monitor_task: asyncio.Task[None] | None = None
         run_dir = getattr(self.state, "run_dir", None)
         if run_dir is not None:
-            findings_dir = Path(str(run_dir)) / "findings"
+            findings_dir = Path(run_dir) / "findings"
             monitor_task = asyncio.create_task(
                 self.monitor_agent_output(
                     findings_dir,
@@ -263,10 +263,11 @@ class AgentTeam:
         # Concurrency limit for parallel batch execution.  Each batch
         # processes different subjects writing to different files, so
         # parallelism is safe.  Default 6 (configurable via deal-config).
-        concurrency = getattr(
-            getattr(getattr(self.state, "deal_config", None), "execution", None),
-            "batch_concurrency",
-            6,
+        _dc2 = self.state.deal_config or {}
+        concurrency = (
+            _dc2.get("execution", {}).get("batch_concurrency", 6)
+            if isinstance(_dc2, dict)
+            else getattr(getattr(_dc2, "execution", None), "batch_concurrency", 6)
         )
         concurrency = max(1, min(concurrency, len(batch_prompts)))
 
@@ -654,7 +655,7 @@ class AgentTeam:
         (i.e. files written or overwritten since the monitor started).
         When *since* is ``None``, *modified_count* equals *total_count*.
 
-        Excludes non-subject files like ``coverage_manifest.json`` and
+        Excludes non-subject files like ``*coverage_manifest.json`` and
         ``_temp_*`` scratch files.
         """
         agent_dir = output_dir / agent_name
@@ -667,7 +668,7 @@ class AgentTeam:
         for f in agent_dir.iterdir():
             if f.suffix != ".json":
                 continue
-            if f.name.startswith("_temp_") or f.name == "coverage_manifest.json":
+            if f.name.startswith("_temp_") or f.name.endswith(COVERAGE_MANIFEST_JSON):
                 continue
             total += 1
             mt = f.stat().st_mtime
@@ -684,6 +685,92 @@ class AgentTeam:
         if since is None:
             modified = total
         return total, modified, latest_name
+
+    @staticmethod
+    def _update_incremental_manifest(agent_dir: Path) -> None:
+        """Incrementally update ``coverage_manifest.json`` from subject files on disk.
+
+        Called by the output monitor whenever new file activity is detected.
+        Reads all subject JSONs, extracts ``file_headers``, and writes an
+        up-to-date manifest.  Because this runs in the orchestrator process
+        (not inside the SDK session), the manifest survives agent crashes.
+
+        The method is intentionally cheap: it only rewrites when the set of
+        subject files has changed since the last write.
+        """
+        if not agent_dir.is_dir():
+            return
+
+        manifest_path = agent_dir / COVERAGE_MANIFEST_JSON
+
+        # Collect current subject JSON files (exclude non-subject files).
+        subject_files = sorted(
+            f
+            for f in agent_dir.iterdir()
+            if f.suffix == ".json" and not f.name.endswith(COVERAGE_MANIFEST_JSON) and not f.name.startswith("_temp_")
+        )
+
+        if not subject_files:
+            return
+
+        # Quick staleness check: skip rewrite if manifest exists and is
+        # newer than all subject files (nothing changed since last update).
+        if manifest_path.exists():
+            try:
+                manifest_mtime = manifest_path.stat().st_mtime
+                newest_subject = max(f.stat().st_mtime for f in subject_files)
+                if manifest_mtime >= newest_subject:
+                    return  # Manifest is up-to-date
+            except OSError:
+                pass  # Fall through to rebuild
+
+        # Build manifest from subject file contents.
+        files_read: list[dict[str, str]] = []
+        subjects_info: list[dict[str, Any]] = []
+        seen_paths: set[str] = set()
+
+        for sf in subject_files:
+            try:
+                sdata = json.loads(sf.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                continue
+
+            subj_files: list[str] = []
+            for fh in sdata.get("file_headers", []):
+                fp = fh.get("file_path", "") if isinstance(fh, dict) else ""
+                if fp and fp not in seen_paths:
+                    seen_paths.add(fp)
+                    files_read.append({"path": fp, "extraction_quality": "primary"})
+                    subj_files.append(fp)
+
+            subjects_info.append(
+                {
+                    "name": sf.stem,
+                    "files_assigned": subj_files,
+                    "files_processed": subj_files,
+                    "status": "complete",
+                }
+            )
+
+        # Merge with existing manifest (preserve agent-written fields).
+        manifest: dict[str, Any] = {}
+        if manifest_path.exists():
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                manifest = {}
+
+        manifest["files_read"] = files_read
+        manifest["subjects"] = subjects_info
+        manifest["analysis_units_completed"] = len(subjects_info)
+
+        try:
+            manifest_path.write_text(
+                json.dumps(manifest, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        except OSError as exc:
+            logger.debug("Failed to write incremental manifest for %s: %s", agent_dir.name, exc)
 
     async def monitor_agent_output(
         self,
@@ -792,9 +879,32 @@ class AgentTeam:
             )
 
             # Stall detection and cancellation.
+            # Two activity signals: (a) new files on disk, (b) SDK turn advancement.
+            # An agent reading large files may go minutes without writing output
+            # but is still actively working if its turn count is advancing.
             current_mtime = self._latest_file_mtime(output_dir)
-            if current_mtime is not None and (last_seen_mtime is None or current_mtime > last_seen_mtime):
-                last_seen_mtime = current_mtime
+            file_activity = current_mtime is not None and (last_seen_mtime is None or current_mtime > last_seen_mtime)
+
+            # Check if any non-completed agent has advanced its SDK turn count.
+            turn_activity = False
+            for name in agent_names:
+                if name in self._completed_agents:
+                    continue
+                current_turns = sum(v for k, v in self._batch_turns.items() if k.startswith(f"{name}_"))
+                prev_key = f"_prev_turns_{name}"
+                prev_turns = getattr(self, prev_key, 0)
+                if current_turns > prev_turns:
+                    turn_activity = True
+                    setattr(self, prev_key, current_turns)
+
+            if file_activity or turn_activity:
+                if file_activity:
+                    last_seen_mtime = current_mtime
+                    # Incrementally update coverage manifests so they
+                    # survive SDK crashes.  Runs in the orchestrator
+                    # process — immune to agent-side failures.
+                    for name in agent_names:
+                        self._update_incremental_manifest(output_dir / name)
                 last_new_file_time = time.monotonic()
                 warned = False
                 cancelled = False
@@ -874,3 +984,8 @@ class AgentTeam:
                     output_dir,
                     ", ".join(agent_names),
                 )
+
+        # Final manifest update when monitor exits — ensures manifests
+        # reflect all subject files written before the coverage gate runs.
+        for name in agent_names:
+            self._update_incremental_manifest(output_dir / name)

@@ -130,7 +130,7 @@ class SubjectRegistryBuilder:
             )
             subjects.append(subject_entry)
 
-        subjects.sort(key=lambda c: (c.group, c.name))
+        subjects.sort(key=lambda s: (s.group, s.name))
 
         # Build CountsJson
         subjects_by_group: dict[str, int] = {g: len(names) for g, names in group_subject_names.items()}

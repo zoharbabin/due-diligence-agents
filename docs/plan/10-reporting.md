@@ -6,21 +6,21 @@ The Reporting Lead is the final agent in the pipeline. It receives merged specia
 
 ## Merge and Deduplicate Protocol
 
-Before any report generation, the Reporting Lead merges findings from all 4 specialist agents per customer. This is a 6-step protocol executed in order.
+Before any report generation, the Reporting Lead merges findings from all 4 specialist agents per subject. This is a 6-step protocol executed in order.
 
 ### Step 1 -- Collect
 
-For each customer in `customers.csv`, read:
-- `{RUN_DIR}/findings/legal/{customer_safe_name}.json`
-- `{RUN_DIR}/findings/finance/{customer_safe_name}.json`
-- `{RUN_DIR}/findings/commercial/{customer_safe_name}.json`
-- `{RUN_DIR}/findings/producttech/{customer_safe_name}.json`
+For each subject in `subjects.csv`, read:
+- `{RUN_DIR}/findings/legal/{subject_safe_name}.json`
+- `{RUN_DIR}/findings/finance/{subject_safe_name}.json`
+- `{RUN_DIR}/findings/commercial/{subject_safe_name}.json`
+- `{RUN_DIR}/findings/producttech/{subject_safe_name}.json`
 
-If any agent file is missing for a customer, the coverage gate (pipeline step 17) should have already caught it. If still missing at merge time, log a P1 gap and continue with available outputs.
+If any agent file is missing for a subject, the coverage gate (pipeline step 17) should have already caught it. If still missing at merge time, log a P1 gap and continue with available outputs.
 
 ### Step 2 -- Merge
 
-Combine all findings from the 4 agent files into a single per-customer profile. Preserve the `agent` field on each finding for sheet routing.
+Combine all findings from the 4 agent files into a single per-subject profile. Preserve the `agent` field on each finding for sheet routing.
 
 ### Step 3 -- Deduplicate
 
@@ -46,15 +46,15 @@ Use the Legal agent's governance graph as primary. If other agents discovered go
 ### Step 6 -- Merge Gap Files
 
 Collect gap files from all agents:
-- `{RUN_DIR}/findings/{agent}/gaps/{customer_safe_name}.json` for each agent
+- `{RUN_DIR}/findings/{agent}/gaps/{subject_safe_name}.json` for each agent
 
-Merge into `{RUN_DIR}/findings/merged/gaps/{customer_safe_name}.json`. Deduplicate gaps by `missing_item` -- keep the gap with the highest priority.
+Merge into `{RUN_DIR}/findings/merged/gaps/{subject_safe_name}.json`. Deduplicate gaps by `missing_item` -- keep the gap with the highest priority.
 
 ### Merge Output
 
-Write each customer's merged output to `{RUN_DIR}/findings/merged/{customer_safe_name}.json`.
+Write each subject's merged output to `{RUN_DIR}/findings/merged/{subject_safe_name}.json`.
 
-Write each customer's merged gaps to `{RUN_DIR}/findings/merged/gaps/{customer_safe_name}.json`.
+Write each subject's merged gaps to `{RUN_DIR}/findings/merged/gaps/{subject_safe_name}.json`.
 
 ```python
 # src/dd_agents/reporting/merger.py
@@ -63,7 +63,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 
 class MergedCustomerOutput(BaseModel):
-    """Schema for {RUN_DIR}/findings/merged/{customer_safe_name}.json"""
+    """Schema for {RUN_DIR}/findings/merged/{subject_safe_name}.json"""
 
     findings: list[dict] = Field(
         description="Array conforming to finding.schema.json. "
@@ -88,7 +88,7 @@ class MergedCustomerOutput(BaseModel):
     governance_resolved_pct: float = Field(
         ge=0.0, le=1.0,
         description="(files with governed_by in [file_path, 'SELF']) "
-        "/ total_customer_files"
+        "/ total_subject_files"
     )
 ```
 
@@ -98,29 +98,29 @@ class MergedCustomerOutput(BaseModel):
 class MergeEngine:
     """Executes the 6-step merge/dedup protocol."""
 
-    def __init__(self, run_dir: Path, customers: list[CustomerInfo]):
+    def __init__(self, run_dir: Path, subjects: list[SubjectInfo]):
         self.run_dir = run_dir
-        self.customers = customers
+        self.subjects = subjects
         self.agents = ["legal", "finance", "commercial", "producttech"]
 
     async def merge_all(self) -> MergeSummary:
-        """Process all customers with per-customer write discipline."""
+        """Process all subjects with per-subject write discipline."""
         merged_count = 0
-        for customer in self.customers:
-            await self._merge_customer(customer)
+        for subject in self.subjects:
+            await self._merge_subject(subject)
             merged_count += 1
-            # Checkpoint after each customer -- do NOT buffer all in memory
+            # Checkpoint after each subject -- do NOT buffer all in memory
             await self._write_checkpoint("merge_in_progress", merged_count)
 
         await self._write_checkpoint("merge_complete", merged_count)
-        return MergeSummary(customers_merged=merged_count, ...)
+        return MergeSummary(subjects_merged=merged_count, ...)
 
-    async def _merge_customer(self, customer: CustomerInfo) -> None:
-        """Merge one customer and write immediately."""
+    async def _merge_subject(self, subject: SubjectInfo) -> None:
+        """Merge one subject and write immediately."""
         # Step 1: Collect
         agent_findings = {}
         for agent in self.agents:
-            path = self.run_dir / "findings" / agent / f"{customer.safe_name}.json"
+            path = self.run_dir / "findings" / agent / f"{subject.safe_name}.json"
             if path.exists():
                 agent_findings[agent] = json.loads(path.read_text())
 
@@ -148,11 +148,11 @@ class MergeEngine:
             cross_references=self._union_cross_refs(agent_findings),
             cross_reference_summary=self._merge_xref_summaries(agent_findings),
             governance_graph=governance,
-            governance_resolved_pct=self._compute_gov_pct(governance, customer),
+            governance_resolved_pct=self._compute_gov_pct(governance, subject),
         )
 
-        # Write immediately -- per-customer write discipline
-        out = self.run_dir / "findings" / "merged" / f"{customer.safe_name}.json"
+        # Write immediately -- per-subject write discipline
+        out = self.run_dir / "findings" / "merged" / f"{subject.safe_name}.json"
         out.write_text(merged.model_dump_json(indent=2))
 
     def _deduplicate(self, findings: list[dict]) -> list[dict]:
@@ -202,7 +202,7 @@ Recalibration rules are defined in `_RECALIBRATION_RULES` (`computed_metrics.py`
 
 | Rule | Max Severity | Trigger | Rationale |
 |------|-------------|---------|-----------|
-| `competitor_only_coc` | P3 | Title contains "competitor" AND category is "change_of_control"/"coc" | Buyer rarely competes with target's customers |
+| `competitor_only_coc` | P3 | Title contains "competitor" AND category is "change_of_control"/"coc" | Buyer rarely competes with target's subjects |
 | `auditor_independence` | P2 | Text contains "auditor independence" or similar | Standard Big Four clause |
 | `transaction_fee` | P1 | Text contains "transaction fee"/"advisory fee" | Known cost, not structural |
 | `tfc_cap` | P2 | Text or category matches TfC patterns | Valuation concern, not deal-blocker |
@@ -237,7 +237,7 @@ Findings are routed by the `agent` field, NOT by `category`. Category is a colum
 
 | Sheet | Filter Logic | Source |
 |-------|-------------|--------|
-| Summary | Aggregated counts per customer (all agents) | `merged/*.json` + `counts.json` |
+| Summary | Aggregated counts per subject (all agents) | `merged/*.json` + `counts.json` |
 | Wolf_Pack | `finding.severity in ['P0', 'P1']` from all agents | `merged/*.json` |
 | Legal_Risks | `finding.agent == 'legal'` | `merged/*.json` |
 | Commercial_Data | `finding.agent == 'commercial'` | `merged/*.json` |
@@ -245,7 +245,7 @@ Findings are routed by the `agent` field, NOT by `category`. Category is a colum
 | Product_Scope | `finding.agent == 'producttech'` | `merged/*.json` |
 | Data_Reconciliation | `cross_references[]` data from any agent | `merged/*.json` cross_references |
 | Missing_Docs_Gaps | All gap files | `merged/gaps/*.json` |
-| Contract_Date_Reconciliation | Conditional on `source_of_truth.customer_database` | `contract_date_reconciliation.json` |
+| Contract_Date_Reconciliation | Conditional on `source_of_truth.subject_database` | `contract_date_reconciliation.json` |
 | Reference_Files_Index | Always | `reference_files.json` |
 | Entity_Resolution_Log | Always | `entity_matches.json` |
 | Quality_Audit | Conditional on `judge.enabled` | `quality_scores.json` |
@@ -258,7 +258,7 @@ Each sheet in `report_schema.json` has an `activation_condition` field. The `bui
 
 - `"always"` -- always include (Summary, Wolf_Pack, Legal_Risks, Commercial_Data, Financials, Product_Scope, Data_Reconciliation, Missing_Docs_Gaps, Reference_Files_Index, Entity_Resolution_Log)
 - `"judge.enabled in deal-config.json"` -- Quality_Audit
-- `"source_of_truth.customer_database exists in deal-config.json"` -- Contract_Date_Reconciliation
+- `"source_of_truth.subject_database exists in deal-config.json"` -- Contract_Date_Reconciliation
 - `"prior run exists AND reporting.include_diff_sheet is true"` -- Run_Diff
 - `"reporting.include_metadata_sheet is true"` -- _Metadata
 
@@ -288,7 +288,7 @@ def compute_overall_risk(findings, gaps) -> str:
 When an **Executive Synthesis Agent** has run, its calibrated `go_no_go_signal`
 and `risk_score_override` replace the mechanical computation in the HTML report.
 
-Rationale: gap priorities carry the same materiality signal as finding severities. A P0 gap (e.g., ghost customer with $500K ARR and no contracts) is a deal-stopper just like a P0 finding.
+Rationale: gap priorities carry the same materiality signal as finding severities. A P0 gap (e.g., ghost subject with $500K ARR and no contracts) is a deal-stopper just like a P0 finding.
 
 ---
 
@@ -374,7 +374,7 @@ These 5 rules are enforced at QA check 8k. Violations are QA failures:
 
 4. **Summary formulas.** `summary_formulas` defined in the schema (COUNTIF, COUNTA, COUNTA_UNIQUE, SUM, SUMIF) MUST be implemented as actual computed values in summary rows. These are pseudo-formula notation -- the script translates them into Python/openpyxl operations.
 
-5. **No phantom data.** The script MUST NOT hardcode data values (financial figures, customer names, finding counts). ALL data comes from the JSON source files listed in the schema's `source` field per sheet.
+5. **No phantom data.** The script MUST NOT hardcode data values (financial figures, subject names, finding counts). ALL data comes from the JSON source files listed in the schema's `source` field per sheet.
 
 ### Data Source Files
 
@@ -387,7 +387,7 @@ The generated `build_report.py` reads these files:
 | `_dd/forensic-dd/inventory/counts.json` | Summary (file counts) |
 | `_dd/forensic-dd/inventory/reference_files.json` | Reference_Files_Index |
 | `_dd/forensic-dd/inventory/entity_matches.json` | Entity_Resolution_Log |
-| `_dd/forensic-dd/inventory/customers.csv` | Summary (customer list) |
+| `_dd/forensic-dd/inventory/subjects.csv` | Summary (subject list) |
 | `{RUN_DIR}/numerical_manifest.json` | _Metadata (counts) |
 | `{RUN_DIR}/judge/quality_scores.json` | Quality_Audit, Summary (judge scores) -- single file containing `spot_checks` and `contradictions` arrays inline |
 | `{RUN_DIR}/report_diff.json` | Run_Diff |
@@ -556,13 +556,13 @@ class ChangeType(str, Enum):
     CHANGED_SEVERITY = "changed_severity"
     NEW_GAP = "new_gap"
     RESOLVED_GAP = "resolved_gap"
-    NEW_CUSTOMER = "new_customer"
-    REMOVED_CUSTOMER = "removed_customer"
+    NEW_SUBJECT = "new_subject"
+    REMOVED_CUSTOMER = "removed_subject"
 
 @dataclass
 class DiffChange:
     change_type: ChangeType
-    customer: str
+    subject: str
     finding_summary: str = ""
     prior_severity: str | None = None
     current_severity: str | None = None
@@ -573,48 +573,48 @@ class ReportDiffEngine:
 
     def compute_diff(
         self,
-        current_findings: dict[str, list[dict]],   # customer -> findings
+        current_findings: dict[str, list[dict]],   # subject -> findings
         prior_findings: dict[str, list[dict]],
         current_gaps: dict[str, list[dict]],
         prior_gaps: dict[str, list[dict]],
     ) -> list[DiffChange]:
         changes = []
 
-        # Customer-level changes
-        current_customers = set(current_findings.keys())
-        prior_customers = set(prior_findings.keys())
+        # Subject-level changes
+        current_subjects = set(current_findings.keys())
+        prior_subjects = set(prior_findings.keys())
 
-        for c in current_customers - prior_customers:
+        for c in current_subjects - prior_subjects:
             changes.append(DiffChange(
-                change_type=ChangeType.NEW_CUSTOMER,
-                customer=c,
-                details=f"New customer in current run",
+                change_type=ChangeType.NEW_SUBJECT,
+                subject=c,
+                details=f"New subject in current run",
             ))
 
-        for c in prior_customers - current_customers:
+        for c in prior_subjects - current_subjects:
             changes.append(DiffChange(
                 change_type=ChangeType.REMOVED_CUSTOMER,
-                customer=c,
-                details=f"Customer removed from current run",
+                subject=c,
+                details=f"Subject removed from current run",
             ))
 
-        # Finding-level changes (shared customers)
-        for customer in current_customers & prior_customers:
+        # Finding-level changes (shared subjects)
+        for subject in current_subjects & prior_subjects:
             changes.extend(self._diff_findings(
-                customer,
-                current_findings[customer],
-                prior_findings[customer],
+                subject,
+                current_findings[subject],
+                prior_findings[subject],
             ))
             changes.extend(self._diff_gaps(
-                customer,
-                current_gaps.get(customer, []),
-                prior_gaps.get(customer, []),
+                subject,
+                current_gaps.get(subject, []),
+                prior_gaps.get(subject, []),
             ))
 
         return changes
 
     def _finding_match_key(self, finding: dict) -> str:
-        """Match key: customer + category + citations[0].location"""
+        """Match key: subject + category + citations[0].location"""
         cit = finding.get("citations", [{}])[0]
         return f"{finding.get('category', '')}|{cit.get('location', '')}"
 
@@ -624,7 +624,7 @@ class ReportDiffEngine:
         return f"{gap.get('gap_type', '')}|{missing}"
 
     def _diff_findings(
-        self, customer: str, current: list[dict], prior: list[dict]
+        self, subject: str, current: list[dict], prior: list[dict]
     ) -> list[DiffChange]:
         changes = []
         current_by_key = {self._finding_match_key(f): f for f in current}
@@ -634,7 +634,7 @@ class ReportDiffEngine:
             if key not in prior_by_key:
                 changes.append(DiffChange(
                     change_type=ChangeType.NEW_FINDING,
-                    customer=customer,
+                    subject=subject,
                     finding_summary=finding.get("title", ""),
                     current_severity=finding.get("severity"),
                     details=f"New finding in current run",
@@ -644,7 +644,7 @@ class ReportDiffEngine:
                 if finding.get("severity") != prior_f.get("severity"):
                     changes.append(DiffChange(
                         change_type=ChangeType.CHANGED_SEVERITY,
-                        customer=customer,
+                        subject=subject,
                         finding_summary=finding.get("title", ""),
                         prior_severity=prior_f.get("severity"),
                         current_severity=finding.get("severity"),
@@ -654,7 +654,7 @@ class ReportDiffEngine:
             if key not in current_by_key:
                 changes.append(DiffChange(
                     change_type=ChangeType.RESOLVED_FINDING,
-                    customer=customer,
+                    subject=subject,
                     finding_summary=finding.get("title", ""),
                     prior_severity=finding.get("severity"),
                 ))
@@ -662,7 +662,7 @@ class ReportDiffEngine:
         return changes
 
     def _diff_gaps(
-        self, customer: str, current: list[dict], prior: list[dict]
+        self, subject: str, current: list[dict], prior: list[dict]
     ) -> list[DiffChange]:
         changes = []
         current_keys = {self._gap_match_key(g) for g in current}
@@ -672,7 +672,7 @@ class ReportDiffEngine:
             if self._gap_match_key(g) not in prior_keys:
                 changes.append(DiffChange(
                     change_type=ChangeType.NEW_GAP,
-                    customer=customer,
+                    subject=subject,
                     finding_summary=g.get("missing_item", ""),
                     details=f"gap_type={g.get('gap_type', '')}",
                 ))
@@ -681,7 +681,7 @@ class ReportDiffEngine:
             if self._gap_match_key(g) not in current_keys:
                 changes.append(DiffChange(
                     change_type=ChangeType.RESOLVED_GAP,
-                    customer=customer,
+                    subject=subject,
                     finding_summary=g.get("missing_item", ""),
                     details=f"gap_type={g.get('gap_type', '')}",
                 ))
@@ -703,13 +703,13 @@ Write `{RUN_DIR}/report_diff.json`:
     "changed_severity": 5,
     "new_gaps": 8,
     "resolved_gaps": 2,
-    "new_customers": 2,
-    "removed_customers": 1
+    "new_subjects": 2,
+    "removed_subjects": 1
   },
   "changes": [
     {
       "change_type": "new_finding",
-      "customer": "Acme Corp",
+      "subject": "Acme Corp",
       "finding_summary": "Change of control clause requires 60-day written notice",
       "prior_severity": null,
       "current_severity": "P1",
@@ -717,7 +717,7 @@ Write `{RUN_DIR}/report_diff.json`:
     },
     {
       "change_type": "changed_severity",
-      "customer": "Beta Inc",
+      "subject": "Beta Inc",
       "finding_summary": "Uncapped indemnification clause in MSA Section 8.2",
       "prior_severity": "P1",
       "current_severity": "P0",
@@ -735,13 +735,13 @@ The Run_Diff sheet is populated from this file. If no prior run exists, omit the
 
 ### Activation
 
-This protocol runs ONLY when `source_of_truth.customer_database` exists in `deal-config.json`. It runs during the inventory phase (before agents spawn) -- pipeline step 11.
+This protocol runs ONLY when `source_of_truth.subject_database` exists in `deal-config.json`. It runs during the inventory phase (before agents spawn) -- pipeline step 11.
 
 ### Reconciliation Protocol
 
 Contract date reconciliation extracts dates using regex patterns (ISO 8601, US date formats, written dates) from extracted text, then validates by cross-referencing dates across related documents (e.g., MSA effective date should precede SOW start date).
 
-For every customer where the database shows `contract_end < current_date` AND `ARR > 0`:
+For every subject where the database shows `contract_end < current_date` AND `ARR > 0`:
 
 1. Classify as "Database-Expired"
 2. Search the data room for renewal evidence (order forms, auto-renewal clauses, POs)
@@ -772,7 +772,7 @@ class ReconciliationStatus(str, Enum):
     EXPIRED_NO_CONTRACTS = "Expired-No Contracts"
 
 class ReconciliationEntry(BaseModel):
-    customer: str
+    subject: str
     database_end_date: str            # YYYY-MM-DD
     actual_end_date: str | None       # YYYY-MM-DD or null
     arr: float                        # Annual Recurring Revenue
@@ -803,7 +803,7 @@ The Contract_Date_Reconciliation sheet uses these color rules:
 | Status contains "expired" | `#FFC7CE` (red) | `#9C0006` |
 | Status contains "confirmation" | `#FFEB9C` (yellow) | `#9C5700` |
 
-Sort: Status ascending (reclassified first), then customer name ascending.
+Sort: Status ascending (reclassified first), then subject name ascending.
 
 Summary rows at bottom:
 - Total reclassified ARR (sum of ARR where status contains "active")
@@ -822,7 +822,7 @@ The total ARR impact is logged as a P1 finding.
 
 ## Reporting Lead Checkpointing
 
-The Reporting Lead processes many customers sequentially and may approach context limits. Checkpointing prevents data loss from context exhaustion.
+The Reporting Lead processes many subjects sequentially and may approach context limits. Checkpointing prevents data loss from context exhaustion.
 
 ### Checkpoint Protocol
 
@@ -831,7 +831,7 @@ The Reporting Lead processes many customers sequentially and may approach contex
 
 class ReportCheckpoint(BaseModel):
     phase: str                        # current phase name
-    customers_merged: int = 0
+    subjects_merged: int = 0
     gaps_merged: int = 0
     numerical_manifest_built: bool = False
     qa_checks_complete: bool = False
@@ -843,34 +843,34 @@ CHECKPOINT_PATH = "{RUN_DIR}/report/checkpoint.json"
 
 ### Write Discipline
 
-1. **After merge/dedup (step 24)**: Write `{RUN_DIR}/findings/merged/` files immediately after each customer. Do not accumulate all work in memory.
+1. **After merge/dedup (step 24)**: Write `{RUN_DIR}/findings/merged/` files immediately after each subject. Do not accumulate all work in memory.
 2. **After gap merge (step 25)**: Write gap files immediately.
 3. **After numerical manifest (step 26)**: Write `{RUN_DIR}/numerical_manifest.json` immediately.
-4. **Per-customer write discipline**: When merging findings, write each customer's merged JSON as soon as that customer is complete.
+4. **Per-subject write discipline**: When merging findings, write each subject's merged JSON as soon as that subject is complete.
 5. **Checkpoint file**: Write `{RUN_DIR}/report/checkpoint.json` after each major phase.
 
 ### Context Budget for Large Deal Rooms
 
-When processing >100 customers, batch processing in groups of 50 customers for the merge phase. Write intermediate results between batches.
+When processing >100 subjects, batch processing in groups of 50 subjects for the merge phase. Write intermediate results between batches.
 
 ```python
 # src/dd_agents/reporting/batch_processor.py
 
-BATCH_SIZE = 50  # customers per merge batch
+BATCH_SIZE = 50  # subjects per merge batch
 
 class BatchMergeProcessor:
 
     async def merge_in_batches(
-        self, customers: list[CustomerInfo]
+        self, subjects: list[SubjectInfo]
     ) -> None:
-        for batch_start in range(0, len(customers), BATCH_SIZE):
-            batch = customers[batch_start:batch_start + BATCH_SIZE]
-            for customer in batch:
-                await self.merge_engine.merge_customer(customer)
+        for batch_start in range(0, len(subjects), BATCH_SIZE):
+            batch = subjects[batch_start:batch_start + BATCH_SIZE]
+            for subject in batch:
+                await self.merge_engine.merge_subject(subject)
             # Write checkpoint between batches
             await self.write_checkpoint(
                 phase="merge_batch_complete",
-                customers_merged=batch_start + len(batch),
+                subjects_merged=batch_start + len(batch),
             )
 ```
 
@@ -887,8 +887,8 @@ The complete reporting pipeline executes as pipeline steps 23-31:
 | Pipeline Step | Action | Output |
 |---------------|--------|--------|
 | 23 | Spawn Reporting Lead | -- |
-| 24 | Merge and deduplicate findings | `{RUN_DIR}/findings/merged/{customer_safe_name}.json` |
-| 25 | Merge gap files | `{RUN_DIR}/findings/merged/gaps/{customer_safe_name}.json` |
+| 24 | Merge and deduplicate findings | `{RUN_DIR}/findings/merged/{subject_safe_name}.json` |
+| 25 | Merge gap files | `{RUN_DIR}/findings/merged/gaps/{subject_safe_name}.json` |
 | 26 | Build numerical manifest | `{RUN_DIR}/numerical_manifest.json` |
 | 27 | Numerical audit (6-layer, BLOCKING) | Pass/fail |
 | 28 | Full QA audit (fail-closed) | `{RUN_DIR}/audit.json` |
@@ -913,7 +913,7 @@ class ReportingPipeline:
         self.schema = schema
         self.deal_config = deal_config
         self.state = state
-        self.merge_engine = MergeEngine(run_dir, state.customers)
+        self.merge_engine = MergeEngine(run_dir, state.subjects)
         self.manifest_builder = NumericalManifestBuilder(run_dir)
         self.validator = NumericalValidator(run_dir)
         self.qa_runner = QARunner(run_dir, deal_config)

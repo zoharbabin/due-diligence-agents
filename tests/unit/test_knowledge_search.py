@@ -324,7 +324,7 @@ class TestInsights:
             ArticleType.INSIGHT,
             "Revenue Concentration Risk",
             content={
-                "summary": "Top 3 customers represent 80% of revenue creating significant "
+                "summary": "Top 3 subjects represent 80% of revenue creating significant "
                 "concentration risk that should be addressed in the purchase agreement warranties"
             },
             tags=["acme"],

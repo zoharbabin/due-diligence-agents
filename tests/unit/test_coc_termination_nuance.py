@@ -73,20 +73,20 @@ def _make_finding(
     agent: str = "legal",
     title: str = "Test finding",
     description: str = "Description",
-    customer: str = "customer_a",
+    subject: str = "subject_a",
 ) -> dict[str, Any]:
     return {
         "severity": severity,
         "agent": agent,
         "title": title,
         "description": description,
-        "_subject": customer,
-        "_subject_safe_name": customer,
+        "_subject": subject,
+        "_subject_safe_name": subject,
     }
 
 
 def _make_data(computed: ReportComputedData) -> dict[str, Any]:
-    return {"customer_a": {"subject": "Customer A", "findings": [], "gaps": []}}
+    return {"subject_a": {"subject": "Subject A", "findings": [], "gaps": []}}
 
 
 # ===========================================================================
@@ -199,7 +199,7 @@ class TestCategoryTopicSplit:
         findings = [
             _make_finding(
                 title="Change of Control with Termination for Convenience",
-                description="Assignment consent required. Customer may also terminate for convenience.",
+                description="Assignment consent required. Subject may also terminate for convenience.",
             ),
         ]
         computer = ReportDataComputer()
@@ -293,14 +293,14 @@ class TestTfCRAGAndRecommendations:
     def test_tfc_rag_never_red(self) -> None:
         """TfC RAG is amber when present, never red — even with high-severity findings."""
         merged = {
-            "customer_a": {
-                "subject": "Customer A",
+            "subject_a": {
+                "subject": "Subject A",
                 "findings": [
                     {
                         "severity": "P2",
                         "agent": "legal",
                         "title": "Termination for Convenience on major contract",
-                        "description": "TfC clause allows customer to terminate without cause with 30 day notice",
+                        "description": "TfC clause allows subject to terminate without cause with 30 day notice",
                         "category": "convenience_termination",
                     },
                 ],
@@ -318,14 +318,14 @@ class TestTfCRAGAndRecommendations:
     def test_tfc_recommendation_generated(self) -> None:
         """TfC recommendation uses 'Valuation' timeline."""
         merged = {
-            "customer_a": {
-                "subject": "Customer A",
+            "subject_a": {
+                "subject": "Subject A",
                 "findings": [
                     {
                         "severity": "P2",
                         "agent": "legal",
                         "title": "Termination for Convenience clause",
-                        "description": "Customer may terminate without cause with 30 day notice",
+                        "description": "Subject may terminate without cause with 30 day notice",
                         "category": "convenience_termination",
                     },
                 ],
@@ -341,21 +341,21 @@ class TestTfCRAGAndRecommendations:
     def test_coc_recommendation_subtype_aware(self) -> None:
         """CoC recommendation differentiates consent vs notification."""
         merged = {
-            "customer_a": {
-                "subject": "Customer A",
+            "subject_a": {
+                "subject": "Subject A",
                 "findings": [
                     {
                         "severity": "P1",
                         "agent": "legal",
                         "title": "Change of Control — consent required",
-                        "description": "Assignment requires customer consent",
+                        "description": "Assignment requires subject consent",
                         "category": "change_of_control",
                     },
                 ],
                 "gaps": [],
             },
-            "customer_b": {
-                "subject": "Customer B",
+            "subject_b": {
+                "subject": "Subject B",
                 "findings": [
                     {
                         "severity": "P2",

@@ -273,22 +273,22 @@ def _make_merged_findings_dir(run_dir: Path) -> None:
     merged_dir = run_dir / "findings" / "merged"
     merged_dir.mkdir(parents=True, exist_ok=True)
 
-    # Customer A: 2 findings (P0 + P1)
-    (merged_dir / "customer_a.json").write_text(
+    # Subject A: 2 findings (P0 + P1)
+    (merged_dir / "subject_a.json").write_text(
         json.dumps(
             {
-                "subject_safe_name": "customer_a",
+                "subject_safe_name": "subject_a",
                 "findings": [
                     {
                         "severity": "P0",
                         "category": "change_of_control",
                         "title": "CoC requires Board consent",
                         "agent": "legal",
-                        "analysis_unit": "customer_a",
+                        "analysis_unit": "subject_a",
                         "timestamp": "2026-03-07T14:30:00+00:00",
                         "citations": [
                             {
-                                "source_path": "customer_a/msa.pdf",
+                                "source_path": "subject_a/msa.pdf",
                                 "location": "Section 4.3",
                                 "exact_quote": "Board consent required for change of control",
                                 "page_number": 5,
@@ -300,11 +300,11 @@ def _make_merged_findings_dir(run_dir: Path) -> None:
                         "category": "termination",
                         "title": "Short notice period",
                         "agent": "legal",
-                        "analysis_unit": "customer_a",
+                        "analysis_unit": "subject_a",
                         "timestamp": "2026-03-07T14:30:00+00:00",
                         "citations": [
                             {
-                                "source_path": "customer_a/msa.pdf",
+                                "source_path": "subject_a/msa.pdf",
                                 "location": "Section 8.2",
                                 "exact_quote": "30-day notice for termination",
                             }
@@ -315,22 +315,22 @@ def _make_merged_findings_dir(run_dir: Path) -> None:
         )
     )
 
-    # Customer B: 1 finding (P2)
-    (merged_dir / "customer_b.json").write_text(
+    # Subject B: 1 finding (P2)
+    (merged_dir / "subject_b.json").write_text(
         json.dumps(
             {
-                "subject_safe_name": "customer_b",
+                "subject_safe_name": "subject_b",
                 "findings": [
                     {
                         "severity": "P2",
                         "category": "change_of_control",
                         "title": "Standard CoC clause",
                         "agent": "legal",
-                        "analysis_unit": "customer_b",
+                        "analysis_unit": "subject_b",
                         "timestamp": "2026-03-07T14:30:00+00:00",
                         "citations": [
                             {
-                                "source_path": "customer_b/agreement.pdf",
+                                "source_path": "subject_b/agreement.pdf",
                                 "location": "Section 3.1",
                                 "exact_quote": "Standard change of control provision",
                             }
@@ -351,11 +351,11 @@ class TestKnowledgeCompiler:
         result = compiler.compile_from_run(run_dir, "run_001")
 
         assert result.articles_created >= 2  # At least 2 entity profiles
-        assert "customer_a" in result.entities_enriched
-        assert "customer_b" in result.entities_enriched
+        assert "subject_a" in result.entities_enriched
+        assert "subject_b" in result.entities_enriched
 
         # Verify entity profile content
-        profile = kb.get_article("entity_customer_a")
+        profile = kb.get_article("entity_subject_a")
         assert profile is not None
         assert profile.article_type == ArticleType.ENTITY_PROFILE
         assert profile.content["total_findings"] == 2
@@ -386,7 +386,7 @@ class TestKnowledgeCompiler:
         assert r2.articles_updated > 0
 
         # Entity profile should have 2 run history entries
-        profile = kb.get_article("entity_customer_a")
+        profile = kb.get_article("entity_subject_a")
         assert profile is not None
         history = profile.content.get("cross_run_history", [])
         assert len(history) == 2
@@ -497,18 +497,18 @@ class TestContradictionDetection:
         merged_dir = run_dir / "findings" / "merged"
         merged_dir.mkdir(parents=True)
 
-        # Same customer, same category, different agents with different severities
-        (merged_dir / "customer_x.json").write_text(
+        # Same subject, same category, different agents with different severities
+        (merged_dir / "subject_x.json").write_text(
             json.dumps(
                 {
-                    "subject_safe_name": "customer_x",
+                    "subject_safe_name": "subject_x",
                     "findings": [
                         {
                             "severity": "P0",
                             "category": "termination",
                             "title": "Critical termination clause",
                             "agent": "legal",
-                            "analysis_unit": "customer_x",
+                            "analysis_unit": "subject_x",
                             "timestamp": "2026-03-07T14:30:00+00:00",
                             "citations": [],
                         },
@@ -517,7 +517,7 @@ class TestContradictionDetection:
                             "category": "termination",
                             "title": "Standard termination clause",
                             "agent": "commercial",
-                            "analysis_unit": "customer_x",
+                            "analysis_unit": "subject_x",
                             "timestamp": "2026-03-07T14:30:00+00:00",
                             "citations": [],
                         },
@@ -541,17 +541,17 @@ class TestContradictionDetection:
         merged_dir = run_dir / "findings" / "merged"
         merged_dir.mkdir(parents=True)
 
-        (merged_dir / "customer_y.json").write_text(
+        (merged_dir / "subject_y.json").write_text(
             json.dumps(
                 {
-                    "subject_safe_name": "customer_y",
+                    "subject_safe_name": "subject_y",
                     "findings": [
                         {
                             "severity": "P1",
                             "category": "change_of_control",
                             "title": "CoC clause",
                             "agent": "legal",
-                            "analysis_unit": "customer_y",
+                            "analysis_unit": "subject_y",
                             "timestamp": "2026-03-07T14:30:00+00:00",
                             "citations": [],
                         },
@@ -560,7 +560,7 @@ class TestContradictionDetection:
                             "category": "change_of_control",
                             "title": "CoC clause v2",
                             "agent": "commercial",
-                            "analysis_unit": "customer_y",
+                            "analysis_unit": "subject_y",
                             "timestamp": "2026-03-07T14:30:00+00:00",
                             "citations": [],
                         },

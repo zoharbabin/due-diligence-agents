@@ -19,7 +19,7 @@ def _make_finding(
     title: str = "Missing clause",
     agent: str = "legal",
     category: str = "contract_risk",
-    entity: str = "customer_a",
+    entity: str = "subject_a",
     severity: str = "high",
     source_path: str = "contracts/agreement.pdf",
     location: str = "5",
@@ -65,8 +65,8 @@ class TestFingerprinting:
         assert compute_finding_fingerprint(f1) == compute_finding_fingerprint(f2)
 
     def test_different_entity_different_fingerprint(self) -> None:
-        f1 = _make_finding(entity="customer_a")
-        f2 = _make_finding(entity="customer_b")
+        f1 = _make_finding(entity="subject_a")
+        f2 = _make_finding(entity="subject_b")
         assert compute_finding_fingerprint(f1) != compute_finding_fingerprint(f2)
 
     def test_fingerprint_length(self) -> None:
@@ -218,15 +218,15 @@ class TestEntityLineage:
     def test_entity_lineage_filtering(self, tmp_path: Path) -> None:
         tracker = FindingLineageTracker(tmp_path / "lineage.json")
         tracker.load()
-        f_a = _make_finding(entity="customer_a", title="Issue A")
-        f_b = _make_finding(entity="customer_b", title="Issue B")
+        f_a = _make_finding(entity="subject_a", title="Issue A")
+        f_b = _make_finding(entity="subject_b", title="Issue B")
         tracker.update_from_run("run_1", [f_a, f_b])
 
-        lineage_a = tracker.get_entity_lineage("customer_a")
-        lineage_b = tracker.get_entity_lineage("customer_b")
+        lineage_a = tracker.get_entity_lineage("subject_a")
+        lineage_b = tracker.get_entity_lineage("subject_b")
         assert len(lineage_a) == 1
         assert len(lineage_b) == 1
-        assert lineage_a[0].entity_safe_name == "customer_a"
+        assert lineage_a[0].entity_safe_name == "subject_a"
 
 
 class TestActiveResolved:

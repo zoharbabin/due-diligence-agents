@@ -73,13 +73,13 @@ The system runs as a 35-step async state machine organized into five stages. Eac
 │  🚫 GATE: Extraction quality (step 5)                   │
 ├─────────────────────────────────────────────────────────┤
 │  Stage 2: Discovery & Inventory (Steps 6-12)            │
-│  Customer registry, entity resolution, document         │
+│  Subject registry, entity resolution, document          │
 │  precedence scoring, reference file routing              │
 ├─────────────────────────────────────────────────────────┤
 │  Stage 3: Agent Execution (Steps 13-17)                 │
 │  Prompt building, 4 specialist agents in parallel,      │
 │  coverage verification with respawn for gaps            │
-│  🚫 GATE: Customer coverage (step 17)                   │
+│  🚫 GATE: Subject coverage (step 17)                    │
 ├─────────────────────────────────────────────────────────┤
 │  Stage 4: Quality Review (Steps 18-28)                  │
 │  Judge adversarial review, merge & dedup, numerical     │
@@ -106,7 +106,7 @@ All artifacts are organized into three lifecycle tiers:
 |------|-----------|---------|
 | **PERMANENT** | Never wiped across runs | Extracted text, checksums, entity resolution cache, knowledge base |
 | **VERSIONED** | Archived per run | Findings, gaps, audit logs, reports, judge reviews |
-| **FRESH** | Rebuilt every run | File inventory, customer registry, reference routing |
+| **FRESH** | Rebuilt every run | File inventory, subject registry, reference routing |
 
 This means extracted text (expensive to produce) survives across runs, while findings (which should reflect current analysis) are always fresh.
 
@@ -251,7 +251,7 @@ Four specialist agents analyze the data room in parallel, each from their domain
 
 ### Cross-domain findings emerge from merge
 
-The same document gets analyzed by all four agents. Legal finds a change-of-control termination right. Finance calculates the revenue at risk. Commercial notes the customer is on an expiring contract. ProductTech flags a missing data processing agreement. After merge and dedup (step 24), these findings are linked to the same customer — and the Executive Synthesis agent connects them into a cross-domain risk assessment.
+The same document gets analyzed by all four agents. Legal finds a change-of-control termination right. Finance calculates the revenue at risk. Commercial notes the subject is on an expiring contract. ProductTech flags a missing data processing agreement. After merge and dedup (step 24), these findings are linked to the same subject — and the Executive Synthesis agent connects them into a cross-domain risk assessment.
 
 ### Domain boundaries are explicit
 
@@ -278,7 +278,7 @@ Every severity change records `_recalibrated_from` and `_recalibration_reason` f
 
 ## 8. The Verification Stack
 
-Production retrospective on a real deal (~200 customers) revealed that all 17 quality failures were instruction-following failures — the LLM ignored prose "MUST" constraints. This led to a fundamental architecture decision: **Python controls flow, LLMs are workers.** Enforcement is programmatic, not prose.
+Production retrospective on a real deal (~200 subjects) revealed that all 17 quality failures were instruction-following failures — the LLM ignored prose "MUST" constraints. This led to a fundamental architecture decision: **Python controls flow, LLMs are workers.** Enforcement is programmatic, not prose.
 
 ### 6-layer hallucination defense
 
@@ -318,7 +318,7 @@ Inspired by Andrej Karpathy's "LLM Wiki" pattern: instead of starting from scrat
 
 ```
 _dd/forensic-dd/knowledge/          [PERMANENT tier]
-├── entities/                        Entity profiles (one per customer)
+├── entities/                        Entity profiles (one per subject)
 ├── clauses/                         Cross-entity clause summaries
 ├── contradictions/                  Agent disagreements
 ├── insights/                        Analyst-added observations
@@ -376,15 +376,15 @@ Every architecture embodies tradeoffs. These are the ones we made explicitly, wi
 ### Python orchestration vs. LLM autonomy
 
 **Chose**: Python controls flow; LLMs are workers.
-**Why**: All 17 production failures were instruction-following failures. The LLM ignored prose constraints ("MUST produce per-customer JSON", "MUST verify citations"). Markdown emphasis has zero enforcement power. Python if/else is deterministic.
+**Why**: All 17 production failures were instruction-following failures. The LLM ignored prose constraints ("MUST produce per-subject JSON", "MUST verify citations"). Markdown emphasis has zero enforcement power. Python if/else is deterministic.
 **Cost**: Added state machine complexity, hook system, checkpoint management.
 **Benefit**: Zero enforcement failures since migration.
 
 ### File-based storage vs. database
 
 **Chose**: Three-tier file-based JSON/JSONL.
-**Why**: At 400 documents / 200 customers, file-based queries complete in <1 second. Agent outputs are naturally per-customer JSON files. Audit trail is human-readable. No deployment dependency.
-**Reconsidering at**: 10,000+ customers.
+**Why**: At 400 documents / 200 subjects, file-based queries complete in <1 second. Agent outputs are naturally per-subject JSON files. Audit trail is human-readable. No deployment dependency.
+**Reconsidering at**: 10,000+ subjects.
 
 ### Thoroughness vs. speed
 
@@ -444,7 +444,7 @@ Every major design decision maps to published research or production retrospecti
 |---------|--------|------------|
 | Context metadata reduces retrieval failures 49% | Anthropic, Contextual Retrieval, 2024 | Document-level summaries prepended to chunks. |
 | Contextual retrieval + reranking reduces failures 67% | Anthropic, 2024 | Reranking of vector results when ChromaDB is enabled. |
-| "Lost-in-the-middle": middle content recalled at lower rates | Liu et al., 2023 | Critical instructions at prompt start/end. Customer data in middle. |
+| "Lost-in-the-middle": middle content recalled at lower rates | Liu et al., 2023 | Critical instructions at prompt start/end. Subject data in middle. |
 | 200K context models degrade beyond ~80K tokens | Anthropic internal benchmarks | 80K token ceiling enforced for reliable instruction-following. |
 | Legal boilerplate causes retrieval from wrong document | Reuter et al., 2025 | Source metadata in every chunk. Filter by document before ranking. |
 
@@ -463,7 +463,7 @@ Every major design decision maps to published research or production retrospecti
 | Finding | Source | Application |
 |---------|--------|------------|
 | 10% per-step error × 10 steps = 34.9% success rate | Production retrospective | 5 blocking gates with deterministic validation at each. Independent verification at every phase boundary. |
-| All 17 production failures were instruction-following | Production retrospective, ~200 customers | Python orchestration replaces LLM-directed flow. Hooks enforce boundaries programmatically. |
+| All 17 production failures were instruction-following | Production retrospective, ~200 subjects | Python orchestration replaces LLM-directed flow. Hooks enforce boundaries programmatically. |
 
 ---
 

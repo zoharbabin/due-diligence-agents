@@ -24,42 +24,42 @@ class TestSingleCanonical:
 
     def test_source_files_accumulated(self) -> None:
         dedup = CrossDocumentDeduplicator()
-        dedup.add_resolution("Customer A", "Customer A", "file_1.pdf")
-        dedup.add_resolution("Cust A Inc.", "Customer A", "file_2.pdf")
-        dedup.add_resolution("Customer A", "Customer A", "file_3.pdf")
+        dedup.add_resolution("Subject A", "Subject A", "file_1.pdf")
+        dedup.add_resolution("Cust A Inc.", "Subject A", "file_2.pdf")
+        dedup.add_resolution("Subject A", "Subject A", "file_3.pdf")
 
         summary = dedup.get_summary()
-        entry = summary["Customer A"]
+        entry = summary["Subject A"]
         assert sorted(entry["source_files"]) == ["file_1.pdf", "file_2.pdf", "file_3.pdf"]
 
     def test_mention_count_increments(self) -> None:
         dedup = CrossDocumentDeduplicator()
-        dedup.add_resolution("Customer A", "Customer A", "file_1.pdf")
-        dedup.add_resolution("Cust A Inc.", "Customer A", "file_2.pdf")
-        dedup.add_resolution("Customer A Corp", "Customer A", "file_2.pdf")
+        dedup.add_resolution("Subject A", "Subject A", "file_1.pdf")
+        dedup.add_resolution("Cust A Inc.", "Subject A", "file_2.pdf")
+        dedup.add_resolution("Subject A Corp", "Subject A", "file_2.pdf")
 
         summary = dedup.get_summary()
-        assert summary["Customer A"]["mention_count"] == 3
+        assert summary["Subject A"]["mention_count"] == 3
 
     def test_duplicate_source_file_not_duplicated(self) -> None:
         """Adding the same source_file twice should not duplicate it."""
         dedup = CrossDocumentDeduplicator()
-        dedup.add_resolution("Customer A", "Customer A", "file_1.pdf")
-        dedup.add_resolution("Cust A Inc.", "Customer A", "file_1.pdf")
+        dedup.add_resolution("Subject A", "Subject A", "file_1.pdf")
+        dedup.add_resolution("Cust A Inc.", "Subject A", "file_1.pdf")
 
         summary = dedup.get_summary()
-        assert summary["Customer A"]["source_files"] == ["file_1.pdf"]
+        assert summary["Subject A"]["source_files"] == ["file_1.pdf"]
         # But mention_count still tracks each call
-        assert summary["Customer A"]["mention_count"] == 2
+        assert summary["Subject A"]["mention_count"] == 2
 
     def test_variants_collected(self) -> None:
         dedup = CrossDocumentDeduplicator()
-        dedup.add_resolution("Cust A Inc.", "Customer A", "file_1.pdf")
-        dedup.add_resolution("CA Corp", "Customer A", "file_2.pdf")
-        dedup.add_resolution("Customer A", "Customer A", "file_3.pdf")
+        dedup.add_resolution("Cust A Inc.", "Subject A", "file_1.pdf")
+        dedup.add_resolution("CA Corp", "Subject A", "file_2.pdf")
+        dedup.add_resolution("Subject A", "Subject A", "file_3.pdf")
 
         summary = dedup.get_summary()
-        assert sorted(summary["Customer A"]["variants"]) == ["CA Corp", "Cust A Inc."]
+        assert sorted(summary["Subject A"]["variants"]) == ["CA Corp", "Cust A Inc."]
 
 
 class TestMultipleCanonicals:
@@ -67,26 +67,26 @@ class TestMultipleCanonicals:
 
     def test_separate_entries(self) -> None:
         dedup = CrossDocumentDeduplicator()
-        dedup.add_resolution("Customer A", "Customer A", "file_1.pdf")
-        dedup.add_resolution("Customer B", "Customer B", "file_2.pdf")
-        dedup.add_resolution("Cust A Inc.", "Customer A", "file_3.pdf")
+        dedup.add_resolution("Subject A", "Subject A", "file_1.pdf")
+        dedup.add_resolution("Subject B", "Subject B", "file_2.pdf")
+        dedup.add_resolution("Cust A Inc.", "Subject A", "file_3.pdf")
 
         summary = dedup.get_summary()
-        assert "Customer A" in summary
-        assert "Customer B" in summary
-        assert summary["Customer A"]["mention_count"] == 2
-        assert summary["Customer B"]["mention_count"] == 1
+        assert "Subject A" in summary
+        assert "Subject B" in summary
+        assert summary["Subject A"]["mention_count"] == 2
+        assert summary["Subject B"]["mention_count"] == 1
 
     def test_no_cross_contamination(self) -> None:
         dedup = CrossDocumentDeduplicator()
-        dedup.add_resolution("Variant X", "Customer A", "file_1.pdf")
-        dedup.add_resolution("Variant Y", "Customer B", "file_2.pdf")
+        dedup.add_resolution("Variant X", "Subject A", "file_1.pdf")
+        dedup.add_resolution("Variant Y", "Subject B", "file_2.pdf")
 
         summary = dedup.get_summary()
-        assert summary["Customer A"]["variants"] == ["Variant X"]
-        assert summary["Customer B"]["variants"] == ["Variant Y"]
-        assert summary["Customer A"]["source_files"] == ["file_1.pdf"]
-        assert summary["Customer B"]["source_files"] == ["file_2.pdf"]
+        assert summary["Subject A"]["variants"] == ["Variant X"]
+        assert summary["Subject B"]["variants"] == ["Variant Y"]
+        assert summary["Subject A"]["source_files"] == ["file_1.pdf"]
+        assert summary["Subject B"]["source_files"] == ["file_2.pdf"]
 
 
 class TestNoVariants:
@@ -94,21 +94,21 @@ class TestNoVariants:
 
     def test_exact_match_no_variants(self) -> None:
         dedup = CrossDocumentDeduplicator()
-        dedup.add_resolution("Customer A", "Customer A", "file_1.pdf")
-        dedup.add_resolution("Customer A", "Customer A", "file_2.pdf")
+        dedup.add_resolution("Subject A", "Subject A", "file_1.pdf")
+        dedup.add_resolution("Subject A", "Subject A", "file_2.pdf")
 
         summary = dedup.get_summary()
-        assert summary["Customer A"]["variants"] == []
+        assert summary["Subject A"]["variants"] == []
 
     def test_mixed_exact_and_variant(self) -> None:
         """Only non-matching source names appear in variants."""
         dedup = CrossDocumentDeduplicator()
-        dedup.add_resolution("Customer A", "Customer A", "file_1.pdf")
-        dedup.add_resolution("Cust A Inc.", "Customer A", "file_2.pdf")
-        dedup.add_resolution("Customer A", "Customer A", "file_3.pdf")
+        dedup.add_resolution("Subject A", "Subject A", "file_1.pdf")
+        dedup.add_resolution("Cust A Inc.", "Subject A", "file_2.pdf")
+        dedup.add_resolution("Subject A", "Subject A", "file_3.pdf")
 
         summary = dedup.get_summary()
-        assert summary["Customer A"]["variants"] == ["Cust A Inc."]
+        assert summary["Subject A"]["variants"] == ["Cust A Inc."]
 
 
 class TestWriteSummaryAndReadBack:
@@ -116,9 +116,9 @@ class TestWriteSummaryAndReadBack:
 
     def test_round_trip(self, tmp_path: Path) -> None:
         dedup = CrossDocumentDeduplicator()
-        dedup.add_resolution("Customer A", "Customer A", "file_1.pdf")
-        dedup.add_resolution("Cust A Inc.", "Customer A", "file_2.pdf")
-        dedup.add_resolution("Customer B", "Customer B", "file_3.pdf")
+        dedup.add_resolution("Subject A", "Subject A", "file_1.pdf")
+        dedup.add_resolution("Cust A Inc.", "Subject A", "file_2.pdf")
+        dedup.add_resolution("Subject B", "Subject B", "file_3.pdf")
 
         out_path = tmp_path / "dedup_summary.json"
         dedup.write_summary(out_path)
@@ -126,23 +126,23 @@ class TestWriteSummaryAndReadBack:
         assert out_path.exists()
         loaded = json.loads(out_path.read_text())
 
-        assert "Customer A" in loaded
-        assert "Customer B" in loaded
-        assert loaded["Customer A"]["mention_count"] == 2
-        assert loaded["Customer A"]["source_files"] == ["file_1.pdf", "file_2.pdf"]
-        assert loaded["Customer A"]["variants"] == ["Cust A Inc."]
-        assert loaded["Customer B"]["variants"] == []
+        assert "Subject A" in loaded
+        assert "Subject B" in loaded
+        assert loaded["Subject A"]["mention_count"] == 2
+        assert loaded["Subject A"]["source_files"] == ["file_1.pdf", "file_2.pdf"]
+        assert loaded["Subject A"]["variants"] == ["Cust A Inc."]
+        assert loaded["Subject B"]["variants"] == []
 
     def test_creates_parent_directories(self, tmp_path: Path) -> None:
         dedup = CrossDocumentDeduplicator()
-        dedup.add_resolution("Customer A", "Customer A", "file_1.pdf")
+        dedup.add_resolution("Subject A", "Subject A", "file_1.pdf")
 
         nested_path = tmp_path / "sub" / "dir" / "summary.json"
         dedup.write_summary(nested_path)
 
         assert nested_path.exists()
         loaded = json.loads(nested_path.read_text())
-        assert loaded["Customer A"]["mention_count"] == 1
+        assert loaded["Subject A"]["mention_count"] == 1
 
     def test_empty_deduplicator_writes_empty_object(self, tmp_path: Path) -> None:
         dedup = CrossDocumentDeduplicator()
@@ -169,11 +169,11 @@ class TestGetSummarySortedAndSerializable:
     def test_serializable_no_sets(self) -> None:
         """source_files and variants must be lists, not sets."""
         dedup = CrossDocumentDeduplicator()
-        dedup.add_resolution("Variant X", "Customer A", "file_1.pdf")
-        dedup.add_resolution("Variant Y", "Customer A", "file_2.pdf")
+        dedup.add_resolution("Variant X", "Subject A", "file_1.pdf")
+        dedup.add_resolution("Variant Y", "Subject A", "file_2.pdf")
 
         summary = dedup.get_summary()
-        entry = summary["Customer A"]
+        entry = summary["Subject A"]
         assert isinstance(entry["source_files"], list)
         assert isinstance(entry["variants"], list)
         # Must be directly JSON-serializable (no TypeError on sets)
@@ -181,10 +181,10 @@ class TestGetSummarySortedAndSerializable:
 
     def test_inner_lists_sorted(self) -> None:
         dedup = CrossDocumentDeduplicator()
-        dedup.add_resolution("Zeta Variant", "Customer A", "z_file.pdf")
-        dedup.add_resolution("Alpha Variant", "Customer A", "a_file.pdf")
+        dedup.add_resolution("Zeta Variant", "Subject A", "z_file.pdf")
+        dedup.add_resolution("Alpha Variant", "Subject A", "a_file.pdf")
 
         summary = dedup.get_summary()
-        entry = summary["Customer A"]
+        entry = summary["Subject A"]
         assert entry["source_files"] == ["a_file.pdf", "z_file.pdf"]
         assert entry["variants"] == ["Alpha Variant", "Zeta Variant"]

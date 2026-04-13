@@ -20,7 +20,7 @@ def _make_finding(
     severity: str = "P2",
     category: str = "change_of_control",
     agent: str = "legal",
-    customer: str = "test_customer",
+    subject: str = "test_subject",
     description: str = "",
 ) -> dict[str, Any]:
     return {
@@ -28,8 +28,8 @@ def _make_finding(
         "severity": severity,
         "category": category,
         "agent": agent,
-        "_subject_safe_name": customer,
-        "_subject": customer,
+        "_subject_safe_name": subject,
+        "_subject": subject,
         "description": description,
     }
 
@@ -232,9 +232,9 @@ class TestFindingIndexer:
         from dd_agents.query.indexer import FindingIndexer
 
         findings = [
-            _make_finding(customer="acme"),
-            _make_finding(customer="acme"),
-            _make_finding(customer="beta"),
+            _make_finding(subject="acme"),
+            _make_finding(subject="acme"),
+            _make_finding(subject="beta"),
         ]
         indexer = FindingIndexer()
         index = indexer.index_findings(findings)
@@ -261,15 +261,15 @@ class TestFindingIndexer:
         (merged_dir / "acme.json").write_text(
             json.dumps(
                 [
-                    _make_finding(title="CoC clause", customer="acme"),
-                    _make_finding(title="Liability cap", customer="acme"),
+                    _make_finding(title="CoC clause", subject="acme"),
+                    _make_finding(title="Liability cap", subject="acme"),
                 ]
             )
         )
         (merged_dir / "beta.json").write_text(
             json.dumps(
                 [
-                    _make_finding(title="Auto-renewal", customer="beta"),
+                    _make_finding(title="Auto-renewal", subject="beta"),
                 ]
             )
         )
@@ -307,11 +307,11 @@ class TestQueryEngine:
 
         if findings is None:
             findings = [
-                _make_finding(severity="P0", title="Critical CoC risk", customer="acme"),
-                _make_finding(severity="P0", title="IP ownership gap", customer="beta"),
-                _make_finding(severity="P1", title="Liability uncapped", customer="acme"),
-                _make_finding(severity="P2", title="Auto-renewal notice", customer="gamma"),
-                _make_finding(severity="P3", title="Standard warranty", customer="acme"),
+                _make_finding(severity="P0", title="Critical CoC risk", subject="acme"),
+                _make_finding(severity="P0", title="IP ownership gap", subject="beta"),
+                _make_finding(severity="P1", title="Liability uncapped", subject="acme"),
+                _make_finding(severity="P2", title="Auto-renewal notice", subject="gamma"),
+                _make_finding(severity="P3", title="Standard warranty", subject="acme"),
             ]
         indexer = FindingIndexer()
         index = indexer.index_findings(findings)
@@ -332,7 +332,7 @@ class TestQueryEngine:
 
     def test_count_subjects(self) -> None:
         engine = self._make_engine()
-        result = asyncio.run(engine.query("How many customers?"))
+        result = asyncio.run(engine.query("How many subjects?"))
         assert "3" in result.answer
 
     def test_fallback_search(self) -> None:
@@ -394,7 +394,7 @@ class TestDataGeneratorImport:
         gen = SyntheticDataRoomGenerator(seed=42)
         root = gen.generate(tmp_path / "data_room")
         assert root.is_dir()
-        # Should have customer directories
+        # Should have subject directories
         md_files = list(root.rglob("*.md"))
         assert len(md_files) >= 5
 

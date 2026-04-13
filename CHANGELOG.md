@@ -183,7 +183,7 @@ Initial public release containing the complete Due Diligence Agent SDK.
 
 - **35-step deterministic orchestrator** with 5 blocking quality gates, step dependencies, state machine, and checkpoint/resume support.
 - **8 AI agents**: 4 specialists (Legal, Finance, Commercial, ProductTech) + Judge + Executive Synthesis + Red Flag Scanner + Acquirer Intelligence — all driven by `claude-agent-sdk` v0.1.39+.
-- **102 Pydantic v2 data models** covering findings, gaps, manifests, config, inventory, quality scores, and all intermediate pipeline schemas.
+- **137 Pydantic v2 data models** covering findings, gaps, manifests, config, inventory, quality scores, and all intermediate pipeline schemas.
 - **CLI** with 15 commands: `run`, `validate`, `version`, `init`, `auto-config`, `search`, `assess`, `export-pdf`, `query`, `portfolio` (group), `templates` (group), `log`, `annotate`, `lineage`, `health`.
 
 ### Document Processing
@@ -318,7 +318,7 @@ Initial public release containing the complete Due Diligence Agent SDK.
 
 ### Added
 
-- 102 Pydantic v2 data models.
+- 137 Pydantic v2 data models.
 - 6-pass cascading entity resolution.
 - Document extraction pipeline.
 - 35-step deterministic orchestrator with 5 blocking quality gates.

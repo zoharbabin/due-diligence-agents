@@ -233,17 +233,17 @@ class EntityAliases(BaseModel):
 
 
 class ActiveFilter(BaseModel):
-    """Filter criteria for identifying active customers in the database."""
+    """Filter criteria for identifying active subjects in the database."""
     arr_column: int | None = None
     arr_condition: str = ""
     end_date_condition: str = ""
 
 
-class CustomerDatabaseColumns(BaseModel):
-    """Column index mapping for the customer database spreadsheet."""
+class SubjectDatabaseColumns(BaseModel):
+    """Column index mapping for the subject database spreadsheet."""
     model_config = ConfigDict(extra="allow")
 
-    customer_name: int = Field(ge=1)
+    subject_name: int = Field(ge=1)
     parent_account: int | None = None
     entity: int | None = None
     platform: int | None = None
@@ -252,12 +252,12 @@ class CustomerDatabaseColumns(BaseModel):
     arr: int | None = None
 
 
-class CustomerDatabase(BaseModel):
-    """Customer database reference for contract date reconciliation."""
+class SubjectDatabase(BaseModel):
+    """Subject database reference for contract date reconciliation."""
     file: str = Field(min_length=1)
     sheet: str = ""
     header_row: int = Field(default=1, ge=1)
-    columns: CustomerDatabaseColumns
+    columns: SubjectDatabaseColumns
     active_filter: ActiveFilter | None = None
 
 
@@ -265,7 +265,7 @@ class SourceOfTruth(BaseModel):
     """Authoritative data source configuration. From SKILL.md section 5."""
     model_config = ConfigDict(extra="allow")
 
-    customer_database: CustomerDatabase | None = None
+    subject_database: SubjectDatabase | None = None
 
 
 class KeyExecutive(BaseModel):
@@ -444,7 +444,7 @@ class Finding(BaseModel):
     skill: str = "forensic-dd"
     run_id: str
     timestamp: str                              # ISO-8601
-    analysis_unit: str                          # customer name
+    analysis_unit: str                          # subject name
     metadata: dict = Field(default_factory=dict)
 
     @field_validator("citations")
@@ -481,7 +481,7 @@ class Gap(BaseModel):
     Missing document or data gap. From domain-definitions.md section 6d.
     Every gap MUST have all required fields -- missing fields cause QA failure.
     """
-    customer: str
+    subject: str
     priority: Severity
     gap_type: GapType
     missing_item: str = Field(max_length=200)
@@ -518,19 +518,19 @@ class FileEntry(BaseModel):
     checksum: str = ""                          # SHA-256
 
 
-class CustomerEntry(BaseModel):
-    """One customer in the customer registry (customers.csv row)."""
+class SubjectEntry(BaseModel):
+    """One subject in the subject registry (subjects.csv row)."""
     group: str                                  # Group folder name
-    name: str                                   # Customer display name
-    safe_name: str                              # customer_safe_name convention
-    path: str                                   # Customer directory path
+    name: str                                   # Subject display name
+    safe_name: str                              # subject_safe_name convention
+    path: str                                   # Subject directory path
     file_count: int = 0
     files: list[str] = Field(default_factory=list)  # List of file paths
 
 
 class ReferenceFile(BaseModel):
     """
-    Global reference file (not under a customer directory).
+    Global reference file (not under a subject directory).
     From SKILL.md section 2b.
     """
     file_path: str                              # Original file path (REQUIRED)
@@ -538,8 +538,8 @@ class ReferenceFile(BaseModel):
     category: str                               # Financial, Pricing, Corporate/Legal, etc.
     subcategory: str                            # Finer classification
     description: str                            # 1-2 sentence description
-    customers_mentioned: list[str] = Field(default_factory=list)
-    customers_mentioned_count: int = 0
+    subjects_mentioned: list[str] = Field(default_factory=list)
+    subjects_mentioned_count: int = 0
     data_points_extractable: list[str] = Field(default_factory=list)
     assigned_to_agents: list[str] = Field(
         min_length=1,
@@ -550,34 +550,34 @@ class ReferenceFile(BaseModel):
 class CountsJson(BaseModel):
     """Aggregate inventory counts. From SKILL.md section 2a."""
     total_files: int = 0
-    total_customers: int = 0
+    total_subjects: int = 0
     total_reference_files: int = 0
     files_by_extension: dict[str, int] = Field(default_factory=dict)
     files_by_group: dict[str, int] = Field(default_factory=dict)
-    customers_by_group: dict[str, int] = Field(default_factory=dict)
+    subjects_by_group: dict[str, int] = Field(default_factory=dict)
 
 
-class CustomerMention(BaseModel):
+class SubjectMention(BaseModel):
     """
-    Customer-mention index entry. From SKILL.md section 2c.
-    Records which customers are mentioned in which reference files.
+    Subject-mention index entry. From SKILL.md section 2c.
+    Records which subjects are mentioned in which reference files.
     """
-    customer_name: str
-    customer_safe_name: str
+    subject_name: str
+    subject_safe_name: str
     reference_files: list[str] = Field(default_factory=list)
     mention_count: int = 0
 
 
-class CustomerMentionIndex(BaseModel):
-    """Complete customer-mention index. Written to customer_mentions.json."""
-    matches: list[CustomerMention] = Field(default_factory=list)
+class SubjectMentionIndex(BaseModel):
+    """Complete subject-mention index. Written to subject_mentions.json."""
+    matches: list[SubjectMention] = Field(default_factory=list)
     unmatched_in_reference: list[str] = Field(
         default_factory=list,
-        description="Names in reference files not matching any customer folder (ghost customers)"
+        description="Names in reference files not matching any subject folder (ghost subjects)"
     )
-    customers_without_reference_data: list[str] = Field(
+    subjects_without_reference_data: list[str] = Field(
         default_factory=list,
-        description="Customer folders with no mentions in any reference file (phantom contracts)"
+        description="Subject folders with no mentions in any reference file (phantom contracts)"
     )
 
 
@@ -634,7 +634,7 @@ class FileFailed(BaseModel):
 
 
 class ManifestCustomer(BaseModel):
-    """Per-customer tracking within the coverage manifest."""
+    """Per-subject tracking within the coverage manifest."""
     name: str
     files_assigned: list[str] = Field(default_factory=list)
     files_processed: list[str] = Field(default_factory=list)
@@ -646,7 +646,7 @@ class CoverageManifest(BaseModel):
     """
     Agent coverage manifest. From agent-prompts.md section 4.
     Conforms to dd-framework/schemas/coverage-manifest.schema.json
-    with forensic-dd customer-centric extensions.
+    with forensic-dd subject-centric extensions.
     """
     agent: str                                  # AgentName value
     skill: str = "forensic-dd"
@@ -657,8 +657,7 @@ class CoverageManifest(BaseModel):
     files_failed: list[FileFailed] = Field(default_factory=list)
     coverage_pct: float = Field(ge=0.0, le=1.0)
     analysis_units_assigned: int = 0
-    analysis_units_completed: int = 0
-    customers: list[ManifestCustomer] = Field(default_factory=list)
+    analysis_units_completed: int = 0 subjects: list[ManifestCustomer] = Field(default_factory=list)
     reference_files_processed: list[str] = Field(
         default_factory=list,
         description="Forensic-dd extension: reference file paths the agent analyzed"
@@ -667,7 +666,7 @@ class CoverageManifest(BaseModel):
 
 ---
 
-## File Header and Customer Output Models
+## File Header and Subject Output Models
 
 Source: `domain-definitions.md` section 1, `agent-prompts.md` section 4c
 
@@ -687,7 +686,7 @@ class CrossReferenceData(BaseModel):
 class FileHeader(BaseModel):
     """
     Per-file extraction header. From domain-definitions.md section 1.
-    Recorded in the customer JSON for every file processed.
+    Recorded in the subject JSON for every file processed.
     """
     file_path: str
     text_path: str | None = None
@@ -750,7 +749,7 @@ class CrossReference(BaseModel):
 
 
 class CrossReferenceSummary(BaseModel):
-    """Per-customer cross-reference summary. From domain-definitions.md section 7f."""
+    """Per-subject cross-reference summary. From domain-definitions.md section 7f."""
     reference_files_checked: list[str] = Field(default_factory=list)
     data_points_compared: int = 0
     matches: int = 0
@@ -799,7 +798,7 @@ class GovernanceEdge(BaseModel):
 
 class GovernanceGraph(BaseModel):
     """
-    Structured governance graph for a customer.
+    Structured governance graph for a subject.
     From domain-definitions.md section 5b.
 
     IMPORTANT: This is a structured Pydantic model with an edges list,
@@ -845,23 +844,23 @@ class GovernanceGraph(BaseModel):
 
 ---
 
-## Customer Analysis Output Model
+## Subject Analysis Output Model
 
 Source: `agent-prompts.md` section 4c
 
 ```python
-# This is part of src/dd_agents/models/finding.py or a dedicated customer_output.py
+# This is part of src/dd_agents/models/finding.py or a dedicated subject_output.py
 # For organizational clarity, it lives alongside Finding models.
 
 
 class CustomerAnalysis(BaseModel):
     """
-    Per-customer output from each specialist agent.
+    Per-subject output from each specialist agent.
     From agent-prompts.md section 4c.
-    Written to {RUN_DIR}/findings/{agent}/{customer_safe_name}.json
+    Written to {RUN_DIR}/findings/{agent}/{subject_safe_name}.json
     """
-    customer: str                               # Canonical customer name
-    customer_safe_name: str                     # Safe name per SKILL.md 1b convention
+    subject: str                               # Canonical subject name
+    subject_safe_name: str                     # Safe name per SKILL.md 1b convention
     agent: AgentName
     run_id: str
     timestamp: str                              # ISO-8601 completion timestamp
@@ -927,7 +926,7 @@ class AuditCheck(BaseModel):
 
 class AuditSummary(BaseModel):
     """Summary statistics within audit.json."""
-    total_customers: int = 0
+    total_subjects: int = 0
     total_files: int = 0
     total_findings: int = 0
     total_gaps: int = 0
@@ -964,7 +963,7 @@ class SpotCheck(BaseModel):
     """
     finding_id: str
     agent: str                                  # AgentName value
-    analysis_unit: str                          # Customer name
+    analysis_unit: str                          # Subject name
     severity: str                               # Severity value
     dimension: SpotCheckDimension
     result: SpotCheckResult
@@ -976,7 +975,7 @@ class Contradiction(BaseModel):
     Inter-agent factual contradiction identified by the Judge.
     From agent-prompts.md section 6e.
     """
-    analysis_unit: str                          # Customer name
+    analysis_unit: str                          # Subject name
     agents: list[str]                           # AgentName values
     fact_in_dispute: str
     resolution: str
@@ -1014,7 +1013,7 @@ class AgentScore(BaseModel):
 
 
 class UnitScore(BaseModel):
-    """Per-customer (analysis unit) quality score."""
+    """Per-subject (analysis unit) quality score."""
     score: int = Field(ge=0, le=100)
     agents_reviewed: int = 0
     contradictions: int = 0
@@ -1070,9 +1069,9 @@ class RunMetadata(BaseModel):
     # Finalization fields (added at step 32):
     file_checksums: dict[str, str] = Field(
         default_factory=dict,
-        description="Per-customer SHA-256 map"
+        description="Per-subject SHA-256 map"
     )
-    customer_assignments: dict[str, list[str]] = Field(
+    subject_assignments: dict[str, list[str]] = Field(
         default_factory=dict
     )
     finding_counts: dict[str, int] = Field(default_factory=dict)
@@ -1085,13 +1084,13 @@ class RunMetadata(BaseModel):
     )
 
 
-class CustomerClassEntry(BaseModel):
+class SubjectClassEntry(BaseModel):
     """
-    Per-customer classification for incremental mode.
+    Per-subject classification for incremental mode.
     From SKILL.md section 0e.
     """
-    customer: str
-    customer_safe_name: str
+    subject: str
+    subject_safe_name: str
     classification: CustomerClassificationStatus
     reason: str
     files_added: list[str] = Field(default_factory=list)
@@ -1113,7 +1112,7 @@ class ClassificationSummary(BaseModel):
 
 class Classification(BaseModel):
     """
-    Customer classification document for incremental mode.
+    Subject classification document for incremental mode.
     Written to {RUN_DIR}/classification.json.
     From SKILL.md section 0e.
     """
@@ -1123,7 +1122,7 @@ class Classification(BaseModel):
     classification_summary: ClassificationSummary = Field(
         default_factory=ClassificationSummary
     )
-    customers: list[CustomerClassEntry] = Field(default_factory=list)
+    subjects: list[SubjectClassEntry] = Field(default_factory=list)
 
 
 class AnalysisUnitCounts(BaseModel):
@@ -1241,7 +1240,7 @@ class EntityCacheEntry(BaseModel):
     match_pass: int
     match_type: str
     confidence: float = Field(ge=0.0, le=1.0)
-    entity_type: str = "customer"
+    entity_type: str = "subject"
     first_seen_run: str
     last_confirmed_run: str
     confirmation_count: int = 1
@@ -1299,7 +1298,7 @@ class ManifestEntry(BaseModel):
     From numerical-validation.md section 1.
     """
     id: str                                     # N001, N002, ...
-    label: str                                  # total_customers, total_files, etc.
+    label: str                                  # total_subjects, total_files, etc.
     value: int | float
     source_file: str                            # Path to source data
     derivation: str                             # How the number was computed
@@ -1435,8 +1434,8 @@ class ReportDiffChange(BaseModel):
     """Single change entry in the report diff. From reporting-protocol.md section 4."""
     change_type: str                            # new_finding, resolved_finding,
                                                 # changed_severity, new_gap, resolved_gap,
-                                                # new_customer, removed_customer
-    customer: str
+                                                # new_subject, removed_subject
+    subject: str
     finding_summary: str = ""
     prior_severity: str | None = None
     current_severity: str | None = None
@@ -1450,8 +1449,8 @@ class ReportDiffSummary(BaseModel):
     changed_severity: int = 0
     new_gaps: int = 0
     resolved_gaps: int = 0
-    new_customers: int = 0
-    removed_customers: int = 0
+    new_subjects: int = 0
+    removed_subjects: int = 0
 
 
 class ReportDiff(BaseModel):
@@ -1475,10 +1474,10 @@ class ReportDiff(BaseModel):
 
 class ContractDateReconciliationEntry(BaseModel):
     """
-    Single customer entry in contract date reconciliation.
+    Single subject entry in contract date reconciliation.
     From reporting-protocol.md section 5.
     """
-    customer: str
+    subject: str
     database_end_date: str = ""                 # YYYY-MM-DD
     actual_end_date: str = ""                   # YYYY-MM-DD
     arr: float = 0.0
@@ -1504,7 +1503,7 @@ class ContractDateReconciliation(BaseModel):
 
 ---
 
-## Merged Customer Output Model
+## Merged Subject Output Model
 
 Used by the Reporting Lead after merging findings from all 4 agents.
 
@@ -1514,11 +1513,11 @@ Used by the Reporting Lead after merging findings from all 4 agents.
 
 class MergedCustomerOutput(BaseModel):
     """
-    Merged per-customer output. Written to {RUN_DIR}/findings/merged/{customer_safe_name}.json.
+    Merged per-subject output. Written to {RUN_DIR}/findings/merged/{subject_safe_name}.json.
     From reporting-protocol.md section 1.
     """
-    customer: str
-    customer_safe_name: str
+    subject: str
+    subject_safe_name: str
     findings: list[Finding] = Field(
         default_factory=list,
         description="Fully transformed findings conforming to finding.schema.json"
@@ -1528,7 +1527,7 @@ class MergedCustomerOutput(BaseModel):
     governance_graph: GovernanceGraph = Field(default_factory=GovernanceGraph)
     governance_resolved_pct: float = Field(
         default=0.0, ge=0.0, le=1.0,
-        description="(files with governed_by in [file_path, SELF]) / total_customer_files"
+        description="(files with governed_by in [file_path, SELF]) / total_subject_files"
     )
 ```
 

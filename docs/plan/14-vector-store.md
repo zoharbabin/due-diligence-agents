@@ -25,7 +25,7 @@ At 400 documents / 20,000 chunks, keyword search via Grep completes in milliseco
 Enable when any of these conditions apply:
 - **Scale**: >500 documents in the data room
 - **Semantic search**: Cross-document semantic search is needed (e.g., "find all clauses similar to this non-compete clause")
-- **Pattern discovery**: Identifying common clause patterns across customers for benchmarking
+- **Pattern discovery**: Identifying common clause patterns across subjects for benchmarking
 - **Custom queries**: Users need ad-hoc semantic queries not covered by the standard pipeline
 
 ### 1.3 Configuration
@@ -114,8 +114,8 @@ class ChunkMetadata(BaseModel):
     """Metadata attached to each text chunk in ChromaDB."""
     source_file: str          # Original file path (relative to data room)
     text_path: str            # Path to extracted text in index/text/
-    customer: str             # Customer name (from directory structure)
-    customer_safe_name: str   # Safe name for filtering
+    subject: str             # Subject name (from directory structure)
+    subject_safe_name: str   # Safe name for filtering
     page_number: Optional[int] = None  # Page number if available from extraction
     section: Optional[str] = None      # Section heading if detected
     chunk_index: int          # Position within the document (0-based)
@@ -286,7 +286,7 @@ class VectorStore:
 
         for i, (text, meta) in enumerate(chunks):
             chunk_id = (
-                f"{meta['customer_safe_name']}_"
+                f"{meta['subject_safe_name']}_"
                 f"{Path(meta['source_file']).stem}_"
                 f"{meta['chunk_index']:04d}"
             )
@@ -328,14 +328,14 @@ class VectorStore:
     def search(
         self,
         query: str,
-        customer: Optional[str] = None,
+        subject: Optional[str] = None,
         top_k: int = 5,
     ) -> list[dict]:
         """Semantic search across indexed documents.
 
         Args:
             query: Natural language search query.
-            customer: Optional customer_safe_name to filter results.
+            subject: Optional subject_safe_name to filter results.
             top_k: Number of results to return.
 
         Returns:
@@ -345,8 +345,8 @@ class VectorStore:
             return []
 
         where_filter = None
-        if customer:
-            where_filter = {"customer_safe_name": customer}
+        if subject:
+            where_filter = {"subject_safe_name": subject}
 
         results = self._collection.query(
             query_texts=[query],
@@ -406,8 +406,8 @@ def create_semantic_search_tool(vector_store: "VectorStore"):
         description=(
             "Search across all extracted documents using natural language. "
             "Returns the most semantically similar passages. "
-            "Use this to find clauses, terms, or patterns across customers. "
-            "Optional: filter by customer name."
+            "Use this to find clauses, terms, or patterns across subjects. "
+            "Optional: filter by subject name."
         ),
         input_schema={
             "type": "object",
@@ -416,9 +416,9 @@ def create_semantic_search_tool(vector_store: "VectorStore"):
                     "type": "string",
                     "description": "Natural language search query",
                 },
-                "customer": {
+                "subject": {
                     "type": "string",
-                    "description": "Optional customer_safe_name to filter results",
+                    "description": "Optional subject_safe_name to filter results",
                 },
                 "top_k": {
                     "type": "integer",
@@ -436,12 +436,12 @@ def create_semantic_search_tool(vector_store: "VectorStore"):
         tool result and can parse it directly.
         """
         query_text = args["query"]
-        customer = args.get("customer")
+        subject = args.get("subject")
         top_k = min(args.get("top_k", 5), 20)
 
         results = vector_store.search(
             query=query_text,
-            customer=customer,
+            subject=subject,
             top_k=top_k,
         )
 
@@ -453,7 +453,7 @@ def create_semantic_search_tool(vector_store: "VectorStore"):
             meta = r["metadata"]
             structured_results.append({
                 "document_id": meta.get("source_file", ""),
-                "chunk_id": f"{meta.get('customer_safe_name', '')}_{meta.get('chunk_index', 0):04d}",
+                "chunk_id": f"{meta.get('subject_safe_name', '')}_{meta.get('chunk_index', 0):04d}",
                 "score": round(1 - r["distance"], 4) if r.get("distance") is not None else None,
                 "text": r["text"],
                 "metadata": meta,
@@ -476,7 +476,7 @@ def create_dd_tools_server(project_dir: Path, state: PipelineState):
         validate_finding_tool,
         resolve_entity_tool,
         check_governance_tool,
-        get_customer_list_tool,
+        get_subject_list_tool,
         report_progress_tool,
     ]
 
@@ -508,18 +508,18 @@ async def step_05b_chromadb_indexing(state: PipelineState):
     total_chunks = 0
 
     for text_file in sorted(text_dir.glob("*.md")):
-        # Determine customer from filename (reverse safe_name mapping)
-        customer_info = _resolve_customer_from_text_path(text_file, state)
+        # Determine subject from filename (reverse safe_name mapping)
+        subject_info = _resolve_subject_from_text_path(text_file, state)
 
         text = text_file.read_text(encoding="utf-8")
         metadata_base = ChunkMetadata(
-            source_file=customer_info["source_file"],
+            source_file=subject_info["source_file"],
             text_path=str(text_file),
-            customer=customer_info["customer"],
-            customer_safe_name=customer_info["customer_safe_name"],
+            subject=subject_info["subject"],
+            subject_safe_name=subject_info["subject_safe_name"],
             chunk_index=0,
             total_chunks=0,
-            file_type=customer_info["file_type"],
+            file_type=subject_info["file_type"],
         )
 
         chunks = chunk_document(text, metadata_base)
@@ -536,8 +536,8 @@ async def step_05b_chromadb_indexing(state: PipelineState):
 | Exact keyword search | Grep (fast) | Also available |
 | Entity resolution | 6-pass matcher (deterministic) | Same (not changed) |
 | Cross-document clause similarity | Not available | "Find all clauses similar to X" |
-| Pattern benchmarking | Not available | "Common pricing patterns across customers" |
-| Semantic gap detection | Not available | "Which customers lack renewal clauses?" |
+| Pattern benchmarking | Not available | "Common pricing patterns across subjects" |
+| Semantic gap detection | Not available | "Which subjects lack renewal clauses?" |
 | Scale limit | 400 docs (fine) | 5,000+ docs |
 
 ### 6.3 What ChromaDB Does NOT Replace

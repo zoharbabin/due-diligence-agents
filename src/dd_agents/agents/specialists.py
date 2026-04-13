@@ -14,6 +14,12 @@ from dd_agents.agents.base import BaseAgentRunner
 from dd_agents.agents.prompt_builder import (
     AgentType,
 )
+from dd_agents.agents.prompt_constants import (
+    GAP_NOT_FOUND,
+    SEVERITY_PREAMBLE,
+    TFC_SEVERITY_RULE,
+    build_citation_mandate,
+)
 
 # ---------------------------------------------------------------------------
 # Focus area constants per specialist
@@ -98,6 +104,9 @@ SPECIALIST_TOOLS: list[str] = [
     "search_similar",
     "read_office",
     "report_progress",
+    "search_in_file",
+    "get_page_content",
+    "batch_verify_citations",
 ]
 
 
@@ -122,9 +131,7 @@ class LegalAgent(BaseAgentRunner):
             "You are the Legal specialist agent for forensic M&A due diligence. "
             "Focus on governance graphs, change-of-control clauses, assignment "
             "restrictions, termination rights, IP ownership, data privacy, "
-            "indemnification, liability caps, warranties, and dispute resolution. "
-            "Calibrate severity carefully: P0 is reserved for genuine deal-stoppers. "
-            "Most findings are P2 or P3. Accuracy over volume."
+            "indemnification, liability caps, warranties, and dispute resolution. " + SEVERITY_PREAMBLE
         )
 
     @staticmethod
@@ -142,7 +149,7 @@ class LegalAgent(BaseAgentRunner):
             "- 'In the event of a Change of Control of [Party]...'\n"
             "- Sometimes embedded in termination or assignment clauses\n"
             "- May use 'change in management' or 'change in beneficial ownership'\n"
-            "IF NOT FOUND: Write a gap with gap_type 'Not_Found'.\n\n"
+            f"{GAP_NOT_FOUND}\n\n"
             "COC SUBTYPE CLASSIFICATION — classify each CoC clause as one of:\n"
             "1. **notification-only**: Party must notify counterparty of CoC. "
             "Routine administrative step, no consent needed.\n"
@@ -172,7 +179,7 @@ class LegalAgent(BaseAgentRunner):
             "- 'Neither party may assign this Agreement without prior written consent'\n"
             "- 'This Agreement shall be binding upon successors and permitted assigns'\n"
             "- May have carve-outs for affiliates or corporate reorganizations\n"
-            "IF NOT FOUND: Write a gap with gap_type 'Not_Found'.\n\n"
+            f"{GAP_NOT_FOUND}\n\n"
             #
             "### Termination Clauses — Subtype Classification\n\n"
             "Classify each termination clause as one of:\n"
@@ -180,9 +187,7 @@ class LegalAgent(BaseAgentRunner):
             "insolvency, or specific default events. Standard mutual TfCause with "
             "reasonable cure period = P3. Broad or subjective 'cause' definition = P1.\n"
             "- **TfC (Termination for Convenience)**: Either party may terminate "
-            "without cause, typically with a notice period. TfC is NOT a deal-breaker — "
-            "it is a valuation/revenue-quality concern. TfC alone = P2. Escalate to P1 "
-            "ONLY if: TfC + >10% revenue + <90 day notice period. NEVER flag TfC as P0.\n"
+            "without cause, typically with a notice period. " + TFC_SEVERITY_RULE + "\n"
             "- **Termination on CoC**: Termination right triggered by change of control. "
             "Classify under CoC subtypes above, not here.\n"
             "- **Termination on Insolvency**: Triggered by bankruptcy or insolvency. "
@@ -213,7 +218,7 @@ class LegalAgent(BaseAgentRunner):
             "- 'In no event shall [Party]'s aggregate liability exceed [amount]'\n"
             "- 'The total liability of either party shall be limited to [formula]'\n"
             "- Sometimes embedded in indemnification clauses, not a standalone section\n"
-            "IF NOT FOUND: Write a gap with gap_type 'Not_Found'. Do NOT fabricate "
+            f"{GAP_NOT_FOUND} Do NOT fabricate "
             "a liability cap that does not exist.\n\n"
             #
             "### Exclusivity (AG F1: 0.86 -- HIGH difficulty)\n\n"
@@ -221,7 +226,7 @@ class LegalAgent(BaseAgentRunner):
             "defined scope (territory, product line, customer segment).\n"
             "KEYWORDS: exclusive, exclusivity, sole provider, sole supplier, "
             "exclusive license, non-exclusive, exclusive distribution, exclusive right\n"
-            "IF NOT FOUND: Write a gap with gap_type 'Not_Found'."
+            f"{GAP_NOT_FOUND}\n\n" + build_citation_mandate("legal")
         )
 
     def get_tools(self) -> list[str]:
@@ -237,8 +242,10 @@ class FinanceAgent(BaseAgentRunner):
 
     # Finance batches are smaller because financial documents are dense
     # and context exhaustion degrades citation quality (Issue #92).
-    max_subjects_per_batch: int = 10
-    max_tokens_per_batch: int = 25_000
+    # Reduced from 10/25K to 7/20K after production runs showed finance
+    # consistently exceeding soft limits (200→270 turns).
+    max_subjects_per_batch: int = 7
+    max_tokens_per_batch: int = 20_000
 
     def get_agent_name(self) -> str:
         return "finance"
@@ -247,9 +254,7 @@ class FinanceAgent(BaseAgentRunner):
         return (
             "You are the Finance specialist agent for forensic M&A due diligence. "
             "Focus on payment terms, pricing compliance, revenue recognition, "
-            "financial commitments, penalties, and insurance requirements. "
-            "Calibrate severity carefully: P0 is reserved for genuine deal-stoppers. "
-            "Most findings are P2 or P3. Accuracy over volume."
+            "financial commitments, penalties, and insurance requirements. " + SEVERITY_PREAMBLE
         )
 
     @staticmethod
@@ -264,7 +269,7 @@ class FinanceAgent(BaseAgentRunner):
             "are capped, exclusions from the cap, mutual vs asymmetric.\n"
             "KEYWORDS: liability cap, limitation of liability, aggregate liability, "
             "maximum liability, direct damages, total liability shall not exceed\n"
-            "IF NOT FOUND: Write a gap with gap_type 'Not_Found'.\n\n"
+            f"{GAP_NOT_FOUND}\n\n"
             #
             "### Insurance (AG F1: 0.98 -- LOW difficulty)\n\n"
             "KEYWORDS: insurance, indemnity insurance, professional liability, "
@@ -282,7 +287,7 @@ class FinanceAgent(BaseAgentRunner):
             "- When cross-referencing contract values against reference data, "
             "cite BOTH the contract clause AND the spreadsheet cell/row.\n"
             "- Normalize all currency values to full units (not thousands) before "
-            "comparison."
+            "comparison.\n\n" + build_citation_mandate("finance")
         )
 
     def get_tools(self) -> list[str]:
@@ -303,9 +308,7 @@ class CommercialAgent(BaseAgentRunner):
         return (
             "You are the Commercial specialist agent for forensic M&A due diligence. "
             "Focus on SLA compliance, renewal terms, volume commitments, "
-            "exclusivity, territory restrictions, and customer satisfaction. "
-            "Calibrate severity carefully: P0 is reserved for genuine deal-stoppers. "
-            "Most findings are P2 or P3. Accuracy over volume."
+            "exclusivity, territory restrictions, and customer satisfaction. " + SEVERITY_PREAMBLE
         )
 
     @staticmethod
@@ -323,13 +326,13 @@ class CommercialAgent(BaseAgentRunner):
             "- 'Supplier shall ensure that pricing is no less favorable than...'\n"
             "- 'Customer shall receive the benefit of any more favorable terms...'\n"
             "- May appear in pricing schedules or appendices rather than main body\n"
-            "IF NOT FOUND: Write a gap with gap_type 'Not_Found'.\n\n"
+            f"{GAP_NOT_FOUND}\n\n"
             #
             "### Exclusivity (AG F1: 0.86 -- HIGH difficulty)\n\n"
             "DEFINITION: A clause granting one party exclusive rights within a scope.\n"
             "KEYWORDS: exclusive, exclusivity, sole provider, sole supplier, "
             "exclusive license, non-exclusive, exclusive right\n"
-            "IF NOT FOUND: Write a gap with gap_type 'Not_Found'.\n\n"
+            f"{GAP_NOT_FOUND}\n\n"
             #
             "### Termination for Convenience (AG F1: 0.93 -- MEDIUM difficulty)\n\n"
             "DEFINITION: A clause allowing either party to terminate the agreement "
@@ -341,14 +344,18 @@ class CommercialAgent(BaseAgentRunner):
             "- Notice period required\n"
             "- Financial consequences (early termination fees, refunds)\n"
             "- Whether TfC survives through a change of control\n"
-            "IF NOT FOUND: Write a gap with gap_type 'Not_Found'.\n\n"
-            "CRITICAL TfC VALUATION GUIDANCE:\n"
-            "TfC is NOT a deal-breaker — it is a valuation/revenue quality signal. "
-            "Revenue from TfC contracts is non-committed ('at-risk ARR') with lower "
-            "certainty than locked-in contracts. TfC affects RPO calculations and "
-            "revenue recognition (ASC 606). Report TfC findings as P2 valuation "
-            "concerns. Escalate to P1 ONLY if: TfC + >10% revenue + <90 day notice. "
-            "NEVER flag TfC as P0."
+            f"{GAP_NOT_FOUND}\n\n"
+            "CRITICAL TfC VALUATION GUIDANCE:\n" + TFC_SEVERITY_RULE + "\n\n"
+            #
+            "### Commercial Citation Enforcement\n\n"
+            "For each contract clause finding, cite the specific contract file and "
+            "section/clause number. For pricing findings, cite the rate card or "
+            "contract schedule with the exact pricing language. For renewal or "
+            "termination findings, cite the renewal clause with exact quoted language "
+            "including notice periods and dates. For customer concentration findings, "
+            "cite the revenue data source document (spreadsheet tab, row, cell value). "
+            "If a finding cannot be backed by a citation from the data room files, "
+            "do NOT produce it — write a gap instead.\n\n" + build_citation_mandate("commercial")
         )
 
     def get_tools(self) -> list[str]:
@@ -357,6 +364,14 @@ class CommercialAgent(BaseAgentRunner):
 
 class ProductTechAgent(BaseAgentRunner):
     """ProductTech specialist -- technical risk, DPA, security compliance."""
+
+    # ProductTech documents (SOC 2 reports, DPAs, pen test reports,
+    # architecture docs) are dense and citation-heavy.  Reduced from
+    # default 20/40K to match Finance's proven configuration after
+    # production runs showed context exhaustion degrading citation
+    # quality when all subjects are packed in a single batch.
+    max_subjects_per_batch: int = 7
+    max_tokens_per_batch: int = 20_000
 
     focus_areas: list[str] = PRODUCTTECH_FOCUS_AREAS
 
@@ -369,9 +384,7 @@ class ProductTechAgent(BaseAgentRunner):
         return (
             "You are the ProductTech specialist agent for forensic M&A due diligence. "
             "Focus on product scope, technology stack, integration requirements, "
-            "support obligations, documentation, and training requirements. "
-            "Calibrate severity carefully: P0 is reserved for genuine deal-stoppers. "
-            "Most findings are P2 or P3. Accuracy over volume."
+            "support obligations, documentation, and training requirements. " + SEVERITY_PREAMBLE
         )
 
     @staticmethod
@@ -394,7 +407,7 @@ class ProductTechAgent(BaseAgentRunner):
             "- Data residency / cross-border transfer mechanisms\n"
             "- Data breach notification timeframes\n"
             "- Data retention and deletion obligations\n"
-            "IF NOT FOUND: Write a gap with gap_type 'Not_Found'. Missing DPAs "
+            f"{GAP_NOT_FOUND} Missing DPAs "
             "are a material compliance risk.\n\n"
             #
             "### Security and Compliance Evidence\n\n"
@@ -405,21 +418,27 @@ class ProductTechAgent(BaseAgentRunner):
             "- Audit report references and scope\n"
             "- Encryption standards (at rest, in transit)\n"
             "- Incident response SLAs\n"
-            "IF NOT FOUND: Write a gap. Do NOT assume security standards are met "
+            f"{GAP_NOT_FOUND} Do NOT assume security standards are met "
             "without documentary evidence.\n\n"
             #
-            "### Citation Requirements for ProductTech Findings\n\n"
-            "EVERY finding MUST cite the specific document, page, and section where "
-            "the evidence appears.  For P0 and P1 findings, `exact_quote` is MANDATORY — "
-            "copy the relevant text verbatim from the source document.\n\n"
-            "Examples of good ProductTech citations:\n"
-            "- SOC 2 report: cite the report title, date, scope section, and exact text\n"
-            "- Architecture docs: cite the specific diagram name, section heading, and text\n"
-            "- Pen test reports: cite the finding ID, severity, and remediation status text\n"
-            "- SLA commitments: cite the exact uptime percentage and response time from the doc\n"
-            "- DPA clauses: cite the section number and verbatim clause text\n\n"
-            "Findings without citations will be automatically downgraded in severity. "
-            "If you cannot find a verbatim quote to cite, downgrade the finding to P2 or P3."
+            "### ProductTech Citation Enforcement\n\n"
+            "Technical documents (SOC2 reports, pentest results, architecture diagrams, "
+            "SLAs) ARE quotable — they contain specific text you can cite verbatim.\n\n"
+            "**How to cite technical documents:**\n"
+            "- SOC2/audit reports: quote the control ID, test description, or exception text\n"
+            "- Pentest reports: quote the finding ID, severity rating, and remediation status\n"
+            "- Architecture docs: quote the component description, technology name, or version\n"
+            "- SLA documents: quote the uptime percentage, response time, or penalty clause\n"
+            "- Product specs: quote the feature description, requirement, or acceptance criteria\n\n"
+            "**STRICT RULE: Every ProductTech finding MUST have a citation.**\n"
+            "If you cannot copy verbatim text from a specific document, you do NOT "
+            "have evidence for the finding. In that case:\n"
+            "1. Do NOT write the finding\n"
+            "2. Write a GAP instead with gap_type 'Missing_Doc' or 'Missing_Data'\n"
+            "3. Absence of a document (e.g., no SOC2 report) is a GAP, not a finding\n\n"
+            "Findings without citations are AUTOMATICALLY DOWNGRADED to P3 during merge. "
+            "A P1 finding downgraded to P3 is worthless — invest the extra turn to read "
+            "the source document and copy the exact quote.\n\n" + build_citation_mandate("producttech")
         )
 
     def get_tools(self) -> list[str]:

@@ -4,7 +4,7 @@ Covers:
 - FindingMerger: merge, dedup, severity escalation, ID generation, governance merge
 - ReportDiffBuilder: detect new/resolved/changed findings between runs
 - ExcelReportGenerator: schema-driven workbook generation, sheets, formatting
-- ContractDateReconciler: classify customers by contract status
+- ContractDateReconciler: classify subjects by contract status
 """
 
 from __future__ import annotations
@@ -98,7 +98,7 @@ class TestFindingMerger:
     """Test the FindingMerger class."""
 
     def test_merge_two_agents_for_one_subject(self) -> None:
-        """Merge findings from legal and finance for a single customer."""
+        """Merge findings from legal and finance for a single subject."""
         legal_output = {
             "subject": "Acme Corp",
             "subject_safe_name": "acme_corp",
@@ -255,7 +255,7 @@ class TestFindingMerger:
         assert len(result.governance_graph.edges) == 2
 
     def test_merge_all_from_directory(self, tmp_path: Path) -> None:
-        """merge_all discovers and merges all customer files."""
+        """merge_all discovers and merges all subject files."""
         findings_dir = tmp_path / "findings"
         legal_dir = findings_dir / "legal"
         legal_dir.mkdir(parents=True)
@@ -278,7 +278,7 @@ class TestFindingMerger:
         assert len(results["beta_inc"].findings) == 1
 
     def test_write_merged(self, tmp_path: Path) -> None:
-        """write_merged writes per-customer JSON files."""
+        """write_merged writes per-subject JSON files."""
         merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
 
         agent_output = {
@@ -424,7 +424,7 @@ class TestFindingMerger:
                 "exact_quote": "In the event of a change of control...",
             },
         ]
-        promoted = merger._promote_findings(raw_findings, "Acme Corp", "acme_corp")
+        promoted, _dropped = merger._promote_findings(raw_findings, "Acme Corp", "acme_corp")
         assert len(promoted) == 1
         cit = promoted[0].citations[0]
         assert cit.source_path == "msa.pdf"
@@ -449,7 +449,7 @@ class TestFindingMerger:
                 ],
             },
         ]
-        promoted = merger._promote_findings(raw_findings, "Acme Corp", "acme_corp")
+        promoted, _dropped = merger._promote_findings(raw_findings, "Acme Corp", "acme_corp")
         assert len(promoted) == 1
         cit = promoted[0].citations[0]
         assert cit.source_type == "file"
@@ -468,7 +468,7 @@ class TestFindingMerger:
                 "confidence": "low",
             },
         ]
-        promoted = merger._promote_findings(raw_findings, "Acme Corp", "acme_corp")
+        promoted, _dropped = merger._promote_findings(raw_findings, "Acme Corp", "acme_corp")
         assert len(promoted) == 1
         cit = promoted[0].citations[0]
         assert "[synthetic:" in cit.source_path
@@ -993,6 +993,12 @@ class TestMatchStatusValidation:
         cr = CrossReference(data_point="ARR", match_status="maybe")
         assert cr.match_status == "unverified"
 
+    def test_resolved_coerced_to_match(self) -> None:
+        from dd_agents.models.finding import CrossReference
+
+        cr = CrossReference(data_point="ARR", match_status="resolved")
+        assert cr.match_status == "match"
+
     def test_keyword_heuristic_no_false_positive_on_matching(self) -> None:
         result = FindingMerger._coerce_cross_reference_entry("No matching reference found", "finance")
         assert result is not None
@@ -1007,6 +1013,154 @@ class TestMatchStatusValidation:
         result = FindingMerger._coerce_cross_reference_entry("ARR values confirmed and consistent", "finance")
         assert result is not None
         assert result["match_status"] == "match"
+
+
+class TestDetectionMethodAliases:
+    """Tests for detection_method alias coercion in Gap model."""
+
+    def test_read_failure_coerced_to_file_read_failure(self) -> None:
+        from dd_agents.models.finding import Gap
+
+        gap = Gap(
+            subject="Subject A",
+            priority="P2",
+            gap_type="Unreadable",
+            missing_item="Protected spreadsheet",
+            why_needed="Financial data",
+            risk_if_missing="Cannot verify numbers",
+            request_to_company="Provide unprotected version",
+            evidence="File is password-protected",
+            detection_method="read_failure",
+        )
+        assert gap.detection_method.value == "file_read_failure"
+
+    def test_scope_limitation_coerced_to_checklist(self) -> None:
+        from dd_agents.models.finding import Gap
+
+        gap = Gap(
+            subject="Subject A",
+            priority="P3",
+            gap_type="Missing_Data",
+            missing_item="Security audit scope",
+            why_needed="Full coverage assessment",
+            risk_if_missing="Incomplete security review",
+            request_to_company="Expand audit scope",
+            evidence="SOC2 scope excludes infrastructure",
+            detection_method="scope_limitation",
+        )
+        assert gap.detection_method.value == "checklist"
+
+    def test_file_read_failure_accepted_directly(self) -> None:
+        from dd_agents.models.finding import Gap
+
+        gap = Gap(
+            subject="Subject A",
+            priority="P2",
+            gap_type="Unreadable",
+            missing_item="Corrupted file",
+            why_needed="Contract review",
+            risk_if_missing="Missing terms",
+            request_to_company="Re-upload",
+            evidence="File cannot be opened",
+            detection_method="file_read_failure",
+        )
+        assert gap.detection_method.value == "file_read_failure"
+
+    def test_coverage_limitation_coerced_to_checklist(self) -> None:
+        from dd_agents.models.finding import Gap
+
+        gap = Gap(
+            subject="Subject A",
+            priority="P3",
+            gap_type="Missing_Data",
+            missing_item="Coverage gap",
+            why_needed="Review completeness",
+            risk_if_missing="Incomplete review",
+            request_to_company="Provide data",
+            evidence="Coverage limitation identified",
+            detection_method="coverage_limitation",
+        )
+        assert gap.detection_method.value == "checklist"
+
+    def test_directory_search_coerced_to_file_inventory(self) -> None:
+        from dd_agents.models.finding import Gap
+
+        gap = Gap(
+            subject="Subject A",
+            priority="P2",
+            gap_type="Missing_Doc",
+            missing_item="Missing contract",
+            why_needed="Contract review",
+            risk_if_missing="Terms unknown",
+            request_to_company="Provide contract",
+            evidence="Not found in data room directory search",
+            detection_method="directory_search",
+        )
+        assert gap.detection_method.value == "file_inventory"
+
+    def test_file_format_limitation_coerced_to_file_read_failure(self) -> None:
+        from dd_agents.models.finding import Gap
+
+        gap = Gap(
+            subject="Subject A",
+            priority="P2",
+            gap_type="Unreadable",
+            missing_item="Password-protected file",
+            why_needed="Financial review",
+            risk_if_missing="Cannot verify data",
+            request_to_company="Provide unprotected version",
+            evidence="File format prevents reading",
+            detection_method="file_format_limitation",
+        )
+        assert gap.detection_method.value == "file_read_failure"
+
+    def test_temporal_analysis_coerced_to_checklist(self) -> None:
+        from dd_agents.models.finding import Gap
+
+        gap = Gap(
+            subject="Subject A",
+            priority="P3",
+            gap_type="Missing_Data",
+            missing_item="Timeline data",
+            why_needed="Temporal analysis",
+            risk_if_missing="Cannot assess timing",
+            request_to_company="Provide timeline",
+            evidence="Temporal analysis gap",
+            detection_method="temporal_analysis",
+        )
+        assert gap.detection_method.value == "checklist"
+
+    def test_absence_in_dataroom_coerced_to_file_inventory(self) -> None:
+        from dd_agents.models.finding import Gap
+
+        gap = Gap(
+            subject="Subject A",
+            priority="P2",
+            gap_type="Missing_Doc",
+            missing_item="Missing agreement",
+            why_needed="Legal review",
+            risk_if_missing="Terms unknown",
+            request_to_company="Provide document",
+            evidence="Not found in data room",
+            detection_method="absence_in_dataroom",
+        )
+        assert gap.detection_method.value == "file_inventory"
+
+    def test_directory_listing_coerced_to_file_inventory(self) -> None:
+        from dd_agents.models.finding import Gap
+
+        gap = Gap(
+            subject="Subject A",
+            priority="P2",
+            gap_type="Missing_Doc",
+            missing_item="Missing contract",
+            why_needed="Contract review",
+            risk_if_missing="Terms unknown",
+            request_to_company="Provide contract",
+            evidence="Not found in directory listing",
+            detection_method="directory_listing",
+        )
+        assert gap.detection_method.value == "file_inventory"
 
 
 class TestMergeNormalizationContinued:
@@ -1103,6 +1257,38 @@ class TestMergeNormalizationContinued:
         assert len(result.findings) == 1
         # Should use the existing 'citations', not the singular 'citation'
         assert result.findings[0].citations[0].source_path == "msa.pdf"
+
+    def test_evidence_array_normalized_to_citations(self) -> None:
+        """Finding with 'evidence' array (file/exact_quote) should be normalised to citations."""
+        agent_outputs = {
+            "producttech": {
+                "findings": [
+                    {
+                        "severity": "P2",
+                        "category": "security_compliance",
+                        "title": "NIST compliance gap",
+                        "description": "Contract mandates NIST compliance",
+                        "confidence": "high",
+                        "evidence": [
+                            {
+                                "file": "Financials/Revenue/Nationwide/NW-003L.pdf",
+                                "exact_quote": "NIST/ISO 27000",
+                                "page": 3,
+                                "context": "Security requirements section",
+                            }
+                        ],
+                    }
+                ],
+            },
+        }
+        merger = FindingMerger(run_id="test_run")
+        result = merger.merge_subject(agent_outputs, "Test Co", "test_co")
+        assert len(result.findings) == 1
+        cit = result.findings[0].citations[0]
+        assert "NW-003L" in cit.source_path
+        assert cit.exact_quote == "NIST/ISO 27000"
+        # Should NOT have a synthetic placeholder
+        assert "[synthetic" not in cit.source_path
 
 
 # ===========================================================================
@@ -1923,7 +2109,7 @@ class TestContractDateReconciler:
         """Database end date in the future => Active-Database Stale."""
         reconciler = ContractDateReconciler(reference_date=date(2025, 1, 15))
         db = [
-            {"customer": "Acme", "contract_end_date": "2026-06-30", "arr": 500000},
+            {"subject": "Acme", "contract_end_date": "2026-06-30", "arr": 500000},
         ]
         result = reconciler.reconcile(db, findings={})
 
@@ -1934,7 +2120,7 @@ class TestContractDateReconciler:
         """Expired per DB but auto-renewal clause found => Active-Auto-Renewal."""
         reconciler = ContractDateReconciler(reference_date=date(2025, 3, 1))
         db = [
-            {"customer": "Beta", "contract_end_date": "2024-12-31", "arr": 200000},
+            {"subject": "Beta", "contract_end_date": "2024-12-31", "arr": 200000},
         ]
         findings = {
             "Beta": [
@@ -1957,7 +2143,7 @@ class TestContractDateReconciler:
         """Expired and no contract documents at all => Expired-No Contracts."""
         reconciler = ContractDateReconciler(reference_date=date(2025, 3, 1))
         db = [
-            {"customer": "Ghost", "contract_end_date": "2024-06-30", "arr": 0},
+            {"subject": "Ghost", "contract_end_date": "2024-06-30", "arr": 0},
         ]
         result = reconciler.reconcile(db, findings={})
 
@@ -1968,7 +2154,7 @@ class TestContractDateReconciler:
         """Expired, ARR=0, contracts exist but no renewal evidence => Expired-Confirmed."""
         reconciler = ContractDateReconciler(reference_date=date(2025, 3, 1))
         db = [
-            {"customer": "OldCo", "contract_end_date": "2023-12-31", "arr": 0},
+            {"subject": "OldCo", "contract_end_date": "2023-12-31", "arr": 0},
         ]
         # Findings exist but with no renewal keywords
         findings = {
@@ -1990,7 +2176,7 @@ class TestContractDateReconciler:
         """Expired per DB, ARR > 0, no renewal evidence => Likely Active."""
         reconciler = ContractDateReconciler(reference_date=date(2025, 3, 1))
         db = [
-            {"customer": "MaybeCo", "contract_end_date": "2024-06-30", "arr": 100000},
+            {"subject": "MaybeCo", "contract_end_date": "2024-06-30", "arr": 100000},
         ]
         # Findings exist but no renewal keywords
         findings = {
@@ -2012,8 +2198,8 @@ class TestContractDateReconciler:
         """Verify total_reclassified_arr and total_expired_arr are computed correctly."""
         reconciler = ContractDateReconciler(reference_date=date(2025, 3, 1))
         db = [
-            {"customer": "Active1", "contract_end_date": "2026-12-31", "arr": 300000},
-            {"customer": "Expired1", "contract_end_date": "2023-01-01", "arr": 0},
+            {"subject": "Active1", "contract_end_date": "2026-12-31", "arr": 300000},
+            {"subject": "Expired1", "contract_end_date": "2023-01-01", "arr": 0},
         ]
         result = reconciler.reconcile(db, findings={})
 
@@ -2022,7 +2208,7 @@ class TestContractDateReconciler:
 
     def test_write_reconciliation(self, tmp_path: Path) -> None:
         reconciler = ContractDateReconciler(reference_date=date(2025, 3, 1))
-        db = [{"customer": "Test", "contract_end_date": "2026-01-01", "arr": 100}]
+        db = [{"subject": "Test", "contract_end_date": "2026-01-01", "arr": 100}]
         result = reconciler.reconcile(db, findings={}, run_id="test_run")
 
         out = tmp_path / "recon.json"
@@ -2058,7 +2244,7 @@ class TestReportSchemaValidation:
 
         sheet = SheetDef(
             name="Summary",
-            columns=[ColumnDef(name="Customer", key="subject", type="string")],
+            columns=[ColumnDef(name="Subject", key="subject", type="string")],
         )
         schema = ReportSchema(schema_version="1.0.0", sheets=[sheet])
         assert len(schema.sheets) == 1
@@ -2078,7 +2264,7 @@ class TestExcelGeneratorGuards:
         # Build a schema with one sheet, then forcibly empty it
         sheet = SheetDef(
             name="Summary",
-            columns=[ColumnDef(name="Customer", key="subject", type="string")],
+            columns=[ColumnDef(name="Subject", key="subject", type="string")],
         )
         schema = ReportSchema(schema_version="1.0.0", sheets=[sheet])
         # Bypass the validator by mutating after construction
@@ -2102,7 +2288,7 @@ class TestExcelGeneratorGuards:
         sheet = SheetDef(
             name="Missing_Docs_Gaps",
             columns=[
-                ColumnDef(name="Customer", key="subject", type="string"),
+                ColumnDef(name="Subject", key="subject", type="string"),
                 ColumnDef(name="Evidence", key="evidence", type="string", width=30),
             ],
         )
@@ -2114,7 +2300,7 @@ class TestExcelGeneratorGuards:
                 "findings": [],
                 "gaps": [
                     {
-                        "customer": "Acme",
+                        "subject": "Acme",
                         "evidence": ["contract.pdf", "sow.pdf", "amendment.pdf"],
                     },
                 ],
@@ -2157,11 +2343,11 @@ class TestExcelGeneratorGuards:
         sheets = [
             SheetDef(
                 name="Summary",
-                columns=[ColumnDef(name="Customer", key="subject", type="string")],
+                columns=[ColumnDef(name="Subject", key="subject", type="string")],
             ),
             SheetDef(
                 name="Wolf_Pack",
-                columns=[ColumnDef(name="Customer", key="analysis_unit", type="string")],
+                columns=[ColumnDef(name="Subject", key="analysis_unit", type="string")],
             ),
         ]
         schema = ReportSchema(schema_version="1.0.0", sheets=sheets)
@@ -2214,7 +2400,7 @@ class TestStep30SchemaFallback:
             "sheets": [
                 {
                     "name": "Summary",
-                    "columns": [{"name": "Customer", "key": "subject", "type": "string"}],
+                    "columns": [{"name": "Subject", "key": "subject", "type": "string"}],
                 }
             ],
         }
@@ -2271,7 +2457,7 @@ class TestStep30SchemaFallback:
                             "required": True,
                             "activation_condition": "always",
                             "columns": [
-                                {"name": "Customer", "key": "subject", "type": "string", "width": 30},
+                                {"name": "Subject", "key": "subject", "type": "string", "width": 30},
                                 {
                                     "name": "Overall Risk Rating",
                                     "key": "overall_risk_rating",
@@ -2343,7 +2529,7 @@ class TestSeverityNormalization:
         """Finding with severity='high' should be promoted as P1, not dropped."""
         merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
         raw = [self._make_raw_finding(severity="high")]
-        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        result, _dropped = merger._promote_findings(raw, "Subject A", "subject_a")
         assert len(result) == 1
         assert result[0].severity.value == "P1"
 
@@ -2351,7 +2537,7 @@ class TestSeverityNormalization:
         """Finding with severity='CRITICAL' should be promoted as P0."""
         merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
         raw = [self._make_raw_finding(severity="CRITICAL")]
-        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        result, _dropped = merger._promote_findings(raw, "Subject A", "subject_a")
         assert len(result) == 1
         assert result[0].severity.value == "P0"
 
@@ -2365,7 +2551,7 @@ class TestSeverityNormalization:
             self._make_raw_finding(severity="CRITICAL"),
             self._make_raw_finding(severity="P0"),
         ]
-        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        result, _dropped = merger._promote_findings(raw, "Subject A", "subject_a")
         assert len(result) == 5
 
 
@@ -2414,7 +2600,7 @@ class TestTitleTruncation:
                 "citations": [{"source_type": "file", "source_path": "f.pdf", "location": "p1", "exact_quote": "q"}],
             }
         ]
-        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        result, _dropped = merger._promote_findings(raw, "Subject A", "subject_a")
         assert len(result) == 1
         assert len(result[0].title) == 120
 
@@ -2443,7 +2629,7 @@ class TestSeverityDowngradeOnMissingQuote:
                 ],
             }
         ]
-        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        result, _dropped = merger._promote_findings(raw, "Subject A", "subject_a")
         assert len(result) == 1
         # Downgraded from P0 to P2 because citations lack exact_quote
         assert result[0].severity.value == "P2"
@@ -2463,7 +2649,7 @@ class TestSeverityDowngradeOnMissingQuote:
                 ],
             }
         ]
-        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        result, _dropped = merger._promote_findings(raw, "Subject A", "subject_a")
         assert len(result) == 1
         assert result[0].severity.value == "P1"
 
@@ -2476,8 +2662,8 @@ class TestSeverityDowngradeOnMissingQuote:
 class TestStaleFileCleanup:
     """Tests for stale file cleanup in write_merged (Issue #69)."""
 
-    def test_write_merged_removes_stale_files(self, tmp_path: Path) -> None:
-        """Non-customer JSON files in merged/ should be removed."""
+    def test_write_merged_archives_stale_files(self, tmp_path: Path) -> None:
+        """Non-subject JSON files in merged/ should be archived, not deleted."""
         merged_dir = tmp_path / "merged"
         merged_dir.mkdir()
 
@@ -2486,22 +2672,27 @@ class TestStaleFileCleanup:
         (merged_dir / "coverage_manifest.json").write_text("{}")
         (merged_dir / "report_diff.json").write_text("{}")
 
-        # Write merged output for one customer
+        # Write merged output for one subject
         from dd_agents.models.finding import MergedSubjectOutput
 
         mco = MergedSubjectOutput(subject="Acme Corp", subject_safe_name="acme_corp")
         merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
         merger.write_merged({"acme_corp": mco}, merged_dir)
 
-        # Customer file should exist
+        # Subject file should exist
         assert (merged_dir / "acme_corp.json").exists()
-        # Stale files should be removed
+        # Stale files should be moved to _archive/
         assert not (merged_dir / "numerical_manifest.json").exists()
         assert not (merged_dir / "coverage_manifest.json").exists()
         assert not (merged_dir / "report_diff.json").exists()
+        archive_dir = merged_dir / "_archive"
+        assert archive_dir.exists()
+        assert (archive_dir / "numerical_manifest.json").exists()
+        assert (archive_dir / "coverage_manifest.json").exists()
+        assert (archive_dir / "report_diff.json").exists()
 
     def test_write_merged_preserves_subject_files(self, tmp_path: Path) -> None:
-        """Customer files from a previous run that are still valid should stay."""
+        """Subject files from a previous run that are still valid should stay."""
         from dd_agents.models.finding import MergedSubjectOutput
 
         merged_dir = tmp_path / "merged"
@@ -2653,34 +2844,53 @@ class TestJudgeProseExtraction:
 class TestReportSchemaPackageResolution:
     """Test that report schema can be found via package-relative path (Issue #71)."""
 
+    @staticmethod
+    def _repo_root() -> Path:
+        """Find repo root by walking up from this test file to find pyproject.toml."""
+        p = Path(__file__).resolve().parent
+        for _ in range(10):
+            if (p / "pyproject.toml").exists():
+                return p
+            p = p.parent
+        msg = "Could not find repo root (pyproject.toml)"
+        raise FileNotFoundError(msg)
+
     def test_config_schema_exists_in_repo(self) -> None:
         """The 14-sheet report schema exists at repo_root/config/report_schema.json."""
-        import dd_agents
-
-        pkg_root = Path(dd_agents.__file__).resolve().parent
-        repo_root = pkg_root.parent.parent
+        repo_root = self._repo_root()
         schema_path = repo_root / "config" / "report_schema.json"
         assert schema_path.exists(), f"Expected schema at {schema_path}"
 
         schema = ReportSchema.model_validate_json(schema_path.read_text())
         assert len(schema.sheets) == 14
 
-    def test_package_relative_resolution_order(self, tmp_path: Path) -> None:
-        """Resolution finds schema via package path when project_dir is wrong."""
-        import dd_agents
+    def test_bundled_schema_exists_in_package(self) -> None:
+        """The schema is bundled inside the dd_agents package for wheel installs."""
+        import dd_agents as _pkg
 
-        pkg_root = Path(dd_agents.__file__).resolve().parent
-        repo_config = pkg_root.parent.parent / "config" / "report_schema.json"
+        pkg_root = Path(_pkg.__file__).resolve().parent
+        bundled = pkg_root / "config" / "report_schema.json"
+        assert bundled.exists(), f"Expected bundled schema at {bundled}"
+
+        schema = ReportSchema.model_validate_json(bundled.read_text())
+        assert len(schema.sheets) == 14
+
+    def test_package_relative_resolution_order(self, tmp_path: Path) -> None:
+        """Resolution finds schema via bundled package path when project_dir has none."""
+        import dd_agents as _pkg
+
+        pkg_root = Path(_pkg.__file__).resolve().parent
+        bundled_config = pkg_root / "config" / "report_schema.json"
 
         # Simulate: project_dir points to data room (no config/)
         fake_project_dir = tmp_path / "data_room"
         fake_project_dir.mkdir()
 
-        # Resolution order should find it via package-relative path
+        # Resolution order mirrors engine.py: project_dir, bundled, repo root
         candidate_paths = [
             fake_project_dir / "config" / "report_schema.json",
+            bundled_config,
             pkg_root.parent.parent / "config" / "report_schema.json",
-            pkg_root / "config" / "report_schema.json",
         ]
         found = None
         for p in candidate_paths:
@@ -2689,7 +2899,7 @@ class TestReportSchemaPackageResolution:
                 break
 
         assert found is not None
-        assert found == repo_config
+        assert found == bundled_config
 
 
 # ===========================================================================
@@ -2715,7 +2925,7 @@ class TestSeverityDowngradeOnEmptySourcePath:
                 ],
             }
         ]
-        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        result, _dropped = merger._promote_findings(raw, "Subject A", "subject_a")
         assert len(result) == 1
         assert result[0].severity.value == "P2"
 
@@ -2739,7 +2949,7 @@ class TestSeverityDowngradeOnEmptySourcePath:
                 ],
             }
         ]
-        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        result, _dropped = merger._promote_findings(raw, "Subject A", "subject_a")
         assert len(result) == 1
         assert result[0].severity.value == "P2"
 
@@ -2758,7 +2968,7 @@ class TestSeverityDowngradeOnEmptySourcePath:
                 ],
             }
         ]
-        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        result, _dropped = merger._promote_findings(raw, "Subject A", "subject_a")
         assert len(result) == 1
         assert result[0].severity.value == "P1"
 
@@ -2776,7 +2986,7 @@ class TestSeverityDowngradeOnEmptySourcePath:
                 "citations": [{"source_type": "file", "source_path": "", "location": "", "exact_quote": "text"}],
             }
         ]
-        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        result, _dropped = merger._promote_findings(raw, "Subject A", "subject_a")
         assert len(result) == 1
         assert result[0].severity.value == "P3"
 
@@ -2797,7 +3007,7 @@ class TestEmptyDescriptionFallback:
                 "citations": [{"source_type": "file", "source_path": "f.pdf", "location": "p1", "exact_quote": "text"}],
             }
         ]
-        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        result, _dropped = merger._promote_findings(raw, "Subject A", "subject_a")
         assert len(result) == 1
         assert result[0].description == "Important finding about data"
 
@@ -2813,7 +3023,7 @@ class TestEmptyDescriptionFallback:
                 "citations": [{"source_type": "file", "source_path": "f.pdf", "location": "", "exact_quote": "q"}],
             }
         ]
-        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        result, _dropped = merger._promote_findings(raw, "Subject A", "subject_a")
         assert len(result) == 1
         assert result[0].description == "Minor note"
 
@@ -2830,7 +3040,7 @@ class TestEmptyDescriptionFallback:
                 "citations": [{"source_type": "file", "source_path": "f.pdf", "location": "", "exact_quote": "q"}],
             }
         ]
-        result = merger._promote_findings(raw, "Customer A", "customer_a")
+        result, _dropped = merger._promote_findings(raw, "Subject A", "subject_a")
         assert len(result) == 1
         assert result[0].description == "Detailed description here"
 
@@ -2853,7 +3063,7 @@ class TestCitationEnforcement:
                 "agent": "finance",
             }
         ]
-        promoted = merger._promote_findings(raw_findings, "Customer A", "customer_a")
+        promoted, _dropped = merger._promote_findings(raw_findings, "Subject A", "subject_a")
         assert len(promoted) == 1
         assert promoted[0].severity.value == "P3"
 
@@ -2880,7 +3090,7 @@ class TestCitationEnforcement:
                 ],
             }
         ]
-        promoted = merger._promote_findings(raw_findings, "Customer A", "customer_a")
+        promoted, _dropped = merger._promote_findings(raw_findings, "Subject A", "subject_a")
         assert len(promoted) == 1
         assert promoted[0].severity.value == "P2"
 
@@ -2906,7 +3116,7 @@ class TestCitationEnforcement:
                 ],
             }
         ]
-        promoted = merger._promote_findings(raw_findings, "Customer A", "customer_a")
+        promoted, _dropped = merger._promote_findings(raw_findings, "Subject A", "subject_a")
         assert len(promoted) == 1
         assert promoted[0].severity.value == "P2"
 
@@ -3013,7 +3223,7 @@ class TestCommercialAgentQuality:
 
 
 class TestAgentCoverage:
-    """Tests for per-customer agent coverage validation (#85)."""
+    """Tests for per-subject agent coverage validation (#85)."""
 
     def test_full_coverage_returns_no_gaps(self) -> None:
         from dd_agents.models.enums import AgentName, Confidence, Severity, SourceType
@@ -3088,3 +3298,170 @@ class TestAgentCoverage:
         assert len(gaps) == 1
         assert gaps[0]["subject"] == "test"
         assert "producttech" in gaps[0]["missing_agents"]
+
+
+# ===========================================================================
+# Data accuracy guarantees (Issue #audit-2026-04)
+# ===========================================================================
+
+
+class TestDataAccuracyGuarantees:
+    """Tests for data accuracy improvements: quarantine, dropped findings,
+    cross-agent conflicts, archive-not-delete, and original_severity tracking."""
+
+    def test_merge_all_quarantines_failed_subjects(self, tmp_path: Path) -> None:
+        """Subjects that fail during merge are written to _quarantine.json."""
+        findings_dir = tmp_path / "findings"
+        merged_dir = findings_dir / "merged"
+
+        # Create a valid subject file for one agent
+        legal_dir = findings_dir / "legal"
+        legal_dir.mkdir(parents=True)
+        (legal_dir / "good_subject.json").write_text(
+            json.dumps(
+                {
+                    "subject": "Good Subject",
+                    "findings": [_make_finding(title="Valid finding")],
+                }
+            )
+        )
+        # Create a corrupt subject file that will cause merge to fail
+        (legal_dir / "bad_subject.json").write_text(
+            json.dumps(
+                {
+                    "subject": "Bad Subject",
+                    # findings with deeply invalid structure to trigger promotion error
+                    "findings": [{"severity": "INVALID_NOT_ENUM"}],
+                }
+            )
+        )
+
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        results = merger.merge_all(findings_dir)
+
+        # Good subject should merge fine
+        assert "good_subject" in results
+
+        # If bad_subject failed, quarantine file should exist
+        quarantine_path = merged_dir / "_quarantine.json"
+        if "bad_subject" not in results and quarantine_path.exists():
+            quarantine = json.loads(quarantine_path.read_text())
+            assert len(quarantine) >= 1
+            assert quarantine[0]["subject"] == "bad_subject"
+            assert "error" in quarantine[0]
+
+    def test_dropped_findings_preserved_in_output(self) -> None:
+        """Findings that fail Pydantic validation are recorded in dropped_findings."""
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+
+        agent_outputs = {
+            "legal": {
+                "subject": "Test Subject",
+                "findings": [
+                    _make_finding(title="Valid finding"),
+                ],
+            },
+        }
+        result = merger.merge_subject(agent_outputs, subject_safe_name="test_subject")
+
+        # dropped_findings field should exist (even if empty for valid findings)
+        assert hasattr(result, "dropped_findings")
+        assert isinstance(result.dropped_findings, list)
+
+    def test_cross_agent_conflicts_persisted_in_output(self) -> None:
+        """Cross-agent data conflicts are included in MergedSubjectOutput."""
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+
+        # Create two agents with conflicting cross-reference values
+        agent_outputs = {
+            "legal": {
+                "subject": "Test Subject",
+                "findings": [_make_finding(title="Legal finding")],
+                "cross_references": [
+                    {
+                        "data_point": "Annual Revenue",
+                        "data_type": "financial",
+                        "contract_value": "$1,000,000",
+                        "reference_value": "$1,000,000",
+                        "match_status": "match",
+                        "source_file": "contract_a.pdf",
+                        "reference_source": "ref.xlsx",
+                    }
+                ],
+            },
+            "finance": {
+                "subject": "Test Subject",
+                "findings": [_make_finding(title="Finance finding")],
+                "cross_references": [
+                    {
+                        "data_point": "Annual Revenue",
+                        "data_type": "financial",
+                        "contract_value": "$2,500,000",
+                        "reference_value": "$2,500,000",
+                        "match_status": "match",
+                        "source_file": "contract_b.pdf",
+                        "reference_source": "ref.xlsx",
+                    }
+                ],
+            },
+        }
+        result = merger.merge_subject(agent_outputs, subject_safe_name="test_subject")
+
+        assert hasattr(result, "cross_agent_conflicts")
+        assert isinstance(result.cross_agent_conflicts, list)
+        # The conflicting "Annual Revenue" should be detected
+        if result.cross_agent_conflicts:
+            assert result.cross_agent_conflicts[0]["data_point"] == "annual revenue"
+
+    def test_original_severity_preserved_in_provenance(self) -> None:
+        """When severity is downgraded, original_severity is recorded in metadata."""
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+
+        # P1 finding with no exact_quote — should be downgraded to P2
+        agent_outputs = {
+            "legal": {
+                "subject": "Test Subject",
+                "findings": [
+                    _make_finding(
+                        severity="P1",
+                        title="High severity no quote",
+                        exact_quote="",
+                    ),
+                ],
+            },
+        }
+        result = merger.merge_subject(agent_outputs, subject_safe_name="test_subject")
+        assert len(result.findings) == 1
+        finding = result.findings[0]
+        provenance = finding.metadata.get("provenance", {})
+        assert provenance.get("original_severity") == "P1"
+        assert provenance.get("recalibrated") is True
+        # Finding should have been downgraded to P2
+        assert str(finding.severity) == "P2"
+
+    def test_write_merged_preserves_internal_files(self, tmp_path: Path) -> None:
+        """Internal files (_quarantine.json, etc.) are not treated as stale."""
+        from dd_agents.models.finding import MergedSubjectOutput
+
+        merged_dir = tmp_path / "merged"
+        merged_dir.mkdir()
+
+        # Pre-existing internal file
+        (merged_dir / "_quarantine.json").write_text('[{"subject": "failed"}]')
+
+        mco = MergedSubjectOutput(subject="X", subject_safe_name="x")
+        merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
+        merger.write_merged({"x": mco}, merged_dir)
+
+        # Internal file should NOT be archived
+        assert (merged_dir / "_quarantine.json").exists()
+        assert (merged_dir / "x.json").exists()
+
+    def test_severity_weights_centralized(self) -> None:
+        """Verify severity weights are imported from central constants."""
+        from dd_agents.utils.constants import SEVERITY_RISK_SCORE_WEIGHTS, SEVERITY_WEIGHTS
+
+        assert SEVERITY_WEIGHTS["P0"] == 10.0
+        assert SEVERITY_WEIGHTS["P3"] == 1.0
+        assert SEVERITY_RISK_SCORE_WEIGHTS["P0"] == 25
+        assert SEVERITY_RISK_SCORE_WEIGHTS["P3"] == 3

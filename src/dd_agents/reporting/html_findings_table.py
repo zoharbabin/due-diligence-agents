@@ -7,7 +7,6 @@ and Primary Issue.
 
 from __future__ import annotations
 
-import html
 from typing import Any
 
 from dd_agents.reporting.html_base import SectionRenderer
@@ -56,15 +55,15 @@ class FindingsTableRenderer(SectionRenderer):
         total_count = sum(r.get(count_key, 0) for r in rows)
 
         parts: list[str] = [
-            f"<section class='report-section' id='{html.escape(section_id)}'>",
-            f"<h2>{html.escape(title)}</h2>",
+            f"<section class='report-section' id='{self.escape(section_id)}'>",
+            f"<h2>{self.escape(title)}</h2>",
         ]
 
         # Alert box with summary
         parts.append(
             self.render_alert(
                 alert_level,
-                f"{total_count} {html.escape(title)} across {total_entities} entities",
+                f"{total_count} {title} across {total_entities} entities",
                 f"{total_entities} entities have findings at this severity level. "
                 f"Review each entity's primary issue and total finding count below.",
             )
@@ -74,7 +73,7 @@ class FindingsTableRenderer(SectionRenderer):
         parts.append(
             "<table class='subject-table sortable'><thead><tr>"
             "<th scope='col'>Entity</th>"
-            f"<th scope='col'>{html.escape(count_key.upper().replace('_', ' '))}</th>"
+            f"<th scope='col'>{self.escape(count_key.upper().replace('_', ' '))}</th>"
             "<th scope='col'>Total Findings</th>"
             "<th scope='col'>Primary Issue</th>"
             "</tr></thead><tbody>"
@@ -108,8 +107,8 @@ class FindingsTableRenderer(SectionRenderer):
         raw_subject = str(row.get("subject", ""))
         csn = str(row.get("subject_safe_name", raw_subject))
         display_name = self.data.display_names.get(csn, self.data.display_names.get(raw_subject, raw_subject))
-        entity_name = html.escape(display_name)
+        entity_name = self.escape(display_name)
         count = row.get(count_key, 0)
         total = row.get("total_findings", 0)
-        issue = html.escape(str(row.get("primary_issue", "")))
+        issue = self.escape(str(row.get("primary_issue", "")))
         return f"<td><strong>{entity_name}</strong></td><td>{count}</td><td>{total}</td><td>{issue}</td>"

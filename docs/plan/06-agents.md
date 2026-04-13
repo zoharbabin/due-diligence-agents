@@ -96,11 +96,11 @@ class BaseAgentRunner:
 
 | Agent | Model | max_turns | max_budget_usd | Tools | Custom MCP Tools |
 |-------|-------|-----------|---------------|-------|------------------|
-| Legal | claude-sonnet-4-20250514 | 200 | 5.00 | Read, Write, Glob, Grep | validate_finding, validate_gap, verify_citation, resolve_entity, get_customer_files, report_progress |
-| Finance | claude-sonnet-4-20250514 | 200 | 5.00 | Read, Write, Glob, Grep | validate_finding, validate_gap, verify_citation, resolve_entity, get_customer_files, report_progress |
-| Commercial | claude-sonnet-4-20250514 | 200 | 5.00 | Read, Write, Glob, Grep | validate_finding, validate_gap, verify_citation, resolve_entity, get_customer_files, report_progress |
-| ProductTech | claude-sonnet-4-20250514 | 200 | 5.00 | Read, Write, Glob, Grep | validate_finding, validate_gap, verify_citation, resolve_entity, get_customer_files, report_progress |
-| Judge | claude-sonnet-4-20250514 | 150 | 3.00 | Read, Write, Glob, Grep | verify_citation, get_customer_files |
+| Legal | claude-sonnet-4-20250514 | 200 | 5.00 | Read, Write, Glob, Grep | validate_finding, validate_gap, verify_citation, resolve_entity, get_subject_files, report_progress |
+| Finance | claude-sonnet-4-20250514 | 200 | 5.00 | Read, Write, Glob, Grep | validate_finding, validate_gap, verify_citation, resolve_entity, get_subject_files, report_progress |
+| Commercial | claude-sonnet-4-20250514 | 200 | 5.00 | Read, Write, Glob, Grep | validate_finding, validate_gap, verify_citation, resolve_entity, get_subject_files, report_progress |
+| ProductTech | claude-sonnet-4-20250514 | 200 | 5.00 | Read, Write, Glob, Grep | validate_finding, validate_gap, verify_citation, resolve_entity, get_subject_files, report_progress |
+| Judge | claude-sonnet-4-20250514 | 150 | 3.00 | Read, Write, Glob, Grep | verify_citation, get_subject_files |
 
 **Notes**:
 - Judge gets fewer turns (review only, no analysis)
@@ -110,9 +110,9 @@ class BaseAgentRunner:
 
 ---
 
-## 4. All-Agents-All-Customers Architecture
+## 4. All-Agents-All-Subjects Architecture
 
-**Every specialist agent analyzes ALL customers.** There is no modulo assignment, no customer splitting by default. Each agent reads every customer's files through their specialist lens.
+**Every specialist agent analyzes ALL subjects.** There is no modulo assignment, no subject splitting by default. Each agent reads every subject's files through their specialist lens.
 
 | Agent | Specialist Lens | What They Prioritize in Every File |
 |-------|----------------|-----------------------------------|
@@ -133,7 +133,7 @@ class BaseAgentRunner:
 from enum import Enum
 from pathlib import Path
 from dd_agents.models.config import DealConfig
-from dd_agents.models.inventory import CustomerEntry, ReferenceFile
+from dd_agents.models.inventory import SubjectEntry, ReferenceFile
 
 class AgentType(str, Enum):
     LEGAL = "legal"
@@ -146,19 +146,19 @@ class AgentType(str, Enum):
 # Focus areas per specialist (embedded into prompt)
 SPECIALIST_FOCUS = {
     AgentType.LEGAL: (
-        "Build the governance graph for each customer. Resolve governed_by for every file. "
+        "Build the governance graph for each subject. Resolve governed_by for every file. "
         "Flag entity mismatches against the corporate org chart. Flag change of control, "
         "assignment restrictions, and exclusivity clauses. Validate intercompany agreements "
-        "cover all signing entities. Gap detection: For each customer, check for missing MSAs, "
+        "cover all signing entities. Gap detection: For each subject, check for missing MSAs, "
         "missing DPAs, missing referenced amendments, missing signature pages. "
         "Write gap files for EVERY missing document detected."
     ),
     AgentType.FINANCE: (
-        "Cross-reference every customer's contract values against the Revenue Cube and any "
+        "Cross-reference every subject's contract values against the Revenue Cube and any "
         "financial reference data. Flag ARR mismatches >5%. Check discount levels against "
         "Pricing Guidelines. Identify one-time fees incorrectly counted as recurring ARR. "
-        "Flag minimum commitment shortfalls. IMPORTANT: You MUST analyze ALL customers, not "
-        "just those with dedicated financial documents. For customers with only contract files, "
+        "Flag minimum commitment shortfalls. IMPORTANT: You MUST analyze ALL subjects, not "
+        "just those with dedicated financial documents. For subjects with only contract files, "
         "extract financial terms from their contracts and cross-reference against reference "
         "file data. Gap detection: Check for missing financial verification, missing pricing "
         "documentation, unexplained revenue variances. Write gap files.\n\n"
@@ -182,11 +182,16 @@ SPECIALIST_FOCUS = {
     AgentType.PRODUCTTECH: (
         "Validate DPA adequacy and subprocessor lists. Cross-reference security claims against "
         "SOC2/compliance evidence. Check technical SLA feasibility. Flag data residency "
-        "restrictions and migration obligations. IMPORTANT: You MUST analyze ALL customers, "
-        "not just those with dedicated tech/security documents. For every customer's contracts, "
+        "restrictions and migration obligations. IMPORTANT: You MUST analyze ALL subjects, "
+        "not just those with dedicated tech/security documents. For every subject's contracts, "
         "extract technology-related clauses. Gap detection: Check for missing DPAs, missing "
         "security addenda, missing SLA documentation, missing architecture/integration specs. "
-        "Write gap files."
+        "Write gap files.\n\n"
+        "CITATION ENFORCEMENT: Every ProductTech finding MUST include a citation with "
+        "source_path and exact_quote. For technical documents (SOC2 reports, pentest reports, "
+        "architecture docs, SLA addenda, product specs), cite the specific section/page. "
+        "If a claim cannot be cited, record it as a gap with gap_type 'Not_Found', not as "
+        "an uncited finding. Uncited findings will be DOWNGRADED to P3 during validation."
     ),
 }
 
@@ -202,9 +207,9 @@ class PromptBuilder:
         self,
         agent_type: AgentType,
         deal_config: DealConfig,
-        customers: list[CustomerEntry],
+        subjects: list[SubjectEntry],
         reference_files: dict[str, list[ReferenceFile]],
-        customer_mentions: dict[str, list[str]],
+        subject_mentions: dict[str, list[str]],
         extraction_rules: str,
         governance_rules: str,
         gap_detection_rules: str,
@@ -216,15 +221,15 @@ class PromptBuilder:
         # 1. Role and deal context
         sections.append(self._build_role_section(agent_type, deal_config))
 
-        # 2. Complete customer list with file paths
-        sections.append(self._build_customer_list(customers))
+        # 2. Complete subject list with file paths
+        sections.append(self._build_subject_list(subjects))
 
         # 3. Reference files (FULL extracted text)
         agent_refs = reference_files.get(agent_type.value, [])
         sections.append(self._build_reference_section(agent_refs))
 
-        # 4. Customer-mention index
-        sections.append(self._build_mentions_section(customer_mentions))
+        # 4. Subject-mention index
+        sections.append(self._build_mentions_section(subject_mentions))
 
         # 5. Specialist focus areas
         sections.append(f"## YOUR SPECIALIST FOCUS\n\n{SPECIALIST_FOCUS[agent_type]}")
@@ -241,7 +246,7 @@ class PromptBuilder:
         sections.append(f"## OUTPUT FORMAT\n\n{output_schema}")
 
         # 9. Manifest requirement
-        sections.append(self._build_manifest_requirement(agent_type, customers))
+        sections.append(self._build_manifest_requirement(agent_type, subjects))
 
         # 10. Strict output rules
         sections.append(self._build_output_rules(agent_type))
@@ -256,9 +261,9 @@ Each specialist agent's prompt **MUST** include ALL of the following. Agents can
 | # | Section | Source | Size Estimate |
 |---|---------|--------|--------------|
 | 1 | Deal context (buyer, target, subsidiaries) | `deal-config.json` | ~500 tokens |
-| 2 | COMPLETE customer list with explicit file paths | `customers.csv` | ~50 tokens/customer |
+| 2 | COMPLETE subject list with explicit file paths | `subjects.csv` | ~50 tokens/subject |
 | 3 | Reference file extracted text (FULL content) | `reference_files.json` + `index/text/` | Variable (measure each) |
-| 4 | Customer-mention index | `customer_mentions.json` | ~20 tokens/customer |
+| 4 | Subject-mention index | `subject_mentions.json` | ~20 tokens/subject |
 | 5 | Specialist focus areas | Hardcoded per agent type | ~200 tokens |
 | 6 | Extraction rules | `domain-definitions.md` sections 1-4 | ~1,500 tokens |
 | 7 | Governance graph rules | `domain-definitions.md` section 5 | ~800 tokens |
@@ -267,12 +272,12 @@ Each specialist agent's prompt **MUST** include ALL of the following. Agents can
 | 10 | Output format (JSON schemas) | `agent-prompts.md` section 4c | ~600 tokens |
 | 11 | Manifest requirement | Template | ~500 tokens |
 
-### 5.3 Customer List Format
+### 5.3 Subject List Format
 
 ```
 ALL CUSTOMERS (you MUST process every one, every file):
 
-Customer 1: Acme Corp (safe_name: acme_corp)
+Subject 1: Acme Corp (safe_name: acme_corp)
   Path: ./Above 200K USD/Acme Corp/
   Files (3):
     - ./Above 200K USD/Acme Corp/MSA.pdf
@@ -282,13 +287,13 @@ Customer 1: Acme Corp (safe_name: acme_corp)
     - ./Above 200K USD/Acme Corp/DPA.pdf
       → pre-extracted at _dd/forensic-dd/index/text/Above_200K_USD__Acme_Corp__DPA.pdf.md
 
-Customer 2: Beta Inc (safe_name: beta)
+Subject 2: Beta Inc (safe_name: beta)
   ...
 
 IMPORTANT: Use the exact safe_name provided above as the filename for your output JSON.
 Write: {RUN_DIR}/findings/{agent}/acme_corp.json (NOT "Acme Corp.json")
 
-TOTAL: X customers, Y files. You must process every single one.
+TOTAL: X subjects, Y files. You must process every single one.
 ```
 
 ### 5.4 Reference File Section
@@ -298,8 +303,8 @@ Reference files are pasted as **full extracted text**, not file paths:
 ```
 GLOBAL REFERENCE FILES assigned to you:
 
-Reference 1: Customers Cube Q4 2024.xlsx
-  Category: Financial / revenue_by_customer
+Reference 1: Subjects Cube Q4 2024.xlsx
+  Category: Financial / revenue_by_subject
   Pre-extracted at: _dd/forensic-dd/index/text/Customers_Cube_Q4_2024.xlsx.md
   FULL EXTRACTED CONTENT:
   """
@@ -309,7 +314,7 @@ Reference 1: Customers Cube Q4 2024.xlsx
     - Acme Corp: ARR=$120,000, renewal=2025-06-30
     ...
 
-CROSS-REFERENCE REQUIREMENT: For each customer, compare contract terms against
+CROSS-REFERENCE REQUIREMENT: For each subject, compare contract terms against
 these reference files. You MUST list every reference file in your manifest
 under reference_files_processed.
 ```
@@ -336,23 +341,23 @@ class PromptSizeEstimator:
 
     def estimate_specialist_tokens(
         self,
-        customers: list[CustomerEntry],
+        subjects: list[SubjectEntry],
         reference_texts: list[str],
         rules_text: str,
     ) -> int:
-        customer_tokens = len(customers) * 50  # ~50 tokens per customer entry
+        subject_tokens = len(subjects) * 50  # ~50 tokens per subject entry
         ref_tokens = sum(len(t) // self.chars_per_token for t in reference_texts)
         rules_tokens = len(rules_text) // self.chars_per_token
         overhead = 2_000  # role, instructions, manifest, output format
-        return customer_tokens + ref_tokens + rules_tokens + overhead
+        return subject_tokens + ref_tokens + rules_tokens + overhead
 
     def needs_splitting(self, estimated_tokens: int) -> bool:
         return estimated_tokens > (self.context_limit * self.safety_margin)
 ```
 
-### 6.2 Customer Splitting
+### 6.2 Subject Splitting
 
-When estimated tokens exceed 80% of context window, split customers into groups:
+When estimated tokens exceed 80% of context window, split subjects into groups:
 
 ```python
 # src/dd_agents/agents/specialists.py
@@ -362,28 +367,28 @@ async def spawn_specialist_with_splitting(
     agent_type: AgentType,
     prompt_builder: PromptBuilder,
     estimator: PromptSizeEstimator,
-    customers: list[CustomerEntry],
+    subjects: list[SubjectEntry],
     **kwargs,
 ) -> list[ResultMessage]:
     """Spawn specialist, splitting into multiple instances if prompt is too large."""
 
     estimated = estimator.estimate_specialist_tokens(
-        customers, kwargs.get("reference_texts", []), kwargs.get("rules_text", "")
+        subjects, kwargs.get("reference_texts", []), kwargs.get("rules_text", "")
     )
 
     if not estimator.needs_splitting(estimated):
-        # Single instance — all customers
+        # Single instance — all subjects
         prompt = prompt_builder.build_specialist_prompt(
-            agent_type=agent_type, customers=customers, **kwargs
+            agent_type=agent_type, subjects=subjects, **kwargs
         )
         result = await runner.spawn(agent_type.value, prompt)
         return [result]
 
     # Split into groups that fit within context
-    max_customers_per_group = _calculate_group_size(estimator, customers, kwargs)
+    max_subjects_per_group = _calculate_group_size(estimator, subjects, kwargs)
     groups = [
-        customers[i:i + max_customers_per_group]
-        for i in range(0, len(customers), max_customers_per_group)
+        subjects[i:i + max_subjects_per_group]
+        for i in range(0, len(subjects), max_subjects_per_group)
     ]
 
     # Spawn one instance per group in parallel
@@ -391,7 +396,7 @@ async def spawn_specialist_with_splitting(
     tasks = []
     for idx, group in enumerate(groups):
         prompt = prompt_builder.build_specialist_prompt(
-            agent_type=agent_type, customers=group, **kwargs
+            agent_type=agent_type, subjects=group, **kwargs
         )
         name = f"{agent_type.value}_{idx + 1}"  # 1-based: batch_1, batch_2, ...
         tasks.append(runner.spawn(name, prompt))
@@ -408,14 +413,14 @@ async def spawn_specialist_with_splitting(
 
 ## 7. Agent Output Requirements
 
-### 7.1 Per-Customer JSON Schema
+### 7.1 Per-Subject JSON Schema
 
-Each specialist writes one JSON per customer to `{RUN_DIR}/findings/{agent}/{customer_safe_name}.json`:
+Each specialist writes one JSON per subject to `{RUN_DIR}/findings/{agent}/{subject_safe_name}.json`:
 
 ```json
 {
-  "customer": "Canonical customer name",
-  "customer_safe_name": "safe_name per convention",
+  "subject": "Canonical subject name",
+  "subject_safe_name": "safe_name per convention",
   "agent": "legal|finance|commercial|producttech",
   "run_id": "20250218_143000",
   "timestamp": "2025-02-18T14:35:00Z",
@@ -447,10 +452,10 @@ Each specialist writes one JSON per customer to `{RUN_DIR}/findings/{agent}/{cus
       "description": "Section 12.3 requires counterparty consent...",
       "citations": [
         {
+          "source_type": "file",
           "source_path": "./Above 200K/Acme/MSA.pdf",
           "location": "Section 12.3",
-          "exact_quote": "Neither party may assign...",
-          "source_type": "file"
+          "exact_quote": "Neither party may assign..."
         }
       ],
       "confidence": "high"
@@ -475,14 +480,15 @@ Full Pydantic model: `AgentFinding` schema in `04-data-models.md`.
 
 ### 7.2 Strict Output Rules
 
-1. **Exactly ONE JSON per customer**: `{RUN_DIR}/findings/{agent}/{customer_safe_name}.json`
-2. **NO aggregate files**: Never create `_global.json`, `batch_summary.json`, `other_customers.json`, `pipeline_items.json`, or any file not named after a specific customer
-3. **Gaps isolated per agent**: Write to `{RUN_DIR}/findings/{agent}/gaps/{customer_safe_name}.json`
-4. **Coverage manifest**: MUST write `{RUN_DIR}/findings/{agent}/coverage_manifest.json`
-5. **Audit log**: MUST write `{RUN_DIR}/audit/{agent}/audit_log.jsonl`
-6. **Use exact safe_name**: Output filenames must match the `customer_safe_name` provided in the prompt
+1. **Exactly ONE JSON per subject**: `{RUN_DIR}/findings/{agent}/{subject_safe_name}.json`
+2. **NO aggregate files**: Never create `_global.json`, `batch_summary.json`, `other_subjects.json`, `pipeline_items.json`, or any file not named after a specific subject
+3. **Gaps isolated per agent**: Write to `{RUN_DIR}/findings/{agent}/gaps/{subject_safe_name}.json`
+4. **Coverage manifest**: SHOULD write `{RUN_DIR}/findings/{agent}/coverage_manifest.json` (stop hook is relaxed — if all subject JSONs are present, the orchestrator backfills the manifest post-session)
+5. **Audit log**: Written by the orchestrator post-session via `_write_audit_log()` (not by the agent)
+6. **Use exact safe_name**: Output filenames must match the `subject_safe_name` provided in the prompt
+7. **Use canonical field names**: Findings MUST use `"citations"` (not `"evidence"`), citations MUST use `"source_path"` (not `"file"`) and `"exact_quote"` (not `"quote"`). The `finding_schema_guard` PreToolUse hook blocks writes with wrong field names.
 
-PostToolUse hooks validate rules 1-2 at write time. The Stop hook validates rules 4-5 at agent completion. See `07-tools-and-hooks.md`.
+PreToolUse hooks validate rules 1-2 (aggregate file guard), rule 7 (finding schema guard), and path boundaries at write time. The Stop hook validates rule 4 at agent completion. See `07-tools-and-hooks.md`.
 
 ### 7.3 Coverage Manifest
 
@@ -506,10 +512,10 @@ Every specialist MUST write `{RUN_DIR}/findings/{agent}/coverage_manifest.json`:
   "coverage_pct": 0.95,
   "analysis_units_assigned": 34,
   "analysis_units_completed": 34,
-  "customers": [
+  "subjects": [
     {"name": "Acme Corp", "files_assigned": ["./file1.pdf"], "files_processed": ["./file1.pdf"], "files_skipped": [], "status": "complete"}
   ],
-  "reference_files_processed": ["./Reference Data/Customers Cube.xlsx"]
+  "reference_files_processed": ["./Reference Data/Subjects Cube.xlsx"]
 }
 ```
 
@@ -517,8 +523,8 @@ Manifest validation rules (violations cause audit failure):
 - `files_assigned` must match files.txt
 - `files_failed` must have `fallback_attempted: true`
 - `coverage_pct` must be >= 0.90
-- `customers[].status` must be "complete" or "partial" (never missing)
-- `analysis_units_assigned` and `analysis_units_completed` must match customer counts
+- `subjects[].status` must be "complete" or "partial" (never missing)
+- `analysis_units_assigned` and `analysis_units_completed` must match subject counts
 
 ### 7.4 Audit Log
 
@@ -612,9 +618,9 @@ SPECIALIST_TYPES = [
 async def spawn_all_specialists(
     runner: BaseAgentRunner,
     prompt_builder: PromptBuilder,
-    customers: list[CustomerEntry],
+    subjects: list[SubjectEntry],
     reference_files: dict[str, list[ReferenceFile]],
-    customer_mentions: dict[str, list[str]],
+    subject_mentions: dict[str, list[str]],
     deal_config: DealConfig,
     rules: dict[str, str],
 ) -> dict[str, ResultMessage]:
@@ -624,9 +630,9 @@ async def spawn_all_specialists(
         prompt = prompt_builder.build_specialist_prompt(
             agent_type=agent_type,
             deal_config=deal_config,
-            customers=customers,
+            subjects=subjects,
             reference_files=reference_files,
-            customer_mentions=customer_mentions,
+            subject_mentions=subject_mentions,
             extraction_rules=rules["extraction"],
             governance_rules=rules["governance"],
             gap_detection_rules=rules["gap_detection"],
@@ -652,7 +658,7 @@ async def spawn_all_specialists(
 
 ### 9.2 Incremental Mode
 
-When `execution_mode == "incremental"`, specialists receive only customers requiring analysis (NEW, CHANGED, STALE_REFRESH). UNCHANGED customers' findings are carried forward. See `05-orchestrator.md` step 12.
+When `execution_mode == "incremental"`, specialists receive only subjects requiring analysis (NEW, CHANGED, STALE_REFRESH). UNCHANGED subjects' findings are carried forward. See `05-orchestrator.md` step 12.
 
 ---
 
@@ -669,7 +675,7 @@ The Judge receives:
 - Extracted source text: `_dd/forensic-dd/index/text/*.md` (for citation verification)
 - Reference files: metadata + key extracted texts
 - Deal context: `deal-config.json`
-- Customer list: `customers.csv`
+- Subject list: `subjects.csv`
 - Judge configuration: sampling rates, score threshold, max iteration rounds
 
 ### 10.3 Risk-Based Sampling
@@ -682,8 +688,8 @@ The Judge receives:
 | **P3** (informational) | 0% | Not reviewed unless agent score is low |
 
 Additional mandatory reviews:
-- **100% completeness check** for customers with OCR-extracted files (if `judge.ocr_completeness_check` is true)
-- **100% review** for customers where 2+ agents report conflicting severity (if `judge.cross_agent_contradiction_check` is true)
+- **100% completeness check** for subjects with OCR-extracted files (if `judge.ocr_completeness_check` is true)
+- **100% review** for subjects where 2+ agents report conflicting severity (if `judge.cross_agent_contradiction_check` is true)
 
 Sampling rates are configurable in deal-config.json:
 ```json
@@ -722,10 +728,10 @@ agent_score = 0.30 * citation_verification
             + 0.10 * completeness
 ```
 
-**Per-Customer Score (0-100)**:
+**Per-Subject Score (0-100)**:
 ```
-customer_score = average(agent_scores for that customer)
-Customers with contradictions: -20 penalty until resolved
+subject_score = average(agent_scores for that subject)
+Subjects with contradictions: -20 penalty until resolved
 ```
 
 ### 10.6 Judge Output
@@ -803,12 +809,12 @@ async def run_judge_with_iteration(
 
         # Targeted re-analysis of failing agents
         for agent_name in failing:
-            lowest_customers = _get_lowest_scoring_customers(
+            lowest_subjects = _get_lowest_scoring_subjects(
                 scores, agent_name, limit=5
             )
             re_prompt = prompt_builder.build_re_analysis_prompt(
                 agent_type=AgentType(agent_name),
-                customers=lowest_customers,
+                subjects=lowest_subjects,
                 feedback=_extract_feedback(scores, agent_name),
             )
             await runner.spawn(
@@ -824,14 +830,14 @@ async def run_judge_with_iteration(
 **Re-analysis prompt pattern**:
 ```
 You are the {AGENT_TYPE} specialist performing a TARGETED RE-ANALYSIS.
-The Judge found quality issues. RE-ANALYZE ONLY these customers:
-{list of up to 5 customers}
+The Judge found quality issues. RE-ANALYZE ONLY these subjects:
+{list of up to 5 subjects}
 
 SPECIFIC ISSUES TO FIX:
 {paste relevant spot_check entries and contradiction details}
 
-Write corrected findings to {RUN_DIR}/findings/{agent}/ (overwrite for these customers only).
-Do NOT re-analyze customers not listed above.
+Write corrected findings to {RUN_DIR}/findings/{agent}/ (overwrite for these subjects only).
+Do NOT re-analyze subjects not listed above.
 ```
 
 **Blend formula** (Round 2 score): `final_score = 0.70 * round2_score + 0.30 * round1_score`
@@ -891,7 +897,20 @@ Provisions requiring templates per agent:
 
 Total additional prompt overhead: ~2,700 tokens across all specialists.
 
-### 12.2 "Not Found" Protocol
+### 12.2 Detection Method Enumeration
+
+Agent prompts now list all 9 canonical `DetectionMethod` enum values with semantic descriptions to guide correct classification:
+- `checklist` — standard document-pack checklist (expected docs missing)
+- `cross_reference` — comparing data across documents (revenue mismatch, date conflict)
+- `cross_reference_ghost` — entity referenced in data but has no folder/files in the data room
+- `cross_reference_phantom` — contract/document referenced inside another document but not found
+- `cross_reference_mismatch` — same data point differs between two sources
+- `pattern_check` — structural/format pattern (missing signature, unusual clause)
+- `governance_resolution` — governance graph analysis (unresolved governing doc)
+- `file_inventory` — file-level inventory check (expected file type missing for subject)
+- `file_read_failure` — extraction/read failure (corrupted PDF, empty extraction)
+
+### 12.3 "Not Found" Protocol
 
 Every specialist prompt includes an explicit escape valve for missing information. Without this, LLMs fabricate content rather than admitting absence (AG report finding). Full protocol in `22-llm-robustness.md` §6.
 
@@ -903,21 +922,21 @@ DO NOT fabricate clauses. DO NOT infer terms from general legal principles.
 Include files_searched array listing every file you checked.
 ```
 
-### 12.3 Self-Check Before Completion
+### 12.4 Self-Check Before Completion
 
 Before writing the coverage manifest, each specialist executes a self-verification checklist (AG report: follow-up prompts improve accuracy by 9.2%):
 
 ```
 BEFORE YOU WRITE YOUR COVERAGE MANIFEST:
 1. For each P0: re-read the cited section. Is the quote exact? Severity justified?
-2. For each customer with zero findings: re-read their files.
-3. For each customer with only P3 findings: did you overlook higher-severity issues?
+2. For each subject with zero findings: re-read their files.
+3. For each subject with only P3 findings: did you overlook higher-severity issues?
 4. Check: did you process ALL reference files listed in your prompt?
-YOU MAY HAVE MISSED CRITICAL INFORMATION. Re-examine any customers where you
+YOU MAY HAVE MISSED CRITICAL INFORMATION. Re-examine any subjects where you
 produced fewer findings than expected relative to their file count.
 ```
 
-### 12.4 Adversarial Follow-Up in Judge Protocol
+### 12.5 Adversarial Follow-Up in Judge Protocol
 
 The Judge's review of P0 and P1 findings includes an adversarial re-check step (extends §10.4):
 
@@ -931,17 +950,17 @@ Go back and re-examine surrounding paragraphs. Clauses often have qualifiers
 in preceding or following subsections that materially change severity.
 ```
 
-### 12.5 Lost-in-the-Middle Prompt Ordering
+### 12.6 Lost-in-the-Middle Prompt Ordering
 
 Agent prompt sections are ordered to place critical content in high-attention zones (beginning and end) and variable data in the middle:
 
 ```
 [START — high attention]  Role, deal context, specialist focus, strict output rules
-[MIDDLE — lower attention] Customer list, customer-mention index, reference file texts
+[MIDDLE — lower attention] Subject list, subject-mention index, reference file texts
 [END — high attention]    Domain rules, output schema, manifest requirement, key rules repeated
 ```
 
-### 12.6 Large File Handling
+### 12.7 Large File Handling
 
 Files extracting to >120KB text are flagged in the agent prompt. Agents are instructed to use Grep for targeted keyword search rather than Read for full content, preventing context exhaustion:
 
@@ -950,7 +969,7 @@ LARGE FILES (use Grep, not Read):
   - _dd/forensic-dd/index/text/Master_Agreement_v3.pdf.md (245KB)
 ```
 
-### 12.7 Post-Hoc Severity Recalibration
+### 12.8 Post-Hoc Severity Recalibration
 
 Despite rubric guidance, LLM agents still over-flag certain clause types (e.g., competitor-only CoC as P0, standard auditor independence as P0). A deterministic recalibration step in `computed_metrics.py` corrects these patterns after merge, before metrics computation and report rendering. Rules are defined in `_RECALIBRATION_RULES`. See `10-reporting.md` §Severity Recalibration for the full rule list and behavior.
 
@@ -984,7 +1003,7 @@ Pipeline step 15: route_references() assigns reference files to agents
                    ↓
 Pipeline step 16: spawn_all_specialists() — 4 agents run in parallel via asyncio.gather
                    ↓
-Pipeline step 17: Coverage gate validates all customers have output from all 4 agents
+Pipeline step 17: Coverage gate validates all subjects have output from all 4 agents
                    ↓
 Pipeline step 18: [IF INCREMENTAL] Merge new findings + carry forward unchanged
                    ↓
@@ -1001,4 +1020,4 @@ Pipeline step 23: Deterministic pre-merge validation (validation/pre_merge.py)
 Pipeline steps 24-31: Deterministic merge, audit, Excel generation, validation (reporting/merge.py + validation/)
 ```
 
-**Error recovery**: Any agent spawn failure triggers `spawn_with_retry` from `12-error-recovery.md`. Maximum 3 retries per agent. Partial failures (some customers missing) trigger targeted re-spawn for the missing subset only.
+**Error recovery**: Any agent spawn failure triggers `spawn_with_retry` from `12-error-recovery.md`. Maximum 3 retries per agent. Partial failures (some subjects missing) trigger targeted re-spawn for the missing subset only.

@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 AGENTS = ["legal", "finance", "commercial", "producttech"]
-SUBJECTS = ["customer_a", "customer_b"]
+SUBJECTS = ["subject_a", "subject_b"]
 
 
 def _make_finding(
@@ -54,19 +54,19 @@ def _make_finding(
 def _write_agent_file(
     findings_dir: Path,
     agent: str,
-    customer: str,
+    subject: str,
     findings: list[dict[str, Any]] | None = None,
 ) -> None:
     """Write a subject JSON file into the agent's findings directory."""
     agent_dir = findings_dir / agent
     agent_dir.mkdir(parents=True, exist_ok=True)
     data = {
-        "subject": customer,
-        "subject_safe_name": customer,
+        "subject": subject,
+        "subject_safe_name": subject,
         "agent": agent,
         "findings": findings if findings is not None else [_make_finding()],
     }
-    (agent_dir / f"{customer}.json").write_text(json.dumps(data, indent=2))
+    (agent_dir / f"{subject}.json").write_text(json.dumps(data, indent=2))
 
 
 def _setup_complete(findings_dir: Path, file_inventory: list[str] | None = None) -> PreMergeValidator:
@@ -91,10 +91,10 @@ def _setup_complete(findings_dir: Path, file_inventory: list[str] | None = None)
 class TestFileCompleteness:
     def test_missing_agent_file_detected(self, tmp_path: Path) -> None:
         findings_dir = tmp_path / "findings"
-        # Write files for all agents except finance for customer_b
+        # Write files for all agents except finance for subject_b
         for agent in AGENTS:
             for subject in SUBJECTS:
-                if agent == "finance" and subject == "customer_b":
+                if agent == "finance" and subject == "subject_b":
                     continue
                 _write_agent_file(findings_dir, agent, subject)
 
@@ -107,7 +107,7 @@ class TestFileCompleteness:
         report = validator.validate()
         assert len(report.file_completeness_issues) > 0
         issue = report.file_completeness_issues[0]
-        assert issue["subject"] == "customer_b"
+        assert issue["subject"] == "subject_b"
         assert "finance" in issue["missing_agents"]
 
     def test_all_present_passes(self, tmp_path: Path) -> None:
@@ -131,7 +131,7 @@ class TestJsonIntegrity:
                 _write_agent_file(findings_dir, agent, subject)
 
         # Corrupt one file
-        corrupt_path = findings_dir / "legal" / "customer_a.json"
+        corrupt_path = findings_dir / "legal" / "subject_a.json"
         corrupt_path.write_text("{invalid json content")
 
         validator = PreMergeValidator(
@@ -143,7 +143,7 @@ class TestJsonIntegrity:
         report = validator.validate()
         assert len(report.json_integrity_issues) > 0
         assert report.json_integrity_issues[0]["agent"] == "legal"
-        assert report.json_integrity_issues[0]["subject"] == "customer_a"
+        assert report.json_integrity_issues[0]["subject"] == "subject_a"
         # Corrupt JSON makes the report not pass
         assert report.passed is False
 
@@ -162,8 +162,8 @@ class TestSchemaCompliance:
 
         # Write a finding missing "severity" and "citations"
         bad_data = {
-            "customer": "customer_a",
-            "subject_safe_name": "customer_a",
+            "subject": "subject_a",
+            "subject_safe_name": "subject_a",
             "agent": "legal",
             "findings": [
                 {
@@ -173,7 +173,7 @@ class TestSchemaCompliance:
                 }
             ],
         }
-        (findings_dir / "legal" / "customer_a.json").write_text(json.dumps(bad_data))
+        (findings_dir / "legal" / "subject_a.json").write_text(json.dumps(bad_data))
 
         validator = PreMergeValidator(
             run_dir=tmp_path,
@@ -231,9 +231,9 @@ class TestAsymmetricRisk:
         findings_dir = tmp_path / "findings"
         for agent in AGENTS:
             for subject in SUBJECTS:
-                if agent == "legal" and subject == "customer_a":
+                if agent == "legal" and subject == "subject_a":
                     _write_agent_file(findings_dir, agent, subject, [_make_finding(severity="P0")])
-                elif agent == "finance" and subject == "customer_a":
+                elif agent == "finance" and subject == "subject_a":
                     _write_agent_file(findings_dir, agent, subject, findings=[])
                 else:
                     _write_agent_file(findings_dir, agent, subject)
@@ -247,7 +247,7 @@ class TestAsymmetricRisk:
         report = validator.validate()
         assert len(report.asymmetric_risk_anomalies) > 0
         anomaly = report.asymmetric_risk_anomalies[0]
-        assert anomaly["subject"] == "customer_a"
+        assert anomaly["subject"] == "subject_a"
 
     def test_balanced_subject_not_flagged(self, tmp_path: Path) -> None:
         findings_dir = tmp_path / "findings"
@@ -338,10 +338,10 @@ class TestSeverityDisagreement:
 class TestSummaryMatrix:
     def test_correct_counts(self, tmp_path: Path) -> None:
         findings_dir = tmp_path / "findings"
-        # customer_a: legal has 2 findings, others have 1
+        # subject_a: legal has 2 findings, others have 1
         for agent in AGENTS:
             for subject in SUBJECTS:
-                if agent == "legal" and subject == "customer_a":
+                if agent == "legal" and subject == "subject_a":
                     _write_agent_file(
                         findings_dir,
                         agent,
@@ -358,9 +358,9 @@ class TestSummaryMatrix:
             file_inventory=["1. Due Diligence/doc.pdf"],
         )
         report = validator.validate()
-        assert report.summary_matrix["customer_a"]["legal"] == 2
-        assert report.summary_matrix["customer_a"]["finance"] == 1
-        assert report.summary_matrix["customer_b"]["legal"] == 1
+        assert report.summary_matrix["subject_a"]["legal"] == 2
+        assert report.summary_matrix["subject_a"]["finance"] == 1
+        assert report.summary_matrix["subject_b"]["legal"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -413,7 +413,7 @@ class TestNonSubjectExclusion:
             report.schema_issues,
         ]:
             for issue in issue_list:
-                if "customer" in issue:
+                if "subject" in issue:
                     all_subjects_in_issues.add(issue["subject"])
         assert "coverage_manifest" not in all_subjects_in_issues
         # Should not appear in summary matrix
@@ -441,4 +441,4 @@ class TestEmptyFindings:
         report = validator.validate()
         assert report.passed is True
         assert report.total_findings == 0
-        assert report.summary_matrix["customer_a"]["legal"] == 0
+        assert report.summary_matrix["subject_a"]["legal"] == 0

@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from dd_agents.reporting.html_base import SectionRenderer
+from dd_agents.utils.constants import SEVERITY_P0, SEVERITY_P1, SEVERITY_P3
 
 
 class KeyEmployeeRenderer(SectionRenderer):
@@ -33,11 +34,11 @@ class KeyEmployeeRenderer(SectionRenderer):
         ]
 
         # Alert for critical findings
-        p0_p1 = [f for f in findings if str(f.get("severity", "P3")) in ("P0", "P1")]
+        p0_p1 = [f for f in findings if str(f.get("severity", SEVERITY_P3)) in (SEVERITY_P0, SEVERITY_P1)]
         if p0_p1:
             parts.append(
                 self.render_alert(
-                    "critical" if any(str(f.get("severity")) == "P0" for f in p0_p1) else "high",
+                    "critical" if any(str(f.get("severity")) == SEVERITY_P0 for f in p0_p1) else "high",
                     f"{len(p0_p1)} Critical Key-Person Risk{'s' if len(p0_p1) != 1 else ''}",
                     "Key employee dependencies with high severity require immediate retention planning.",
                 )
@@ -65,7 +66,7 @@ class KeyEmployeeRenderer(SectionRenderer):
             )
             for f in findings[:30]:
                 entity = self.escape(self._resolve_display_name(f))
-                sev = str(f.get("severity", "P3"))
+                sev = str(f.get("severity", SEVERITY_P3))
                 title = self.escape(str(f.get("title", "")))
                 cat = self.escape(str(f.get("category", "")))
                 parts.append(

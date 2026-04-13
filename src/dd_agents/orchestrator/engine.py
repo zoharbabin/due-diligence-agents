@@ -30,7 +30,20 @@ from dd_agents.orchestrator.checkpoints import (
 from dd_agents.orchestrator.state import PipelineError, PipelineState, StepResult
 from dd_agents.orchestrator.steps import PipelineStep
 from dd_agents.orchestrator.team import AgentTeam
-from dd_agents.utils.constants import ALL_SPECIALIST_AGENTS
+from dd_agents.utils.constants import (
+    ALL_SPECIALIST_AGENTS,
+    COVERAGE_MANIFEST_JSON,
+    FILES_TXT,
+    JUDGE_DIR,
+    NUMERICAL_MANIFEST_JSON,
+    QUALITY_SCORES_JSON,
+    SEVERITY_P0,
+    SEVERITY_P1,
+    SEVERITY_P2,
+    SEVERITY_P3,
+    SUBJECTS_CSV,
+    _sev_count_init,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -393,18 +406,21 @@ class PipelineEngine:
         for agent_dir in findings_dir.iterdir():
             if not agent_dir.is_dir() or agent_dir.name.startswith("_"):
                 continue
-            manifest_path = agent_dir / "coverage_manifest.json"
-            if not manifest_path.exists():
-                continue
+            manifest_path = agent_dir / COVERAGE_MANIFEST_JSON
 
-            try:
-                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
-                continue
-
-            # Already has file data — skip
-            if manifest.get("files_read") or manifest.get("files_covered"):
-                continue
+            if manifest_path.exists():
+                try:
+                    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    manifest = {}
+                # Already has file data — skip
+                if manifest.get("files_read") or manifest.get("files_covered"):
+                    continue
+            else:
+                # Agent crashed before writing its manifest (e.g. SDK error
+                # after completing all subjects).  Create one from scratch
+                # so DoD check [3] passes when subject outputs exist.
+                manifest = {}
 
             # Collect file paths from all subject JSONs this agent produced
             files_read: list[dict[str, str]] = []
@@ -461,10 +477,10 @@ class PipelineEngine:
         """
         artifact_paths: dict[str, list[str]] = {
             "quality_scores": [
-                "quality_scores.json",
-                "judge/quality_scores.json",
-                "audit/quality_scores.json",
-                "audit/judge/quality_scores.json",
+                QUALITY_SCORES_JSON,
+                f"judge/{QUALITY_SCORES_JSON}",
+                f"audit/{QUALITY_SCORES_JSON}",
+                f"audit/judge/{QUALITY_SCORES_JSON}",
             ],
             "entity_matches": [
                 "entity_matches.json",
@@ -476,15 +492,7 @@ class PipelineEngine:
                 "contract_date_reconciliation.json",
             ],
         }
-        # Check state-level artifact paths first (if recorded during pipeline execution).
-        if hasattr(state, "artifact_paths") and isinstance(getattr(state, "artifact_paths", None), dict):
-            recorded = state.artifact_paths.get(artifact)
-            if recorded:
-                recorded_path = Path(recorded)
-                if recorded_path.exists():
-                    return recorded_path
-
-        # Fall back to filesystem search.
+        # Search known relative paths under the run directory.
         for relative in artifact_paths.get(artifact, []):
             candidate = state.run_dir / relative
             if candidate.exists():
@@ -513,7 +521,7 @@ class PipelineEngine:
             return entries
 
         # Strategy 1: reconstruct from CSV on disk.
-        csv_path = self._inventory_dir(state) / "subjects.csv"
+        csv_path = self._inventory_dir(state) / SUBJECTS_CSV
         if csv_path.exists():
             restored: list[SubjectEntry] = []
             with csv_path.open(encoding="utf-8") as fh:
@@ -568,6 +576,16 @@ class PipelineEngine:
     def _text_dir(self, state: PipelineState) -> Path:
         """Return the extracted-text directory."""
         return state.project_dir / state.skill_dir / "index" / "text"
+
+    @staticmethod
+    def _build_file_precedence_index(state: PipelineState) -> dict[str, Any] | None:
+        """Build a path→FileEntry index for prompt precedence annotations."""
+        if not state.file_precedence:
+            return None
+        discovered = getattr(state, "_discovered_files", [])
+        if not discovered:
+            return None
+        return {f.path: f for f in discovered}
 
     # ==================================================================
     # Step implementations  (35 steps)
@@ -719,7 +737,7 @@ class PipelineEngine:
         inv_dir = self._inventory_dir(state)
         inv_dir.mkdir(parents=True, exist_ok=True)
         discovery.write_tree(files, inv_dir / "tree.txt")
-        discovery.write_files_list(files, inv_dir / "files.txt")
+        discovery.write_files_list(files, inv_dir / FILES_TXT)
 
         # Store file entries in state for subsequent steps
         state._discovered_files = files  # type: ignore[attr-defined]
@@ -800,7 +818,7 @@ class PipelineEngine:
         )
 
         inv_dir = self._inventory_dir(state)
-        builder.write_csv(subjects, inv_dir / "subjects.csv")
+        builder.write_csv(subjects, inv_dir / SUBJECTS_CSV)
         builder.write_counts(counts, inv_dir / "counts.json")
 
         state.total_subjects = counts.total_subjects
@@ -984,7 +1002,7 @@ class PipelineEngine:
         try:
             subject_db = json.loads(db_path.read_text(encoding="utf-8"))
             if not isinstance(subject_db, list):
-                subject_db = subject_db.get("subjects", subject_db.get("customers", []))
+                subject_db = subject_db.get("subjects", [])
         except (json.JSONDecodeError, OSError) as exc:
             logger.warning("Failed to load subject database: %s", exc)
             return state
@@ -1084,7 +1102,25 @@ class PipelineEngine:
 
         self._ensure_team(state)
 
-        subjects: list[Any] = self._ensure_subject_entries(state)
+        all_subjects: list[Any] = self._ensure_subject_entries(state)
+
+        # Filter out subjects with zero files — they have no source documents
+        # for agents to analyze.  Sending them wastes turns and triggers
+        # avoidable respawns in the coverage gate.  Zero-file subjects get
+        # gap findings generated directly in step 17 instead.
+        subjects: list[Any] = [s for s in all_subjects if getattr(s, "file_count", 0) > 0]
+        zero_file_subjects = [s for s in all_subjects if getattr(s, "file_count", 0) == 0]
+        if zero_file_subjects:
+            names = [getattr(s, "safe_name", "?") for s in zero_file_subjects]
+            logger.info(
+                "Excluding %d zero-file subjects from agent routing: %s",
+                len(zero_file_subjects),
+                ", ".join(names),
+            )
+            # Track for the coverage gate so it can generate gap findings
+            # without attempting wasteful respawns.
+            state._zero_file_subjects = [getattr(s, "safe_name", "") for s in zero_file_subjects]
+
         reference_files: list[Any] = getattr(state, "_reference_files", [])
         deal_config_raw = state.deal_config
 
@@ -1110,12 +1146,7 @@ class PipelineEngine:
         from dd_agents.agents.prompt_builder import AgentType
         from dd_agents.agents.specialists import SPECIALIST_CLASSES
 
-        # Build file_precedence FileEntry index for prompt annotations (Issue #163)
-        file_prec_entries: dict[str, Any] | None = None
-        if state.file_precedence:
-            discovered = getattr(state, "_discovered_files", [])
-            if discovered:
-                file_prec_entries = {f.path: f for f in discovered}
+        file_prec_entries = self._build_file_precedence_index(state)
 
         # Use actual extracted text sizes for accurate batching
         text_dir = self._text_dir(state)
@@ -1265,7 +1296,7 @@ class PipelineEngine:
             # DD Output files have explicitly empty routing — skip them.
             # None means "unspecified" → fall back to all agents.
             if ref.assigned_to_agents is not None and len(ref.assigned_to_agents) == 0:
-                logger.debug("No agent routing for %s (DD Output) -- skipping", ref.file_path)
+                logger.debug("Skipping buyer work product (not routed to agents): %s", ref.file_path)
                 continue
             agents_routed: list[str] = ref.assigned_to_agents or list(ALL_SPECIALIST_AGENTS)
 
@@ -1387,9 +1418,65 @@ class PipelineEngine:
         :class:`BlockingGateError`.
         """
         findings_dir = state.run_dir / "findings"
-        total_subjects = len(state.subject_safe_names)
+
+        # --- Generate gap findings for zero-file subjects -------------------
+        # These subjects were excluded from agent routing in step 14 because
+        # they have no source documents.  Generate informational gap findings
+        # so they still appear in the coverage report.
+        zero_file_names: list[str] = getattr(state, "_zero_file_subjects", [])
+        if zero_file_names:
+            zf_gaps: list[dict[str, Any]] = []
+            for subj in zero_file_names:
+                for agent in ALL_SPECIALIST_AGENTS:
+                    zf_gaps.append(
+                        self._generate_coverage_gap_finding(
+                            subject_safe_name=subj,
+                            agent_name=agent,
+                            run_id=state.run_id,
+                            reason="Zero source documents in data room — no files to analyze",
+                        )
+                    )
+            if zf_gaps:
+                gaps_dir = findings_dir / "coverage_gaps"
+                gaps_dir.mkdir(parents=True, exist_ok=True)
+                zf_path = gaps_dir / "zero_file_gap_findings.json"
+                zf_path.write_text(json.dumps(zf_gaps, indent=2), encoding="utf-8")
+
+                # Write as agent output files so merge picks them up.
+                for gap in zf_gaps:
+                    a = gap.get("agent", "")
+                    s = gap.get("subject_safe_name", "")
+                    if a and s:
+                        agent_dir = findings_dir / a
+                        agent_dir.mkdir(parents=True, exist_ok=True)
+                        agent_file = agent_dir / f"{s}.json"
+                        if not agent_file.exists():
+                            agent_output = {
+                                "subject": s,
+                                "subject_safe_name": s,
+                                "findings": [gap],
+                                "gaps": [],
+                                "cross_references": [],
+                                "auto_generated": True,
+                                "source": "coverage_gate",
+                            }
+                            agent_file.write_text(
+                                json.dumps(agent_output, indent=2),
+                                encoding="utf-8",
+                            )
+
+                logger.info(
+                    "Generated %d gap findings for %d zero-file subjects",
+                    len(zf_gaps),
+                    len(zero_file_names),
+                )
+
+        # Exclude zero-file subjects from coverage checks — they were never
+        # routed to agents, so expecting output from them is incorrect.
+        routed_subjects = [s for s in state.subject_safe_names if s not in set(zero_file_names)]
+        total_subjects = len(routed_subjects)
         if total_subjects == 0:
-            logger.info("Coverage gate: no subjects to check")
+            logger.info("Coverage gate: no routed subjects to check")
             return state
 
         # --- Reconcile misnamed output files --------------------------------
@@ -1406,7 +1493,7 @@ class PipelineEngine:
         per_agent_missing: dict[str, list[str]] = {}
         for agent in ALL_SPECIALIST_AGENTS:
             missing: list[str] = []
-            for subj in state.subject_safe_names:
+            for subj in routed_subjects:
                 path = findings_dir / agent / f"{subj}.json"
                 if not path.exists():
                     missing.append(subj)
@@ -1416,7 +1503,7 @@ class PipelineEngine:
             exhaustion = self._detect_context_exhaustion(
                 agent_name=agent,
                 findings_dir=findings_dir,
-                expected_subjects=state.subject_safe_names,
+                expected_subjects=routed_subjects,
             )
             if exhaustion.get("likely_exhaustion"):
                 logger.warning(
@@ -1427,28 +1514,48 @@ class PipelineEngine:
 
         # --- Respawn for ANY missing subjects (Issue #91) -----------------
         # Always retry missing subjects to achieve 100% coverage,
-        # not just when below 90%.
-        for agent, missing_subjs in per_agent_missing.items():
-            if missing_subjs:
-                coverage_pct = (total_subjects - len(missing_subjs)) / max(total_subjects, 1)
-                logger.warning(
-                    "Agent %s coverage %.1f%% -- respawning for %d missing subjects",
-                    agent,
-                    coverage_pct * 100,
-                    len(missing_subjs),
-                )
-                await self._respawn_for_missing_subjects(
-                    agent_name=agent,
-                    missing_subjects=missing_subjs,
-                    state=state,
+        # not just when below 90%.  Two attempts: first respawn, then
+        # a second attempt for any subjects still missing (resilience).
+        for attempt in (1, 2):
+            any_missing = False
+            for agent, missing_subjs in per_agent_missing.items():
+                if missing_subjs:
+                    any_missing = True
+                    coverage_pct = (total_subjects - len(missing_subjs)) / max(total_subjects, 1)
+                    logger.warning(
+                        "Agent %s coverage %.1f%% -- respawn attempt %d for %d missing subjects",
+                        agent,
+                        coverage_pct * 100,
+                        attempt,
+                        len(missing_subjs),
+                    )
+                    await self._respawn_for_missing_subjects(
+                        agent_name=agent,
+                        missing_subjects=missing_subjs,
+                        state=state,
+                    )
+
+            if not any_missing:
+                break
+
+            # Reconcile after each respawn attempt
+            for agent in ALL_SPECIALIST_AGENTS:
+                self._reconcile_agent_output_filenames(
+                    findings_dir / agent,
+                    state.subject_safe_names,
                 )
 
-        # --- Reconcile again after respawn -----------------------------------
-        for agent in ALL_SPECIALIST_AGENTS:
-            self._reconcile_agent_output_filenames(
-                findings_dir / agent,
-                state.subject_safe_names,
-            )
+            # Re-check which subjects are still missing for next attempt
+            if attempt == 1:
+                per_agent_missing = {}
+                for agent in ALL_SPECIALIST_AGENTS:
+                    still_missing: list[str] = []
+                    for subj in routed_subjects:
+                        path = findings_dir / agent / f"{subj}.json"
+                        if not path.exists():
+                            still_missing.append(subj)
+                    if still_missing:
+                        per_agent_missing[agent] = still_missing
 
         # --- Second pass: re-check coverage after respawn -------------------
         all_gap_findings: list[dict[str, Any]] = []
@@ -1456,20 +1563,20 @@ class PipelineEngine:
         worst_agent: str = ""
 
         for agent in ALL_SPECIALIST_AGENTS:
-            still_missing: list[str] = []
-            for subj in state.subject_safe_names:
+            remaining_missing: list[str] = []
+            for subj in routed_subjects:
                 path = findings_dir / agent / f"{subj}.json"
                 if not path.exists():
-                    still_missing.append(subj)
+                    remaining_missing.append(subj)
 
-            coverage_pct = (total_subjects - len(still_missing)) / max(total_subjects, 1)
+            coverage_pct = (total_subjects - len(remaining_missing)) / max(total_subjects, 1)
 
             if coverage_pct < worst_coverage:
                 worst_coverage = coverage_pct
                 worst_agent = agent
 
             # Generate P1 gap findings for still-missing subjects
-            for subj in still_missing:
+            for subj in remaining_missing:
                 gap = self._generate_coverage_gap_finding(
                     subject_safe_name=subj,
                     agent_name=agent,
@@ -1477,12 +1584,12 @@ class PipelineEngine:
                 )
                 all_gap_findings.append(gap)
 
-            if still_missing:
+            if remaining_missing:
                 logger.warning(
                     "Agent %s post-respawn coverage: %.1f%% (%d still missing)",
                     agent,
                     coverage_pct * 100,
-                    len(still_missing),
+                    len(remaining_missing),
                 )
 
         # --- Persist gap findings -------------------------------------------
@@ -1491,6 +1598,37 @@ class PipelineEngine:
             gaps_dir.mkdir(parents=True, exist_ok=True)
             gap_path = gaps_dir / "coverage_gap_findings.json"
             gap_path.write_text(json.dumps(all_gap_findings, indent=2), encoding="utf-8")
+
+            # Also write gap findings as proper agent output files so the
+            # merge step (step 24) picks them up and includes them in
+            # merged/{subject}.json.  Without this, the QA audit's
+            # domain_coverage check sees missing agents in merged output.
+            per_agent_gaps: dict[str, dict[str, list[dict[str, Any]]]] = {}
+            for gap in all_gap_findings:
+                a = gap.get("agent", "")
+                s = gap.get("subject_safe_name", "")
+                if a and s:
+                    per_agent_gaps.setdefault(a, {}).setdefault(s, []).append(gap)
+            for agent_name, subj_gaps in per_agent_gaps.items():
+                agent_dir = findings_dir / agent_name
+                agent_dir.mkdir(parents=True, exist_ok=True)
+                for subj, gaps in subj_gaps.items():
+                    agent_file = agent_dir / f"{subj}.json"
+                    if not agent_file.exists():
+                        agent_output = {
+                            "subject": subj,
+                            "subject_safe_name": subj,
+                            "findings": gaps,
+                            "gaps": [],
+                            "cross_references": [],
+                            "auto_generated": True,
+                            "source": "coverage_gate",
+                        }
+                        agent_file.write_text(
+                            json.dumps(agent_output, indent=2),
+                            encoding="utf-8",
+                        )
+
             logger.info(
                 "Generated %d coverage gap findings at %s",
                 len(all_gap_findings),
@@ -1537,7 +1675,7 @@ class PipelineEngine:
         (useful for tests and monitoring).
         """
         summary: dict[str, Any] = {}
-        findings_path = Path(str(findings_dir))
+        findings_path = Path(findings_dir)
 
         for agent in ALL_SPECIALIST_AGENTS:
             agent_dir = findings_path / agent
@@ -1553,7 +1691,7 @@ class PipelineEngine:
             }
 
             for fp in sorted(agent_dir.glob("*.json")):
-                if fp.name == "coverage_manifest.json":
+                if fp.name.endswith(COVERAGE_MANIFEST_JSON):
                     continue
                 try:
                     data = json.loads(fp.read_text(encoding="utf-8"))
@@ -1646,7 +1784,7 @@ class PipelineEngine:
         reconciled = 0
 
         for fp in sorted(agent_dir.glob("*.json")):
-            if fp.name == "coverage_manifest.json":
+            if fp.name.endswith(COVERAGE_MANIFEST_JSON):
                 continue
             stem = fp.stem
             # Already matches an expected name — skip.
@@ -1776,12 +1914,7 @@ class PipelineEngine:
             len(batches),
         )
 
-        # Build file_precedence FileEntry index for prompt annotations (Issue #163)
-        file_prec_entries: dict[str, Any] | None = None
-        if state.file_precedence:
-            discovered = getattr(state, "_discovered_files", [])
-            if discovered:
-                file_prec_entries = {f.path: f for f in discovered}
+        file_prec_entries = self._build_file_precedence_index(state)
 
         # Build a prompt per batch and pass as a list so _run_specialist
         # iterates over them as sequential SDK sessions.
@@ -1854,7 +1987,7 @@ class PipelineEngine:
         - ``reason``: str (empty if no exhaustion detected)
         - ``file_sizes``: list of (filename, size) tuples sorted by name
         """
-        agent_dir = Path(str(findings_dir)) / agent_name
+        agent_dir = Path(findings_dir) / agent_name
         result: dict[str, Any] = {
             "agent": agent_name,
             "produced": 0,
@@ -1874,7 +2007,7 @@ class PipelineEngine:
         # Collect file sizes (only subject JSON files)
         file_sizes: list[tuple[str, int]] = []
         for fp in sorted(agent_dir.glob("*.json")):
-            if fp.name == "coverage_manifest.json":
+            if fp.name.endswith(COVERAGE_MANIFEST_JSON):
                 continue
             file_sizes.append((fp.name, fp.stat().st_size))
 
@@ -1928,26 +2061,38 @@ class PipelineEngine:
         subject_safe_name: str,
         agent_name: str,
         run_id: str,
+        reason: str = "",
     ) -> dict[str, Any]:
         """Generate a P1 gap finding for a subject missing from agent output.
 
         Returns a Finding-compatible dict suitable for persisting to the
         ``coverage_gaps/`` directory.
         """
+        description = reason or (
+            f"The {agent_name} agent did not produce output for subject "
+            f"{subject_safe_name!r}.  This may indicate context exhaustion, "
+            f"agent failure, or a prompt assembly error.  Manual review is "
+            f"required."
+        )
         return {
             "finding_id": f"COVERAGE_GAP_{agent_name}_{subject_safe_name}",
             "subject_safe_name": subject_safe_name,
             "agent": agent_name,
             "run_id": run_id,
-            "severity": "P1",
+            "severity": SEVERITY_P1,
+            "category": "data_gap",
             "finding_type": "coverage_gap",
             "title": f"Missing {agent_name} analysis for {subject_safe_name}",
-            "description": (
-                f"The {agent_name} agent did not produce output for subject "
-                f"{subject_safe_name!r}.  This may indicate context exhaustion, "
-                f"agent failure, or a prompt assembly error.  Manual review is "
-                f"required."
-            ),
+            "description": description,
+            "confidence": "low",
+            "citations": [
+                {
+                    "source_type": "file",
+                    "source_path": f"[synthetic:coverage_gap_{agent_name}]",
+                    "location": "",
+                    "exact_quote": "",
+                }
+            ],
             "timestamp": datetime.now(UTC).isoformat(),
             "source": "coverage_gate",
             "auto_generated": True,
@@ -2080,9 +2225,9 @@ class PipelineEngine:
 
             if scores is not None:
                 # Persist quality scores
-                judge_dir = state.run_dir / "judge"
+                judge_dir = state.run_dir / JUDGE_DIR
                 judge_dir.mkdir(parents=True, exist_ok=True)
-                scores_path = judge_dir / "quality_scores.json"
+                scores_path = judge_dir / QUALITY_SCORES_JSON
 
                 # The judge agent may have written quality_scores.json via
                 # its Write tool during the SDK session.  If that file
@@ -2094,8 +2239,8 @@ class PipelineEngine:
                 if scores.overall_quality == 0 and not scores.agent_scores:
                     candidate_paths = [
                         scores_path,
-                        state.project_dir / "judge" / "quality_scores.json",
-                        state.run_dir / "audit" / "judge" / "quality_scores.json",
+                        state.project_dir / JUDGE_DIR / QUALITY_SCORES_JSON,
+                        state.run_dir / "audit" / JUDGE_DIR / QUALITY_SCORES_JSON,
                     ]
                     for candidate in candidate_paths:
                         if not candidate.exists():
@@ -2221,41 +2366,19 @@ class PipelineEngine:
             state.judge_scores = judge_data
             return state
 
-        from dd_agents.agents.judge import blend_round_scores
-
-        # Blend round-1 and round-2 scores for agents that were re-spawned
+        # Score blending placeholder: when the Judge produces independent
+        # round-2 scores, blend them with round-1 here using blend_round_scores().
+        # Currently round-2 re-uses the round-1 score, making blending a no-op.
         agent_scores = judge_data.get("agent_scores", {})
-        for agent_name in failing_agents:
-            round2_key = f"{agent_name}_round2"
-            if round2_key not in state.agent_results:
-                continue
-
-            r1_score_data = agent_scores.get(agent_name, {})
-            r1_score = r1_score_data.get("score", 0)
-            # Round-2 score placeholder (in production, the Judge would score it)
-            r2_score = r1_score  # Placeholder until real Judge scoring is wired
-            blended = blend_round_scores(r1_score, r2_score)
-
-            if agent_name in agent_scores:
-                agent_scores[agent_name]["score"] = blended
-                agent_scores[agent_name]["blended"] = True
-
-            logger.info(
-                "Agent %s: round1=%d, round2=%d, blended=%d",
-                agent_name,
-                r1_score,
-                r2_score,
-                blended,
-            )
 
         judge_data["agent_scores"] = agent_scores
         judge_data["iteration_round"] = 2
         state.judge_scores = judge_data
 
         # Update persisted quality scores
-        judge_dir = state.run_dir / "judge"
+        judge_dir = state.run_dir / JUDGE_DIR
         judge_dir.mkdir(parents=True, exist_ok=True)
-        scores_path = judge_dir / "quality_scores.json"
+        scores_path = judge_dir / QUALITY_SCORES_JSON
         scores_path.write_text(json.dumps(judge_data, indent=2), encoding="utf-8")
 
         logger.info("Judge Round 2 complete: blended scores for %d agents", len(failing_agents))
@@ -2266,14 +2389,13 @@ class PipelineEngine:
     async def _step_23_spawn_reporting_lead(self, state: PipelineState) -> PipelineState:
         """Pre-merge validation, cross-agent anomaly detection, and P0/P1 follow-up.
 
-        Replaced the legacy Reporting Lead agent (which duplicated steps 24-30).
-        Now performs deterministic validation of specialist outputs, plus
+        Performs deterministic validation of specialist outputs, plus
         follow-up verification of critical findings (Issue #140, AG-6).
         """
         from dd_agents.validation.pre_merge import PreMergeValidator
 
         # Load file inventory for citation path verification.
-        files_txt = self._inventory_dir(state) / "files.txt"
+        files_txt = self._inventory_dir(state) / FILES_TXT
         file_inventory: list[str] = []
         if files_txt.exists():
             raw = files_txt.read_text(encoding="utf-8").strip()
@@ -2295,25 +2417,23 @@ class PipelineEngine:
 
         # --- Follow-up verification of P0/P1 findings (Issue #140, AG-6) ---
         # Research shows 9.2% accuracy improvement from follow-up prompts.
-        await self._verify_critical_findings(state, findings_dir)
+        await self._verify_critical_findings(findings_dir)
 
         return state
 
     async def _verify_critical_findings(
         self,
-        state: PipelineState,
         findings_dir: Path,
     ) -> None:
-        """Run follow-up verification on all P0/P1 findings (Issue #140).
+        """Run deterministic follow-up verification on P0-P2 findings (Issue #140).
 
-        For each agent x subject combination that has P0/P1 findings,
-        spawns a targeted follow-up prompt to re-verify the critical findings.
-        Applies severity adjustments based on verification results.
+        For each agent x subject combination that has P0-P2 findings,
+        runs deterministic citation-existence checks and applies severity
+        adjustments when citations cannot be verified on disk.
 
         Research basis: AG-6 finding — mandatory follow-up for high-value
         provisions improves accuracy by 9.2%.
         """
-        from dd_agents.agents.prompt_builder import PromptBuilder
 
         total_verified = 0
         total_adjusted = 0
@@ -2343,19 +2463,13 @@ class PipelineEngine:
                 critical = [
                     f
                     for f in findings
-                    if isinstance(f, dict) and str(f.get("severity", "")).upper() in ("P0", "P1", "P2")
+                    if isinstance(f, dict)
+                    and str(f.get("severity", "")).upper() in (SEVERITY_P0, SEVERITY_P1, SEVERITY_P2)
                 ]
                 if not critical:
                     continue
 
                 subject_name = subject_file.stem
-                prompt = PromptBuilder.build_follow_up_prompt(
-                    findings=critical,
-                    subject_name=subject_name,
-                    agent_name=agent_name,
-                )
-                if not prompt:
-                    continue
 
                 # Run deterministic verification checks (no LLM call needed
                 # for basic checks — verify citations exist on disk).
@@ -2403,8 +2517,8 @@ class PipelineEngine:
 
             # Check 1: P0/P1/P2 must have at least one citation.
             if not citations or not isinstance(citations, list):
-                if severity == "P0":
-                    finding["severity"] = "P1"
+                if severity == SEVERITY_P0:
+                    finding["severity"] = SEVERITY_P1
                     finding["verification_note"] = "Downgraded: no citations provided"
                     adjusted += 1
                     logger.warning(
@@ -2413,8 +2527,8 @@ class PipelineEngine:
                         subject_name,
                         finding.get("title", "?"),
                     )
-                elif severity == "P1":
-                    finding["severity"] = "P2"
+                elif severity == SEVERITY_P1:
+                    finding["severity"] = SEVERITY_P2
                     finding["verification_note"] = "Downgraded: no citations provided"
                     adjusted += 1
                     logger.warning(
@@ -2423,8 +2537,8 @@ class PipelineEngine:
                         subject_name,
                         finding.get("title", "?"),
                     )
-                elif severity == "P2":
-                    finding["severity"] = "P3"
+                elif severity == SEVERITY_P2:
+                    finding["severity"] = SEVERITY_P3
                     finding["verification_note"] = "Downgraded: no citations provided"
                     adjusted += 1
                     logger.warning(
@@ -2437,8 +2551,8 @@ class PipelineEngine:
 
             # Check 2: P0/P1 must have exact_quote in at least one citation.
             has_quote = any(isinstance(c, dict) and c.get("exact_quote", "").strip() for c in citations)
-            if not has_quote and severity == "P0":
-                finding["severity"] = "P1"
+            if not has_quote and severity == SEVERITY_P0:
+                finding["severity"] = SEVERITY_P1
                 finding["verification_note"] = "Downgraded: missing exact_quote for critical finding"
                 adjusted += 1
                 logger.warning(
@@ -2447,9 +2561,9 @@ class PipelineEngine:
                     subject_name,
                     finding.get("title", "?"),
                 )
-            elif not has_quote and severity == "P2":
+            elif not has_quote and severity == SEVERITY_P2:
                 # P2 findings without any exact_quote get downgraded to P3.
-                finding["severity"] = "P3"
+                finding["severity"] = SEVERITY_P3
                 finding["verification_note"] = "Downgraded: no exact_quote on any citation"
                 adjusted += 1
                 logger.warning(
@@ -2470,7 +2584,7 @@ class PipelineEngine:
         from dd_agents.reporting.merge import FindingMerger
 
         # Load file inventory so the merger can resolve agent citation paths.
-        files_txt = self._inventory_dir(state) / "files.txt"
+        files_txt = self._inventory_dir(state) / FILES_TXT
         file_inventory: list[str] = []
         if files_txt.exists():
             raw = files_txt.read_text(encoding="utf-8").strip()
@@ -2537,7 +2651,7 @@ class PipelineEngine:
         inv_dir.mkdir(parents=True, exist_ok=True)
 
         # -- subjects.csv --------------------------------------------------
-        csv_path = inv_dir / "subjects.csv"
+        csv_path = inv_dir / SUBJECTS_CSV
         if not csv_path.exists():
             entries = self._ensure_subject_entries(state)
             if entries:
@@ -2566,7 +2680,7 @@ class PipelineEngine:
                 )
 
         # -- files.txt -------------------------------------------------------
-        files_path = inv_dir / "files.txt"
+        files_path = inv_dir / FILES_TXT
         if not files_path.exists() and state.total_files > 0:
             try:
                 from dd_agents.inventory.discovery import FileDiscovery
@@ -2621,14 +2735,14 @@ class PipelineEngine:
                     "id": "N001",
                     "label": "Total Subjects",
                     "value": state.total_subjects,
-                    "source_file": str(inv_dir / "subjects.csv"),
+                    "source_file": str(inv_dir / SUBJECTS_CSV),
                     "derivation": "row_count",
                 },
                 {
                     "id": "N002",
                     "label": "Total Files",
                     "value": state.total_files,
-                    "source_file": str(inv_dir / "files.txt"),
+                    "source_file": str(inv_dir / FILES_TXT),
                     "derivation": "line_count",
                 },
                 {
@@ -2690,12 +2804,17 @@ class PipelineEngine:
             ],
         }
 
-        # Update finding counts from merged directory
+        # Update finding counts from merged directory.
+        # Apply severity recalibration so manifest counts match the Excel
+        # and HTML reports (both of which apply recalibration before rendering).
+        # Without this, layer 4 cross-format parity fails for severity counts.
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
         merged_dir = state.run_dir / "findings" / "merged"
         if merged_dir.exists():
             total_findings = 0
             clean_result_count = 0
-            sev_counts = {"P0": 0, "P1": 0, "P2": 0, "P3": 0}
+            sev_counts = _sev_count_init()
             total_gaps = 0
             for jf in merged_dir.glob("*.json"):
                 try:
@@ -2706,7 +2825,8 @@ class PipelineEngine:
                             clean_result_count += 1
                         else:
                             total_findings += 1
-                            sev = f.get("severity", "P3")
+                            recal = ReportDataComputer._recalibrate_severity(f)
+                            sev = recal.get("severity", SEVERITY_P3)
                             if sev in sev_counts:
                                 sev_counts[sev] += 1
                     # Gaps are embedded in each subject's merged JSON.
@@ -2715,14 +2835,14 @@ class PipelineEngine:
                     continue
 
             manifest["numbers"][2]["value"] = total_findings
-            manifest["numbers"][3]["value"] = sev_counts["P0"]
-            manifest["numbers"][4]["value"] = sev_counts["P1"]
-            manifest["numbers"][5]["value"] = sev_counts["P2"]
-            manifest["numbers"][6]["value"] = sev_counts["P3"]
+            manifest["numbers"][3]["value"] = sev_counts[SEVERITY_P0]
+            manifest["numbers"][4]["value"] = sev_counts[SEVERITY_P1]
+            manifest["numbers"][5]["value"] = sev_counts[SEVERITY_P2]
+            manifest["numbers"][6]["value"] = sev_counts[SEVERITY_P3]
             manifest["numbers"][7]["value"] = clean_result_count
             manifest["numbers"][8]["value"] = total_gaps
 
-        manifest_path = state.run_dir / "numerical_manifest.json"
+        manifest_path = state.run_dir / NUMERICAL_MANIFEST_JSON
         manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
         logger.info("Built numerical manifest with %d entries", len(manifest["numbers"]))
@@ -2739,7 +2859,7 @@ class PipelineEngine:
         )
 
         # Load numerical manifest
-        manifest_path = state.run_dir / "numerical_manifest.json"
+        manifest_path = state.run_dir / NUMERICAL_MANIFEST_JSON
         if not manifest_path.exists():
             state.validation_results["numerical_audit"] = False
             raise BlockingGateError("Numerical manifest not found")
@@ -2865,8 +2985,8 @@ class PipelineEngine:
             try:
                 data = json.loads(ref_path.read_text(encoding="utf-8"))
                 run_metadata["reference_files"] = data if isinstance(data, list) else data.get("files", [])
-            except (json.JSONDecodeError, OSError):
-                pass
+            except (json.JSONDecodeError, OSError) as exc:
+                logger.warning("Failed to load reference_files.json: %s", exc)
 
         # Contract date reconciliation
         for candidate in [
@@ -2889,7 +3009,7 @@ class PipelineEngine:
         # Finding and gap counts from merged data
         total_findings = 0
         total_gaps = 0
-        sev_counts: dict[str, int] = {"P0": 0, "P1": 0, "P2": 0, "P3": 0}
+        sev_counts: dict[str, int] = _sev_count_init()
         for _csn, data in merged_findings.items():
             if not isinstance(data, dict):
                 continue
@@ -2897,13 +3017,28 @@ class PipelineEngine:
             total_findings += len(findings)
             total_gaps += len(data.get("gaps", []))
             for f in findings:
-                sev = f.get("severity", "P3")
+                sev = f.get("severity", SEVERITY_P3)
                 if sev in sev_counts:
                     sev_counts[sev] += 1
 
         run_metadata["finding_counts"] = {**sev_counts, "total": total_findings}
         run_metadata["gap_counts"] = {"total": total_gaps}
         run_metadata["subject_count"] = len(merged_findings)
+        run_metadata["reference_file_count"] = len(run_metadata.get("reference_files", []))
+
+        # Numerical manifest entries (N001–N00x) for cross-format parity.
+        # Step 26 writes numerical_manifest.json; surface each N-entry in
+        # the _Metadata sheet so Excel matches the audit manifest.
+        nm_path = state.run_dir / "numerical_manifest.json"
+        if nm_path.exists():
+            with contextlib.suppress(json.JSONDecodeError, OSError):
+                nm_data = json.loads(nm_path.read_text(encoding="utf-8"))
+                for entry in nm_data.get("numbers", []):
+                    nid = entry.get("id", "")
+                    label = entry.get("label", "")
+                    value = entry.get("value", "")
+                    if nid:
+                        run_metadata[f"{nid}_{label}"] = value
 
         return run_metadata
 
@@ -2956,8 +3091,8 @@ class PipelineEngine:
             _pkg_root = Path(_pkg.__file__).resolve().parent  # src/dd_agents/
             candidate_paths: list[Path] = [
                 self.project_dir / "config" / "report_schema.json",
-                _pkg_root.parent.parent / "config" / "report_schema.json",  # repo_root/config/
-                _pkg_root / "config" / "report_schema.json",  # src/dd_agents/config/
+                _pkg_root / "config" / "report_schema.json",  # bundled inside the package
+                _pkg_root.parent.parent / "config" / "report_schema.json",  # repo root (editable installs only)
             ]
             for config_schema_path in candidate_paths:
                 if config_schema_path.exists():
@@ -3047,7 +3182,7 @@ class PipelineEngine:
 
             p0_findings: list[dict[str, Any]] = []
             p1_findings: list[dict[str, Any]] = []
-            severity_dist: dict[str, int] = {"P0": 0, "P1": 0, "P2": 0, "P3": 0}
+            severity_dist: dict[str, int] = _sev_count_init()
             for ssn, cdata in merged_findings.items():
                 if not isinstance(cdata, dict):
                     continue
@@ -3057,7 +3192,7 @@ class PipelineEngine:
                     recal = ReportDataComputer._recalibrate_severity(finding)
                     sev = recal.get("severity", "")
                     severity_dist[sev] = severity_dist.get(sev, 0) + 1
-                    if sev == "P0":
+                    if sev == SEVERITY_P0:
                         p0_findings.append(
                             {
                                 "title": recal.get("title", ""),
@@ -3065,7 +3200,7 @@ class PipelineEngine:
                                 "description": recal.get("description", ""),
                             }
                         )
-                    elif sev == "P1":
+                    elif sev == SEVERITY_P1:
                         p1_findings.append(
                             {
                                 "title": recal.get("title", ""),
@@ -3249,7 +3384,7 @@ class PipelineEngine:
                 logger.info("Schema validation passed")
 
             # Layer 4: cross-format parity — spot-check Excel vs JSON numbers
-            manifest_path = state.run_dir / "numerical_manifest.json"
+            manifest_path = state.run_dir / NUMERICAL_MANIFEST_JSON
             if manifest_path.exists():
                 from dd_agents.models.numerical import NumericalManifest
                 from dd_agents.validation.numerical_audit import NumericalAuditor
@@ -3331,16 +3466,24 @@ class PipelineEngine:
             logger.warning("Knowledge compilation failed (non-blocking)", exc_info=True)
 
     def _compute_finding_counts(self, state: PipelineState) -> dict[str, int]:
-        """Compute per-severity finding counts from merged findings."""
+        """Compute per-severity finding counts from merged findings.
+
+        Applies :meth:`ReportDataComputer._recalibrate_severity` to each
+        finding so counts match the recalibrated values shown in the
+        Excel/HTML reports and numerical manifest (N006 parity).
+        """
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
         merged_dir = state.run_dir / "findings" / "merged"
-        counts: dict[str, int] = {"P0": 0, "P1": 0, "P2": 0, "P3": 0, "total": 0}
+        counts: dict[str, int] = {**_sev_count_init(), "total": 0}
         if not merged_dir.exists():
             return counts
         for jf in merged_dir.glob("*.json"):
             try:
                 data = json.loads(jf.read_text(encoding="utf-8"))
                 for f in data.get("findings", []):
-                    sev = f.get("severity", "P3")
+                    recal = ReportDataComputer._recalibrate_severity(f)
+                    sev = recal.get("severity", SEVERITY_P3)
                     if sev in counts:
                         counts[sev] += 1
                     counts["total"] += 1

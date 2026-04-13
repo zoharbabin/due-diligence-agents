@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import html
-
 from dd_agents.reporting.html_base import SectionRenderer
 
 
@@ -56,16 +54,16 @@ class CrossRefRenderer(SectionRenderer):
             if not isinstance(data, dict):
                 continue
             raw_name = str(data.get("subject", csn))
-            entity_name = html.escape(self.data.display_names.get(csn, raw_name) if self.data else raw_name)
+            entity_name = self.escape(self.data.display_names.get(csn, raw_name) if self.data else raw_name)
             xrefs = data.get("cross_references", [])
             if not isinstance(xrefs, list):
                 continue
             for xr in xrefs:
                 if not isinstance(xr, dict):
                     continue
-                field = html.escape(str(xr.get("data_point", xr.get("field", ""))))
-                src_a = html.escape(str(xr.get("contract_value", xr.get("source_a", xr.get("value_a", "")))))
-                src_b = html.escape(str(xr.get("reference_value", xr.get("source_b", xr.get("value_b", "")))))
+                field = self.escape(str(xr.get("data_point", xr.get("field", ""))))
+                src_a = self.escape(str(xr.get("contract_value", xr.get("source_a", xr.get("value_a", "")))))
+                src_b = self.escape(str(xr.get("reference_value", xr.get("source_b", xr.get("value_b", "")))))
                 raw_status = str(xr.get("match_status", xr.get("match", ""))).lower()
                 is_match = raw_status in ("match", "true", "yes")
                 is_mismatch = raw_status in ("mismatch", "false", "no")

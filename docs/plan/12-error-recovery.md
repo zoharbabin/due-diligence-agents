@@ -1,8 +1,10 @@
 # 12 — Error Recovery
 
+> **Historical note**: This document references the ReportingLead agent which was removed in v0.4.0. Step 23 is now deterministic pre-merge validation (`validation/pre_merge.py`). See `06-agents.md` §11.
+
 ## Overview
 
-The forensic DD pipeline runs 6 agents across 35 steps. Failures are inevitable: agents exhaust context, extraction tools hang, shared files corrupt, configs change between runs. This document defines all 15 error scenarios, their detection methods, automatic recovery actions, fallbacks, and Python implementation patterns.
+The forensic DD pipeline runs 8 agents across 35 steps. Failures are inevitable: agents exhaust context, extraction tools hang, shared files corrupt, configs change between runs. This document defines all 15 error scenarios, their detection methods, automatic recovery actions, fallbacks, and Python implementation patterns.
 
 Design principle: **fail forward**. A single agent failure should not abort the entire pipeline. The orchestrator degrades gracefully — continuing with partial results, logging P1 gaps for missing coverage, and notifying the user of degraded output.
 
@@ -49,7 +51,7 @@ class AgentError(Exception):
     agent: str                              # e.g., "legal", "judge", "reporting_lead"
     error_type: ErrorCategory
     details: str
-    customers_affected: list[str] = field(default_factory=list)
+    subjects_affected: list[str] = field(default_factory=list)
     retry_count: int = 0
     recoverable: bool = True
 
@@ -80,7 +82,7 @@ class ErrorRecord:
     message: str
     recovery_action: str                    # What the system did
     outcome: str                            # "recovered", "degraded", "fatal"
-    customers_affected: list[str] = field(default_factory=list)
+    subjects_affected: list[str] = field(default_factory=list)
     details: dict = field(default_factory=dict)
 ```
 
@@ -229,7 +231,7 @@ class ErrorRecoveryManager:
         recovery_action: str,
         outcome: str,
         agent: Optional[str] = None,
-        customers_affected: Optional[list[str]] = None,
+        subjects_affected: Optional[list[str]] = None,
         details: Optional[dict] = None,
     ) -> ErrorRecord:
         """Record an error and return the record."""
@@ -242,7 +244,7 @@ class ErrorRecoveryManager:
             message=message,
             recovery_action=recovery_action,
             outcome=outcome,
-            customers_affected=customers_affected or [],
+            subjects_affected=subjects_affected or [],
             details=details or {},
         )
         self.state.errors.append(record)
@@ -255,17 +257,17 @@ class ErrorRecoveryManager:
     def generate_gap_finding(
         self,
         agent: str,
-        customer: str,
+        subject: str,
         gap_type: str,
         priority: str,
         description: str,
     ) -> dict:
         """Create a gap finding for missing coverage due to an error."""
         gap = {
-            "id": f"forensic-dd_{agent}_gap_{self.state.customer_safe_name(customer)}_error",
+            "id": f"forensic-dd_{agent}_gap_{self.state.subject_safe_name(subject)}_error",
             "skill": "forensic-dd",
             "agent": agent,
-            "customer": customer,
+            "subject": subject,
             "category": agent.capitalize() if agent != "producttech" else "ProductTech",
             "severity": priority,
             "title": f"Agent {agent} failed - {gap_type}",
@@ -302,7 +304,7 @@ class ErrorRecoveryManager:
 1. Re-spawn the agent once with the identical prompt.
 2. If the retry succeeds, proceed normally.
 3. If the retry also fails, continue with 3 agents.
-4. Generate a P1 gap finding for every customer: "Agent {name} failed -- {domain} coverage missing for all customers."
+4. Generate a P1 gap finding for every subject: "Agent {name} failed -- {domain} coverage missing for all subjects."
 5. Add the agent to `state.degraded_agents`.
 
 **Fallback**: Remaining 3 agents' findings are still valid. The Excel report is generated with a quality caveat noting missing domain coverage.
@@ -337,20 +339,20 @@ async def run_specialists(state: PipelineState, recovery: ErrorRecoveryManager):
                 recovery_action=f"Continuing with {len(agents) - 1 - len(state.degraded_agents)} agents",
                 outcome="degraded",
                 agent=agent_name,
-                customers_affected=state.customer_safe_names,
+                subjects_affected=state.subject_safe_names,
             )
             state.degraded_agents.append(agent_name)
 
-            # Generate P1 gap for every customer
-            for customer in state.all_customers:
+            # Generate P1 gap for every subject
+            for subject in state.all_subjects:
                 recovery.generate_gap_finding(
                     agent=agent_name,
-                    customer=customer,
+                    subject=subject,
                     gap_type="Agent_Failure",
                     priority="P1",
                     description=(
                         f"Agent {agent_name} failed -- {agent_name} domain coverage "
-                        f"missing for {customer}."
+                        f"missing for {subject}."
                     ),
                 )
 
@@ -361,20 +363,20 @@ async def run_specialists(state: PipelineState, recovery: ErrorRecoveryManager):
 
 ### Scenario 2: Specialist Agent Partial Failure
 
-**When**: An agent completes but produces output for fewer than 90% of assigned customers.
+**When**: An agent completes but produces output for fewer than 90% of assigned subjects.
 
-**Detection**: Step 17 coverage gate. The orchestrator counts `{customer_safe_name}.json` files in `{RUN_DIR}/findings/{agent}/` and compares against the expected customer count from `customers.csv`.
+**Detection**: Step 17 coverage gate. The orchestrator counts `{subject_safe_name}.json` files in `{RUN_DIR}/findings/{agent}/` and compares against the expected subject count from `subjects.csv`.
 
 **Recovery**:
-1. Identify which customers are missing by comparing filenames against `state.customer_safe_names`.
-2. Build a reduced prompt containing only the missing customers (same rules, references, and instructions).
-3. Re-spawn the agent for the missing customers only.
+1. Identify which subjects are missing by comparing filenames against `state.subject_safe_names`.
+2. Build a reduced prompt containing only the missing subjects (same rules, references, and instructions).
+3. Re-spawn the agent for the missing subjects only.
 4. If the re-spawn fills the gaps, merge outputs.
-5. If still incomplete after one retry, log P1 gaps for each uncovered customer.
+5. If still incomplete after one retry, log P1 gaps for each uncovered subject.
 
-**Fallback**: Partial output is retained. Only uncovered customers get gap findings.
+**Fallback**: Partial output is retained. Only uncovered subjects get gap findings.
 
-**User notification**: Console warning listing missing customer count per agent.
+**User notification**: Console warning listing missing subject count per agent.
 
 ```python
 # src/dd_agents/orchestrator/coverage.py
@@ -383,7 +385,7 @@ async def validate_specialist_coverage(
     state: PipelineState,
     recovery: ErrorRecoveryManager,
 ) -> dict[str, list[str]]:
-    """Step 17: Coverage gate. Returns dict of agent -> missing customers."""
+    """Step 17: Coverage gate. Returns dict of agent -> missing subjects."""
     missing_by_agent: dict[str, list[str]] = {}
 
     for agent_name in ["legal", "finance", "commercial", "producttech"]:
@@ -396,11 +398,11 @@ async def validate_specialist_coverage(
             if p.stem != "coverage_manifest"
         }
 
-        expected = set(state.customer_safe_names)
+        expected = set(state.subject_safe_names)
         missing = expected - produced_files
 
         # Also check for aggregate files (bad agent behavior)
-        aggregate_patterns = {"_global", "batch_summary", "other_customers", "all_customers"}
+        aggregate_patterns = {"_global", "batch_summary", "other_subjects", "all_subjects"}
         bad_files = produced_files & aggregate_patterns
         if bad_files:
             recovery.record_error(
@@ -408,7 +410,7 @@ async def validate_specialist_coverage(
                 category=ErrorCategory.AGENT_PARTIAL,
                 severity=ErrorSeverity.WARNING,
                 message=f"Agent {agent_name} produced aggregate files: {bad_files}",
-                recovery_action="Will re-spawn with explicit per-customer instruction",
+                recovery_action="Will re-spawn with explicit per-subject instruction",
                 outcome="retrying",
                 agent=agent_name,
             )
@@ -423,20 +425,20 @@ async def validate_specialist_coverage(
             if coverage_pct < 0.90:
                 logger.warning(
                     f"Agent {agent_name} produced {len(produced_files)}/{len(expected)} "
-                    f"customer files ({coverage_pct:.0%}) - below 90% threshold"
+                    f"subject files ({coverage_pct:.0%}) - below 90% threshold"
                 )
 
     return missing_by_agent
 
 
-async def respawn_for_missing_customers(
+async def respawn_for_missing_subjects(
     agent_name: str,
-    missing_customers: list[str],
+    missing_subjects: list[str],
     state: PipelineState,
     recovery: ErrorRecoveryManager,
 ):
-    """Re-spawn a specialist for only the missing customers."""
-    prompt = build_partial_prompt(state, agent_name, missing_customers)
+    """Re-spawn a specialist for only the missing subjects."""
+    prompt = build_partial_prompt(state, agent_name, missing_subjects)
     options = build_specialist_options(state, agent_name)
 
     try:
@@ -450,20 +452,20 @@ async def respawn_for_missing_customers(
         # Verify re-spawn filled the gaps
         findings_dir = state.run_dir / "findings" / agent_name
         still_missing = [
-            c for c in missing_customers
+            c for c in missing_subjects
             if not (findings_dir / f"{c}.json").exists()
         ]
 
         if still_missing:
-            for customer_safe in still_missing:
-                customer = state.safe_name_to_customer[customer_safe]
+            for subject_safe in still_missing:
+                subject = state.safe_name_to_subject[subject_safe]
                 recovery.generate_gap_finding(
                     agent=agent_name,
-                    customer=customer,
+                    subject=subject,
                     gap_type="Partial_Failure",
                     priority="P1",
                     description=(
-                        f"Agent {agent_name} did not produce output for {customer} "
+                        f"Agent {agent_name} did not produce output for {subject} "
                         f"-- {agent_name} coverage missing."
                     ),
                 )
@@ -471,24 +473,24 @@ async def respawn_for_missing_customers(
                 step=17,
                 category=ErrorCategory.AGENT_PARTIAL,
                 severity=ErrorSeverity.DEGRADED,
-                message=f"Re-spawn for {agent_name} still missing {len(still_missing)} customers",
-                recovery_action="Logged P1 gaps for uncovered customers",
+                message=f"Re-spawn for {agent_name} still missing {len(still_missing)} subjects",
+                recovery_action="Logged P1 gaps for uncovered subjects",
                 outcome="degraded",
                 agent=agent_name,
-                customers_affected=still_missing,
+                subjects_affected=still_missing,
             )
 
     except AgentError:
         # Re-spawn itself failed - log gaps for all missing
-        for customer_safe in missing_customers:
-            customer = state.safe_name_to_customer[customer_safe]
+        for subject_safe in missing_subjects:
+            subject = state.safe_name_to_subject[subject_safe]
             recovery.generate_gap_finding(
                 agent=agent_name,
-                customer=customer,
+                subject=subject,
                 gap_type="Partial_Failure",
                 priority="P1",
                 description=(
-                    f"Agent {agent_name} did not produce output for {customer} "
+                    f"Agent {agent_name} did not produce output for {subject} "
                     f"after re-spawn -- {agent_name} coverage missing."
                 ),
             )
@@ -613,7 +615,7 @@ async def run_reporting_lead(state: PipelineState, recovery: ErrorRecoveryManage
 
 **Recovery**: This is already handled by the fallback chain (SKILL.md section 1b). No agent-level recovery needed.
 
-**Action**: Log a gap finding with `gap_type=Unreadable` for the affected customer. Record the failure in `extraction_quality.json`.
+**Action**: Log a gap finding with `gap_type=Unreadable` for the affected subject. Record the failure in `extraction_quality.json`.
 
 **Fallback**: The file is excluded from agent analysis. The gap finding alerts the user that manual review is needed.
 
@@ -708,17 +710,17 @@ def load_entity_cache(cache_path: Path, logger) -> dict:
 
 ### Scenario 7: Out-of-Context Agent (Explicit)
 
-**When**: An agent explicitly signals context exhaustion before processing all assigned customers. The agent reports something like "I have run out of context and cannot process the remaining customers."
+**When**: An agent explicitly signals context exhaustion before processing all assigned subjects. The agent reports something like "I have run out of context and cannot process the remaining subjects."
 
-**Detection**: The agent's output includes a context exhaustion signal in its final message or produces a partial `coverage_manifest.json` with `customers_processed < customers_assigned`.
+**Detection**: The agent's output includes a context exhaustion signal in its final message or produces a partial `coverage_manifest.json` with `subjects_processed < subjects_assigned`.
 
 **Recovery**:
-1. Identify which customers remain unprocessed.
-2. Build a new prompt containing only the remaining customers (same rules, references, instructions).
+1. Identify which subjects remain unprocessed.
+2. Build a new prompt containing only the remaining subjects (same rules, references, instructions).
 3. Spawn a continuation instance of the same agent type.
 4. Merge outputs from both instances into the primary findings directory.
 
-**Fallback**: If the continuation instance also exhausts context, split the remaining customers further and try again (up to 2 total re-spawns). If still incomplete, treat as partial failure (Scenario 2).
+**Fallback**: If the continuation instance also exhausts context, split the remaining subjects further and try again (up to 2 total re-spawns). If still incomplete, treat as partial failure (Scenario 2).
 
 **User notification**: Console info message about context-split.
 
@@ -730,8 +732,8 @@ async def handle_context_exhaustion_explicit(
     recovery: ErrorRecoveryManager,
 ):
     """Handle an agent that explicitly reported context exhaustion."""
-    processed = set(manifest.get("customers_processed_safe_names", []))
-    expected = set(state.customer_safe_names)
+    processed = set(manifest.get("subjects_processed_safe_names", []))
+    expected = set(state.subject_safe_names)
     remaining = sorted(expected - processed)
 
     if not remaining:
@@ -739,7 +741,7 @@ async def handle_context_exhaustion_explicit(
 
     logger.info(
         f"Agent {agent_name} exhausted context after {len(processed)}/{len(expected)} "
-        f"customers. Re-spawning for {len(remaining)} remaining."
+        f"subjects. Re-spawning for {len(remaining)} remaining."
     )
 
     recovery.record_error(
@@ -747,10 +749,10 @@ async def handle_context_exhaustion_explicit(
         category=ErrorCategory.AGENT_CONTEXT,
         severity=ErrorSeverity.RECOVERED,
         message=f"Agent {agent_name} signaled context exhaustion",
-        recovery_action=f"Re-spawning for {len(remaining)} remaining customers",
+        recovery_action=f"Re-spawning for {len(remaining)} remaining subjects",
         outcome="retrying",
         agent=agent_name,
-        customers_affected=remaining,
+        subjects_affected=remaining,
     )
 
     # Split remaining into batches if needed (avoid exhausting context again)
@@ -758,7 +760,7 @@ async def handle_context_exhaustion_explicit(
     batches = [remaining[i:i + batch_size] for i in range(0, len(remaining), batch_size)]
 
     for batch_idx, batch in enumerate(batches):
-        await respawn_for_missing_customers(
+        await respawn_for_missing_subjects(
             f"{agent_name}-ctx-{batch_idx}",
             batch,
             state,
@@ -772,17 +774,17 @@ async def handle_context_exhaustion_explicit(
 
 **When**: An agent runs out of context without explicitly signaling. It simply stops producing output. This is the most insidious failure mode because the agent appears to have completed successfully.
 
-**Detection**: **Context exhaustion detection**: Primary signal is the agent stopping mid-task without completing all assigned customers. Secondary signal is output length dropping below 50% of the average for prior customers in the same batch. False positive mitigation: the detector requires BOTH signals (premature stop AND quality degradation) before triggering context exhaustion recovery. A single short output is not sufficient to trigger recovery.
+**Detection**: **Context exhaustion detection**: Primary signal is the agent stopping mid-task without completing all assigned subjects. Secondary signal is output length dropping below 50% of the average for prior subjects in the same batch. False positive mitigation: the detector requires BOTH signals (premature stop AND quality degradation) before triggering context exhaustion recovery. A single short output is not sufficient to trigger recovery.
 
-Context exhaustion is detected by the orchestrator (not self-reported by the agent). The orchestrator monitors: (1) agent stop events via the Stop hook, (2) completion status by checking output files against the assigned customer list, (3) output quality by comparing file sizes against running averages.
+Context exhaustion is detected by the orchestrator (not self-reported by the agent). The orchestrator monitors: (1) agent stop events via the Stop hook, (2) completion status by checking output files against the assigned subject list, (3) output quality by comparing file sizes against running averages.
 
-At step 17, the coverage gate counts customer JSON files in `{RUN_DIR}/findings/{agent}/` and compares against the expected count. If an agent has fewer files than expected, it indicates the agent stopped mid-execution.
+At step 17, the coverage gate counts subject JSON files in `{RUN_DIR}/findings/{agent}/` and compares against the expected count. If an agent has fewer files than expected, it indicates the agent stopped mid-execution.
 
-Additionally, spot-check at least 3 customer JSONs where `findings[]` is empty or contains only P3 entries. Verify each has a `domain_reviewed_no_issues` entry. A JSON with zero findings AND no clean-result entry indicates the agent skipped the customer rather than reviewing it.
+Additionally, spot-check at least 3 subjects JSONs where `findings[]` is empty or contains only P3 entries. Verify each has a `domain_reviewed_no_issues` entry. A JSON with zero findings AND no clean-result entry indicates the agent skipped the subject rather than reviewing it.
 
-**Recovery**: Identical to Scenario 2 (partial failure). Re-spawn for missing customers only.
+**Recovery**: Identical to Scenario 2 (partial failure). Re-spawn for missing subjects only.
 
-**Fallback**: P1 gaps for every uncovered customer.
+**Fallback**: P1 gaps for every uncovered subject.
 
 **User notification**: Console warning noting the silent context exhaustion pattern.
 
@@ -794,17 +796,17 @@ async def detect_silent_context_exhaustion(
 ) -> list[str]:
     """Detect agents that silently stopped producing output.
 
-    Returns list of customer safe names that need re-processing.
+    Returns list of subject safe names that need re-processing.
     """
     findings_dir = state.run_dir / "findings" / agent_name
     produced = {p.stem for p in findings_dir.glob("*.json") if p.stem != "coverage_manifest"}
-    expected = set(state.customer_safe_names)
+    expected = set(state.subject_safe_names)
 
     missing = sorted(expected - produced)
     if missing:
         logger.warning(
             f"Agent {agent_name}: silent context exhaustion detected. "
-            f"Produced {len(produced)}/{len(expected)} customer files. "
+            f"Produced {len(produced)}/{len(expected)} subject files. "
             f"Missing: {missing[:5]}{'...' if len(missing) > 5 else ''}"
         )
         recovery.record_error(
@@ -813,15 +815,15 @@ async def detect_silent_context_exhaustion(
             severity=ErrorSeverity.WARNING,
             message=(
                 f"Agent {agent_name} appears to have silently exhausted context. "
-                f"Missing {len(missing)} of {len(expected)} customer outputs."
+                f"Missing {len(missing)} of {len(expected)} subject outputs."
             ),
-            recovery_action="Will re-spawn for missing customers",
+            recovery_action="Will re-spawn for missing subjects",
             outcome="retrying",
             agent=agent_name,
-            customers_affected=missing,
+            subjects_affected=missing,
         )
 
-    # Spot-check for "skipped" customers (empty files without clean-result)
+    # Spot-check for "skipped" subjects (empty files without clean-result)
     skipped = []
     sample_size = min(3, len(produced))
     empty_files = []
@@ -838,7 +840,7 @@ async def detect_silent_context_exhaustion(
 
     if empty_files:
         logger.warning(
-            f"Agent {agent_name}: {len(empty_files)} customer files have zero findings "
+            f"Agent {agent_name}: {len(empty_files)} subject files have zero findings "
             f"AND no clean-result entry. Treating as skipped: {empty_files[:5]}"
         )
         skipped.extend(empty_files)
@@ -1204,7 +1206,7 @@ def check_incremental_to_full_override(state: PipelineState, logger) -> bool:
 
 **Detection**: Step 1. If the framework version changed or is absent from prior metadata, force `execution_mode` to `"full"`.
 
-**Recovery**: Override to full mode. Not an error, but a safety measure to ensure new framework rules are applied to all customers.
+**Recovery**: Override to full mode. Not an error, but a safety measure to ensure new framework rules are applied to all subjects.
 
 **User notification**: Console info message.
 
@@ -1245,33 +1247,33 @@ def check_framework_version_mismatch(state: PipelineState, logger) -> bool:
 
 ### Scenario 15: Aggregate File Detection
 
-**When**: An agent produces files like `_global.json`, `batch_summary.json`, or `other_customers.json` instead of per-customer JSON files. This violates the per-customer output format and indicates the agent bundled multiple customers into a single file.
+**When**: An agent produces files like `_global.json`, `batch_summary.json`, or `other_subjects.json` instead of per-subject JSON files. This violates the per-subject output format and indicates the agent bundled multiple subjects into a single file.
 
 **Detection**: Step 17 coverage gate. Check for known aggregate filename patterns in the agent's output directory.
 
 **Recovery**:
 1. Delete the aggregate files.
-2. Re-spawn the agent with an explicit instruction appended to the prompt: "You MUST produce exactly one JSON file per customer named {customer_safe_name}.json. Do NOT create aggregate files."
+2. Re-spawn the agent with an explicit instruction appended to the prompt: "You MUST produce exactly one JSON file per subject named {subject_safe_name}.json. Do NOT create aggregate files."
 3. If the re-spawn still produces aggregates, treat as full agent failure (Scenario 1).
 
-**Fallback**: If recovery fails, extract what data is available from the aggregate files (best-effort parsing), then log P1 gaps for any customers whose data could not be separated.
+**Fallback**: If recovery fails, extract what data is available from the aggregate files (best-effort parsing), then log P1 gaps for any subjects whose data could not be separated.
 
 **User notification**: Console warning about the non-conforming output.
 
 ```python
 # Aggregate file detection uses a blocklist of exact filenames. The check uses
 # exact basename matching (os.path.basename(path) in BLOCKLIST), not substring
-# matching, to avoid false positives on customer names that happen to contain
+# matching, to avoid false positives on subject names that happen to contain
 # words like "summary" or "global".
 AGGREGATE_FILE_BLOCKLIST = {
-    "_global", "batch_summary", "other_customers", "all_customers",
+    "_global", "batch_summary", "other_subjects", "all_subjects",
     "remaining", "summary", "combined", "misc",
     "all_findings", "master_report",
 }
 
 
 def detect_aggregate_files(findings_dir: Path) -> list[Path]:
-    """Detect aggregate output files that violate per-customer format."""
+    """Detect aggregate output files that violate per-subject format."""
     aggregates = []
     for json_file in findings_dir.glob("*.json"):
         if json_file.stem == "coverage_manifest":
@@ -1309,10 +1311,10 @@ async def handle_aggregate_files(
     base_prompt = state.agent_prompts[agent_name]
     augmented_prompt = (
         base_prompt + "\n\n"
-        "CRITICAL INSTRUCTION: You MUST produce exactly one JSON file per customer "
-        "named {customer_safe_name}.json. Do NOT create aggregate files like "
-        "_global.json, batch_summary.json, or other_customers.json. "
-        "Every customer must have its own separate output file."
+        "CRITICAL INSTRUCTION: You MUST produce exactly one JSON file per subject "
+        "named {subject_safe_name}.json. Do NOT create aggregate files like "
+        "_global.json, batch_summary.json, or other_subjects.json. "
+        "Every subject must have its own separate output file."
     )
 
     options = build_specialist_options(state, agent_name)
@@ -1375,7 +1377,7 @@ async def step_17_coverage_gate(state: PipelineState, recovery: ErrorRecoveryMan
                 outcome="retrying",
                 agent=agent_name,
             )
-            missing = missing or state.customer_safe_names  # Force re-spawn
+            missing = missing or state.subject_safe_names  # Force re-spawn
 
         # 4. Check audit log exists
         audit_path = state.run_dir / "audit" / agent_name / "audit_log.jsonl"
@@ -1390,9 +1392,9 @@ async def step_17_coverage_gate(state: PipelineState, recovery: ErrorRecoveryMan
                 agent=agent_name,
             )
 
-        # 5. Re-spawn for missing customers (Scenario 2)
+        # 5. Re-spawn for missing subjects (Scenario 2)
         if missing:
-            await respawn_for_missing_customers(agent_name, missing, state, recovery)
+            await respawn_for_missing_subjects(agent_name, missing, state, recovery)
 
     # 6. If batched agents were used, merge batch outputs
     for agent_name in agents:
@@ -1404,15 +1406,15 @@ async def step_17_coverage_gate(state: PipelineState, recovery: ErrorRecoveryMan
     remaining_issues = await validate_specialist_coverage(state, recovery)
     if remaining_issues:
         for agent_name, missing in remaining_issues.items():
-            for customer_safe in missing:
-                customer = state.safe_name_to_customer.get(customer_safe, customer_safe)
+            for subject_safe in missing:
+                subject = state.safe_name_to_subject.get(subject_safe, subject_safe)
                 recovery.generate_gap_finding(
                     agent=agent_name,
-                    customer=customer,
+                    subject=subject,
                     gap_type="Partial_Failure",
                     priority="P1",
                     description=(
-                        f"Agent {agent_name} did not produce output for {customer} "
+                        f"Agent {agent_name} did not produce output for {subject} "
                         f"after all recovery attempts -- {agent_name} coverage missing."
                     ),
                 )
@@ -1434,10 +1436,10 @@ All errors are persisted in `{RUN_DIR}/metadata.json` for post-run analysis:
       "category": "agent_context",
       "severity": "recovered",
       "agent": "legal",
-      "message": "Agent legal: silent context exhaustion detected. Missing 5 of 182 customer outputs.",
-      "recovery_action": "Re-spawning for 5 remaining customers",
+      "message": "Agent legal: silent context exhaustion detected. Missing 5 of 182 subjects outputs.",
+      "recovery_action": "Re-spawning for 5 remaining subjects",
       "outcome": "recovered",
-      "customers_affected": ["acme_corp", "beta_inc", "delta_llc", "epsilon_co", "zeta_group"]
+      "subjects_affected": ["acme_corp", "beta_inc", "delta_llc", "epsilon_co", "zeta_group"]
     }
   ],
   "degraded_agents": [],

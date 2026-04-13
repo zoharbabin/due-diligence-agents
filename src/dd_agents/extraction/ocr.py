@@ -14,11 +14,9 @@ from pathlib import Path
 from typing import Any
 
 from dd_agents.extraction._constants import CONFIDENCE_FAILURE, IMAGE_EXTENSIONS
+from dd_agents.extraction._constants import CONFIDENCE_OCR as _CONFIDENCE_OCR
 
 logger = logging.getLogger(__name__)
-
-# Confidence score assigned to OCR-extracted text (unique to this module).
-_CONFIDENCE_OCR = 0.6
 
 # Per-page timeout in seconds (configurable externally if needed).
 OCR_PAGE_TIMEOUT = 30

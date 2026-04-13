@@ -25,6 +25,7 @@ from dd_agents.config import (
     ConfigValidationError,
     load_deal_config,
 )
+from dd_agents.utils.constants import SEVERITY_P0, SEVERITY_P1, SEVERITY_P2
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -180,16 +181,9 @@ def run(
     if model_profile is not None:
         deal_config.agent_models.profile = model_profile
     if model_overrides:
-        valid_agents = (
-            "legal",
-            "finance",
-            "commercial",
-            "producttech",
-            "judge",
-            "executive_synthesis",
-            "red_flag_scanner",
-            "acquirer_intelligence",
-        )
+        from dd_agents.models.enums import AgentName
+
+        valid_agents = tuple(e.value for e in AgentName)
         for override in model_overrides:
             if "=" not in override:
                 _print_error(
@@ -1238,7 +1232,7 @@ def _print_query_result(question: str, result: Any) -> None:
         table.add_column("Category")
         for src in result.sources[:5]:
             sev = src.get("severity", "")
-            sev_color = {"P0": "red", "P1": "bright_red", "P2": "yellow"}.get(sev, "white")
+            sev_color = {SEVERITY_P0: "red", SEVERITY_P1: "bright_red", SEVERITY_P2: "yellow"}.get(sev, "white")
             table.add_row(
                 f"[{sev_color}]{sev}[/{sev_color}]",
                 src.get("subject", ""),
@@ -1650,7 +1644,9 @@ def lineage(
     table.add_column("Category", width=20)
 
     for f in sorted_findings:
-        sev_color = {"P0": "red", "P1": "bright_red", "P2": "yellow"}.get(f.current_severity, "white")
+        sev_color = {SEVERITY_P0: "red", SEVERITY_P1: "bright_red", SEVERITY_P2: "yellow"}.get(
+            f.current_severity, "white"
+        )
         status_color = {"active": "green", "resolved": "dim", "recurred": "yellow"}.get(f.status.value, "white")
         table.add_row(
             f"[{sev_color}]{f.current_severity}[/{sev_color}]",

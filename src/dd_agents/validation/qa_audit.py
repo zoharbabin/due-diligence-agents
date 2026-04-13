@@ -14,7 +14,16 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from dd_agents.models.audit import AuditCheck, AuditReport, AuditSummary
-from dd_agents.utils.constants import ALL_SPECIALIST_AGENTS
+from dd_agents.utils.constants import (
+    ALL_SPECIALIST_AGENTS,
+    COVERAGE_MANIFEST_JSON,
+    FILES_TXT,
+    NUMERICAL_MANIFEST_JSON,
+    SEVERITY_P0,
+    SEVERITY_P1,
+    SEVERITY_P2,
+    _sev_count_init,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -141,7 +150,7 @@ class QAAuditor:
         any_manifest_exists = False
         expected = len(self.subject_safe_names)
         for agent in ALL_SPECIALIST_AGENTS:
-            manifest_path = self.run_dir / "findings" / agent / "coverage_manifest.json"
+            manifest_path = self.run_dir / "findings" / agent / COVERAGE_MANIFEST_JSON
             if not manifest_path.exists():
                 # Manifest missing — check actual files as fallback.
                 agent_dir = self.run_dir / "findings" / agent
@@ -181,7 +190,7 @@ class QAAuditor:
                 agent_dir = self.run_dir / "findings" / agent
                 if agent_dir.is_dir():
                     expected_files = {f"{c}.json" for c in self.subject_safe_names}
-                    actual_files = {f.name for f in agent_dir.glob("*.json") if f.name != "coverage_manifest.json"}
+                    actual_files = {f.name for f in agent_dir.glob("*.json") if f.name != COVERAGE_MANIFEST_JSON}
                     file_coverage = len(expected_files & actual_files) / max(expected, 1)
                     if file_coverage >= 0.9:
                         match = True
@@ -217,9 +226,9 @@ class QAAuditor:
         all_files = self._read_files_txt()
         file_to_agents: dict[str, list[str]] = {f: [] for f in all_files}
 
-        has_file_level_data = False
+        agents_with_file_data = 0
         for agent in ALL_SPECIALIST_AGENTS:
-            manifest_path = self.run_dir / "findings" / agent / "coverage_manifest.json"
+            manifest_path = self.run_dir / "findings" / agent / COVERAGE_MANIFEST_JSON
             if not manifest_path.exists():
                 continue
             try:
@@ -229,7 +238,7 @@ class QAAuditor:
                     # Agent may write a count (int) instead of an array — skip.
                     files_read = []
                 if files_read:
-                    has_file_level_data = True
+                    agents_with_file_data += 1
                 for fr in files_read:
                     p = fr if isinstance(fr, str) else fr.get("path", "")
                     if p in file_to_agents:
@@ -237,10 +246,11 @@ class QAAuditor:
             except (json.JSONDecodeError, OSError):
                 continue
 
-        # When manifests lack file-level coverage data (``files_read``),
-        # file-level coverage cannot be verified.  Agent manifests may only
-        # contain subject-level summaries.  Defer to subject_coverage.
-        if not has_file_level_data:
+        # When fewer than all agents provide file-level coverage data,
+        # file-level coverage cannot be meaningfully verified.  Agent
+        # manifests may only contain subject-level summaries.  Defer to
+        # subject_coverage.
+        if agents_with_file_data < len(ALL_SPECIALIST_AGENTS):
             return "file_coverage", AuditCheck(
                 passed=True,
                 dod_checks=[2, 10],
@@ -422,7 +432,7 @@ class QAAuditor:
                         }
                     )
                 severity = finding.get("severity", "")
-                if severity in ("P0", "P1") and not cit.get("exact_quote"):
+                if severity in (SEVERITY_P0, SEVERITY_P1) and not cit.get("exact_quote"):
                     failures.append(
                         {
                             "finding_id": finding.get("id", "unknown"),
@@ -536,7 +546,7 @@ class QAAuditor:
                 except (json.JSONDecodeError, OSError):
                     continue
 
-        # Also check legacy gaps directory
+        # Also check per-subject gaps directory
         gaps_dir = self.run_dir / "findings" / "merged" / "gaps"
         if gaps_dir.exists():
             for gap_file in gaps_dir.glob("*.json"):
@@ -646,9 +656,15 @@ class QAAuditor:
                 findings = data.get("findings", [])
                 # Also count domain_reviewed_no_issues as agent coverage — the
                 # agent ran but found nothing actionable.
+                # Additionally, count gaps — an agent that produced only gaps
+                # (no actionable findings) still analyzed the subject.
                 covered: set[str] = set()
                 for f in findings:
                     agent = f.get("agent")
+                    if agent:
+                        covered.add(agent)
+                for g in data.get("gaps", []):
+                    agent = g.get("agent")
                     if agent:
                         covered.add(agent)
                 missing = enabled_domains - covered
@@ -665,8 +681,9 @@ class QAAuditor:
 
         # In production, some subjects may legitimately lack findings from all
         # 4 agents (e.g. a subject with a single image file won't have finance
-        # findings).  Require ≥80% domain coverage to pass.
-        passed = coverage >= _DOMAIN_COVERAGE_THRESHOLD
+        # findings).  Use small epsilon to avoid floating-point boundary failures
+        # (e.g. 12/15 = 0.19999…96 vs threshold 0.20).
+        passed = coverage >= _DOMAIN_COVERAGE_THRESHOLD - 1e-9
 
         return "domain_coverage", AuditCheck(
             passed=passed,
@@ -809,7 +826,7 @@ class QAAuditor:
     # ------------------------------------------------------------------ #
 
     def check_numerical_manifest(self) -> tuple[str, AuditCheck]:
-        manifest_path = self.run_dir / "numerical_manifest.json"
+        manifest_path = self.run_dir / NUMERICAL_MANIFEST_JSON
         if not manifest_path.exists():
             return "numerical_manifest", AuditCheck(
                 passed=False,
@@ -945,7 +962,7 @@ class QAAuditor:
 
         for finding in merged_findings:
             severity = finding.get("severity", "")
-            if severity not in ("P0", "P1"):
+            if severity not in (SEVERITY_P0, SEVERITY_P1):
                 continue
             citations = finding.get("citations", [])
             finding_id = finding.get("id", "unknown")
@@ -963,7 +980,7 @@ class QAAuditor:
                 if not cit.get("exact_quote"):
                     violations.append({"finding_id": finding_id, "error": "missing exact_quote"})
 
-        total_p0_p1 = len([f for f in merged_findings if f.get("severity") in ("P0", "P1")])
+        total_p0_p1 = len([f for f in merged_findings if f.get("severity") in (SEVERITY_P0, SEVERITY_P1)])
         # Count unique findings with violations (a finding may produce multiple
         # violation entries -- one per bad citation).
         violation_finding_ids = {v["finding_id"] for v in violations}
@@ -989,7 +1006,7 @@ class QAAuditor:
     # ------------------------------------------------------------------ #
 
     def _read_files_txt(self) -> list[str]:
-        path = self.inventory_dir / "files.txt"
+        path = self.inventory_dir / FILES_TXT
         if not path.exists():
             return []
         return [line.strip() for line in path.read_text(encoding="utf-8").strip().splitlines() if line.strip()]
@@ -1009,7 +1026,7 @@ class QAAuditor:
 
     def _build_summary(self) -> AuditSummary:
         merged_findings = self._load_all_merged_findings()
-        by_severity: dict[str, int] = {"P0": 0, "P1": 0, "P2": 0, "P3": 0}
+        by_severity: dict[str, int] = _sev_count_init()
         clean_count = 0
         for f in merged_findings:
             sev = f.get("severity", "")
@@ -1020,7 +1037,7 @@ class QAAuditor:
 
         # Count gaps and their priorities from merged subject files.
         total_gaps = 0
-        gaps_by_priority: dict[str, int] = {"P0": 0, "P1": 0, "P2": 0, "P3": 0}
+        gaps_by_priority: dict[str, int] = _sev_count_init()
         agents_with_gaps: set[str] = set()
         merged_dir = self.run_dir / "findings" / "merged"
         if merged_dir.exists():
@@ -1031,7 +1048,7 @@ class QAAuditor:
                     continue
                 for gap in data.get("gaps", []):
                     total_gaps += 1
-                    prio = gap.get("priority", "P2")
+                    prio = gap.get("priority", SEVERITY_P2)
                     if prio in gaps_by_priority:
                         gaps_by_priority[prio] += 1
                     agent = gap.get("agent", "")

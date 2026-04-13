@@ -151,8 +151,8 @@ This checks all required fields, value constraints, and version compatibility.
   "data_room": {
     "path": "./data_room",
     "groups": {
-      "Enterprise": {"label": "Enterprise Customers", "customers": ["Acme_Corp"]},
-      "SMB": {"label": "SMB Customers", "customers": ["Beta_Inc"]}
+      "Enterprise": {"label": "Enterprise Entities", "subjects": ["Acme_Corp"]},
+      "SMB": {"label": "SMB Entities", "subjects": ["Beta_Inc"]}
     },
     "reference_dir": "_reference"
   },
@@ -237,8 +237,8 @@ Used by agents for organizational risk analysis and key-person dependency detect
 
 ### deal (required)
 
-`deal.type` accepts: `acquisition`, `merger`, `divestiture`, `investment`,
-`joint_venture`, `other`.
+`deal.type` accepts: `acquisition`, `asset_sale`, `merger`, `divestiture`,
+`investment`, `joint_venture`, `other`.
 
 `deal.focus_areas` is a list of analysis priorities. Common values:
 `change_of_control_clauses`, `ip_ownership`, `revenue_recognition`,
@@ -302,7 +302,7 @@ Model assignments per profile:
 ### data_room
 
 - `path`: path to the data room folder (required for `run` command)
-- `groups`: named customer groups with label and customer list
+- `groups`: named entity groups with label and subject list
 - `reference_dir`: subfolder name for reference/cross-cutting files (e.g. corporate docs)
 
 ### forensic_dd (optional)

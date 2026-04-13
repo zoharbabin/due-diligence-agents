@@ -45,7 +45,7 @@ dd-agents run path/to/deal-config.json
 - **Orchestrator** (`orchestrator/engine.py`): 35 async steps as methods on `PipelineEngine`. State machine with checkpoint/resume.
 - **Agents** (`agents/`): 4 specialists (Legal, Finance, Commercial, ProductTech) + Judge + Executive Synthesis + Red Flag Scanner + Acquirer Intelligence. Spawned via `claude-agent-sdk`.
 - **Persistence**: Three tiers — PERMANENT (never wiped), VERSIONED (archived per run), FRESH (rebuilt each run).
-- **Hooks** (`hooks/`): PreToolUse hooks return flat `{"decision": "block"|"allow", "reason": "..."}`. Stop hooks use SDK format `{"continue_": bool, "stopReason": "..."}`. Never nest under `hookSpecificOutput`.
+- **Hooks** (`hooks/`): PreToolUse hooks return flat `{"decision": "block"|"allow", "reason": "..."}`. Stop hooks use SDK format `{"continue_": bool, "stopReason": "..."}`. Never nest under `hookSpecificOutput`. PreToolUse chain: (1) bash_guard, (2) path_guard, (3) file_size_guard, (4) aggregate_file_guard, (5) finding_schema_guard — validates finding JSON structure on Write to `findings/{agent}/*.json`, blocking wrong field names like `evidence` instead of `citations`. Stop hook: check_coverage + check_manifest (relaxed — allows stop when all subject JSONs are written; orchestrator backfills manifests post-session).
 - **Models** (`models/`): Pydantic v2 for all schemas. `model_json_schema()` for structured outputs. Note: some BaseModel subclasses live outside `models/` by design — agent output schemas (`agents/*.py`), report templates (`reporting/templates.py`), query models (`query/*.py`), and internal helpers (`orchestrator/batch_scheduler.py`, `validation/pre_merge.py`, `extraction/coordinates.py`) are co-located with their consumers for cohesion.
 - **Validation** (`validation/`): 6-layer numerical audit, 31 substantive DoD checks (content-validated, not file-existence). Fail-closed — validation failures block the pipeline.
 - **Knowledge** (`knowledge/`): Deal Knowledge Base — persistent knowledge layer that compounds across runs. 12 modules: `base.py` (article CRUD + atomic writes), `articles.py` (Pydantic models), `compiler.py` (findings → articles), `graph.py` (NetworkX knowledge graph), `chronicle.py` (append-only JSONL timeline), `lineage.py` (SHA-256 finding fingerprinting), `health.py` (7-category integrity checks), `prompt_enrichment.py` (agent context builder), `filing.py` (file-back to data room), `search_context.py` (search enrichment interface), `index.py` (auto-maintained JSON index), `_utils.py` (shared helpers). Compiled automatically in step 32 unless `--no-knowledge` is passed.
@@ -166,6 +166,7 @@ Update the phase status in IMPLEMENTATION_PLAN.md after completing each phase.
 - Single-turn extraction: `max_turns=1`, `disallowed_tools=[...]`
 - Multi-turn agents: `max_turns=150-300`, tools enabled per spec
 - Each `query()` call is stateless — no context accumulates between calls
+- CLI path override: all `ClaudeAgentOptions` must include `cli_path=resolve_sdk_cli_path()` from `dd_agents.utils`. This prefers the system-installed `claude` CLI over the SDK's bundled copy (avoids version-specific bugs). Set `DD_AGENTS_CLI_PATH` env var to override.
 
 ## Sensitive Data Policy
 

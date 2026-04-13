@@ -11,6 +11,7 @@ from typing import Any
 
 from dd_agents.reporting.clause_library import CLAUSE_LIBRARY, classify_finding
 from dd_agents.reporting.html_base import SectionRenderer
+from dd_agents.utils.constants import SEVERITY_P3
 
 
 class ClauseLibraryRenderer(SectionRenderer):
@@ -57,7 +58,7 @@ class ClauseLibraryRenderer(SectionRenderer):
             findings = clause_findings.get(clause_key, [])
 
             parts.append(
-                f"<div class='collapsible-section'>"
+                f"<div class='category-group'>"
                 f"<div class='category-header' tabindex='0' role='button' aria-expanded='false'>"
                 f"<span class='arrow'>&#9654;</span> {name} "
                 f"<span class='badge' style='background:#6c757d;color:#fff;'>{count}</span>"
@@ -89,7 +90,7 @@ class ClauseLibraryRenderer(SectionRenderer):
                 )
                 for f in findings[:20]:  # Cap per clause type
                     entity = self.escape(self._resolve_display_name(f))
-                    sev = str(f.get("severity", "P3"))
+                    sev = str(f.get("severity", SEVERITY_P3))
                     title = self.escape(str(f.get("title", "")))
                     parts.append(f"<tr><td>{entity}</td><td>{self.severity_badge(sev)}</td><td>{title}</td></tr>")
                 parts.append("</tbody></table>")

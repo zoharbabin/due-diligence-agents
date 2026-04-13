@@ -33,7 +33,7 @@ def kb(tmp_path: Path) -> DealKnowledgeBase:
 
 
 def _make_search_results(
-    customer_name: str = "Customer A",
+    subject_name: str = "Subject A",
     columns: dict[str, dict[str, object]] | None = None,
 ) -> list[dict[str, object]]:
     """Build a minimal search results list matching SearchSubjectResult schema."""
@@ -53,7 +53,7 @@ def _make_search_results(
                 ],
             },
         }
-    return [{"subject_name": customer_name, "columns": columns}]
+    return [{"subject_name": subject_name, "columns": columns}]
 
 
 # ---------------------------------------------------------------------------
@@ -71,7 +71,7 @@ class TestFileSearchResults:
         articles = kb.list_articles(ArticleType.INSIGHT)
         assert len(articles) == 1
         assert articles[0].content["answer"] == "YES"
-        assert articles[0].content["entity"] == "Customer A"
+        assert articles[0].content["entity"] == "Subject A"
 
     def test_skips_not_addressed_answers(self, kb: DealKnowledgeBase) -> None:
         results = _make_search_results(
@@ -171,8 +171,8 @@ class TestFileSearchResults:
 
     def test_multiple_subjects(self, kb: DealKnowledgeBase) -> None:
         results = [
-            *_make_search_results(customer_name="Customer A"),
-            *_make_search_results(customer_name="Customer B"),
+            *_make_search_results(subject_name="Subject A"),
+            *_make_search_results(subject_name="Subject B"),
         ]
         count = file_search_results(kb, results, "test_prompts", TIMESTAMP)
         assert count == 2
@@ -183,7 +183,7 @@ class TestFileSearchResults:
         results = _make_search_results()
         file_search_results(kb, results, "test_prompts", TIMESTAMP)
         article = kb.list_articles(ArticleType.INSIGHT)[0]
-        assert "customer_a" in article.tags
+        assert "subject_a" in article.tags
         assert "revenue_growth" in article.tags
         assert "search" in article.tags
 

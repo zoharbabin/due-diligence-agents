@@ -122,7 +122,7 @@ def read_validate_write(
                 json.dumps(new_data, indent=2, ensure_ascii=False, default=str),
                 encoding="utf-8",
             )
-            os.replace(str(tmp_path), str(file_path))
+            os.replace(tmp_path, file_path)
         except Exception:
             tmp_path.unlink(missing_ok=True)
             raise

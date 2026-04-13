@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from pathlib import Path
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
@@ -21,12 +21,12 @@ logger = logging.getLogger(__name__)
 class TextBlock(BaseModel):
     """A single text block with its page coordinates."""
 
-    page: int
-    x0: float
-    y0: float
-    x1: float
-    y1: float
-    text: str = ""
+    page: int = Field(description="1-based page number")
+    x0: float = Field(description="Left edge x-coordinate")
+    y0: float = Field(description="Top edge y-coordinate")
+    x1: float = Field(description="Right edge x-coordinate")
+    y1: float = Field(description="Bottom edge y-coordinate")
+    text: str = Field(default="", description="Text content of this block")
 
 
 class CoordinateIndex:

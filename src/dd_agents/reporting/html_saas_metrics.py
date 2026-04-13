@@ -170,7 +170,7 @@ class SaaSMetricsRenderer(SectionRenderer):
             parts.append(
                 self.render_alert(
                     "critical" if top_pct >= 50 else "high",
-                    f"Top customer represents {top_pct:.0f}% of total ARR",
+                    f"Top entity represents {top_pct:.0f}% of total ARR",
                     f"{'Severe' if top_pct >= 50 else 'Moderate'} concentration risk. "
                     f"Consider earn-out or escrow protections.",
                 )

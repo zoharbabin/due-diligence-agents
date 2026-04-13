@@ -622,7 +622,7 @@ class DealKnowledgeGraph:
                 json.dumps(data, indent=2, ensure_ascii=False, default=str),
                 encoding="utf-8",
             )
-            os.replace(str(tmp), str(p))
+            os.replace(tmp, p)
         except Exception:
             tmp.unlink(missing_ok=True)
             raise

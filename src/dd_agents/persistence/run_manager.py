@@ -34,7 +34,7 @@ def _atomic_write_text(path: Path, content: str) -> None:
     tmp = path.with_suffix(".tmp")
     try:
         tmp.write_text(content, encoding="utf-8")
-        os.replace(str(tmp), str(path))
+        os.replace(tmp, path)
     except BaseException:
         tmp.unlink(missing_ok=True)
         raise

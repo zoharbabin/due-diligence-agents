@@ -29,6 +29,8 @@ def build_mcp_server(
     subjects_csv: list[dict[str, Any]] | None = None,
     cache_path: str | Path | None = None,
     allowed_dir: str | Path | None = None,
+    data_room_path: str | Path | None = None,
+    file_precedence: dict[str, float] | None = None,
 ) -> Any | None:
     """Build an in-process MCP server with DD tools for the given agent type.
 
@@ -39,10 +41,11 @@ def build_mcp_server(
         registered on the server.
     text_dir:
         Path to the extracted text directory (``index/text/``).
-        Required by ``verify_citation`` and ``read_office``.
+        Required by ``verify_citation``, ``read_office``, ``search_in_file``,
+        ``get_page_content``, and ``get_subject_files`` (extraction status).
     files_list:
         List of known file paths from inventory.
-        Required by ``verify_citation``.
+        Required by ``verify_citation`` and ``batch_verify_citations``.
     subjects_csv:
         List of subject dicts from the inventory CSV.
         Required by ``get_subject_files``.
@@ -51,7 +54,12 @@ def build_mcp_server(
         Required by ``resolve_entity``.
     allowed_dir:
         Base directory for path containment checks (prevents traversal).
-        Used by ``verify_citation`` and ``read_office``.
+        Used by ``verify_citation``, ``read_office``, ``search_in_file``,
+        and ``get_page_content``.
+    data_room_path:
+        Root of the data room (for resolving file sizes in ``get_subject_files``).
+    file_precedence:
+        Precedence scores keyed by file path (for ``get_subject_files``).
 
     Returns
     -------
@@ -243,10 +251,14 @@ def build_mcp_server(
         from dd_agents.tools.get_subject_files import get_subject_files as _get_subject_files
 
         _gcf_subjects_csv = subjects_csv or []
+        _gcf_data_room = str(data_room_path) if data_room_path else None
+        _gcf_text_dir = str(text_dir) if text_dir else None
+        _gcf_precedence = file_precedence
 
         @tool(
             "get_subject_files",
-            "Return the file list and count for a subject. Use subject_safe_name (e.g., 'acme_corp').",
+            "Return the file list with metadata for a subject. Includes file type, "
+            "extraction status, size, and precedence score. Use subject_safe_name (e.g., 'acme_corp').",
             {
                 "type": "object",
                 "properties": {
@@ -262,6 +274,9 @@ def build_mcp_server(
             return _get_subject_files(
                 subject_safe_name=input_data["subject_safe_name"],
                 subjects_csv=_gcf_subjects_csv,
+                data_room_path=_gcf_data_room,
+                text_dir=_gcf_text_dir,
+                file_precedence=_gcf_precedence,
             )
 
         tools.append(get_subject_files_tool)
@@ -320,6 +335,135 @@ def build_mcp_server(
 
         tools.append(read_office_tool)
 
+    # ------------------------------------------------------------------
+    # New document analysis tools (search, page extraction, batch verify)
+    # ------------------------------------------------------------------
+
+    if "search_in_file" in allowed_tool_names:
+        from dd_agents.tools.search_in_file import search_in_file as _search_in_file
+
+        _sif_text_dir = str(text_dir) if text_dir else ""
+        _sif_allowed_dir = str(allowed_dir) if allowed_dir else None
+
+        @tool(
+            "search_in_file",
+            "Search within a document's extracted text for a query string. "
+            "Returns matches with page numbers, character offsets, and surrounding context.",
+            {
+                "type": "object",
+                "properties": {
+                    "source_path": {
+                        "type": "string",
+                        "description": "Original file path (e.g., './Above 200K/Acme/MSA.pdf')",
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "Search string to find in the document",
+                    },
+                    "case_sensitive": {
+                        "type": "boolean",
+                        "description": "Whether to match case-sensitively (default: false)",
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Maximum matches to return (1-20, default 20)",
+                    },
+                },
+                "required": ["source_path", "query"],
+            },
+        )
+        async def search_in_file_tool(input_data: dict[str, Any]) -> dict[str, Any]:
+            return _search_in_file(
+                source_path=input_data["source_path"],
+                query=input_data["query"],
+                text_dir=_sif_text_dir,
+                case_sensitive=input_data.get("case_sensitive", False),
+                max_results=input_data.get("max_results", 20),
+                allowed_dir=_sif_allowed_dir,
+            )
+
+        tools.append(search_in_file_tool)
+
+    if "get_page_content" in allowed_tool_names:
+        from dd_agents.tools.get_page_content import get_page_content as _get_page_content
+
+        _gpc_text_dir = str(text_dir) if text_dir else ""
+        _gpc_allowed_dir = str(allowed_dir) if allowed_dir else None
+
+        @tool(
+            "get_page_content",
+            "Extract specific page ranges from a document's extracted text. "
+            "Returns page content using '--- Page N ---' markers.",
+            {
+                "type": "object",
+                "properties": {
+                    "source_path": {
+                        "type": "string",
+                        "description": "Original file path (e.g., './Above 200K/Acme/MSA.pdf')",
+                    },
+                    "start_page": {
+                        "type": "integer",
+                        "description": "First page to return (1-based, inclusive, default 1)",
+                    },
+                    "end_page": {
+                        "type": "integer",
+                        "description": "Last page to return (inclusive). Omit for single page.",
+                    },
+                },
+                "required": ["source_path"],
+            },
+        )
+        async def get_page_content_tool(input_data: dict[str, Any]) -> dict[str, Any]:
+            return _get_page_content(
+                source_path=input_data["source_path"],
+                text_dir=_gpc_text_dir,
+                start_page=input_data.get("start_page", 1),
+                end_page=input_data.get("end_page"),
+                allowed_dir=_gpc_allowed_dir,
+            )
+
+        tools.append(get_page_content_tool)
+
+    if "batch_verify_citations" in allowed_tool_names:
+        from dd_agents.tools.batch_verify_citations import batch_verify_citations as _batch_verify
+
+        _bvc_files_list = files_list or []
+        _bvc_text_dir = str(text_dir) if text_dir else ""
+        _bvc_allowed_dir = str(allowed_dir) if allowed_dir else None
+
+        @tool(
+            "batch_verify_citations",
+            "Verify multiple citations in a single call. Returns per-citation "
+            "results with page numbers and context, plus an overall summary.",
+            {
+                "type": "object",
+                "properties": {
+                    "citations": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "source_path": {"type": "string", "description": "Original file path"},
+                                "exact_quote": {"type": "string", "description": "The exact quote to verify"},
+                            },
+                            "required": ["source_path", "exact_quote"],
+                        },
+                        "description": "List of citations to verify",
+                    }
+                },
+                "required": ["citations"],
+            },
+        )
+        async def batch_verify_citations_tool(input_data: dict[str, Any]) -> dict[str, Any]:
+            return _batch_verify(
+                citations=input_data["citations"],
+                files_list=_bvc_files_list,
+                text_dir=_bvc_text_dir,
+                allowed_dir=_bvc_allowed_dir,
+            )
+
+        tools.append(batch_verify_citations_tool)
+
     if not tools:
         logger.debug("No tools registered for agent_type=%r", agent_type)
         return None
@@ -334,6 +478,7 @@ def _build_runtime_context(
     project_dir: Path,
     run_dir: Path,
     subjects_csv: list[dict[str, Any]] | None = None,
+    file_precedence: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     """Derive runtime context paths from project/run directories.
 
@@ -370,4 +515,6 @@ def _build_runtime_context(
         # Always set allowed_dir to the project dir for path containment.
         # Even if _dd/ doesn't exist yet, agents should not read outside it.
         "allowed_dir": dd_dir if dd_dir.is_dir() else project_dir,
+        "data_room_path": project_dir,
+        "file_precedence": file_precedence,
     }

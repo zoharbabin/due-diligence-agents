@@ -90,17 +90,17 @@ This prints the installed version. If the command is not found, ensure the packa
 
 ## Preparing Your Data Room
 
-Organize your contracts into folders by customer or counterparty:
+Organize your contracts into folders by subject (counterparty):
 
 ```
 data_room/
-  CustomerGroup_A/
+  SubjectGroup_A/
     Acme_Corp/
       master_agreement.pdf
       amendment_2024.pdf
     Beta_Inc/
       license_agreement.pdf
-  CustomerGroup_B/
+  SubjectGroup_B/
     Gamma_LLC/
       services_contract.docx
   _reference/                    # Optional: reference docs (buyer overview, etc.)
@@ -109,7 +109,7 @@ data_room/
 
 **Supported formats:** PDF, Word (.docx), Excel (.xlsx), PowerPoint (.pptx), and images. Scanned PDFs are handled via OCR.
 
-**Folder structure matters:** The tool uses folder names to identify which documents belong to which customer. A flat folder of files with no subfolder structure will still work — the tool groups them as a single entity — but organizing by customer produces better results.
+**Folder structure matters:** The tool uses folder names to identify which documents belong to which subject. A flat folder of files with no subfolder structure will still work — the tool groups them as a single entity — but organizing by subject produces better results.
 
 A pre-built sample data room is included at `examples/quickstart/sample_data_room/` so you can try the tool before setting up your own files.
 

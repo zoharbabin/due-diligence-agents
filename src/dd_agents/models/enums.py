@@ -67,6 +67,8 @@ class DetectionMethod(StrEnum):
     PATTERN_CHECK = "pattern_check"
     CHECKLIST = "checklist"
     GOVERNANCE_RESOLUTION = "governance_resolution"
+    FILE_INVENTORY = "file_inventory"  # Gap found via data room file inventory review
+    FILE_READ_FAILURE = "file_read_failure"  # Gap found because file could not be read
 
 
 class AuditAction(StrEnum):

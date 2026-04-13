@@ -14,7 +14,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from dd_agents.utils.constants import ALL_SPECIALIST_AGENTS, NON_SUBJECT_STEMS, SEVERITY_ORDER
+from dd_agents.utils.constants import ALL_SPECIALIST_AGENTS, NON_SUBJECT_STEMS, SEVERITY_ORDER, SEVERITY_P0, SEVERITY_P1
 
 logger = logging.getLogger(__name__)
 
@@ -295,7 +295,9 @@ class PreMergeValidator:
             for agent in ALL_SPECIALIST_AGENTS:
                 key = f"{agent}/{subject}"
                 findings = parsed.get(key, [])
-                has_high = any(isinstance(f, dict) and f.get("severity") in ("P0", "P1") for f in findings)
+                has_high = any(
+                    isinstance(f, dict) and f.get("severity") in (SEVERITY_P0, SEVERITY_P1) for f in findings
+                )
                 if has_high:
                     agents_with_high.append(agent)
                 if len(findings) == 0:

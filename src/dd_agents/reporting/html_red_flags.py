@@ -7,11 +7,11 @@ and confidence badges, and an overall recommendation.
 
 from __future__ import annotations
 
-import html
 from typing import Any
 
 from dd_agents.agents.red_flag_scanner import CATEGORY_LABELS
 from dd_agents.reporting.html_base import SectionRenderer
+from dd_agents.utils.constants import SEVERITY_P3
 
 _SIGNAL_CONFIG: dict[str, dict[str, str]] = {
     "green": {
@@ -89,7 +89,7 @@ class RedFlagAssessmentRenderer(SectionRenderer):
             f"padding:16px 24px;border-radius:8px;margin:16px 0;"
             f"font-size:1.2em;font-weight:600;text-align:center'>"
             f"<span style='font-size:1.5em;margin-right:8px'>{cfg['icon']}</span>"
-            f"{html.escape(cfg['label'])}"
+            f"{self.escape(cfg['label'])}"
             "</div>"
         )
 
@@ -99,7 +99,7 @@ class RedFlagAssessmentRenderer(SectionRenderer):
             return ""
         return (
             f"<p style='font-size:1.05em;margin:12px 0'>"
-            f"<strong>Recommendation:</strong> {html.escape(recommendation)}</p>"
+            f"<strong>Recommendation:</strong> {self.escape(recommendation)}</p>"
         )
 
     def _render_flags(self, flags: list[dict[str, Any]]) -> str:
@@ -114,15 +114,15 @@ class RedFlagAssessmentRenderer(SectionRenderer):
 
     def _render_flag_card(self, flag: dict[str, Any]) -> str:
         """Render a single red flag as a card."""
-        title = html.escape(str(flag.get("title", "Unknown")))
-        description = html.escape(str(flag.get("description", "")))
+        title = self.escape(str(flag.get("title", "Unknown")))
+        description = self.escape(str(flag.get("description", "")))
         category = str(flag.get("category", ""))
-        severity = str(flag.get("severity", "P3"))
+        severity = str(flag.get("severity", SEVERITY_P3))
         confidence = str(flag.get("confidence", "low"))
-        source = html.escape(str(flag.get("source_document", "")))
-        action = html.escape(str(flag.get("recommended_action", "")))
+        source = self.escape(str(flag.get("source_document", "")))
+        action = self.escape(str(flag.get("recommended_action", "")))
 
-        cat_label = html.escape(CATEGORY_LABELS.get(category, category.replace("_", " ").title()))
+        cat_label = self.escape(CATEGORY_LABELS.get(category, category.replace("_", " ").title()))
 
         conf_color = _CONFIDENCE_COLORS.get(confidence, "#6c757d")
 
@@ -134,7 +134,7 @@ class RedFlagAssessmentRenderer(SectionRenderer):
             f"<div>"
             f"{self.severity_badge(severity)} "
             f"<span class='conf-dot' style='background:{conf_color}'></span>"
-            f"<span style='font-size:0.8em'>{html.escape(confidence)}</span>"
+            f"<span style='font-size:0.8em'>{self.escape(confidence)}</span>"
             f"</div></div>"
             f"<div style='color:#6c757d;font-size:0.85em;margin-bottom:6px'>{cat_label}</div>"
             f"<p style='margin:6px 0'>{description}</p>"

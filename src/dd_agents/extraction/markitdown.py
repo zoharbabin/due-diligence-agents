@@ -14,15 +14,13 @@ import subprocess
 from typing import TYPE_CHECKING
 
 from dd_agents.extraction._constants import CONFIDENCE_FAILURE, CONFIDENCE_FALLBACK_READ, PLAINTEXT_EXTENSIONS
+from dd_agents.extraction._constants import CONFIDENCE_MARKITDOWN as _CONFIDENCE_SUCCESS
 from dd_agents.extraction._helpers import read_text
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 logger = logging.getLogger(__name__)
-
-# Confidence score for successful markitdown conversion (unique to this module).
-_CONFIDENCE_SUCCESS = 0.9
 
 # File extensions that markitdown is expected to handle.
 MARKITDOWN_EXTENSIONS: frozenset[str] = frozenset(

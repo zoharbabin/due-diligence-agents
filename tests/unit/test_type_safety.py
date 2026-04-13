@@ -41,7 +41,7 @@ def _make_finding(**overrides: object) -> dict[str, object]:
         "skill": "forensic-dd",
         "run_id": "run_001",
         "timestamp": "2026-01-01T00:00:00Z",
-        "analysis_unit": "Customer A",
+        "analysis_unit": "Subject A",
     }
     base.update(overrides)
     return base
@@ -62,7 +62,7 @@ def _make_agent_finding(**overrides: object) -> dict[str, object]:
 
 def _make_gap(**overrides: object) -> dict[str, object]:
     base = {
-        "subject": "Customer A",
+        "subject": "Subject A",
         "priority": "P2",
         "gap_type": "Missing_Doc",
         "missing_item": "NDA",

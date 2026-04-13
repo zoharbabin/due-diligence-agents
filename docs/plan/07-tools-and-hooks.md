@@ -1,5 +1,7 @@
 # 07 — Custom MCP Tools and Hook Implementations
 
+> **Historical note**: This document references the ReportingLead agent which was removed in v0.4.0. Step 23 is now deterministic pre-merge validation (`validation/pre_merge.py`). See `06-agents.md` §11.
+
 ## Overview
 
 The Agent SDK provides two distinct enforcement mechanisms:
@@ -21,15 +23,15 @@ Six tools (plus `report_progress`) are exposed to agents. These run in-process w
 
 from claude_agent_sdk import tool, create_sdk_mcp_server
 
-def build_mcp_server(run_dir: Path, skill_dir: Path, customers_csv: list[dict]):
+def build_mcp_server(run_dir: Path, skill_dir: Path, subjects_csv: list[dict]):
     """Build the in-process MCP server with all 6 DD tools."""
 
     tools = [
         build_validate_finding_tool(),
         build_validate_gap_tool(),
-        build_validate_manifest_tool(customers_csv),
+        build_validate_manifest_tool(subjects_csv),
         build_verify_citation_tool(skill_dir),
-        build_get_customer_files_tool(customers_csv),
+        build_get_subject_files_tool(subjects_csv),
         build_resolve_entity_tool(skill_dir),
         build_report_progress_tool(),
     ]
@@ -51,7 +53,7 @@ options = ClaudeAgentOptions(
         "mcp__dd_tools__validate_gap",
         "mcp__dd_tools__validate_manifest",
         "mcp__dd_tools__verify_citation",
-        "mcp__dd_tools__get_customer_files",
+        "mcp__dd_tools__get_subject_files",
         "mcp__dd_tools__resolve_entity",
         "mcp__dd_tools__report_progress",
         # Plus built-in tools
@@ -62,13 +64,13 @@ options = ClaudeAgentOptions(
 
 ### 1.2 validate_finding
 
-Validates a finding JSON string against the Pydantic `AgentFinding` model (the agent-internal format, not the full `Finding` schema -- agents produce pre-transformation output). Called by agents before writing customer JSONs to catch schema violations early.
+Validates a finding JSON string against the Pydantic `AgentFinding` model (the agent-internal format, not the full `Finding` schema -- agents produce pre-transformation output). Called by agents before writing subject JSONs to catch schema violations early.
 
 ```python
 # src/dd_agents/tools/validate_finding.py
 
 from dd_agents.models.finding import Severity, Confidence
-from dd_agents.models.customer import AgentFinding
+from dd_agents.models.subject import AgentFinding
 from pydantic import ValidationError
 
 def build_validate_finding_tool():
@@ -200,7 +202,7 @@ def build_validate_gap_tool():
 
 ### 1.4 validate_manifest
 
-Validates a coverage manifest JSON. Checks `files_assigned` length against expected file count, `coverage_pct >= 0.90`, and that every customer entry has a status.
+Validates a coverage manifest JSON. Checks `files_assigned` length against expected file count, `coverage_pct >= 0.90`, and that every subject entry has a status.
 
 ```python
 # src/dd_agents/tools/validate_manifest.py
@@ -208,10 +210,10 @@ Validates a coverage manifest JSON. Checks `files_assigned` length against expec
 from dd_agents.models.manifest import CoverageManifest
 from pydantic import ValidationError
 
-def build_validate_manifest_tool(customers_csv: list[dict]):
+def build_validate_manifest_tool(subjects_csv: list[dict]):
 
-    expected_customer_count = len(customers_csv)
-    expected_customer_names = {c["customer_safe_name"] for c in customers_csv}
+    expected_subject_count = len(subjects_csv)
+    expected_subject_names = {c["subject_safe_name"] for c in subjects_csv}
 
     @tool(
         "validate_manifest",
@@ -241,11 +243,11 @@ def build_validate_manifest_tool(customers_csv: list[dict]):
                     f"must be >= 0.90"
                 )
 
-            # Customer count check
-            if manifest.analysis_units_assigned != expected_customer_count:
+            # Subject count check
+            if manifest.analysis_units_assigned != expected_subject_count:
                 errors.append(
                     f"analysis_units_assigned={manifest.analysis_units_assigned}, "
-                    f"expected={expected_customer_count}"
+                    f"expected={expected_subject_count}"
                 )
 
             if manifest.analysis_units_completed < manifest.analysis_units_assigned:
@@ -254,19 +256,19 @@ def build_validate_manifest_tool(customers_csv: list[dict]):
                     f"analysis_units_assigned ({manifest.analysis_units_assigned})"
                 )
 
-            # Every customer must have a status
+            # Every subject must have a status
             manifest_names = set()
-            for cust in manifest.customers:
+            for cust in manifest.subjects:
                 manifest_names.add(cust.name)
                 if cust.status not in ("complete", "partial"):
                     errors.append(
-                        f"customer '{cust.name}' has invalid status "
+                        f"subject '{cust.name}' has invalid status "
                         f"'{cust.status}'"
                     )
 
-            # No duplicate customers
-            if len(manifest_names) != len(manifest.customers):
-                errors.append("duplicate customer entries in manifest")
+            # No duplicate subjects
+            if len(manifest_names) != len(manifest.subjects):
+                errors.append("duplicate subject entries in manifest")
 
             # files_failed must have fallback_attempted=True
             for ff in manifest.files_failed:
@@ -400,52 +402,52 @@ def build_verify_citation_tool(skill_dir: Path, fuzzy_threshold: float = 0.85):
     return verify_citation
 ```
 
-### 1.6 get_customer_files
+### 1.6 get_subject_files
 
-Returns the number of files associated with a given customer name. Agents use this to verify they have processed all files for a customer before writing output.
+Returns the number of files associated with a given subject name. Agents use this to verify they have processed all files for a subject before writing output.
 
 ```python
-# src/dd_agents/tools/get_customer_files.py
+# src/dd_agents/tools/get_subject_files.py
 
-def build_get_customer_files_tool(customers_csv: list[dict]):
+def build_get_subject_files_tool(subjects_csv: list[dict]):
 
-    # Build lookup: customer_safe_name -> file_count
-    customer_file_counts = {}
-    customer_file_lists = {}
-    for row in customers_csv:
-        safe_name = row["customer_safe_name"]
+    # Build lookup: subject_safe_name -> file_count
+    subject_file_counts = {}
+    subject_file_lists = {}
+    for row in subjects_csv:
+        safe_name = row["subject_safe_name"]
         files = row.get("file_list", [])
-        customer_file_counts[safe_name] = len(files)
-        customer_file_lists[safe_name] = files
+        subject_file_counts[safe_name] = len(files)
+        subject_file_lists[safe_name] = files
 
     @tool(
-        "get_customer_files",
-        "Return the number of files for a customer. "
-        "Use customer_safe_name (e.g., 'acme_corp').",
+        "get_subject_files",
+        "Return the number of files for a subject. "
+        "Use subject_safe_name (e.g., 'acme_corp').",
         {
             "type": "object",
             "properties": {
-                "customer_safe_name": {
+                "subject_safe_name": {
                     "type": "string",
-                    "description": "The customer_safe_name from the assignment"
+                    "description": "The subject_safe_name from the assignment"
                 }
             },
-            "required": ["customer_safe_name"]
+            "required": ["subject_safe_name"]
         }
     )
-    async def get_customer_files(args):
-        safe_name = args["customer_safe_name"]
+    async def get_subject_files(args):
+        safe_name = args["subject_safe_name"]
 
-        if safe_name not in customer_file_counts:
+        if safe_name not in subject_file_counts:
             return {
                 "content": [{
                     "type": "text",
-                    "text": f"unknown_customer: '{safe_name}' not in inventory"
+                    "text": f"unknown_subject: '{safe_name}' not in inventory"
                 }]
             }
 
-        count = customer_file_counts[safe_name]
-        files = customer_file_lists[safe_name]
+        count = subject_file_counts[safe_name]
+        files = subject_file_lists[safe_name]
         file_list_str = "\n".join(f"  - {f}" for f in files)
         return {
             "content": [{
@@ -454,12 +456,12 @@ def build_get_customer_files_tool(customers_csv: list[dict]):
             }]
         }
 
-    return get_customer_files
+    return get_subject_files
 ```
 
 ### 1.7 resolve_entity
 
-Looks up a name in the entity resolution cache and match log. Agents use this when they encounter a customer name in a reference file and need to find the canonical name from `customers.csv`.
+Looks up a name in the entity resolution cache and match log. Agents use this when they encounter a subject name in a reference file and need to find the canonical name from `subjects.csv`.
 
 ```python
 # src/dd_agents/tools/resolve_entity.py
@@ -472,7 +474,7 @@ def build_resolve_entity_tool(skill_dir: Path):
     @tool(
         "resolve_entity",
         "Look up a name in the entity resolution cache to find the canonical "
-        "customer name. Returns the canonical name and match method, or 'not_found'.",
+        "subject name. Returns the canonical name and match method, or 'not_found'.",
         {
             "type": "object",
             "properties": {
@@ -583,7 +585,9 @@ Hooks fire automatically at lifecycle events. Unlike tools (which agents choose 
 
 ### 2.2 Hook Factory
 
-Each agent gets its own set of hooks, configured with the agent's name, run directory, and expected customer count. The factory returns a dict suitable for `ClaudeAgentOptions.hooks`.
+Each agent gets its own set of hooks, configured with the agent's name, run directory, project directory, and expected subject count. The factory returns a dict suitable for `ClaudeAgentOptions(hooks=...)`, or `None` if `claude_agent_sdk` is not installed.
+
+The PreToolUse callback chains 5 guards in order: bash guard → path guard → file size guard → aggregate file guard → finding schema guard. All guards are checked on every tool call; each guard short-circuits on block.
 
 ```python
 # src/dd_agents/hooks/factory.py
@@ -592,51 +596,52 @@ from pathlib import Path
 from claude_agent_sdk import HookMatcher
 
 from dd_agents.hooks.pre_tool import (
-    build_bash_guard,
-    build_write_guard,
-    build_aggregate_file_guard,
+    BATCH_FILE_PATTERN,
+    BLOCKED_FILENAMES,
+    bash_guard,
+    file_size_guard,
+    finding_schema_guard,
+    path_guard,
 )
-from dd_agents.hooks.post_tool import build_json_validator
-from dd_agents.hooks.stop import build_stop_guard
+from dd_agents.hooks.stop import check_coverage, check_manifest
 
 def build_hooks_for_agent(
     agent_name: str,
     run_dir: Path,
     project_dir: Path,
-    expected_customers: int,
-) -> dict[str, list[HookMatcher]]:
-    """Build the complete hook set for a specialist agent."""
+    expected_subjects: int,
+) -> dict[str, list[HookMatcher]] | None:
+    """Build the complete hook set for a specialist agent.
+
+    Returns a dict suitable for ClaudeAgentOptions(hooks=...),
+    or None if claude_agent_sdk is not installed.
+    """
 
     return {
         "PreToolUse": [
             HookMatcher(
-                matcher="Bash",
-                hooks=[build_bash_guard(project_dir)],
+                hooks=[_build_pre_tool_hook(agent_name, run_dir, project_dir)],
                 timeout=5.0,
-            ),
-            HookMatcher(
-                matcher="Write",
-                hooks=[
-                    build_write_guard(agent_name, run_dir, project_dir),
-                    build_aggregate_file_guard(agent_name),
-                ],
-                timeout=5.0,
-            ),
-        ],
-        "PostToolUse": [
-            HookMatcher(
-                matcher="Write",
-                hooks=[build_json_validator(agent_name, run_dir)],
-                timeout=10.0,
             ),
         ],
         "Stop": [
             HookMatcher(
-                hooks=[build_stop_guard(agent_name, run_dir, expected_customers)],
+                hooks=[_build_stop_hook(agent_name, run_dir, expected_subjects)],
                 timeout=10.0,
             ),
         ],
     }
+```
+
+The PreToolUse callback chains 5 guards sequentially:
+
+```python
+async def pre_tool_hook(hook_input, tool_name, context):
+    # 1. Bash guard — block destructive commands
+    # 2. Path guard — Write/Edit only inside _dd/
+    # 3. File size guard — warn on large payloads (warning only)
+    # 4. Aggregate file guard — block writes to batch_*.json, summary.json, etc.
+    # 5. Finding schema guard — validate JSON field names before write to findings/
 ```
 
 ---
@@ -781,21 +786,21 @@ def build_write_guard(agent_name: str, run_dir: Path, project_dir: Path):
 
 ### 3.3 Block Aggregate File Creation
 
-Prevents agents from creating aggregate/batch files instead of per-customer files. This was one of the most common failures in the skill-based system: agents consolidating multiple customers into a single file to save effort.
+Prevents agents from creating aggregate/batch files instead of per-subject files. This was one of the most common failures in the skill-based system: agents consolidating multiple subjects into a single file to save effort.
 
 Aggregate file detection uses exact filename matching against the blocklist, not substring matching, to avoid false positives (e.g., blocking a file named `summary_for_acme.json` when `summary.json` is blocklisted).
 
 ```python
 # src/dd_agents/hooks/pre_tool.py  (continued)
 
-# Filenames that indicate aggregate output (not per-customer)
+# Filenames that indicate aggregate output (not per-subject)
 BLOCKED_FILENAMES = [
     "_global.json",
     "batch_summary.json",
-    "other_customers.json",
+    "other_subjects.json",
     "pipeline_items.json",
-    "remaining_customers.json",
-    "all_customers.json",
+    "remaining_subjects.json",
+    "all_subjects.json",
     "combined.json",
     "summary.json",
     "batch_1.json",
@@ -806,7 +811,7 @@ BLOCKED_FILENAMES = [
     "overflow.json",
 ]
 
-# Allowed non-customer filenames (exact match)
+# Allowed non-subject filenames (exact match)
 ALLOWED_SPECIAL_FILES = [
     "coverage_manifest.json",
     "audit_log.jsonl",
@@ -833,8 +838,8 @@ def build_aggregate_file_guard(agent_name: str):
                 "decision": "block",
                 "reason": (
                     f"Blocked aggregate file creation: '{filename}'. "
-                    f"You MUST produce exactly one JSON per customer named "
-                    f"{{customer_safe_name}}.json. Do NOT create aggregate "
+                    f"You MUST produce exactly one JSON per subject named "
+                    f"{{subject_safe_name}}.json. Do NOT create aggregate "
                     f"files."
                 ),
             }
@@ -845,15 +850,58 @@ def build_aggregate_file_guard(agent_name: str):
                 "decision": "block",
                 "reason": (
                     f"Blocked file starting with underscore: '{filename}'. "
-                    f"Only {ALLOWED_SPECIAL_FILES} are allowed as non-customer "
-                    f"files. Use {{customer_safe_name}}.json for customer output."
+                    f"Only {ALLOWED_SPECIAL_FILES} are allowed as non-subject "
+                    f"files. Use {{subject_safe_name}}.json for subject output."
                 ),
             }
 
-        # Allow everything else (customer-named files, gap files, etc.)
+        # Allow everything else (subject-named files, gap files, etc.)
         return {}
 
     return aggregate_file_guard
+```
+
+### 3.4 Finding Schema Guard (Validate JSON Field Names Before Write)
+
+Prevents agents from writing findings with wrong field names (e.g., `"evidence"` instead of `"citations"`, `"file"` instead of `"source_path"`). This is a common LLM failure mode — agents invent synonyms for schema fields. The guard intercepts `Write` calls to `findings/{agent}/*.json`, parses the JSON, and blocks if any finding uses an alias instead of the canonical field name.
+
+**Two-layer defense**: (1) This PreToolUse hook validates and rejects on write (preventive). (2) `reporting/merge.py` also normalizes `evidence` → `citations` and `file` → `source_path` on read (defensive fallback for findings written before this guard was added).
+
+```python
+# src/dd_agents/hooks/pre_tool.py
+
+# Field aliases that agents commonly invent
+_FINDING_FIELD_ALIASES = {"evidence": "citations"}
+
+_CITATION_FIELD_ALIASES = {
+    "file": "source_path", "file_path": "source_path",
+    "filepath": "source_path", "path": "source_path",
+    "document": "source_path", "doc": "source_path",
+    "quote": "exact_quote", "text": "exact_quote",
+    "excerpt": "exact_quote", "verbatim": "exact_quote",
+}
+
+_FINDINGS_SKIP_FILES = {"coverage_manifest.json", "audit_log.jsonl"}
+
+def finding_schema_guard(tool_name, tool_input, run_dir):
+    """Block writes of malformed finding JSON to findings/{agent}/*.json.
+
+    Only fires on Write calls to *.json inside {run_dir}/findings/.
+    Parses JSON and checks each finding for field-name violations.
+    """
+    # ... validates each finding's field names against alias dicts
+    # ... returns block with detailed fix instructions on violation
+```
+
+When a violation is detected, the block reason includes the exact fix needed:
+```
+Finding schema violations in financials.json — fix these before writing:
+  findings[0]: rename 'evidence' → 'citations'
+  findings[0].citations[0]: rename 'file' → 'source_path'
+
+Required finding structure:
+  "citations": [{"source_type": "file", "source_path": "path/to/doc.pdf",
+  "location": "Section X", "exact_quote": "verbatim text"}]
 ```
 
 ---
@@ -910,11 +958,11 @@ def build_json_validator(agent_name: str, run_dir: Path):
         if "gaps" in path.parts:
             return _validate_gap_structure(data, path.name)
 
-        # Validate customer JSON structure
+        # Validate subject JSON structure
         errors = []
 
-        if "customer" not in data:
-            errors.append("missing 'customer' field")
+        if "subject" not in data:
+            errors.append("missing 'subject' field")
 
         if "findings" not in data:
             errors.append("missing 'findings' array")
@@ -926,14 +974,14 @@ def build_json_validator(agent_name: str, run_dir: Path):
         elif not isinstance(data["file_headers"], list):
             errors.append("'file_headers' must be an array")
 
-        if "customer_safe_name" not in data:
-            errors.append("missing 'customer_safe_name' field")
+        if "subject_safe_name" not in data:
+            errors.append("missing 'subject_safe_name' field")
 
         if errors:
             return {
                 "decision": "block",
                 "reason": (
-                    f"WARNING: Customer JSON '{path.name}' has structural "
+                    f"WARNING: Subject JSON '{path.name}' has structural "
                     f"issues: {errors}. Fix and re-write."
                 ),
             }
@@ -948,7 +996,7 @@ def _validate_gap_structure(data: dict | list, filename: str) -> dict:
     gaps = data if isinstance(data, list) else data.get("gaps", data)
     if isinstance(gaps, list):
         for i, gap in enumerate(gaps):
-            required = ["customer", "priority", "gap_type", "missing_item",
+            required = ["subject", "priority", "gap_type", "missing_item",
                         "why_needed", "risk_if_missing", "request_to_company",
                         "evidence", "detection_method"]
             missing = [f for f in required if f not in gap]
@@ -970,13 +1018,14 @@ def _validate_gap_structure(data: dict | list, filename: str) -> dict:
 ### 5.1 Stop Guard (Prevent Premature Exit)
 
 The stop hook fires when an agent signals it wants to finish. The hook checks:
-1. Has the agent produced a customer JSON for every assigned customer?
-2. Has the agent written `coverage_manifest.json`?
-3. Has the agent written `audit_log.jsonl`?
+1. Has the agent produced a subject JSON for every assigned subject? (`check_coverage`)
+2. Has the agent written `coverage_manifest.json`? (`check_manifest`)
 
-If any check fails, the hook blocks the stop and tells the agent what remains.
+If check 1 fails, the hook blocks the stop. For check 2, the manifest check is **relaxed**: when all expected subject JSONs are present and `expected_subject_count > 0`, the agent is allowed to stop even without a manifest. The orchestrator backfills `coverage_manifest.json` post-session via `_write_audit_log()` in `engine.py`.
 
-**CRITICAL**: The stop hook return format is FLAT -- `{"decision": "block", "reason": "..."}` or `{"decision": "allow", "reason": ""}`. This is the same flat format used by all hook types (PreToolUse, PostToolUse, Stop).
+> **Note**: Audit log (`audit_log.jsonl`) is written by the orchestrator AFTER the agent session completes, so checking for it in the stop hook would always fail. QA audit (step 28, DoD #11) validates audit logs post-pipeline.
+
+**Return format**: The internal check functions (`check_coverage`, `check_manifest`) return the flat format `{"decision": "block"|"allow", "reason": "..."}`. The SDK-facing stop hook wrapper translates to `{"continue_": bool, "stopReason": "..."}` for the SDK callback API.
 
 ```python
 # src/dd_agents/hooks/stop.py
@@ -986,7 +1035,7 @@ from pathlib import Path
 def build_stop_guard(
     agent_name: str,
     run_dir: Path,
-    expected_customers: int,
+    expected_subjects: int,
 ):
     """Build a stop hook that prevents premature agent exit.
 
@@ -1000,23 +1049,23 @@ def build_stop_guard(
         gaps_dir = output_dir / "gaps"
         audit_dir = run_dir / "audit" / agent_name
 
-        # Count customer JSON files (exclude manifest and directories)
-        customer_jsons = [
+        # Count subject JSON files (exclude manifest and directories)
+        subject_jsons = [
             f for f in output_dir.glob("*.json")
             if f.name != "coverage_manifest.json"
         ]
-        actual_count = len(customer_jsons)
+        actual_count = len(subject_jsons)
 
-        # Check 1: All customers have output
-        if actual_count < expected_customers:
-            produced = sorted(f.stem for f in customer_jsons)
+        # Check 1: All subjects have output
+        if actual_count < expected_subjects:
+            produced = sorted(f.stem for f in subject_jsons)
             return {
                 "decision": "block",
                 "reason": (
-                    f"Only {actual_count}/{expected_customers} customer JSONs "
+                    f"Only {actual_count}/{expected_subjects} subject JSONs "
                     f"found in findings/{agent_name}/. "
                     f"Produced so far: {produced[:10]}{'...' if len(produced) > 10 else ''}. "
-                    f"Continue processing remaining customers."
+                    f"Continue processing remaining subjects."
                 ),
             }
 
@@ -1027,7 +1076,7 @@ def build_stop_guard(
                 "decision": "block",
                 "reason": (
                     f"coverage_manifest.json not written yet. "
-                    f"You have produced {actual_count} customer JSONs. "
+                    f"You have produced {actual_count} subject JSONs. "
                     f"Write the coverage_manifest.json before stopping."
                 ),
             }
@@ -1066,7 +1115,7 @@ The Reporting Lead has different stop conditions -- it must have produced merged
 
 def build_reporting_lead_stop_guard(
     run_dir: Path,
-    expected_customers: int,
+    expected_subjects: int,
 ):
     """Stop guard for the Reporting Lead agent."""
 
@@ -1074,14 +1123,14 @@ def build_reporting_lead_stop_guard(
         merged_dir = run_dir / "findings" / "merged"
         audit_dir = run_dir / "audit" / "reporting_lead"
 
-        # Check 1: Merged customer files
+        # Check 1: Merged subject files
         merged_jsons = list(merged_dir.glob("*.json"))
-        if len(merged_jsons) < expected_customers:
+        if len(merged_jsons) < expected_subjects:
             return {
                 "decision": "block",
                 "reason": (
-                    f"Only {len(merged_jsons)}/{expected_customers} merged "
-                    f"customer JSONs. Complete the merge before stopping."
+                    f"Only {len(merged_jsons)}/{expected_subjects} merged "
+                    f"subject JSONs. Complete the merge before stopping."
                 ),
             }
 
@@ -1220,7 +1269,7 @@ def build_specialist_options(
     agent_name: str,
     run_dir: Path,
     project_dir: Path,
-    expected_customers: int,
+    expected_subjects: int,
     mcp_server,
     system_prompt: str,
 ) -> ClaudeAgentOptions:
@@ -1229,7 +1278,7 @@ def build_specialist_options(
         agent_name=agent_name,
         run_dir=run_dir,
         project_dir=project_dir,
-        expected_customers=expected_customers,
+        expected_subjects=expected_subjects,
     )
 
     return ClaudeAgentOptions(
@@ -1241,14 +1290,14 @@ def build_specialist_options(
             "mcp__dd_tools__validate_gap",
             "mcp__dd_tools__validate_manifest",
             "mcp__dd_tools__verify_citation",
-            "mcp__dd_tools__get_customer_files",
+            "mcp__dd_tools__get_subject_files",
             "mcp__dd_tools__resolve_entity",
             "mcp__dd_tools__report_progress",
         ],
         hooks=hooks,
         permission_mode="bypassPermissions",
         cwd=str(project_dir),
-        max_turns=200,         # Large customer lists need many turns
+        max_turns=200,         # Large subject lists need many turns
     )
 ```
 
@@ -1301,7 +1350,7 @@ def build_judge_options(
 def build_reporting_lead_options(
     run_dir: Path,
     project_dir: Path,
-    expected_customers: int,
+    expected_subjects: int,
     mcp_server,
     system_prompt: str,
 ) -> ClaudeAgentOptions:
@@ -1332,7 +1381,7 @@ def build_reporting_lead_options(
             "Stop": [
                 HookMatcher(
                     hooks=[
-                        build_reporting_lead_stop_guard(run_dir, expected_customers),
+                        build_reporting_lead_stop_guard(run_dir, expected_subjects),
                     ],
                 ),
             ],
@@ -1357,15 +1406,15 @@ src/dd_agents/
     validate_gap.py          # Tool 2
     validate_manifest.py     # Tool 3
     verify_citation.py       # Tool 4
-    get_customer_files.py    # Tool 5 (get_customer_files)
+    get_subject_files.py    # Tool 5 (get_subject_files)
     resolve_entity.py        # Tool 6 (resolve_entity)
     report_progress.py       # Tool 7 (report_progress)
   hooks/
     __init__.py
-    factory.py               # build_hooks_for_agent()
-    pre_tool.py              # bash_guard, write_guard, aggregate_file_guard
-    post_tool.py             # json_validator
-    stop.py                  # stop_guard, reporting_lead_stop_guard, judge_stop_guard
+    factory.py               # build_hooks_for_agent() — chains 5 PreToolUse guards + Stop hook
+    pre_tool.py              # bash_guard, path_guard, file_size_guard, finding_schema_guard + constants
+    post_tool.py             # validate_subject_json, validate_manifest_json, validate_audit_entry
+    stop.py                  # check_coverage, check_manifest, check_audit_log
 ```
 
 ---
@@ -1374,23 +1423,29 @@ src/dd_agents/
 
 This section summarizes the return format for all hook types. Getting these wrong causes silent failures.
 
-**All hook types (Stop, PreToolUse, PostToolUse) return the same flat format:**
+**PreToolUse and PostToolUse hooks** return flat `decision`/`reason` dicts:
 
 ```python
-# Block (deny the tool call / force agent to continue / reject output)
-return {
-    "decision": "block",
-    "reason": "Human-readable explanation shown to agent",
-}
+# Block (deny the tool call / reject output)
+return {"decision": "block", "reason": "Human-readable explanation shown to agent"}
 
-# Allow (permit the tool call / let agent exit / accept output)
-return {
-    "decision": "allow",
-    "reason": "",
-}
+# Allow (permit the tool call / accept output)
+return {"decision": "allow", "reason": ""}
 
 # No opinion (fall through to next hook or default behavior)
 return {}
 ```
 
-> **Note:** The SDK internally wraps this in its envelope format (e.g., `hookSpecificOutput`). Hook implementations must return only the flat format shown above. Do NOT nest under `hookSpecificOutput` -- the SDK handles that translation automatically.
+**Stop hooks** use the SDK callback format:
+
+```python
+# Block (force agent to continue)
+return {"continue_": False, "stopReason": "What remains to be done"}
+
+# Allow (let agent exit)
+return {}
+```
+
+**Internal check functions** in `pre_tool.py` and `stop.py` all return the flat `{"decision": ..., "reason": ...}` format. The factory's async wrappers translate stop decisions to `{"continue_": ..., "stopReason": ...}` for the SDK.
+
+> **Note:** Do NOT nest under `hookSpecificOutput` -- the SDK handles envelope wrapping automatically.

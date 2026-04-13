@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import html
-
 from dd_agents.reporting.html_base import (
     DOMAIN_AGENTS,
     DOMAIN_COLORS,
@@ -30,13 +28,13 @@ class RiskRenderer(SectionRenderer):
             total = sum(sev.values())
             display = DOMAIN_DISPLAY.get(domain, domain)
 
-            sev_str = html.escape(" | ".join(f"{k}:{v}" for k, v in sev.items() if v > 0) or "None")
+            sev_str = self.escape(" | ".join(f"{k}:{v}" for k, v in sev.items() if v > 0) or "None")
 
             parts.append(
-                f"<a href='#sec-domain-{html.escape(domain)}' style='text-decoration:none;color:inherit'>"
+                f"<a href='#sec-domain-{self.escape(domain)}' style='text-decoration:none;color:inherit'>"
                 f"<div class='heatmap-cell' style='border-top-color:{domain_color}'>"
-                f"<div class='domain-name'>{html.escape(display)}</div>"
-                f"<div class='domain-risk' style='color:{risk_color}'>{html.escape(risk)}</div>"
+                f"<div class='domain-name'>{self.escape(display)}</div>"
+                f"<div class='domain-risk' style='color:{risk_color}'>{self.escape(risk)}</div>"
                 f"<div class='domain-counts'>{total} findings ({sev_str})</div>"
                 f"</div></a>"
             )

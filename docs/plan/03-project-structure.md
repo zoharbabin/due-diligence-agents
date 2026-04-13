@@ -1,5 +1,7 @@
 # 03 -- Project Structure
 
+> **Historical note**: This document references `agents/reporting_lead.py` which was removed in v0.4.0. Step 23 is now deterministic pre-merge validation (`validation/pre_merge.py`). See `06-agents.md` §11.
+
 ## Repository Layout
 
 ```
@@ -30,7 +32,7 @@ due-diligence-agents/
 │       │   ├── enums.py              # Shared enums (Severity, Confidence, AgentName, etc.)
 │       │   ├── config.py             # DealConfig, BuyerInfo, TargetInfo, etc.
 │       │   ├── finding.py            # Finding, Citation, Gap models
-│       │   ├── inventory.py          # CustomerEntry, FileEntry, ReferenceFile
+│       │   ├── inventory.py          # SubjectEntry, FileEntry, ReferenceFile
 │       │   ├── manifest.py           # CoverageManifest, FileRead, FileSkipped
 │       │   ├── audit.py              # AuditEntry, AuditReport, QualityScores
 │       │   ├── persistence.py        # RunMetadata, Classification, RunHistory
@@ -48,7 +50,7 @@ due-diligence-agents/
 │       │   ├── state.py              # PipelineState dataclass
 │       │   ├── checkpoints.py        # Checkpoint save/restore
 │       │   ├── team.py               # Agent team management
-│       │   ├── batch_scheduler.py    # Customer batching by complexity
+│       │   ├── batch_scheduler.py    # Subject batching by complexity
 │       │   ├── precedence.py         # Document precedence index builder
 │       │   └── progress.py           # Progress tracking utilities
 │       │   # NOTE: Steps are implemented as async methods on the PipelineEngine
@@ -84,15 +86,15 @@ due-diligence-agents/
 │       │   ├── __init__.py
 │       │   ├── matcher.py            # 6-pass cascading matcher
 │       │   ├── cache.py              # PERMANENT tier cache
-│       │   ├── safe_name.py          # customer_safe_name convention
+│       │   ├── safe_name.py          # subject_safe_name convention
 │       │   ├── dedup.py              # Entity deduplication
 │       │   └── logging.py            # Match logging (entity_matches.json)
 │       ├── inventory/
 │       │   ├── __init__.py
 │       │   ├── discovery.py          # File discovery (tree, files, file_types)
-│       │   ├── customers.py          # Customer registry builder
+│       │   ├── subjects.py          # Subject registry builder
 │       │   ├── reference_files.py    # Reference file classifier + router
-│       │   ├── mentions.py           # Customer-mention index
+│       │   ├── mentions.py           # Subject-mention index
 │       │   └── integrity.py          # Inventory integrity verifier
 │       ├── validation/
 │       │   ├── __init__.py
@@ -118,7 +120,7 @@ due-diligence-agents/
 │       │   ├── html_dashboard.py     # Executive dashboard section
 │       │   ├── html_executive.py     # Executive summary section
 │       │   ├── html_findings_table.py # Sortable findings table
-│       │   ├── html_customers.py     # Per-entity detail section
+│       │   ├── html_subjects.py     # Per-entity detail section
 │       │   ├── html_gaps.py          # Missing documents / gaps section
 │       │   ├── html_cross.py         # Cross-reference section
 │       │   ├── html_cross_domain.py  # Cross-domain correlation section
@@ -151,7 +153,7 @@ due-diligence-agents/
 │       │   ├── __init__.py
 │       │   ├── tiers.py              # Three-tier lifecycle manager
 │       │   ├── run_manager.py        # Run initialization + finalization
-│       │   ├── incremental.py        # Customer classification + carry-forward
+│       │   ├── incremental.py        # Subject classification + carry-forward
 │       │   ├── concurrency.py        # File locking utilities
 │       │   └── project_registry.py   # Multi-project registry manager
 │       ├── hooks/
@@ -168,7 +170,7 @@ due-diligence-agents/
 │       │   ├── validate_gap.py       # validate_gap tool
 │       │   ├── validate_manifest.py  # validate_manifest tool
 │       │   ├── verify_citation.py    # verify_citation tool
-│       │   ├── get_customer_files.py # get_customer_files tool
+│       │   ├── get_subject_files.py # get_subject_files tool
 │       │   ├── resolve_entity.py     # resolve_entity tool
 │       │   ├── report_progress.py    # report_progress tool
 │       │   ├── read_office.py        # read_office tool (Office doc extraction)
@@ -199,7 +201,7 @@ due-diligence-agents/
 │       ├── utils/
 │       │   ├── __init__.py
 │       │   ├── constants.py          # Path constants, severity enums, shared config
-│       │   └── naming.py             # customer_safe_name + Unicode transliteration
+│       │   └── naming.py             # subject_safe_name + Unicode transliteration
 │       └── vector_store/
 │           ├── __init__.py
 │           ├── store.py              # ChromaDB wrapper (optional)
@@ -243,12 +245,12 @@ due-diligence-agents/
 | File | Responsibilities |
 |------|-----------------|
 | `__init__.py` | Re-exports all model classes for convenient `from dd_agents.models import ...` imports. |
-| `config.py` | Pydantic v2 models for the deal configuration hierarchy: `DealConfig`, `BuyerInfo`, `TargetInfo`, `PreviousName`, `AcquiredEntity`, `EntityAliases`, `SourceOfTruth`, `CustomerDatabase`, `KeyExecutive`, `DealInfo`, `JudgeConfig`, `ExecutionConfig`, `ReportingConfig`, `ForensicDDConfig`, `DomainConfig`. |
+| `config.py` | Pydantic v2 models for the deal configuration hierarchy: `DealConfig`, `BuyerInfo`, `TargetInfo`, `PreviousName`, `AcquiredEntity`, `EntityAliases`, `SourceOfTruth`, `SubjectDatabase`, `KeyExecutive`, `DealInfo`, `JudgeConfig`, `ExecutionConfig`, `ReportingConfig`, `ForensicDDConfig`, `DomainConfig`. |
 | `finding.py` | Core analysis output models: `Finding` (full framework-schema-compliant), `AgentFinding` (agent-internal pre-transformation), `Citation`, `Gap`. Includes `Severity`, `Confidence`, `SourceType`, `AgentName`, `GapType`, `DetectionMethod` enums. |
-| `inventory.py` | Data room inventory models: `CustomerEntry` (one row per customer in registry), `FileEntry` (individual file metadata), `ReferenceFile` (global reference file with category, routing, and customer mentions), `CountsJson` (aggregate counts), `CustomerMention` (customer-mention index entry). |
+| `inventory.py` | Data room inventory models: `SubjectEntry` (one row per subject in registry), `FileEntry` (individual file metadata), `ReferenceFile` (global reference file with category, routing, and subject mentions), `CountsJson` (aggregate counts), `SubjectMention` (subject-mention index entry). |
 | `manifest.py` | Agent coverage tracking: `CoverageManifest`, `FileRead`, `FileSkipped`, `FileFailed`, `ManifestCustomer`. Enforces `coverage_pct >= 0.0` and `fallback_attempted` constraints. |
 | `audit.py` | Audit trail and QA models: `AuditEntry` (single JSONL line), `AuditAction` enum (14 actions), `AuditCheck` (individual QA check result with DoD mapping), `AuditReport` (consolidated `audit.json` structure), `QualityScores`, `AgentScore`, `UnitScore`, `SpotCheck`, `Contradiction`, `SpotCheckDimension`, `SpotCheckResult` enums. |
-| `persistence.py` | Run lifecycle models: `RunMetadata`, `Classification`, `CustomerClassification` enum, `CustomerClassEntry`, `RunHistoryEntry`. |
+| `persistence.py` | Run lifecycle models: `RunMetadata`, `Classification`, `CustomerClassification` enum, `SubjectClassEntry`, `RunHistoryEntry`. |
 | `reporting.py` | Report schema models: `ReportSchema`, `SheetDef`, `ColumnDef`, `SortOrder`, `ConditionalFormat`, `SummaryFormula`, `GlobalFormatting`, `SeverityColor`. Models for machine-readable report_schema.json parsing. |
 | `entity.py` | Entity resolution models: `EntityMatch`, `EntityMatchLog`, `EntityCache`, `EntityCacheEntry`, `UnmatchedEntity`, `RejectedMatch`, `MatchAttempt`. |
 | `governance.py` | Governance graph models: `GovernanceEdge` (source, target, relationship, citation), `GovernanceGraph` (structured model with `edges: list[GovernanceEdge]` and graph utility methods). |
@@ -268,7 +270,7 @@ due-diligence-agents/
 | `state.py` | `PipelineState` dataclass holding all mutable pipeline state: current step, run_id, run_dir, config, inventory paths, agent results, validation results. `StepResult` and `PipelineError` dataclasses. Serializable for checkpoint save/restore. Imports `PipelineStep` from `steps.py`. |
 | `checkpoints.py` | Checkpoint save and restore logic. Serializes `PipelineState` to JSON at configurable intervals. Enables crash recovery by resuming from the last completed step. |
 | `team.py` | Agent team management. Spawns specialist agents in parallel, monitors liveness, detects silent context exhaustion (no output for N minutes), coordinates retry and re-spawn logic per error recovery protocol. |
-| `batch_scheduler.py` | Customer batching by complexity. Estimates per-customer complexity and partitions into batches for parallel agent execution. |
+| `batch_scheduler.py` | Subject batching by complexity. Estimates per-subject complexity and partitions into batches for parallel agent execution. |
 | `precedence.py` | Document precedence index builder. Wires folder_priority, version_chains, and scorer into `compute_precedence_index()`. |
 | `progress.py` | Progress tracking utilities for pipeline step reporting. |
 
@@ -278,12 +280,12 @@ due-diligence-agents/
 |------|-----------------|
 | `__init__.py` | Exports agent runner classes. |
 | `base.py` | `BaseAgentRunner` abstract class providing common agent lifecycle: SDK client setup, `ClaudeAgentOptions` configuration, prompt injection, agent spawn via `query()`, output collection, and timeout monitoring. Subclassed by each agent type. |
-| `prompt_builder.py` | Prompt builder that assembles complete agent prompts from deal config, customer lists with file paths and safe names, reference file extracted text, domain-definitions extraction/governance/gap/cross-reference rules, and manifest instructions. Implements prompt size estimation and customer batching when estimated tokens exceed 80,000. |
+| `prompt_builder.py` | Prompt builder that assembles complete agent prompts from deal config, subject lists with file paths and safe names, reference file extracted text, domain-definitions extraction/governance/gap/cross-reference rules, and manifest instructions. Implements prompt size estimation and subject batching when estimated tokens exceed 80,000. |
 | `specialists.py` | Four specialist agent runner classes (`LegalAgent`, `FinanceAgent`, `CommercialAgent`, `ProductTechAgent`), each providing agent-specific focus area instructions and reference file routing configuration. |
 | `prompt_templates.py` | Prompt template strings for all agent types. |
 | `judge.py` | Judge agent runner implementing the full iteration loop: spawn, score calculation (weighted 30/25/20/15/10), threshold check, targeted re-spawn for failing agents, Round 2 scoring with blend formula (70% new + 30% prior), forced finalization with quality caveats. |
 | `executive_synthesis.py` | Executive Synthesis agent. Produces severity overrides, ranked deal-breakers, and executive summary from merged findings. |
-| `red_flag_scanner.py` | Red Flag Scanner agent. Identifies critical risks across all customers and domains. |
+| `red_flag_scanner.py` | Red Flag Scanner agent. Identifies critical risks across all subjects and domains. |
 | `acquirer_intelligence.py` | Acquirer Intelligence agent. Buyer-strategy-aware analysis (enabled when `buyer_strategy` config is present). |
 | `cost_tracker.py` | Model profile definitions (economy/standard/premium) and per-run cost tracking. |
 
@@ -310,8 +312,8 @@ due-diligence-agents/
 | `__init__.py` | Exports `EntityResolver`, `compute_safe_name`. |
 | `matcher.py` | Implements the 6-pass cascading matcher: (1) preprocessing/normalization, (2) exact match, (3) alias lookup from `entity_aliases.canonical_to_variants`, (4) fuzzy match using rapidfuzz token-sort ratio with length-dependent thresholds (>=88 for >8 chars, >=95 for 5-8 chars), (5) TF-IDF cosine similarity on character n-grams for large lists, (6) parent-child lookup. Enforces short name guard rails (<=5 chars after preprocessing never eligible for fuzzy), exclusion list rejection. |
 | `cache.py` | PERMANENT tier entity resolution cache (`_dd/entity_resolution_cache.json`). Implements cache lookup before 6-pass matcher, per-entry invalidation on config change (diff algorithm comparing added/removed aliases, exclusions, parent-child changes), confirmation count increment, and stale entry removal. |
-| `safe_name.py` | `compute_safe_name(name: str) -> str` implementing the `customer_safe_name` convention: lowercase, strip legal suffixes (Inc., Corp., LLC, Ltd., ULC, GmbH, S.A., Pty), replace spaces and special characters with `_`, collapse consecutive underscores, strip leading/trailing underscores. |
-| `dedup.py` | Entity deduplication. Merges duplicate customer entries detected by fuzzy matching. |
+| `safe_name.py` | `compute_safe_name(name: str) -> str` implementing the `subject_safe_name` convention: lowercase, strip legal suffixes (Inc., Corp., LLC, Ltd., ULC, GmbH, S.A., Pty), replace spaces and special characters with `_`, collapse consecutive underscores, strip leading/trailing underscores. |
+| `dedup.py` | Entity deduplication. Merges duplicate subject entries detected by fuzzy matching. |
 | `logging.py` | Match logging. Writes `entity_matches.json` to the FRESH tier with matches, unmatched (with per-pass attempt details), and rejected arrays. |
 
 ### Inventory (`src/dd_agents/inventory/`)
@@ -320,18 +322,18 @@ due-diligence-agents/
 |------|-----------------|
 | `__init__.py` | Exports inventory builder functions. |
 | `discovery.py` | File discovery: runs `tree`, `find`, and `file --mime-type` commands (or Python equivalents) with exclude patterns. Produces `tree.txt`, `files.txt`, `file_types.txt` in the FRESH inventory directory. Detects data room changes vs prior run inventory snapshot. |
-| `customers.py` | Customer registry builder. Parses `tree.txt` to identify the folder hierarchy (group/customer/files). Produces `customers.csv` (group, name, safe_name, path, file_count, file_list) and `counts.json` (total_files, total_customers, total_reference_files, files_by_extension, files_by_group, customers_by_group). Computes `customer_safe_name` for each customer. |
-| `reference_files.py` | Reference file classifier and router. Identifies files NOT under a customer directory as global reference files. Classifies by category (Financial, Pricing, Corporate/Legal, Operational, Sales, Compliance, HR, Other) and subcategory. Scans for customer name mentions. Assigns files to agents per routing table. Produces `reference_files.json`. |
-| `mentions.py` | Customer-mention index builder. Matches customer names found in reference files against `customers.csv` using entity resolution. Produces `customer_mentions.json` with matches, ghost customer gaps (in reference data but no folder), and phantom contract gaps (folder exists but absent from reference data). |
-| `integrity.py` | Inventory integrity verifier. Asserts total files = customer files + reference files, no orphan files exist, and all files are classified. Any unclassified file triggers classification and addition. |
+| `subjects.py` | Subject registry builder. Parses `tree.txt` to identify the folder hierarchy (group/subject/files). Produces `subjects.csv` (group, name, safe_name, path, file_count, file_list) and `counts.json` (total_files, total_subjects, total_reference_files, files_by_extension, files_by_group, subjects_by_group). Computes `subject_safe_name` for each subject. |
+| `reference_files.py` | Reference file classifier and router. Identifies files NOT under a subject directory as global reference files. Classifies by category (Financial, Pricing, Corporate/Legal, Operational, Sales, Compliance, HR, Other) and subcategory. Scans for subject name mentions. Assigns files to agents per routing table. Produces `reference_files.json`. |
+| `mentions.py` | Subject-mention index builder. Matches subject names found in reference files against `subjects.csv` using entity resolution. Produces `subject_mentions.json` with matches, ghost subject gaps (in reference data but no folder), and phantom contract gaps (folder exists but absent from reference data). |
+| `integrity.py` | Inventory integrity verifier. Asserts total files = subject files + reference files, no orphan files exist, and all files are classified. Any unclassified file triggers classification and addition. |
 
 ### Validation (`src/dd_agents/validation/`)
 
 | File | Responsibilities |
 |------|-----------------|
 | `__init__.py` | Exports validation gate functions. |
-| `coverage.py` | Coverage gate (pipeline step 17). For each agent type, counts unique `{customer_safe_name}.json` files against expected customer count. Detects missing customers, aggregate files, and empty outputs. Triggers re-spawn for missing customers. Enforces clean-result entries for customers with zero findings. |
-| `numerical_audit.py` | 6-layer numerical audit. Layer 1: source traceability (every number traces to a file). Layer 2: arithmetic verification (re-derive from source). Layer 3: cross-source consistency (customers.csv vs counts.json, etc.). Layer 4: cross-format parity (Excel vs JSON spot-check). Layer 5: semantic reasonableness (flag implausible numbers). Layer 6: cross-run consistency (compare with prior run values). Blocking gate between analysis and Excel generation. |
+| `coverage.py` | Coverage gate (pipeline step 17). For each agent type, counts unique `{subject_safe_name}.json` files against expected subject count. Detects missing subjects, aggregate files, and empty outputs. Triggers re-spawn for missing subjects. Enforces clean-result entries for subjects with zero findings. |
+| `numerical_audit.py` | 6-layer numerical audit. Layer 1: source traceability (every number traces to a file). Layer 2: arithmetic verification (re-derive from source). Layer 3: cross-source consistency (subjects.csv vs counts.json, etc.). Layer 4: cross-format parity (Excel vs JSON spot-check). Layer 5: semantic reasonableness (flag implausible numbers). Layer 6: cross-run consistency (compare with prior run values). Blocking gate between analysis and Excel generation. |
 | `qa_audit.py` | Full QA audit (18 checks, step 28 blocking gate). Structural integrity verification: manifests, file coverage, citations, report sheets, etc. Produces `audit.json`. |
 | `dod.py` | 31 Definition of Done checks (step 35 non-blocking). Completeness and quality evaluation. See dod.py module docstring for the two-tier validation design. |
 | `pre_merge.py` | Pre-merge validation (step 23). Validates agent outputs before merge/dedup. |
@@ -342,18 +344,18 @@ due-diligence-agents/
 | File | Responsibilities |
 |------|-----------------|
 | `__init__.py` | Exports reporting functions. |
-| `merge.py` | Finding merge and deduplication across 4 specialist agents per customer. Collects per-agent JSONs, merges findings (keeping highest severity on duplicates, longest exact_quote), consolidates governance graphs (Legal primary), merges cross-references, and transforms agent-internal findings to framework-schema-compliant findings with auto-generated IDs. Writes merged per-customer JSONs and merged gap files. Preserves incremental carry-forward metadata. |
-| `diff.py` | Report diff builder. Compares current findings against prior run using match keys (customer + category + citation location). Detects new findings, resolved findings, changed severity, new/resolved gaps, new/removed customers. Writes `report_diff.json`. |
+| `merge.py` | Finding merge and deduplication across 4 specialist agents per subject. Collects per-agent JSONs, merges findings (keeping highest severity on duplicates, longest exact_quote), consolidates governance graphs (Legal primary), merges cross-references, and transforms agent-internal findings to framework-schema-compliant findings with auto-generated IDs. Writes merged per-subject JSONs and merged gap files. Preserves incremental carry-forward metadata. |
+| `diff.py` | Report diff builder. Compares current findings against prior run using match keys (subject + category + citation location). Detects new findings, resolved findings, changed severity, new/resolved gaps, new/removed subjects. Writes `report_diff.json`. |
 | `excel.py` | Excel report generation from `report_schema.json`. Schema-driven generation (no hardcoded sheet definitions). Handles activation conditions, conditional formatting, summary formulas, freeze panes, and auto-filters. |
 | `contract_dates.py` | Contract date reconciliation. Reconciles database expiry dates against data room evidence. Writes `contract_date_reconciliation.json`. |
 | `computed_metrics.py` | Derived analytics: three-way finding classification (noise → data quality → material), canonical categories, trend analysis, SaaS metrics, severity distribution. |
 | `templates.py` | Configurable report templates: `ReportBranding`, `ReportSections`, `ReportTemplate`. |
-| `clause_library.py` | Clause library analysis and aggregation across customers. |
+| `clause_library.py` | Clause library analysis and aggregation across subjects. |
 | `export.py` | Report export utilities. |
 | `pdf_export.py` | HTML-to-PDF export using playwright or weasyprint (both optional). |
 | `html.py` | HTML report orchestrator. Coordinates all section renderers to produce the final HTML report. |
 | `html_base.py` | `SectionRenderer` base class with shared helpers: `escape()`, `severity_badge()`, `render_alert()`, `fmt_currency()`. All renderers inherit from this. |
-| `html_*.py` | 30+ section renderers (dashboard, executive, findings_table, customers, gaps, cross, governance, financial, risk, analysis, compliance, domains, entity, quality, methodology, diff, timeline, renewal, discount, liability, ip_risk, key_employee, product_adoption, saas_metrics, tech_stack, valuation, strategy, red_flags, recommendations, clause_library, integration_playbook, cross_domain). |
+| `html_*.py` | 30+ section renderers (dashboard, executive, findings_table, subjects, gaps, cross, governance, financial, risk, analysis, compliance, domains, entity, quality, methodology, diff, timeline, renewal, discount, liability, ip_risk, key_employee, product_adoption, saas_metrics, tech_stack, valuation, strategy, red_flags, recommendations, clause_library, integration_playbook, cross_domain). |
 
 ### Persistence (`src/dd_agents/persistence/`)
 
@@ -362,7 +364,7 @@ due-diligence-agents/
 | `__init__.py` | Exports persistence managers. |
 | `tiers.py` | Three-tier lifecycle manager implementing PERMANENT, VERSIONED, and FRESH tier operations. |
 | `run_manager.py` | Run initialization: generates run_id, creates `{RUN_DIR}` with all subdirectories, snapshots prior inventory, wipes FRESH tier. Run finalization: updates `latest` symlink, writes final metadata. |
-| `incremental.py` | Customer classification for incremental mode. Classifies as NEW, CHANGED, STALE_REFRESH, UNCHANGED, or DELETED. Carries forward UNCHANGED customer findings. |
+| `incremental.py` | Subject classification for incremental mode. Classifies as NEW, CHANGED, STALE_REFRESH, UNCHANGED, or DELETED. Carries forward UNCHANGED subject findings. |
 | `concurrency.py` | File-based locking utilities for concurrent pipeline access. |
 | `project_registry.py` | Multi-project registry manager. CRUD operations on `ProjectRegistry`, portfolio comparison, deal archival. |
 
@@ -375,8 +377,8 @@ due-diligence-agents/
 | `__init__.py` | Exports hook builders. Also re-exported from `agents/__init__.py` for convenience (`from dd_agents.agents.hooks import ...`). |
 | `factory.py` | Hook builder factory. Creates hook configurations per agent type. |
 | `pre_tool.py` | PreToolUse hooks. Path guard: blocks Write/Edit outside the project `_dd/` directory. Bash guard: blocks destructive commands (`rm -rf`, `git push --force`, etc.). File size guard: warns on writes exceeding configurable size limit. |
-| `post_tool.py` | PostToolUse hooks. JSON validation: when an agent writes a `{customer_safe_name}.json` file, validates it against the `CustomerJSON` Pydantic model. Manifest validation: when `coverage_manifest.json` is written, validates against `CoverageManifest` model. Audit entry validation: spot-checks JSONL entries for required fields. |
-| `stop.py` | Stop hooks. Coverage enforcement: blocks agent stop if customer output count does not match expected count. Manifest enforcement: blocks stop if `coverage_manifest.json` has not been written. Audit log enforcement: warns (does not block) if `audit_log.jsonl` is missing. |
+| `post_tool.py` | PostToolUse hooks. JSON validation: when an agent writes a `{subject_safe_name}.json` file, validates it against the `SubjectJSON` Pydantic model. Manifest validation: when `coverage_manifest.json` is written, validates against `CoverageManifest` model. Audit entry validation: spot-checks JSONL entries for required fields. |
+| `stop.py` | Stop hooks. Coverage enforcement: blocks agent stop if subject output count does not match expected count. Manifest enforcement: blocks stop if `coverage_manifest.json` has not been written. Audit log enforcement: warns (does not block) if `audit_log.jsonl` is missing. |
 
 ### Tools (`src/dd_agents/tools/`)
 
@@ -389,7 +391,7 @@ due-diligence-agents/
 | `validate_gap.py` | `validate_gap` tool: accepts a gap JSON, validates against `Gap` model, returns errors or "valid". Checks required fields and enum values. |
 | `validate_manifest.py` | `validate_manifest` tool: accepts coverage manifest JSON, validates against `CoverageManifest` model, checks `coverage_pct >= 0.90` and `fallback_attempted` on failed files. |
 | `verify_citation.py` | `verify_citation` tool: given a citation, checks that `source_path` exists in `files.txt` and that `exact_quote` can be found (substring search) in the extracted text. Returns match status and location. |
-| `get_customer_files.py` | `get_customer_files` tool: returns the file list and count for a given customer name from inventory. Used by agents during analysis to confirm they have processed all files. |
+| `get_subject_files.py` | `get_subject_files` tool: returns the file list and count for a given subject name from inventory. Used by agents during analysis to confirm they have processed all files. |
 | `resolve_entity.py` | `resolve_entity` tool: checks entity resolution cache for a given name, returns canonical name, match method, and confidence, or "unresolved" if not found. |
 | `report_progress.py` | `report_progress` tool: allows agents to report progress back to the orchestrator. Used for liveness monitoring. |
 | `read_office.py` | `read_office` tool: extracts text from Office documents using markitdown. |
@@ -400,25 +402,25 @@ due-diligence-agents/
 
 | File | Responsibilities |
 |------|-----------------|
-| `runner.py` | Search orchestration: discovers data room files, groups by customer, runs analyzer per customer, writes Excel output. Entry point for the `dd-agents search` CLI command. |
+| `runner.py` | Search orchestration: discovers data room files, groups by subject, runs analyzer per subject, writes Excel output. Entry point for the `dd-agents search` CLI command. |
 | `analyzer.py` | Multi-phase search analyzer implementing 4-phase analysis: map (per chunk) → merge → synthesis (conflicts) → validation (NOT_ADDRESSED). Uses page-aware chunking with 150K char target per chunk. |
 | `chunker.py` | Page-aware document chunking. Splits at `--- Page N ---` markers with 15% overlap. Produces `AnalysisChunk` objects with page ranges and source tracking. |
 | `citation_verifier.py` | Citation accuracy verification. Checks that `exact_quote` appears in the referenced file/page with fuzzy matching. |
-| `excel_writer.py` | Writes search results to Excel with Summary (one row per customer, color-coded) and Details (one row per citation) sheets. |
+| `excel_writer.py` | Writes search results to Excel with Summary (one row per subject, color-coded) and Details (one row per citation) sheets. |
 
 ### Utils (`src/dd_agents/utils/`)
 
 | File | Responsibilities |
 |------|-----------------|
 | `constants.py` | Path constants (`_DD_DIR`, `SKILL_DIR`, `INDEX_DIR`, `INVENTORY_DIR`), exclude patterns for file discovery, severity labels, and audit action enums shared across modules. |
-| `naming.py` | `customer_safe_name()` convention: lowercase, strip legal suffixes (Inc/Corp/LLC/Ltd), replace special chars with `_`, collapse underscores. Includes full Unicode transliteration table (ø→o, ß→ss, é→e, etc.). |
+| `naming.py` | `subject_safe_name()` convention: lowercase, strip legal suffixes (Inc/Corp/LLC/Ltd), replace special chars with `_`, collapse underscores. Includes full Unicode transliteration table (ø→o, ß→ss, é→e, etc.). |
 
 ### Vector Store (`src/dd_agents/vector_store/`)
 
 | File | Responsibilities |
 |------|-----------------|
 | `__init__.py` | Conditional import; exports are no-ops if ChromaDB is not installed. |
-| `store.py` | ChromaDB wrapper. Creates/loads a collection for the current data room. Indexes extracted text chunks with metadata (customer, file path, doc type). Provides similarity search with configurable top-k and distance threshold. |
+| `store.py` | ChromaDB wrapper. Creates/loads a collection for the current data room. Indexes extracted text chunks with metadata (subject, file path, doc type). Provides similarity search with configurable top-k and distance threshold. |
 | `embeddings.py` | Embedding generation for extracted text. Chunks documents into overlapping segments (configurable size and overlap). Generates embeddings using ChromaDB's default embedding function or a configurable alternative. |
 
 ### Precedence (`src/dd_agents/precedence/`)
@@ -442,7 +444,7 @@ due-diligence-agents/
 | File | Responsibilities |
 |------|-----------------|
 | `__init__.py` | Exports query engine. |
-| `indexer.py` | Finding index builder. Indexes merged findings for fast lookup by customer, severity, category, and keyword. |
+| `indexer.py` | Finding index builder. Indexes merged findings for fast lookup by subject, severity, category, and keyword. |
 | `engine.py` | Query engine for `dd-agents query` command. Natural-language queries over findings using Claude. |
 
 ### Knowledge (`src/dd_agents/knowledge/`)
@@ -508,7 +510,7 @@ This table shows which modules import from which, establishing the dependency gr
 | `entity_resolution.safe_name` | (standalone utility -- leaf module) |
 | `entity_resolution.logging` | `models.entity` |
 | `inventory.discovery` | `constants` |
-| `inventory.customers` | `entity_resolution.safe_name`, `models.inventory` |
+| `inventory.subjects` | `entity_resolution.safe_name`, `models.inventory` |
 | `inventory.reference_files` | `models.inventory`, `entity_resolution.matcher` |
 | `inventory.mentions` | `models.inventory`, `entity_resolution.matcher` |
 | `inventory.integrity` | `models.inventory` |
@@ -527,12 +529,12 @@ This table shows which modules import from which, establishing the dependency gr
 | `hooks.pre_tool` | `constants` |
 | `hooks.post_tool` | `models.finding`, `models.manifest` |
 | `hooks.stop` | `models.manifest`, `orchestrator.state` |
-| `tools.server` | `tools.validate_finding`, `tools.validate_gap`, `tools.validate_manifest`, `tools.verify_citation`, `tools.get_customer_files`, `tools.resolve_entity`, `tools.report_progress` |
+| `tools.server` | `tools.validate_finding`, `tools.validate_gap`, `tools.validate_manifest`, `tools.verify_citation`, `tools.get_subject_files`, `tools.resolve_entity`, `tools.report_progress` |
 | `tools.validate_finding` | `models.finding` |
 | `tools.validate_gap` | `models.finding` |
 | `tools.validate_manifest` | `models.manifest` |
 | `tools.verify_citation` | `models.inventory` |
-| `tools.get_customer_files` | `models.inventory` |
+| `tools.get_subject_files` | `models.inventory` |
 | `tools.resolve_entity` | `entity_resolution.cache`, `models.entity` |
 | `tools.report_progress` | `orchestrator.state` |
 | `precedence.folder_priority` | `models.inventory` |

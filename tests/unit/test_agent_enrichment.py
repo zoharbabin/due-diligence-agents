@@ -169,7 +169,7 @@ class TestEnricherReturnsNone:
         assert result is None
 
     def test_returns_none_for_empty_subject_list(self, tmp_kb: DealKnowledgeBase) -> None:
-        """Returns None when customer list is empty."""
+        """Returns None when subject list is empty."""
         enricher = AgentKnowledgeEnricher(knowledge_base=tmp_kb)
         result = enricher.build_agent_context("legal", [])
         assert result is None
@@ -479,7 +479,7 @@ class TestMultipleSubjects:
     """Tests for multi-entity context assembly."""
 
     def test_multiple_subjects_each_get_context(self, tmp_kb: DealKnowledgeBase) -> None:
-        """Each customer gets its own profile section."""
+        """Each subject gets its own profile section."""
         for name in ["alpha", "beta"]:
             tmp_kb.write_article(
                 KnowledgeArticle(

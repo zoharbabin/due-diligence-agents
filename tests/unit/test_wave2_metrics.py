@@ -33,7 +33,7 @@ def _make_finding(
     title: str = "Test finding",
     description: str = "Description",
     subject_safe_name: str = "",
-    customer: str = "",
+    subject: str = "",
 ) -> dict[str, Any]:
     f: dict[str, Any] = {
         "severity": severity,
@@ -45,19 +45,19 @@ def _make_finding(
     }
     if subject_safe_name:
         f["_subject_safe_name"] = subject_safe_name
-    if customer:
-        f["_subject"] = customer
+    if subject:
+        f["_subject"] = subject
     return f
 
 
 def _make_merged(
-    customers: dict[str, dict[str, Any]] | None = None,
+    subjects: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    if customers is not None:
-        return customers
+    if subjects is not None:
+        return subjects
     return {
-        "customer_a": {
-            "subject": "Customer A",
+        "subject_a": {
+            "subject": "Subject A",
             "findings": [_make_finding(severity="P1", agent="legal")],
             "gaps": [],
         }
@@ -85,7 +85,7 @@ class TestSaaSMetricsEnhanced:
             "a": {
                 "subject": "A",
                 "findings": [
-                    _make_finding(title="Customer upsell opportunity"),
+                    _make_finding(title="Subject upsell opportunity"),
                     _make_finding(title="Cross-sell motion identified"),
                     _make_finding(title="Expansion revenue growing"),
                 ],

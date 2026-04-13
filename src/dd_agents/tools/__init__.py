@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from dd_agents.tools.batch_verify_citations import batch_verify_citations
+from dd_agents.tools.get_page_content import get_page_content
 from dd_agents.tools.get_subject_files import get_subject_files
 from dd_agents.tools.mcp_server import build_mcp_server
 from dd_agents.tools.read_office import read_office
 from dd_agents.tools.report_progress import report_progress
 from dd_agents.tools.resolve_entity import resolve_entity
+from dd_agents.tools.search_in_file import search_in_file
 from dd_agents.tools.server import (
     JUDGE_CUSTOM_TOOLS,
     SPECIALIST_CUSTOM_TOOLS,
@@ -30,8 +33,11 @@ __all__ = [
     "validate_gap",
     "validate_manifest",
     "verify_citation",
+    "batch_verify_citations",
     "get_subject_files",
     "resolve_entity",
     "read_office",
     "report_progress",
+    "search_in_file",
+    "get_page_content",
 ]

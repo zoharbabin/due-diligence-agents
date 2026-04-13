@@ -12,6 +12,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from dd_agents.agents.base import BaseAgentRunner
+from dd_agents.utils.constants import SEVERITY_P0, SEVERITY_P1, SEVERITY_P2, SEVERITY_P3
 
 # ---------------------------------------------------------------------------
 # Red flag categories (8 deal-killer patterns)
@@ -75,13 +76,13 @@ def classify_signal(flags: list[dict[str, Any]]) -> str:
 
     worst = "green"
     for flag in flags:
-        sev = str(flag.get("severity", "P3"))
+        sev = str(flag.get("severity", SEVERITY_P3))
         conf = str(flag.get("confidence", "low"))
         score = _SEV_WEIGHT.get(sev, 1) * _CONF_WEIGHT.get(conf, 0.3)
 
-        if sev == "P0" or (sev == "P1" and conf == "high"):
+        if sev == SEVERITY_P0 or (sev == SEVERITY_P1 and conf == "high"):
             return "red"
-        if score >= 1.5 or sev in ("P1", "P2"):
+        if score >= 1.5 or sev in (SEVERITY_P1, SEVERITY_P2):
             worst = "yellow" if worst != "red" else worst
 
     return worst

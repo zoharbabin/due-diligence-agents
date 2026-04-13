@@ -17,7 +17,14 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
-from dd_agents.utils.constants import ALL_SPECIALIST_AGENTS  # noqa: E402
+from dd_agents.utils.constants import (
+    ALL_SEVERITIES,
+    ALL_SPECIALIST_AGENTS,
+    SEVERITY_P0,
+    SEVERITY_P1,
+    SEVERITY_P2,
+    SEVERITY_P3,
+)
 
 if TYPE_CHECKING:
     from dd_agents.reporting.computed_metrics import ReportComputedData
@@ -121,7 +128,7 @@ class SectionRenderer(ABC):
     def severity_badge(severity: str) -> str:
         """Render a colored severity badge."""
         color = SEVERITY_COLORS.get(severity, "#6c757d")
-        extra_cls = " sev-p1" if severity == "P1" else (" sev-p2" if severity == "P2" else "")
+        extra_cls = " sev-p1" if severity == SEVERITY_P1 else (" sev-p2" if severity == SEVERITY_P2 else "")
         return f"<span class='severity-badge{extra_cls}' style='background:{color}'>{_html.escape(severity)}</span>"
 
     @staticmethod
@@ -142,19 +149,19 @@ class SectionRenderer(ABC):
         Uses softened thresholds (Issue #113): P0 >= 3 → Critical,
         P0 1-2 → High.  Matches ``ReportDataComputer._compute_risk_label()``.
         """
-        p0 = sev.get("P0", 0)
+        p0 = sev.get(SEVERITY_P0, 0)
         if p0 >= 3:
             return "Critical"
         if p0 > 0:
             return "High"
-        p1 = sev.get("P1", 0)
+        p1 = sev.get(SEVERITY_P1, 0)
         if p1 >= 3:
             return "High"
-        if p1 > 0 or sev.get("P2", 0) >= 5:
+        if p1 > 0 or sev.get(SEVERITY_P2, 0) >= 5:
             return "Medium"
-        if sev.get("P2", 0) > 0:
+        if sev.get(SEVERITY_P2, 0) > 0:
             return "Low"
-        if sev.get("P3", 0) > 0:
+        if sev.get(SEVERITY_P3, 0) > 0:
             return "Low"
         return "Clean"
 
@@ -216,7 +223,7 @@ class SectionRenderer(ABC):
         """Render a collapsible finding card."""
         if not isinstance(finding, dict):
             return ""
-        severity = str(finding.get("severity", "P3"))
+        severity = str(finding.get("severity", SEVERITY_P3))
         color = SEVERITY_COLORS.get(severity, "#ccc")
         title = self.escape(str(finding.get("title", "Untitled")))
         display_name = self._resolve_display_name(finding)
@@ -243,7 +250,7 @@ class SectionRenderer(ABC):
         """Render expanded finding detail with description, badges, and citations."""
         if not isinstance(finding, dict):
             return ""
-        severity = str(finding.get("severity", "P3"))
+        severity = str(finding.get("severity", SEVERITY_P3))
         color = SEVERITY_COLORS.get(severity, "#ccc")
         description = self.escape(str(finding.get("description", "")))
         confidence = str(finding.get("confidence", ""))
@@ -334,10 +341,10 @@ class SectionRenderer(ABC):
         """Render a severity distribution bar with screen-reader text."""
         total = max(sum(severity_counts.values()), 1)
         # Screen-reader-accessible description
-        sr_parts = [f"{s}: {severity_counts.get(s, 0)}" for s in ("P0", "P1", "P2", "P3") if severity_counts.get(s, 0)]
+        sr_parts = [f"{s}: {severity_counts.get(s, 0)}" for s in ALL_SEVERITIES if severity_counts.get(s, 0)]
         sr_text = self.escape(", ".join(sr_parts) or "No findings")
         parts: list[str] = [f"<div class='sev-bar' role='img' aria-label='Severity distribution: {sr_text}'>"]
-        for s in ("P0", "P1", "P2", "P3"):
+        for s in ALL_SEVERITIES:
             pct = (severity_counts.get(s, 0) / total) * 100
             if pct > 0:
                 parts.append(f"<span style='width:{pct:.1f}%;background:{SEVERITY_COLORS[s]}'></span>")
@@ -348,7 +355,7 @@ class SectionRenderer(ABC):
         """Render a collapsible category group with findings grouped by subject."""
         sev_counts: dict[str, int] = defaultdict(int)
         for f in findings:
-            sev_counts[f.get("severity", "P3")] += 1
+            sev_counts[f.get("severity", SEVERITY_P3)] += 1
         sev_str = self.escape(", ".join(f"{k}:{v}" for k, v in sorted(sev_counts.items()) if v > 0))
 
         parts: list[str] = [
@@ -363,10 +370,10 @@ class SectionRenderer(ABC):
         for f in findings:
             by_subject[str(f.get("_subject_safe_name", f.get("_subject", "Unknown")))].append(f)
 
-        for cust, cust_findings in sorted(by_subject.items()):
-            display = self.data.display_names.get(cust, cust) if self.data else cust
+        for subj, subj_findings in sorted(by_subject.items()):
+            display = self.data.display_names.get(subj, subj) if self.data else subj
             parts.append(f"<h3>{self.escape(display)}</h3>")
-            for f in cust_findings:
+            for f in subj_findings:
                 parts.append(self.render_finding_card(f))
                 parts.append(self.render_finding_detail(f))
 

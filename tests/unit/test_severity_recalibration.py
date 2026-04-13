@@ -36,8 +36,8 @@ def _make_finding(
 
 def _make_merged_data(findings: list[dict[str, object]]) -> dict[str, object]:
     return {
-        "customer_a": {
-            "subject": "Customer A",
+        "subject_a": {
+            "subject": "Subject A",
             "findings": findings,
             "gaps": [],
         }
@@ -202,7 +202,7 @@ class TestRecalibrateSeverity:
         f = _make_finding(
             severity="P0",
             title="Revenue quality concern",
-            description="Contract allows customer exit",
+            description="Contract allows subject exit",
             category="convenience_termination",
         )
         result = ReportDataComputer._recalibrate_severity(f)

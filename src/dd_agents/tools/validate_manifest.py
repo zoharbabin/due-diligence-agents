@@ -50,14 +50,14 @@ def validate_manifest(manifest_json: dict[str, Any]) -> dict[str, Any]:
 
     # No duplicate subjects
     subject_names: set[str] = set()
-    for cust in manifest.subjects:
-        if cust.name in subject_names:
-            errors.append(f"Duplicate subject entry: '{cust.name}'")
-        subject_names.add(cust.name)
+    for subj in manifest.subjects:
+        if subj.name in subject_names:
+            errors.append(f"Duplicate subject entry: '{subj.name}'")
+        subject_names.add(subj.name)
 
         # Valid status
-        if cust.status not in ("complete", "partial"):
-            errors.append(f"Subject '{cust.name}' has invalid status '{cust.status}'")
+        if subj.status not in ("complete", "partial"):
+            errors.append(f"Subject '{subj.name}' has invalid status '{subj.status}'")
 
     # files_failed must have fallback_attempted=True
     for ff in manifest.files_failed:

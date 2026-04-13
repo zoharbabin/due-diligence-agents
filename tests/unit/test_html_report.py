@@ -2,7 +2,7 @@
 
 Covers:
 - Empty data rendering
-- Single customer with findings
+- Single subject with findings
 - Severity color coding (P0-P3)
 - Citation display with exact_quote
 - Self-contained output (no external links)
@@ -73,8 +73,8 @@ def _make_gap(
 def _make_merged_data_rich() -> dict[str, object]:
     """Build a rich merged_data dict that exercises most report features."""
     return {
-        "customer_a": {
-            "subject": "Customer A",
+        "subject_a": {
+            "subject": "Subject A",
             "findings": [
                 _make_finding(
                     severity="P0",
@@ -128,8 +128,8 @@ def _make_merged_data_rich() -> dict[str, object]:
                 },
             ],
         },
-        "customer_b": {
-            "subject": "Customer B",
+        "subject_b": {
+            "subject": "Subject B",
             "findings": [
                 _make_finding(
                     severity="P1",
@@ -153,7 +153,7 @@ class TestHTMLReportGenerator:
     """Tests for HTMLReportGenerator."""
 
     def test_empty_data_generates_valid_html(self, tmp_path: Path) -> None:
-        """An empty merged_data dict produces valid HTML with 0 customers and 0 findings."""
+        """An empty merged_data dict produces valid HTML with 0 subjects and 0 findings."""
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
         gen.generate({}, out, title="Empty Report")
@@ -172,8 +172,8 @@ class TestHTMLReportGenerator:
     def test_single_subject_with_findings(self, tmp_path: Path) -> None:
         """Subject name appears in output; finding title and description are rendered."""
         merged = {
-            "customer_a": {
-                "subject": "Customer A",
+            "subject_a": {
+                "subject": "Subject A",
                 "findings": [
                     _make_finding(
                         severity="P1",
@@ -191,10 +191,10 @@ class TestHTMLReportGenerator:
 
         content = out.read_text(encoding="utf-8")
 
-        assert "Customer A" in content
+        assert "Subject A" in content
         assert "Change of control clause" in content
         assert "Termination on acquisition" in content
-        # Dashboard should show 1 customer and 1 finding
+        # Dashboard should show 1 subject and 1 finding
         assert ">1</div>" in content
 
     def test_severity_colors(self, tmp_path: Path) -> None:
@@ -206,8 +206,8 @@ class TestHTMLReportGenerator:
             _make_finding(severity="P3", title="P3 finding"),
         ]
         merged = {
-            "customer_a": {
-                "subject": "Customer A",
+            "subject_a": {
+                "subject": "Subject A",
                 "findings": findings,
                 "gaps": [],
             },
@@ -232,8 +232,8 @@ class TestHTMLReportGenerator:
             "exact_quote": "The contract shall terminate upon change of control.",
         }
         merged = {
-            "customer_a": {
-                "subject": "Customer A",
+            "subject_a": {
+                "subject": "Subject A",
                 "findings": [
                     _make_finding(
                         title="CoC clause",
@@ -257,8 +257,8 @@ class TestHTMLReportGenerator:
     def test_self_contained_no_external_links(self, tmp_path: Path) -> None:
         """The output must not reference external resources via http/https src= or href=."""
         merged = {
-            "customer_a": {
-                "subject": "Customer A",
+            "subject_a": {
+                "subject": "Subject A",
                 "findings": [_make_finding()],
                 "gaps": [_make_gap()],
             },
@@ -279,10 +279,10 @@ class TestHTMLReportGenerator:
         assert "src=http" not in content
 
     def test_html_escaping(self, tmp_path: Path) -> None:
-        """Special characters in customer names and titles are HTML-escaped."""
+        """Special characters in subject names and titles are HTML-escaped."""
         merged = {
-            "customer_a": {
-                "subject": '<script>alert("XSS")</script> & "Customer A"',
+            "subject_a": {
+                "subject": '<script>alert("XSS")</script> & "Subject A"',
                 "findings": [
                     _make_finding(
                         title='Finding with <b>bold</b> & "quotes"',
@@ -307,9 +307,9 @@ class TestHTMLReportGenerator:
         # Escaped versions of finding title/description should be present
         assert "&amp;" in content  # from finding title '& "quotes"'
         assert "&lt;b&gt;" in content  # from finding title '<b>bold</b>'
-        # Subject name resolved from SSN ("customer_a" → "Customer A") — XSS string
+        # Subject name resolved from SSN ("subject_a" → "Subject A") — XSS string
         # never enters the output, which is stronger than escaping.
-        assert "Customer A" in content
+        assert "Subject A" in content
 
     def test_file_output(self, tmp_path: Path) -> None:
         """The generator writes to the specified output path, creating parent dirs."""
@@ -333,8 +333,8 @@ class TestHTMLReportGenerator:
             _make_gap(priority="P2", gap_type="Stale_Doc", missing_item="SOW", risk_if_missing="Outdated terms"),
         ]
         merged = {
-            "customer_a": {
-                "subject": "Customer A",
+            "subject_a": {
+                "subject": "Subject A",
                 "findings": [],
                 "gaps": gaps,
             },
@@ -392,7 +392,7 @@ class TestHTMLReportGenerator:
         # P1 findings present in key-risks summary table (not as wolf-cards)
         assert "Revenue recognition mismatch" in content
         assert "IP assignment clause missing" in content
-        assert "key-risks-table" in content
+        assert "subject-table sortable" in content
 
         # Wolf-cards are only P0 (P1 moved to summary table)
         assert content.count("class='wolf-card'") == 1
@@ -450,7 +450,7 @@ class TestHTMLReportGenerator:
 
         content = out.read_text(encoding="utf-8")
 
-        # Cross-reference table exists in customer section
+        # Cross-reference table exists in subject section
         assert "Cross-Reference Reconciliation" in content
 
         # Mismatch row highlighted
@@ -483,7 +483,7 @@ class TestHTMLReportGenerator:
         assert "Entity</th>" in content
 
     def test_governance_metrics_bars(self, tmp_path: Path) -> None:
-        """Governance resolution section shows per-customer progress bars."""
+        """Governance resolution section shows per-subject progress bars."""
         merged = _make_merged_data_rich()
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
@@ -495,10 +495,10 @@ class TestHTMLReportGenerator:
         assert "Governance Resolution" in content
         assert "gov-bar" in content
 
-        # Customer A at 85.5% (yellow zone)
+        # Subject A at 85.5% (yellow zone)
         assert "86%" in content or "85%" in content  # Rounded
 
-        # Customer B at 95% (green zone)
+        # Subject B at 95% (green zone)
         assert "95%" in content
 
     def test_backwards_compatibility_old_signature(self, tmp_path: Path) -> None:
@@ -508,7 +508,7 @@ class TestHTMLReportGenerator:
 
         # Old-style call without run_metadata or deal_config
         gen.generate(
-            {"customer_a": {"subject": "Customer A", "findings": [_make_finding()], "gaps": []}},
+            {"subject_a": {"subject": "Subject A", "findings": [_make_finding()], "gaps": []}},
             out,
             run_id="run_old",
             title="Legacy Report",
@@ -517,7 +517,7 @@ class TestHTMLReportGenerator:
         content = out.read_text(encoding="utf-8")
         assert "Legacy Report" in content
         assert "run_old" in content
-        assert "Customer A" in content
+        assert "Subject A" in content
         # Wolf pack section exists even without P0/P1
         assert "Deal Breakers" in content
         assert "No P0 or P1 findings" in content
@@ -628,8 +628,8 @@ class TestHTMLReportGenerator:
     def test_wolf_pack_empty_when_no_critical(self, tmp_path: Path) -> None:
         """Wolf pack shows empty message when no P0 or P1 findings exist."""
         merged = {
-            "customer_a": {
-                "subject": "Customer A",
+            "subject_a": {
+                "subject": "Subject A",
                 "findings": [
                     _make_finding(severity="P2", title="Minor issue"),
                     _make_finding(severity="P3", title="Info only"),

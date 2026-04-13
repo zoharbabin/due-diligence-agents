@@ -39,7 +39,7 @@ def _atomic_write_json(path: Path, data: dict[str, Any] | list[Any]) -> None:
             json.dumps(data, indent=2, ensure_ascii=False, default=str),
             encoding="utf-8",
         )
-        os.replace(str(tmp), str(path))
+        os.replace(tmp, path)
     except Exception:
         tmp.unlink(missing_ok=True)
         raise

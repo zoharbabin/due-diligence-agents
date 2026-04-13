@@ -8,33 +8,29 @@ subject batching when prompts exceed the context budget.
 from __future__ import annotations
 
 import logging
-from enum import StrEnum
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+from dd_agents.agents.prompt_constants import (
+    FINDING_SCHEMA_BLOCK,
+    JSON_OUTPUT_CONSTRAINT,
+    TFC_SEVERITY_CALIBRATION,
+)
+from dd_agents.models.enums import AgentName
+from dd_agents.utils.constants import SEVERITY_P0, SEVERITY_P1
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from dd_agents.models.config import DealConfig
     from dd_agents.models.inventory import ReferenceFile, SubjectEntry
 
 # ---------------------------------------------------------------------------
-# Agent type enumeration
+# Agent type enumeration — canonical definition lives in ``models.enums.AgentName``.
+# ``AgentType`` is kept as a public alias for backward compatibility.
 # ---------------------------------------------------------------------------
 
-
-class AgentType(StrEnum):
-    """All agent roles in the pipeline: 4 specialists + judge + optional agents."""
-
-    LEGAL = "legal"
-    FINANCE = "finance"
-    COMMERCIAL = "commercial"
-    PRODUCTTECH = "producttech"
-    JUDGE = "judge"
-    ACQUIRER_INTELLIGENCE = "acquirer_intelligence"
-    EXECUTIVE_SYNTHESIS = "executive_synthesis"
-    RED_FLAG_SCANNER = "red_flag_scanner"
+AgentType = AgentName
 
 
 # ---------------------------------------------------------------------------
@@ -54,9 +50,7 @@ SPECIALIST_FOCUS: dict[AgentType, str] = {
         "- CoC consent-required affecting >5% revenue = P1\n"
         "- CoC competitor-only restriction = P3 (buyer rarely competes with customers)\n"
         "- CoC auto-terminate, no cure, >20% revenue = P0\n"
-        "- CoC termination-right with >=60d cure = P1 (not P0)\n"
-        "- Termination for Convenience (TfC) = P2 (valuation concern, not deal-breaker)\n"
-        "- TfC on >10% revenue, <90d notice = P1\n"
+        "- CoC termination-right with >=60d cure = P1 (not P0)\n" + TFC_SEVERITY_CALIBRATION + "\n"
         "- Termination for Cause (standard, mutual) = P3\n"
         "- Standard non-compete with reasonable scope = P3\n"
         "- Missing NDA for active customer = P1; missing NDA for prospect = P3\n\n"
@@ -133,9 +127,7 @@ SPECIALIST_FOCUS: dict[AgentType, str] = {
         "- Auto-renew with termination-for-convenience on >10% revenue customer = P1\n"
         "- Expired contract still in operation = P1\n"
         "- Standard volume discount = P3\n"
-        "- Customer churn risk with active replacement options = P2\n"
-        "- TfC clause = P2 valuation/revenue quality concern, not a deal-breaker\n"
-        "- TfC on >10% revenue, <90d notice = P1\n\n"
+        "- Customer churn risk with active replacement options = P2\n" + TFC_SEVERITY_CALIBRATION + "\n\n"
         "CUSTOMER SEGMENTATION & COHORT:\n"
         "- Segment by size (enterprise/mid-market/SMB), geography, vertical, vintage\n"
         "- Identify concentration: top 10% of revenue, single-vertical dependency\n"
@@ -151,7 +143,13 @@ SPECIALIST_FOCUS: dict[AgentType, str] = {
         "COMPETITIVE POSITIONING:\n"
         "- Note competitive displacement language in contracts\n"
         "- Identify exclusivity or preferred vendor status\n"
-        "- Flag benchmarking or MFN clauses"
+        "- Flag benchmarking or MFN clauses\n\n"
+        "CITATION ENFORCEMENT (Commercial):\n"
+        "- Every finding MUST cite the specific contract file and clause/section number.\n"
+        "- Pricing findings must cite the rate card or schedule with exact pricing text.\n"
+        "- Renewal/termination findings must cite the clause with exact quoted language.\n"
+        "- Customer concentration findings must cite the revenue data source document.\n"
+        "- If you cannot cite a specific document passage, write a gap, not a finding."
     ),
     AgentType.PRODUCTTECH: (
         "Validate DPA adequacy and subprocessor lists. Cross-reference security claims against "
@@ -175,7 +173,13 @@ SPECIALIST_FOCUS: dict[AgentType, str] = {
         "- Assess scalability constraints: architecture limitations, SLA vs capacity\n"
         "- Quantify technical debt remediation cost where evidence supports estimation\n"
         "- For each finding, classify sub-category: technical_debt, security_posture, "
-        "scalability, migration_complexity, or architecture_risk"
+        "scalability, migration_complexity, or architecture_risk\n\n"
+        "CITATION ENFORCEMENT (ProductTech):\n"
+        "- Security/compliance findings must cite the SOC2 report, pentest report, or policy doc.\n"
+        "- Architecture findings must cite the technical documentation or product spec.\n"
+        "- IP findings must cite the IP schedule, patent filing, or license agreement.\n"
+        "- Team/org findings must cite the org chart, HR doc, or employment agreement.\n"
+        "- If evidence is absent (e.g., no SOC2 report in data room), produce a GAP, not a finding."
     ),
 }
 
@@ -604,7 +608,7 @@ class PromptBuilder:
             "- spot_checks dimension is one of: citation_verification, contextual_validation, "
             "financial_accuracy, cross_agent_consistency, completeness\n"
             "- spot_checks result is one of: pass, partial, fail\n"
-            "- Do NOT output prose — output ONLY the JSON object"
+            "- " + JSON_OUTPUT_CONSTRAINT
         )
 
         return "\n\n---\n\n".join(sections)
@@ -676,8 +680,7 @@ class PromptBuilder:
             '- "recommendations": List of actionable recommendations\n'
             '- "risk_alignment": List of {focus_area, finding_count, assessment}\n'
             '- "deal_impact": "low" | "moderate" | "high" | "critical"\n'
-            '- "key_concerns": List of key concern strings\n\n'
-            "Output ONLY the JSON object. No explanatory text."
+            '- "key_concerns": List of key concern strings\n\n' + JSON_OUTPUT_CONSTRAINT
         )
 
         return "\n\n---\n\n".join(sections)
@@ -824,8 +827,7 @@ class PromptBuilder:
             "  ],\n"
             '  "key_themes": ["theme1", "theme2"]\n'
             "}\n"
-            "```\n"
-            "Output ONLY the JSON object. No explanatory text."
+            "```\n" + JSON_OUTPUT_CONSTRAINT
         )
 
         return "\n\n---\n\n".join(sections)
@@ -859,11 +861,9 @@ class PromptBuilder:
 
         if text_dir is not None:
             # Measure actual extracted text sizes
-            from pathlib import Path as _Path
-
             for fp in files:
                 # Extraction writes <filename>.md in text_dir
-                text_file = text_dir / (_Path(fp).name + ".md")
+                text_file = text_dir / (Path(fp).name + ".md")
                 if text_file.exists():
                     try:
                         chars += text_file.stat().st_size
@@ -1059,7 +1059,16 @@ class PromptBuilder:
             f"Write → move on → write → move on.\n"
             f"4. Do NOT summarize your progress, reflect on what you did, or produce final "
             f"status reports. Just write the JSON files and move to the next subject.\n"
-            f"5. Do NOT re-read a subject's output file after writing it. Write it once correctly."
+            f"5. Do NOT re-read a subject's output file after writing it. Write it once correctly.\n\n"
+            f"CITATION QUALITY RULE (MANDATORY — uncited findings are worthless):\n"
+            f"A finding without citations is AUTOMATICALLY downgraded to P3 (informational). "
+            f"A P1 finding without citations becomes P3 — it loses ALL impact.\n"
+            f"5 well-cited findings are worth MORE than 20 uncited findings.\n"
+            f"If you are running low on turns, write FEWER findings with proper citations "
+            f"rather than many findings without citations. Every finding MUST have:\n"
+            f"- citations[].source_path pointing to a real file you actually read\n"
+            f"- citations[].exact_quote copied verbatim from that file\n"
+            f"If you cannot cite a specific document passage, write a GAP instead of a finding."
         )
         return "\n".join(lines)
 
@@ -1170,30 +1179,14 @@ class PromptBuilder:
             "```\n\n"
             "### Finding Entry Schema\n\n"
             "Every entry in `findings` MUST be a JSON object with a non-empty "
-            "`citations` array:\n"
-            "```json\n"
-            "{\n"
-            '  "severity": "P0 | P1 | P2 | P3 (required)",\n'
-            '  "category": "string (required)",\n'
-            '  "title": "string (required, max 120 chars)",\n'
-            '  "description": "string (required)",\n'
-            '  "confidence": "high | medium | low",\n'
-            '  "citations": [\n'
-            "    {\n"
-            '      "source_type": "file",\n'
-            '      "source_path": "exact/path/to/document.pdf (required)",\n'
-            '      "location": "Section X.Y or page number",\n'
-            '      "exact_quote": "verbatim text from the document (REQUIRED — '
-            'findings without exact_quote will be downgraded in severity)"\n'
-            "    }\n"
-            "  ]\n"
-            "}\n"
-            "```\n"
+            "`citations` array:\n" + FINDING_SCHEMA_BLOCK + "\n"
             "**CRITICAL**: Every finding MUST have at least one citation with "
             "a valid `source_path` pointing to the actual file you read. "
             "Findings without citations will be downgraded in severity. "
             "For P0 and P1 findings, every citation MUST include `exact_quote` "
-            "copied verbatim from the document.\n\n"
+            "copied verbatim from the document. "
+            "P2 findings without `exact_quote` are automatically downgraded to P3. "
+            "Include `exact_quote` on ALL findings to preserve severity.\n\n"
             "If a finding is based on aggregate data (e.g. revenue "
             "concentration from a reference spreadsheet), cite the specific "
             "reference file and the relevant cell, row, or tab.\n\n"
@@ -1212,7 +1205,7 @@ class PromptBuilder:
             '  "reference_value": "$1.1M (actual value from reference data)",\n'
             '  "reference_source": {"file": "path/to/cube.xlsx",\n'
             '    "tab": "Revenue", "row": "Row 42"},\n'
-            '  "match_status": "mismatch",\n'
+            '  "match_status": "mismatch (MUST be one of: match | mismatch | not_available | unverified)",\n'
             '  "variance": "-8.3%",\n'
             '  "severity": "P2",\n'
             '  "interpretation": "Contract states $1.2M but revenue cube shows $1.1M"\n'
@@ -1222,6 +1215,8 @@ class PromptBuilder:
             "- NEVER write a bare string — always a structured object.\n"
             "- NEVER create empty placeholders with `data_point: unknown` or "
             "empty values — these are filtered out and wasted.\n"
+            "- `match_status` MUST be exactly one of: `match`, `mismatch`, "
+            "`not_available`, `unverified`. No other values are accepted.\n"
             "- ONLY create a cross-reference when you have an actual data point "
             "to compare with real values from two sources.\n"
             "- `contract_value` and `reference_value` MUST contain the actual "
@@ -1240,7 +1235,17 @@ class PromptBuilder:
             '  "risk_if_missing": "string — what could go wrong without it",\n'
             '  "request_to_company": "string — what to ask the target company",\n'
             '  "evidence": "string — where you noticed the gap",\n'
-            '  "detection_method": "checklist | cross_reference | pattern_check | governance_resolution"\n'
+            '  "detection_method": "One of the following EXACT values:\\n'
+            "    checklist — gap found by comparing against a standard DD checklist\\n"
+            "    cross_reference — gap found by comparing two documents that should agree\\n"
+            "    cross_reference_ghost — document referenced in another doc but missing from data room\\n"
+            "    cross_reference_phantom — entity/clause referenced but not found anywhere\\n"
+            "    cross_reference_mismatch — two documents contradict each other on same data point\\n"
+            "    pattern_check — gap found by structural/naming/date patterns in the data room\\n"
+            "    governance_resolution — gap found during governance graph cycle resolution\\n"
+            "    file_inventory — gap found via data room file listing (expected doc absent)\\n"
+            "    file_read_failure — gap found because a file could not be read/extracted"
+            '"\n'
             "}\n"
             "```\n"
             "NEVER write a bare string as a gap entry. "
@@ -1284,24 +1289,7 @@ class PromptBuilder:
             #
             "### Structured Output\n\n"
             "Every finding MUST be a valid JSON object with a `citations` array "
-            "containing at least one citation object:\n"
-            "```json\n"
-            "{\n"
-            '  "severity": "P0 | P1 | P2 | P3 (required)",\n'
-            '  "category": "string (required)",\n'
-            '  "title": "string (required, max 120 chars)",\n'
-            '  "description": "string (required)",\n'
-            '  "confidence": "high | medium | low",\n'
-            '  "citations": [\n'
-            "    {\n"
-            '      "source_type": "file",\n'
-            '      "source_path": "exact/path/to/document.pdf (required)",\n'
-            '      "location": "Section X.Y or page number",\n'
-            '      "exact_quote": "verbatim text from document (REQUIRED for all findings)"\n'
-            "    }\n"
-            "  ]\n"
-            "}\n"
-            "```\n"
+            "containing at least one citation object:\n" + FINDING_SCHEMA_BLOCK + "\n"
             "Do NOT omit required fields. Do NOT produce findings with an empty "
             "or missing `citations` array — every finding MUST cite at least one "
             "source document.\n\n"
@@ -1322,7 +1310,7 @@ class PromptBuilder:
             "- source_path: exact path to the source file (required)\n"
             "- location: section heading, clause number, or page reference\n"
             "- exact_quote: verbatim text copied character-for-character "
-            "(required for P0 and P1 findings)\n\n"
+            "(required for P0 and P1; P2 without exact_quote is auto-downgraded to P3)\n\n"
             "For aggregate/reference-data findings (e.g. revenue concentration "
             "from a spreadsheet), cite the reference file with tab/row details "
             "in the `location` field.\n\n"
@@ -1368,7 +1356,8 @@ class PromptBuilder:
             "4. EVERY finding has a non-empty `citations` array with at least one "
             "citation that includes `source_path`.\n"
             "5. ALL `exact_quote` values have been verified against the source document.\n"
-            "6. Every P0/P1 finding has `exact_quote` in every citation.\n"
+            "6. Every P0/P1/P2 finding has `exact_quote` in every citation "
+            "(P2 without quote is downgraded to P3).\n"
             "7. Every P0 finding has been re-read and its severity confirmed.\n"
             "8. ALL reference files assigned to you have been processed.\n\n"
             "### Quality Calibration Check\n\n"
@@ -1479,7 +1468,7 @@ class PromptBuilder:
 
         Returns an empty string if there are no P0/P1 findings to verify.
         """
-        critical = [f for f in findings if str(f.get("severity", "")).upper() in ("P0", "P1")]
+        critical = [f for f in findings if str(f.get("severity", "")).upper() in (SEVERITY_P0, SEVERITY_P1)]
         if not critical:
             return ""
 

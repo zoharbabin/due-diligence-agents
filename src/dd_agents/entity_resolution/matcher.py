@@ -281,7 +281,7 @@ class EntityResolver:
         # false-positive exact matches and dictionary key collisions.
         self.target_names: dict[str, str] = {}
         for entry in _csv:
-            original = entry.get("subject_name", entry.get("customer_name", ""))
+            original = entry.get("subject_name", "")
             preprocessed = preprocess_name(original)
             if preprocessed:
                 self.target_names[preprocessed] = original

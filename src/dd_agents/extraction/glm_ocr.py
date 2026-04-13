@@ -34,12 +34,9 @@ from pathlib import Path
 from typing import Any
 
 from dd_agents.extraction._constants import CONFIDENCE_FAILURE, IMAGE_EXTENSIONS
+from dd_agents.extraction._constants import CONFIDENCE_GLM_OCR as _CONFIDENCE_GLM_OCR
 
 logger = logging.getLogger(__name__)
-
-# Confidence score for GLM-OCR output — higher than pytesseract (0.6)
-# because GLM-OCR produces structured Markdown with fewer artifacts.
-_CONFIDENCE_GLM_OCR = 0.8
 
 # ── Tuning constants (benchmarked on Apple M3 Max) ───────────────────
 MODEL_ID_MLX = "mlx-community/GLM-OCR-8bit"

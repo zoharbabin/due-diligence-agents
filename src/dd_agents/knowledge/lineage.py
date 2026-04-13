@@ -161,7 +161,7 @@ class FindingLineageTracker:
                 json.dumps(serialized, indent=2, ensure_ascii=False, default=str),
                 encoding="utf-8",
             )
-            os.replace(str(tmp), str(self._path))
+            os.replace(tmp, self._path)
         except Exception:
             tmp.unlink(missing_ok=True)
             raise

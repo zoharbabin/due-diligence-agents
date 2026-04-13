@@ -6,7 +6,7 @@ Guards that fire before a tool executes. They return flat dicts with
 
 from __future__ import annotations
 
-import os
+import json
 import re
 from pathlib import Path
 from typing import Any
@@ -110,17 +110,19 @@ def bash_guard(tool_name: str, tool_input: dict[str, Any]) -> dict[str, str]:
                 "reason": f"Blocked dangerous command pattern: '{dangerous}' in: {command[:100]}",
             }
 
-    # Scope-check prefixes: block if path is outside current working directory
-    for prefix in SCOPE_CHECKED_PREFIXES:
-        if cmd_lower.startswith(prefix):
-            # Block if any argument starts with / and isn't under cwd
-            parts = cmd_lower.split()
-            for part in parts[1:]:
-                if part.startswith("/") or part.startswith(".."):
-                    return {
-                        "decision": "block",
-                        "reason": f"Blocked: '{prefix.strip()}' with absolute/parent path in: {command[:100]}",
-                    }
+    # Scope-check prefixes: block if path is outside current working directory.
+    # Split on compound-command separators so "echo x && mv /etc/foo ." is caught.
+    sub_commands = re.split(r"\s*(?:&&|\|\||;)\s*", cmd_lower)
+    for sub_cmd in sub_commands:
+        for prefix in SCOPE_CHECKED_PREFIXES:
+            if sub_cmd.startswith(prefix):
+                parts = sub_cmd.split()
+                for part in parts[1:]:
+                    if part.startswith("/") or part.startswith(".."):
+                        return {
+                            "decision": "block",
+                            "reason": f"Blocked: '{prefix.strip()}' with absolute/parent path in: {command[:100]}",
+                        }
 
     # Regex patterns for shell invocation bypasses
     for pattern in _SHELL_INVOKE_PATTERNS:
@@ -158,8 +160,8 @@ def path_guard(
     dd_dir = project_dir / "_dd"
 
     # Resolve symlinks to prevent escape
-    resolved = Path(os.path.realpath(file_path))
-    dd_resolved = Path(os.path.realpath(dd_dir))
+    resolved = Path(file_path).resolve()
+    dd_resolved = dd_dir.resolve()
 
     if resolved.is_relative_to(dd_resolved):
         return {"decision": "allow", "reason": ""}
@@ -220,10 +222,162 @@ BLOCKED_FILENAMES: list[str] = [
     "all_subjects.json",
     "combined.json",
     "summary.json",
-    "batch_1.json",
-    "batch_2.json",
-    "batch_3.json",
     "miscellaneous.json",
     "misc.json",
     "overflow.json",
 ]
+
+# Matches batch_1.json, batch_2.json, ..., batch_99.json — any numbered batch file.
+BATCH_FILE_PATTERN: re.Pattern[str] = re.compile(r"^batch_\d+\.json$")
+
+
+# ---------------------------------------------------------------------------
+# Finding schema guard — validates JSON structure before write
+# ---------------------------------------------------------------------------
+
+# Field aliases that agents commonly invent.  Keys are wrong names, values are
+# the correct canonical names the agent should use instead.
+_FINDING_FIELD_ALIASES: dict[str, str] = {
+    "evidence": "citations",
+}
+
+_CITATION_FIELD_ALIASES: dict[str, str] = {
+    "file": "source_path",
+    "file_path": "source_path",
+    "filepath": "source_path",
+    "path": "source_path",
+    "document": "source_path",
+    "doc": "source_path",
+    "quote": "exact_quote",
+    "text": "exact_quote",
+    "excerpt": "exact_quote",
+    "verbatim": "exact_quote",
+}
+
+# Files in findings dirs that are NOT subject output (skip validation).
+_FINDINGS_SKIP_FILES: set[str] = {
+    "coverage_manifest.json",
+    "audit_log.jsonl",
+}
+
+
+def finding_schema_guard(
+    tool_name: str,
+    tool_input: dict[str, Any],
+    run_dir: str | Path,
+) -> dict[str, str]:
+    """Block writes of malformed finding JSON to ``findings/{agent}/*.json``.
+
+    Only fires on ``Write`` calls whose target path is inside the run's
+    ``findings/`` directory and ends in ``.json``.  Parses the JSON content
+    and checks each finding for field-name violations (e.g. ``"evidence"``
+    instead of ``"citations"``, ``"file"`` instead of ``"source_path"``).
+
+    Returns:
+        ``{"decision": "allow"|"block", "reason": "..."}``
+    """
+    if tool_name != "Write":
+        return {"decision": "allow", "reason": ""}
+
+    file_path = tool_input.get("file_path", "")
+    if not file_path:
+        return {"decision": "allow", "reason": ""}
+
+    fp = Path(file_path)
+
+    # Only validate *.json writes inside {run_dir}/findings/
+    findings_dir = Path(run_dir) / "findings"
+    try:
+        if not fp.resolve().is_relative_to(findings_dir.resolve()):
+            return {"decision": "allow", "reason": ""}
+    except (ValueError, OSError):
+        return {"decision": "allow", "reason": ""}
+
+    if fp.suffix != ".json":
+        return {"decision": "allow", "reason": ""}
+
+    if fp.name in _FINDINGS_SKIP_FILES:
+        return {"decision": "allow", "reason": ""}
+
+    content = tool_input.get("content", "")
+    if not content:
+        return {"decision": "allow", "reason": ""}
+
+    # Parse JSON — if it fails, let the write proceed (other guards handle this).
+    try:
+        data = json.loads(content)
+    except (json.JSONDecodeError, TypeError):
+        return {"decision": "allow", "reason": ""}
+
+    if not isinstance(data, dict):
+        return {"decision": "allow", "reason": ""}
+
+    # Validate each finding in the "findings" array.
+    findings = data.get("findings", [])
+    if not isinstance(findings, list):
+        return {"decision": "allow", "reason": ""}
+
+    violations: list[str] = []
+    for idx, finding in enumerate(findings):
+        if not isinstance(finding, dict):
+            continue
+        violations.extend(_check_finding_schema(finding, idx))
+
+    if not violations:
+        return {"decision": "allow", "reason": ""}
+
+    nl = "\n"
+    return {
+        "decision": "block",
+        "reason": (
+            f"Finding schema violations in {fp.name} — fix these before writing:\n"
+            f"{nl.join(violations)}\n\n"
+            "Required finding structure:\n"
+            '  "citations": [{"source_type": "file", "source_path": "path/to/doc.pdf", '
+            '"location": "Section X", "exact_quote": "verbatim text"}]\n'
+            "Do NOT use 'evidence', 'file', or other aliases. "
+            "Use exactly 'citations' with 'source_path' and 'exact_quote'."
+        ),
+    }
+
+
+def _check_finding_schema(finding: dict[str, Any], idx: int) -> list[str]:
+    """Return a list of schema violation messages for a single finding."""
+    violations: list[str] = []
+    prefix = f"findings[{idx}]"
+
+    # Check for wrong top-level field names.
+    for wrong, correct in _FINDING_FIELD_ALIASES.items():
+        if wrong in finding and correct not in finding:
+            violations.append(f"  {prefix}: rename '{wrong}' → '{correct}'")
+
+    # Check citations structure.
+    citations = finding.get("citations")
+    if citations is None:
+        # Only flag if there's also no alias — a finding with neither is
+        # genuinely missing citations.
+        has_alias = any(alias in finding for alias in _FINDING_FIELD_ALIASES)
+        if not has_alias:
+            violations.append(f"  {prefix}: missing 'citations' array — every finding needs at least one citation")
+        return violations
+
+    if not isinstance(citations, list):
+        violations.append(f"  {prefix}: 'citations' must be an array, got {type(citations).__name__}")
+        return violations
+
+    if not citations:
+        violations.append(f"  {prefix}: 'citations' array is empty — add at least one citation")
+        return violations
+
+    # Check each citation for field-name violations.
+    for cit_idx, cit in enumerate(citations):
+        if not isinstance(cit, dict):
+            continue
+        cit_prefix = f"{prefix}.citations[{cit_idx}]"
+        for wrong, correct in _CITATION_FIELD_ALIASES.items():
+            if wrong in cit and correct not in cit:
+                violations.append(f"  {cit_prefix}: rename '{wrong}' → '{correct}'")
+        if "source_path" not in cit and not any(alias in cit for alias in _CITATION_FIELD_ALIASES):
+            violations.append(f"  {cit_prefix}: missing 'source_path'")
+
+    return violations

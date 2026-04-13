@@ -3,19 +3,19 @@
 Covers:
 - ErrorSeverity and ErrorCategory enums
 - PipelineErrorRecord structured record
-- ConfigurationError, ExtractionError, AgentOutputParseError, PipelineValidationError
+- BlockingGateError, RecoverableError, AgentFailureError, PartialFailureError
 """
 
 from __future__ import annotations
 
 from dd_agents.errors import (
-    AgentOutputParseError,
-    ConfigurationError,
+    AgentFailureError,
+    BlockingGateError,
     ErrorCategory,
     ErrorSeverity,
-    ExtractionError,
+    PartialFailureError,
     PipelineErrorRecord,
-    PipelineValidationError,
+    RecoverableError,
 )
 
 # ======================================================================
@@ -111,47 +111,47 @@ class TestPipelineErrorRecord:
 # ======================================================================
 
 
-class TestConfigurationError:
+class TestBlockingGateError:
     def test_is_exception(self) -> None:
-        err = ConfigurationError("missing deal-config.json")
+        err = BlockingGateError("extraction gate failed")
         assert isinstance(err, Exception)
-        assert str(err) == "missing deal-config.json"
+        assert str(err) == "extraction gate failed"
 
 
-class TestExtractionError:
+class TestRecoverableError:
     def test_is_exception(self) -> None:
-        err = ExtractionError("file unreadable after all fallbacks")
+        err = RecoverableError("transient failure")
         assert isinstance(err, Exception)
-        assert str(err) == "file unreadable after all fallbacks"
+        assert str(err) == "transient failure"
 
 
-class TestAgentOutputParseError:
-    def test_basic(self) -> None:
-        err = AgentOutputParseError("bad JSON", agent_name="legal", raw_output="{broken")
+class TestAgentFailureError:
+    def test_inherits_recoverable(self) -> None:
+        err = AgentFailureError("agent crashed", agent_name="legal")
+        assert isinstance(err, RecoverableError)
         assert isinstance(err, Exception)
         assert err.agent_name == "legal"
-        assert err.raw_output == "{broken"
-        assert str(err) == "bad JSON"
+        assert str(err) == "agent crashed"
 
-    def test_defaults(self) -> None:
-        err = AgentOutputParseError("parse failed")
+    def test_default_agent_name(self) -> None:
+        err = AgentFailureError("crashed")
         assert err.agent_name == "unknown"
-        assert err.raw_output == ""
 
 
-class TestPipelineValidationError:
-    def test_basic(self) -> None:
-        err = PipelineValidationError(
-            "numerical audit failed",
-            gate="numerical_audit",
-            details={"mismatches": 12},
+class TestPartialFailureError:
+    def test_inherits_recoverable(self) -> None:
+        err = PartialFailureError(
+            "missing subjects",
+            agent_name="finance",
+            missing_subjects=["alpha", "bravo"],
         )
+        assert isinstance(err, RecoverableError)
         assert isinstance(err, Exception)
-        assert err.gate == "numerical_audit"
-        assert err.details == {"mismatches": 12}
-        assert str(err) == "numerical audit failed"
+        assert err.agent_name == "finance"
+        assert err.missing_subjects == ["alpha", "bravo"]
+        assert str(err) == "missing subjects"
 
     def test_defaults(self) -> None:
-        err = PipelineValidationError("gate failed")
-        assert err.gate == ""
-        assert err.details == {}
+        err = PartialFailureError("partial output")
+        assert err.agent_name == "unknown"
+        assert err.missing_subjects == []

@@ -1,5 +1,7 @@
 # 16 — Migration from Claude Code Skill
 
+> **Historical note**: This document references `agents/reporting_lead.py` which was removed in v0.4.0. Step 23 is now deterministic pre-merge validation (`validation/pre_merge.py`). See `06-agents.md` §11.
+
 ## Overview
 
 This document provides a step-by-step migration plan from the existing Claude Code Skill (`~/.claude/skills/forensic-dd/SKILL.md` + 8 reference files, totaling 3,100+ lines) to the Python Agent SDK application (`dd_agents`). The migration is phased so that the existing skill remains fully functional throughout -- no "big bang" cutover.
@@ -78,7 +80,7 @@ Port all data structures from `deal-config.schema.json`, `domain-definitions.md`
 - `src/dd_agents/models/coverage.py` -- CoverageManifest, FileCoverage
 - `src/dd_agents/models/quality.py` -- QualityScore, SpotCheck, Contradiction
 - `src/dd_agents/models/audit.py` -- AuditEntry, ConsolidatedAudit
-- `src/dd_agents/models/inventory.py` -- CustomerEntry, CountsJson, ReferenceFile, CustomerMention, EntityMatch
+- `src/dd_agents/models/inventory.py` -- SubjectEntry, CountsJson, ReferenceFile, SubjectMention, EntityMatch
 - `src/dd_agents/models/classification.py` -- CustomerClassification (NEW, CHANGED, STALE_REFRESH, UNCHANGED, DELETED)
 - `src/dd_agents/models/report.py` -- NumericalManifest, ReportDiff
 
@@ -141,7 +143,7 @@ Implement the three-tier model:
 - `src/dd_agents/persistence/tiers.py` -- PERMANENT, VERSIONED, FRESH tier management
 - `src/dd_agents/persistence/run_manager.py` -- Run initialization (mkdir, snapshot prior inventory, wipe FRESH)
 - `src/dd_agents/persistence/shared_files.py` -- read-validate-write for shared PERMANENT files
-- `src/dd_agents/persistence/incremental.py` -- Customer classification algorithm (NEW/CHANGED/STALE_REFRESH/UNCHANGED/DELETED)
+- `src/dd_agents/persistence/incremental.py` -- Subject classification algorithm (NEW/CHANGED/STALE_REFRESH/UNCHANGED/DELETED)
 
 Source: SKILL.md section 0c, 0e.
 
@@ -149,16 +151,16 @@ Source: SKILL.md section 0c, 0e.
 
 ### Step 8: Inventory Building
 
-Implement file discovery and customer registry:
+Implement file discovery and subject registry:
 
 - `src/dd_agents/inventory/discovery.py` -- File discovery (tree.txt, files.txt, file_types.txt)
-- `src/dd_agents/inventory/customers.py` -- Customer registry (customers.csv, counts.json)
+- `src/dd_agents/inventory/subjects.py` -- Subject registry (subjects.csv, counts.json)
 - `src/dd_agents/inventory/references.py` -- Reference file registry (reference_files.json)
-- `src/dd_agents/inventory/mentions.py` -- Customer-mention index (customer_mentions.json)
+- `src/dd_agents/inventory/mentions.py` -- Subject-mention index (subject_mentions.json)
 
 Source: SKILL.md sections 1a, 2a-2d.
 
-**Acceptance**: Inventory building on sample data room produces correct customers.csv, counts.json, reference_files.json.
+**Acceptance**: Inventory building on sample data room produces correct subjects.csv, counts.json, reference_files.json.
 
 ### Step 9: Hooks
 
@@ -167,7 +169,7 @@ Implement SDK hooks for deterministic enforcement:
 - `src/dd_agents/hooks/path_guard.py` -- PreToolUse: block access outside project directory
 - `src/dd_agents/hooks/bash_guard.py` -- PreToolUse: block dangerous bash commands
 - `src/dd_agents/hooks/output_validator.py` -- PostToolUse: validate JSON output on Write
-- `src/dd_agents/hooks/stop_hook.py` -- Stop: block premature agent stop (customer count check)
+- `src/dd_agents/hooks/stop_hook.py` -- Stop: block premature agent stop (subject count check)
 
 Source: `01-architecture-decisions.md` ADR-01, SKILL.md section 7 (error recovery).
 
@@ -181,7 +183,7 @@ Implement tools agents can call:
 - `src/dd_agents/tools/validate_finding.py` -- Validate finding against schema
 - `src/dd_agents/tools/resolve_entity.py` -- Entity resolution lookup
 - `src/dd_agents/tools/check_governance.py` -- Governance graph validation
-- `src/dd_agents/tools/get_customer_list.py` -- Return customer list for current deal
+- `src/dd_agents/tools/get_subject_list.py` -- Return subject list for current deal
 - `src/dd_agents/tools/report_progress.py` -- Agent progress reporting
 
 Source: `02-system-architecture.md` (MCP tool server diagram).
@@ -205,9 +207,9 @@ Write integration tests for pipeline steps 1-12, hooks, and tools.
 Build the prompt builder that assembles complete agent prompts from components:
 
 - `src/dd_agents/agents/prompt_builder.py` -- PromptBuilder class
-  - Combines: deal context + customer list (with safe names) + file paths + reference file content + extraction rules + governance rules + gap detection rules + cross-reference rules
+  - Combines: deal context + subject list (with safe names) + file paths + reference file content + extraction rules + governance rules + gap detection rules + cross-reference rules
   - Prompt size estimation (token counting)
-  - Automatic customer batching if prompt exceeds 80,000 tokens
+  - Automatic subject batching if prompt exceeds 80,000 tokens
 
 Source: SKILL.md section 10 step 14 (prompt preparation), `agent-prompts.md`.
 
@@ -228,11 +230,11 @@ Source: SKILL.md section 3b, 10 step 16.
 
 Implement step 17 validation:
 
-- `src/dd_agents/orchestrator/coverage.py` -- Coverage gate with aggregate detection, silent context exhaustion detection, re-spawn for missing customers
+- `src/dd_agents/orchestrator/coverage.py` -- Coverage gate with aggregate detection, silent context exhaustion detection, re-spawn for missing subjects
 
 Source: SKILL.md section 10 step 17, section 7 (Scenarios 2, 7, 8, 15).
 
-**Acceptance**: Coverage gate correctly identifies missing customers. Re-spawn produces output for missing customers. Aggregate files detected and handled.
+**Acceptance**: Coverage gate correctly identifies missing subjects. Re-spawn produces output for missing subjects. Aggregate files detected and handled.
 
 ### Step 15: Judge Agent
 
@@ -256,7 +258,7 @@ Source: SKILL.md section 6, section 10 steps 23-31.
 
 ### Step 17: Agent Integration Tests
 
-Test agent spawning with the small sample data room (5 customers, 15 files).
+Test agent spawning with the small sample data room (5 subjects, 15 files).
 
 **Acceptance**: Full agent cycle (spawn 4 specialists, coverage gate, Judge, Reporting Lead) completes on sample data room.
 
@@ -268,7 +270,7 @@ Test agent spawning with the small sample data room (5 customers, 15 files).
 
 ### Step 18: Merge/Dedup Engine
 
-- `src/dd_agents/reporting/merge.py` -- Per-customer merge from 4 agents with deduplication
+- `src/dd_agents/reporting/merge.py` -- Per-subject merge from 4 agents with deduplication
 
 Source: `reporting-protocol.md` section 1.
 
@@ -305,9 +307,9 @@ Source: SKILL.md sections 8, 9.
 Run the SDK on the same reference data room that the skill processed. Compare outputs.
 
 **Acceptance criteria for Phase 4**:
-- Same customers identified (count match)
+- Same subjects identified (count match)
 - Same files covered (count match)
-- Finding counts within 15% per customer (for a customer with 20 findings in the Skill run, the SDK run should produce 17-23 findings; this accounts for LLM non-determinism). Structural metrics (customer count, file count, sheet count) must match exactly.
+- Finding counts within 15% per subject (for a subject with 20 findings in the Skill run, the SDK run should produce 17-23 findings; this accounts for LLM non-determinism). Structural metrics (subject count, file count, sheet count) must match exactly.
 - All 31 DoD checks pass
 - Excel report has all 14 sheets
 - No P0 findings missed that the skill found
@@ -330,7 +332,7 @@ Run the SDK on the same reference data room that the skill processed. Compare ou
 
 ### Step 26: Incremental Mode
 
-- End-to-end incremental mode with customer classification, carry-forward, and merge
+- End-to-end incremental mode with subject classification, carry-forward, and merge
 
 ### Step 27: ChromaDB Integration (Optional)
 

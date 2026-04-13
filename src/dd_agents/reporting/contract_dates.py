@@ -59,7 +59,7 @@ class ContractDateReconciler:
         ----------
         subject_database:
             Rows from the subject database.  Each dict should have at minimum
-            ``subject`` (or ``customer``), ``contract_end_date`` (YYYY-MM-DD),
+            ``subject``, ``contract_end_date`` (YYYY-MM-DD),
             and ``arr`` (numeric).
         findings:
             ``{subject_name: [finding_dicts]}`` -- keyed by canonical
@@ -74,7 +74,7 @@ class ContractDateReconciler:
         entries: list[ContractDateReconciliationEntry] = []
 
         for db_row in subject_database:
-            subject_name = db_row.get("subject", db_row.get("customer", ""))
+            subject_name = db_row.get("subject", "")
             if subjects and subject_name not in subjects:
                 continue
 

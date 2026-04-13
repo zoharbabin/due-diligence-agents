@@ -617,14 +617,21 @@ class SearchAnalyzer:
             query,
         )
 
-        options = ClaudeAgentOptions(
-            system_prompt=system_prompt,
-            max_turns=1,
-            permission_mode="bypassPermissions",
-            tools=[],
-            allowed_tools=[],
-            output_format={"type": "json_schema", "schema": output_schema} if output_schema else None,
-        )
+        from dd_agents.utils import resolve_sdk_cli_path
+
+        options_kwargs: dict[str, Any] = {
+            "system_prompt": system_prompt,
+            "max_turns": 1,
+            "permission_mode": "bypassPermissions",
+            "tools": [],
+            "allowed_tools": [],
+        }
+        if output_schema:
+            options_kwargs["output_format"] = {"type": "json_schema", "schema": output_schema}
+        cli_path = resolve_sdk_cli_path()
+        if cli_path is not None:
+            options_kwargs["cli_path"] = cli_path
+        options = ClaudeAgentOptions(**options_kwargs)
 
         text_parts: list[str] = []
         try:

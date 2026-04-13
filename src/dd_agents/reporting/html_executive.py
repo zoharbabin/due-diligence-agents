@@ -7,7 +7,6 @@ mechanical defaults.
 
 from __future__ import annotations
 
-import html
 from typing import Any
 
 from dd_agents.reporting.html_base import (
@@ -17,6 +16,7 @@ from dd_agents.reporting.html_base import (
     SEVERITY_COLORS,
     SectionRenderer,
 )
+from dd_agents.utils.constants import ALL_SEVERITIES, SEVERITY_P0
 
 # Mapping from synthesis Go/No-Go signals to display colors.
 _SYNTHESIS_SIGNAL_COLORS: dict[str, str] = {
@@ -115,10 +115,10 @@ class ExecutiveSummaryRenderer(SectionRenderer):
 
         return (
             f"<div class='metric-card' style='border-left:5px solid {signal_color};text-align:left;padding:20px'>"
-            f"<div style='font-size:1.4em;font-weight:700;color:{signal_color}'>{html.escape(signal)}</div>"
+            f"<div style='font-size:1.4em;font-weight:700;color:{signal_color}'>{self.escape(signal)}</div>"
             f"<div style='color:#666;margin:4px 0'>"
-            f"Risk Score: {score:.0f}/100 &mdash; {html.escape(label)}</div>"
-            f"<div class='text-small text-muted'>{html.escape(signal_desc)}</div>"
+            f"Risk Score: {score:.0f}/100 &mdash; {self.escape(label)}</div>"
+            f"<div class='text-small text-muted'>{self.escape(signal_desc)}</div>"
             f"</div>"
         )
 
@@ -134,7 +134,7 @@ class ExecutiveSummaryRenderer(SectionRenderer):
         return (
             "<div class='metric-card' style='text-align:left;padding:16px;margin-bottom:12px'>"
             "<h3 style='margin-top:0'>Executive Assessment</h3>"
-            f"<div style='line-height:1.6'>{html.escape(narrative)}</div>"
+            f"<div style='line-height:1.6'>{self.escape(narrative)}</div>"
             "</div>"
         )
 
@@ -142,7 +142,7 @@ class ExecutiveSummaryRenderer(SectionRenderer):
         """Render a compact domain x severity matrix."""
         parts: list[str] = ["<h3>Risk by Domain</h3>", "<table class='sortable'><thead><tr>"]
         parts.append("<th scope='col'>Domain</th>")
-        for sev in ("P0", "P1", "P2", "P3"):
+        for sev in ALL_SEVERITIES:
             parts.append(f"<th scope='col' style='color:{SEVERITY_COLORS[sev]}'>{sev}</th>")
         parts.append("<th scope='col'>Risk</th></tr></thead><tbody>")
 
@@ -152,14 +152,14 @@ class ExecutiveSummaryRenderer(SectionRenderer):
             risk_label = self.data.domain_risk_labels.get(domain, "Clean")
             risk_color = self.risk_color(risk_label)
             parts.append(
-                f"<tr><td style='color:{DOMAIN_COLORS.get(domain, '#333')};font-weight:600'>{html.escape(display)}</td>"
+                f"<tr><td style='color:{DOMAIN_COLORS.get(domain, '#333')};font-weight:600'>{self.escape(display)}</td>"
             )
-            for sev in ("P0", "P1", "P2", "P3"):
+            for sev in ALL_SEVERITIES:
                 count = sev_counts.get(sev, 0)
                 bg = f"background:{SEVERITY_COLORS[sev]}22" if count > 0 else ""
                 parts.append(f"<td style='{bg}'>{count}</td>")
             parts.append(
-                f"<td><span style='color:{risk_color};font-weight:600'>{html.escape(risk_label)}</span></td></tr>"
+                f"<td><span style='color:{risk_color};font-weight:600'>{self.escape(risk_label)}</span></td></tr>"
             )
 
         parts.append("</tbody></table>")
@@ -188,11 +188,11 @@ class ExecutiveSummaryRenderer(SectionRenderer):
 
         parts: list[str] = ["<h3>Top Deal Breakers</h3>", "<ol>"]
         for entry in ranked[:10]:
-            title = html.escape(str(entry.get("title", "Untitled")))
+            title = self.escape(str(entry.get("title", "Untitled")))
             raw_entity = str(entry.get("entity", ""))
-            entity = html.escape(self.data.display_names.get(raw_entity, raw_entity) if self.data else raw_entity)
-            impact = html.escape(str(entry.get("impact_description", "")))
-            remediation = html.escape(str(entry.get("remediation", "")))
+            entity = self.escape(self.data.display_names.get(raw_entity, raw_entity) if self.data else raw_entity)
+            impact = self.escape(str(entry.get("impact_description", "")))
+            remediation = self.escape(str(entry.get("remediation", "")))
 
             parts.append(f"<li><strong>{title}</strong>")
             if entity:
@@ -213,10 +213,10 @@ class ExecutiveSummaryRenderer(SectionRenderer):
 
         parts: list[str] = ["<h3>Top Deal Breakers</h3>", "<ol>"]
         for f in top:
-            title = html.escape(str(f.get("title", "Untitled")))
-            desc = html.escape(str(f.get("description", "")))
+            title = self.escape(str(f.get("title", "Untitled")))
+            desc = self.escape(str(f.get("description", "")))
             display_name = self._resolve_display_name(f)
-            entity_name = html.escape(display_name)
+            entity_name = self.escape(display_name)
             parts.append(f"<li><strong>{title}</strong> <span class='text-small text-muted'>({entity_name})</span>")
             if desc:
                 parts.append(f"<br><span class='text-small'>{desc}</span>")
@@ -232,7 +232,7 @@ class ExecutiveSummaryRenderer(SectionRenderer):
             f"<div class='metric-card'><div class='value'>{d.material_count}</div>"
             "<div class='label'>Material Findings</div></div>"
             f"<div class='metric-card'><div class='value' style='color:#dc3545'>"
-            f"{d.material_by_severity.get('P0', 0)}</div>"
+            f"{d.material_by_severity.get(SEVERITY_P0, 0)}</div>"
             "<div class='label'>P0 Critical</div></div>"
             f"<div class='metric-card'><div class='value'>{d.match_rate:.0%}</div>"
             "<div class='label'>Match Rate</div></div>"
@@ -270,6 +270,6 @@ class ExecutiveSummaryRenderer(SectionRenderer):
             f"<div class='metric-card' style='text-align:left'>"
             f"<div class='text-small text-muted'>Concentration Risk (HHI)</div>"
             f"<div style='font-size:1.2em;font-weight:600;color:{color}'>"
-            f"{hhi:.0f} &mdash; {html.escape(level)}</div>"
+            f"{hhi:.0f} &mdash; {self.escape(level)}</div>"
             f"</div>"
         )

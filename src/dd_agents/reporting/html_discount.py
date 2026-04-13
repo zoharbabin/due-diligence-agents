@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from dd_agents.reporting.html_base import SectionRenderer
+from dd_agents.utils.constants import SEVERITY_P3
 
 
 class DiscountAnalysisRenderer(SectionRenderer):
@@ -100,7 +101,7 @@ class DiscountAnalysisRenderer(SectionRenderer):
                 "</tr></thead><tbody>"
             )
             for f in findings[:15]:
-                sev = str(f.get("severity", "P3"))
+                sev = str(f.get("severity", SEVERITY_P3))
                 title = self.escape(str(f.get("title", "")))
                 entity_name = self.escape(self._resolve_display_name(f))
                 parts.append(f"<tr><td>{self.severity_badge(sev)}</td><td>{entity_name}</td><td>{title}</td></tr>")

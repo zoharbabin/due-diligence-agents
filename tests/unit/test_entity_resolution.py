@@ -62,14 +62,14 @@ def target_names() -> dict[str, str]:
 def subjects_csv() -> list[dict[str, Any]]:
     """Minimal subjects.csv rows."""
     return [
-        {"customer_name": "Apex Digital"},
-        {"customer_name": "Global Analytics Group"},
-        {"customer_name": "Alpine Systems"},
-        {"customer_name": "Sierra Networks"},
-        {"customer_name": "Metro Solutions"},
-        {"customer_name": "Meridian Partners"},
-        {"customer_name": "Orion Biotech"},
-        {"customer_name": "WidgetCo"},
+        {"subject_name": "Apex Digital"},
+        {"subject_name": "Global Analytics Group"},
+        {"subject_name": "Alpine Systems"},
+        {"subject_name": "Sierra Networks"},
+        {"subject_name": "Metro Solutions"},
+        {"subject_name": "Meridian Partners"},
+        {"subject_name": "Orion Biotech"},
+        {"subject_name": "WidgetCo"},
     ]
 
 
@@ -141,7 +141,7 @@ class TestPreprocessName:
 # =====================================================================
 
 
-class TestCustomerSafeName:
+class TestSubjectSafeName:
     def test_basic(self) -> None:
         assert subject_safe_name("Global Analytics Group") == "global_analytics_group"
 
@@ -685,12 +685,12 @@ class TestEntityResolver:
         tmp_path: Path,
     ) -> None:
         """Parent names that are not in the known entity set should not be returned."""
-        customers = [{"customer_name": "Alpha Corp"}]
+        subjects = [{"subject_name": "Alpha Corp"}]
         aliases: dict[str, Any] = {
             "parent_child": {"Phantom Parent": ["Alpha Child"]},
         }
         resolver = EntityResolver(
-            subjects_csv=customers,
+            subjects_csv=subjects,
             entity_aliases=aliases,
             cache_path=tmp_path / "cache.json",
             run_id="run_001",

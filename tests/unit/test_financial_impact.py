@@ -231,14 +231,14 @@ class TestRevenueAtRisk:
         assert 0.0 < result.risk_adjusted_arr <= result.total_contracted_arr
 
     def test_revenue_data_coverage(self) -> None:
-        """Coverage = customers with revenue / total customers."""
+        """Coverage = subjects with revenue / total subjects."""
         merged = self._merged_with_revenue_and_findings()
         computer = ReportDataComputer()
         result = computer.compute(merged)
         assert result.revenue_data_coverage == pytest.approx(1.0)
 
     def test_no_double_counting_across_categories(self) -> None:
-        """When one customer has findings in multiple categories, revenue counted once."""
+        """When one subject has findings in multiple categories, revenue counted once."""
         merged = {
             "multi": _subject(
                 "Multi",
@@ -279,7 +279,7 @@ class TestRevenueAtRisk:
         assert result.risk_adjusted_arr == pytest.approx(0.0)  # 100% at risk
 
     def test_partial_coverage(self) -> None:
-        """When some customers lack revenue data, coverage < 1.0."""
+        """When some subjects lack revenue data, coverage < 1.0."""
         merged = {
             "a": _subject(
                 "A",
@@ -351,7 +351,7 @@ class TestFinancialImpactRenderer:
             revenue_data_coverage=1.0,
             revenue_by_subject={"a": 500_000, "b": 500_000},
             risk_waterfall={
-                "change_of_control": {"amount": 400_000.0, "contracts": 1, "customers": ["a"]},
+                "change_of_control": {"amount": 400_000.0, "contracts": 1, "subjects": ["a"]},
             },
             concentration_treemap=[
                 {"subject_safe_name": "a", "display_name": "A", "revenue": 500_000, "pct": 50.0, "risk_level": "high"},

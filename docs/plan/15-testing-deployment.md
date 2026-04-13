@@ -36,7 +36,7 @@ tests/
     deal_config_valid.json             # Valid deal-config.json
     deal_config_minimal.json           # Minimal valid config
     deal_config_invalid.json           # Schema violations for negative tests
-    sample_data_room/                  # Small test data room (5 customers, 15 files)
+    sample_data_room/                  # Small test data room (5 subjects, 15 files)
       Customer_A/
         MSA.pdf
         Order_Form_1.docx
@@ -60,20 +60,20 @@ tests/
         Revenue_Summary.xlsx
     sample_agent_outputs/              # Pre-recorded agent outputs for integration tests
       legal/
-        customer_a.json
-        customer_b.json
+        subject_a.json
+        subject_b.json
         coverage_manifest.json
       finance/
-        customer_a.json
+        subject_a.json
         ...
     sample_extraction/                 # Pre-extracted text for unit tests
-      customer_a__msa.md
-      customer_a__order_form_1.md
+      subject_a__msa.md
+      subject_a__order_form_1.md
       ...
   unit/
     test_models.py                     # Pydantic model validation
     test_entity_resolution.py          # 6-pass matcher
-    test_safe_name.py                  # customer_safe_name convention
+    test_safe_name.py                  # subject_safe_name convention
     test_extraction.py                 # Fallback chain, checksums
     test_numerical_validation.py       # 6-layer validation
     test_hooks.py                      # PreToolUse, PostToolUse, Stop hooks
@@ -85,7 +85,7 @@ tests/
     test_pipeline.py                   # Step sequences with mock agents
     test_agent_spawning.py             # Minimal prompt agent tests (API calls)
     test_reporting.py                  # Merge/dedup with sample data
-    test_inventory.py                  # File discovery + customer registry
+    test_inventory.py                  # File discovery + subject registry
     test_coverage_gate.py              # Step 17 validation logic
     test_incremental.py                # Incremental mode classification
   e2e/
@@ -250,7 +250,7 @@ class TestEdgeCases:
 # tests/unit/test_safe_name.py
 
 import pytest
-from dd_agents.utils.naming import customer_safe_name
+from dd_agents.utils.naming import subject_safe_name
 
 
 @pytest.mark.parametrize("input_name, expected", [
@@ -270,17 +270,17 @@ from dd_agents.utils.naming import customer_safe_name
     ("Company (Subsidiary)", "company_subsidiary"),
 ])
 def test_safe_name_convention(input_name, expected):
-    assert customer_safe_name(input_name) == expected
+    assert subject_safe_name(input_name) == expected
 
 
 def test_safe_name_empty_string():
     with pytest.raises(ValueError):
-        customer_safe_name("")
+        subject_safe_name("")
 
 
 def test_safe_name_only_legal_suffix():
     # Edge case: name is entirely a legal suffix
-    result = customer_safe_name("Inc.")
+    result = subject_safe_name("Inc.")
     assert result == "" or result is not None  # Implementation-dependent
 ```
 
@@ -426,14 +426,14 @@ class TestBashGuard:
 
 class TestStopHook:
     async def test_blocks_premature_stop(self):
-        hook = create_stop_hook(expected_customers=34, output_dir="/run/findings/legal")
-        # Simulate only 20 customer files exist
-        result = await hook({}, "id1", {"customer_files_count": 20})
+        hook = create_stop_hook(expected_subjects=34, output_dir="/run/findings/legal")
+        # Simulate only 20 subjects files exist
+        result = await hook({}, "id1", {"subject_files_count": 20})
         assert result["decision"] == "block"
 
     async def test_allows_complete_stop(self):
-        hook = create_stop_hook(expected_customers=34, output_dir="/run/findings/legal")
-        result = await hook({}, "id1", {"customer_files_count": 34})
+        hook = create_stop_hook(expected_subjects=34, output_dir="/run/findings/legal")
+        result = await hook({}, "id1", {"subject_files_count": 34})
         assert result == {} or result["decision"] == "allow"
 ```
 
@@ -461,9 +461,9 @@ class TestPipelineSteps:
     async def test_steps_1_through_10(self, engine):
         """Test inventory-building steps without agent spawning."""
         await engine.run_steps(1, 10)
-        assert engine.state.total_customers == 5
+        assert engine.state.total_subjects == 5
         assert engine.state.total_files == 15
-        assert (engine.state.skill_dir / "inventory" / "customers.csv").exists()
+        assert (engine.state.skill_dir / "inventory" / "subjects.csv").exists()
         assert (engine.state.skill_dir / "inventory" / "counts.json").exists()
 
     @patch("dd_agents.orchestrator.agents.spawn_with_retry")
@@ -474,13 +474,13 @@ class TestPipelineSteps:
         assert mock_spawn.call_count == 4
 
     async def test_step_17_coverage_gate_pass(self, engine, complete_agent_outputs):
-        """Test coverage gate with all customers covered."""
+        """Test coverage gate with all subjects covered."""
         result = await engine.run_step(17)
         assert result.passed is True
 
     async def test_step_17_coverage_gate_fail(self, engine, partial_agent_outputs):
-        """Test coverage gate triggers re-spawn for missing customers."""
-        with patch("dd_agents.orchestrator.coverage.respawn_for_missing_customers") as mock:
+        """Test coverage gate triggers re-spawn for missing subjects."""
+        with patch("dd_agents.orchestrator.coverage.respawn_for_missing_subjects") as mock:
             await engine.run_step(17)
             assert mock.called
 ```
@@ -540,8 +540,8 @@ from dd_agents.reporting.excel import generate_excel
 
 class TestMergeDedup:
     def test_merge_4_agents(self, sample_agent_outputs):
-        """Merge findings from all 4 agents for each customer."""
-        merged = merge_findings(sample_agent_outputs, customer="customer_a")
+        """Merge findings from all 4 agents for each subject."""
+        merged = merge_findings(sample_agent_outputs, subject="subject_a")
         assert len(merged) > 0
         # Check no duplicates
         ids = [f["id"] for f in merged]
@@ -588,7 +588,7 @@ pytestmark = [
 
 class TestFullRun:
     async def test_small_data_room(self, sample_data_room_path):
-        """Full pipeline run with 5 customers, 15 files."""
+        """Full pipeline run with 5 subjects, 15 files."""
         result = await run_pipeline(
             data_room=sample_data_room_path,
             mode="full",
@@ -603,13 +603,13 @@ class TestFullRun:
         assert (run_dir / "audit.json").exists()
         assert list((run_dir / "report").glob("Due_Diligence_Report_*.xlsx"))
 
-        # Verify all 5 customers covered
+        # Verify all 5 subjects covered
         for agent in ["legal", "finance", "commercial", "producttech"]:
             agent_dir = run_dir / "findings" / agent
-            customer_files = list(agent_dir.glob("*.json"))
+            subject_files = list(agent_dir.glob("*.json"))
             # Exclude coverage_manifest.json
-            customer_files = [f for f in customer_files if f.stem != "coverage_manifest"]
-            assert len(customer_files) == 5, f"Agent {agent} has {len(customer_files)} customer files"
+            subject_files = [f for f in subject_files if f.stem != "coverage_manifest"]
+            assert len(subject_files) == 5, f"Agent {agent} has {len(subject_files)} subject files"
 
         # Verify audit passed
         import json
@@ -694,15 +694,15 @@ def sample_agent_outputs():
 
 @pytest.fixture
 def matcher():
-    """EntityMatcher with sample customer list."""
+    """EntityMatcher with sample subject list."""
     from dd_agents.entity_resolution.matcher import EntityMatcher
-    customers = [
+    subjects = [
         "Acme Corporation",
         "Global Analytics Group",
         "Acme Holdings",
         "Globex Corp",
     ]
-    return EntityMatcher(customers=customers)
+    return EntityMatcher(subjects=subjects)
 ```
 
 ---
@@ -952,10 +952,10 @@ No database, no message queue, no container orchestrator required.
 
 ### 8.4 Cost Estimation
 
-API cost depends on data room size and number of customers. Typical ranges:
+API cost depends on data room size and number of subjects. Typical ranges:
 
-| Data Room Size | Customers | Estimated Cost |
+| Data Room Size | Subjects | Estimated Cost |
 |---------------|-----------|---------------|
-| 50 files, 10 customers | Small | $2-5 per run |
-| 200 files, 50 customers | Medium | $5-10 per run |
-| 500 files, 200 customers | Large | $10-25 per run |
+| 50 files, 10 subjects | Small | $2-5 per run |
+| 200 files, 50 subjects | Medium | $5-10 per run |
+| 500 files, 200 subjects | Large | $10-25 per run |

@@ -102,9 +102,9 @@ class TestDiscoveryMtime:
         """Discovered files should have non-zero mtime."""
         from dd_agents.inventory.discovery import FileDiscovery
 
-        customer_dir = tmp_path / "GroupA" / "Customer1"
-        customer_dir.mkdir(parents=True)
-        f = customer_dir / "contract.pdf"
+        subject_dir = tmp_path / "GroupA" / "Customer1"
+        subject_dir.mkdir(parents=True)
+        f = subject_dir / "contract.pdf"
         f.write_bytes(b"fake pdf content")
 
         discovery = FileDiscovery()
@@ -208,7 +208,7 @@ class TestFolderPriorityClassifier:
         assert clf.classify("Above 200K USD") == FolderTier.WORKING
         assert clf.classify("Acme Corp") == FolderTier.WORKING
         assert clf.classify("Legal") == FolderTier.WORKING
-        assert clf.classify("Customer Files") == FolderTier.WORKING
+        assert clf.classify("Subject Files") == FolderTier.WORKING
 
     def test_case_insensitive(self) -> None:
         """Classification is case-insensitive."""
@@ -338,9 +338,9 @@ class TestVersionChainBuilder:
     def test_groups_similar_filenames(self) -> None:
         """Files with similar base names are grouped together."""
         entries = [
-            _fe("Customer/MSA_v1.pdf"),
-            _fe("Customer/MSA_v2.pdf"),
-            _fe("Customer/DPA.pdf"),
+            _fe("Subject/MSA_v1.pdf"),
+            _fe("Subject/MSA_v2.pdf"),
+            _fe("Subject/DPA.pdf"),
         ]
         builder = VersionChainBuilder()
         groups = builder.build_chains(entries)
@@ -353,36 +353,36 @@ class TestVersionChainBuilder:
     def test_orders_by_version_number(self) -> None:
         """Within a group, files ordered by version number (latest first)."""
         entries = [
-            _fe("Customer/MSA_v1.pdf", mtime=1000.0),
-            _fe("Customer/MSA_v3.pdf", mtime=1200.0),
-            _fe("Customer/MSA_v2.pdf", mtime=1100.0),
+            _fe("Subject/MSA_v1.pdf", mtime=1000.0),
+            _fe("Subject/MSA_v3.pdf", mtime=1200.0),
+            _fe("Subject/MSA_v2.pdf", mtime=1100.0),
         ]
         builder = VersionChainBuilder()
         groups = builder.build_chains(entries)
 
         assert len(groups) == 1
         paths = [f.path for f in groups[0].files]
-        assert paths[0] == "Customer/MSA_v3.pdf"  # Latest version first
-        assert paths[-1] == "Customer/MSA_v1.pdf"  # Oldest last
+        assert paths[0] == "Subject/MSA_v3.pdf"  # Latest version first
+        assert paths[-1] == "Subject/MSA_v1.pdf"  # Oldest last
 
     def test_keyword_beats_version_number(self) -> None:
         """Signed/executed keyword outranks higher version number."""
         entries = [
-            _fe("Customer/MSA_v3.pdf", mtime=1200.0),
-            _fe("Customer/MSA_v2_signed.pdf", mtime=1100.0),
+            _fe("Subject/MSA_v3.pdf", mtime=1200.0),
+            _fe("Subject/MSA_v2_signed.pdf", mtime=1100.0),
         ]
         builder = VersionChainBuilder()
         groups = builder.build_chains(entries)
 
         assert len(groups) == 1
         # signed should be ranked first (most authoritative)
-        assert groups[0].files[0].path == "Customer/MSA_v2_signed.pdf"
+        assert groups[0].files[0].path == "Subject/MSA_v2_signed.pdf"
 
     def test_mtime_as_tiebreaker(self) -> None:
         """When version indicators are equal, newer mtime wins."""
         entries = [
-            _fe("Customer/MSA.pdf", mtime=1000.0),
-            _fe("Customer/MSA_copy.pdf", mtime=2000.0),
+            _fe("Subject/MSA.pdf", mtime=1000.0),
+            _fe("Subject/MSA_copy.pdf", mtime=2000.0),
         ]
         builder = VersionChainBuilder()
         groups = builder.build_chains(entries)
@@ -396,8 +396,8 @@ class TestVersionChainBuilder:
     def test_marks_superseded_files(self) -> None:
         """Non-latest files in a version group are marked superseded."""
         entries = [
-            _fe("Customer/MSA_v1.pdf"),
-            _fe("Customer/MSA_v2_signed.pdf"),
+            _fe("Subject/MSA_v1.pdf"),
+            _fe("Subject/MSA_v2_signed.pdf"),
         ]
         builder = VersionChainBuilder()
         groups = builder.build_chains(entries)
@@ -412,7 +412,7 @@ class TestVersionChainBuilder:
 
     def test_single_file_is_latest(self) -> None:
         """A file with no version peers is always latest."""
-        entries = [_fe("Customer/DPA.pdf")]
+        entries = [_fe("Subject/DPA.pdf")]
         builder = VersionChainBuilder()
         groups = builder.build_chains(entries)
 
@@ -421,22 +421,22 @@ class TestVersionChainBuilder:
         assert groups[0].files[0].superseded_by == ""
 
     def test_different_subjects_not_grouped(self) -> None:
-        """Files from different customer paths are never grouped."""
+        """Files from different subject paths are never grouped."""
         entries = [
-            _fe("CustomerA/MSA_v1.pdf"),
-            _fe("CustomerB/MSA_v1.pdf"),
+            _fe("SubjectA/MSA_v1.pdf"),
+            _fe("SubjectB/MSA_v1.pdf"),
         ]
         builder = VersionChainBuilder()
         groups = builder.build_chains(entries)
 
-        # Each customer's MSA should be in its own group
+        # Each subject's MSA should be in its own group
         assert len(groups) == 2
 
     def test_folder_tier_affects_ranking(self) -> None:
-        """File from authoritative folder outranks same-named file from drafts (same customer)."""
+        """File from authoritative folder outranks same-named file from drafts (same subject)."""
         entries = [
-            _fe("Customer/Drafts/MSA.pdf"),
-            _fe("Customer/Executed/MSA.pdf"),
+            _fe("Subject/Drafts/MSA.pdf"),
+            _fe("Subject/Executed/MSA.pdf"),
         ]
         # Set folder tiers
         entries[0].folder_tier = 3  # supplementary
@@ -445,7 +445,7 @@ class TestVersionChainBuilder:
         builder = VersionChainBuilder()
         groups = builder.build_chains(entries)
 
-        # Both are under "Customer" so share the same base name and prefix group
+        # Both are under "Subject" so share the same base name and prefix group
         # They may form one or two groups depending on prefix — verify ranking holds
         all_files = [f for g in groups for f in g.files]
         executed = [f for f in all_files if "Executed" in f.path]
@@ -467,7 +467,7 @@ class TestPrecedenceScorer:
     def test_score_range(self) -> None:
         """Precedence score is between 0 and 1."""
         scorer = PrecedenceScorer()
-        entry = _fe("Customer/MSA.pdf", mtime=1700000000.0)
+        entry = _fe("Subject/MSA.pdf", mtime=1700000000.0)
         entry.version_rank = 5
         entry.folder_tier = 2
         score = scorer.compute_score(entry, max_mtime=1700000000.0)
@@ -492,11 +492,11 @@ class TestPrecedenceScorer:
     def test_newer_file_scores_higher_same_tier(self) -> None:
         """Between same-tier files, newer one scores higher."""
         scorer = PrecedenceScorer()
-        old = _fe("Customer/MSA.pdf", mtime=1600000000.0)
+        old = _fe("Subject/MSA.pdf", mtime=1600000000.0)
         old.version_rank = 5
         old.folder_tier = 2
 
-        new = _fe("Customer/MSA.pdf", mtime=1700000000.0)
+        new = _fe("Subject/MSA.pdf", mtime=1700000000.0)
         new.version_rank = 5
         new.folder_tier = 2
 
@@ -508,7 +508,7 @@ class TestPrecedenceScorer:
     def test_zero_mtime_gets_low_recency(self) -> None:
         """File with no mtime (0.0) gets minimum recency component."""
         scorer = PrecedenceScorer()
-        entry = _fe("Customer/file.pdf", mtime=0.0)
+        entry = _fe("Subject/file.pdf", mtime=0.0)
         entry.version_rank = 5
         entry.folder_tier = 2
         score = scorer.compute_score(entry, max_mtime=1700000000.0)
@@ -518,9 +518,9 @@ class TestPrecedenceScorer:
         """Score a batch of files and verify ordering."""
         scorer = PrecedenceScorer()
         entries = [
-            _fe("Customer/MSA_draft.pdf", mtime=1600000000.0),
-            _fe("Customer/MSA_v2.pdf", mtime=1650000000.0),
-            _fe("Customer/MSA_signed.pdf", mtime=1700000000.0),
+            _fe("Subject/MSA_draft.pdf", mtime=1600000000.0),
+            _fe("Subject/MSA_v2.pdf", mtime=1650000000.0),
+            _fe("Subject/MSA_signed.pdf", mtime=1700000000.0),
         ]
         entries[0].version_rank = 2
         entries[0].folder_tier = 3
@@ -591,7 +591,7 @@ class TestPrecedenceInPrompts:
     """Tests that agent prompts include precedence metadata."""
 
     def test_prompt_includes_precedence_annotations(self) -> None:
-        """Customer file list should show precedence status markers."""
+        """Subject file list should show precedence status markers."""
         from dd_agents.agents.prompt_builder import PromptBuilder
         from dd_agents.models.inventory import SubjectEntry
 
@@ -601,7 +601,7 @@ class TestPrecedenceInPrompts:
             run_id="test_run",
         )
 
-        customers = [
+        subjects = [
             SubjectEntry(
                 group="GroupA",
                 name="Acme Corp",
@@ -635,7 +635,7 @@ class TestPrecedenceInPrompts:
 
         prompt = builder.build_specialist_prompt(
             "legal",
-            customers,
+            subjects,
             file_precedence=file_precedence,
         )
 
@@ -656,7 +656,7 @@ class TestPrecedenceInPrompts:
             run_id="test_run",
         )
 
-        customers = [
+        subjects = [
             SubjectEntry(
                 group="GroupA",
                 name="Acme Corp",
@@ -668,7 +668,7 @@ class TestPrecedenceInPrompts:
         ]
 
         # No file_precedence passed
-        prompt = builder.build_specialist_prompt("legal", customers)
+        prompt = builder.build_specialist_prompt("legal", subjects)
 
         assert "Acme Corp" in prompt
         assert "MSA.pdf" in prompt
@@ -781,9 +781,9 @@ class TestPrecedenceOrchestratorIntegration:
         from dd_agents.orchestrator.precedence import compute_precedence_index
 
         files = [
-            _fe("Customer/Executed/MSA_signed.pdf", mtime=1700000000.0),
-            _fe("Customer/Drafts/MSA_draft.pdf", mtime=1600000000.0),
-            _fe("Customer/NDA.pdf", mtime=1650000000.0),
+            _fe("Subject/Executed/MSA_signed.pdf", mtime=1700000000.0),
+            _fe("Subject/Drafts/MSA_draft.pdf", mtime=1600000000.0),
+            _fe("Subject/NDA.pdf", mtime=1650000000.0),
         ]
 
         index = compute_precedence_index(files)
@@ -797,15 +797,15 @@ class TestPrecedenceOrchestratorIntegration:
             assert 0.0 <= score <= 1.0
 
         # Signed/executed file should score highest
-        assert index["Customer/Executed/MSA_signed.pdf"] > index["Customer/Drafts/MSA_draft.pdf"]
+        assert index["Subject/Executed/MSA_signed.pdf"] > index["Subject/Drafts/MSA_draft.pdf"]
 
     def test_compute_precedence_index_with_config_overrides(self) -> None:
         """Folder priority overrides from deal-config are respected."""
         from dd_agents.orchestrator.precedence import compute_precedence_index
 
         files = [
-            _fe("Customer/Board Materials/MSA.pdf", mtime=1700000000.0),
-            _fe("Customer/Team Notes/MSA.pdf", mtime=1700000000.0),
+            _fe("Subject/Board Materials/MSA.pdf", mtime=1700000000.0),
+            _fe("Subject/Team Notes/MSA.pdf", mtime=1700000000.0),
         ]
 
         index = compute_precedence_index(
@@ -813,7 +813,7 @@ class TestPrecedenceOrchestratorIntegration:
             folder_overrides={"Board Materials": 1, "Team Notes": 3},
         )
 
-        assert index["Customer/Board Materials/MSA.pdf"] > index["Customer/Team Notes/MSA.pdf"]
+        assert index["Subject/Board Materials/MSA.pdf"] > index["Subject/Team Notes/MSA.pdf"]
 
     def test_compute_precedence_index_empty_list(self) -> None:
         """Empty file list returns empty dict."""
@@ -827,7 +827,7 @@ class TestPrecedenceOrchestratorIntegration:
         from dd_agents.orchestrator.precedence import compute_precedence_index
 
         files = [
-            _fe("Customer/MSA_signed.pdf", mtime=1700000000.0),
+            _fe("Subject/MSA_signed.pdf", mtime=1700000000.0),
         ]
 
         compute_precedence_index(files)
@@ -842,8 +842,8 @@ class TestPrecedenceOrchestratorIntegration:
         from dd_agents.orchestrator.precedence import compute_precedence_index
 
         files = [
-            _fe("Customer/Executed/MSA.pdf", mtime=1700000000.0),
-            _fe("Customer/Drafts/MSA.pdf", mtime=1700000000.0),
+            _fe("Subject/Executed/MSA.pdf", mtime=1700000000.0),
+            _fe("Subject/Drafts/MSA.pdf", mtime=1700000000.0),
         ]
 
         compute_precedence_index(files)
@@ -876,7 +876,7 @@ class TestEdgeCases:
     def test_scorer_invalid_folder_tier(self) -> None:
         """Invalid folder_tier value falls back to WORKING tier."""
         scorer = PrecedenceScorer()
-        entry = _fe("Customer/file.pdf", mtime=1000.0)
+        entry = _fe("Subject/file.pdf", mtime=1000.0)
         entry.version_rank = 5
         entry.folder_tier = 99  # invalid
         score = scorer.compute_score(entry, max_mtime=1000.0)
@@ -898,8 +898,8 @@ class TestEdgeCases:
         """Windows-style backslash paths are handled correctly."""
         from dd_agents.precedence.version_chains import _base_name, _subject_prefix
 
-        assert _base_name("Customer\\Executed\\MSA.pdf") == "msa"
-        assert _subject_prefix("Customer\\Executed\\MSA.pdf") == "Customer/Executed"
+        assert _base_name("Subject\\Executed\\MSA.pdf") == "msa"
+        assert _subject_prefix("Subject\\Executed\\MSA.pdf") == "Subject/Executed"
 
     def test_checkpoint_roundtrip_preserves_precedence(self) -> None:
         """PipelineState file_precedence survives checkpoint serialization."""
@@ -910,19 +910,19 @@ class TestEdgeCases:
         state = PipelineState(
             run_id="test",
             current_step=PipelineStep.BUILD_INVENTORY,
-            file_precedence={"Customer/MSA.pdf": 0.85, "Customer/NDA.pdf": 0.6},
+            file_precedence={"Subject/MSA.pdf": 0.85, "Subject/NDA.pdf": 0.6},
         )
 
         checkpoint = state.to_checkpoint_dict()
-        assert checkpoint["file_precedence"] == {"Customer/MSA.pdf": 0.85, "Customer/NDA.pdf": 0.6}
+        assert checkpoint["file_precedence"] == {"Subject/MSA.pdf": 0.85, "Subject/NDA.pdf": 0.6}
 
         restored = PipelineState.from_checkpoint_dict(checkpoint)
-        assert restored.file_precedence == {"Customer/MSA.pdf": 0.85, "Customer/NDA.pdf": 0.6}
+        assert restored.file_precedence == {"Subject/MSA.pdf": 0.85, "Subject/NDA.pdf": 0.6}
 
     def test_scorer_negative_mtime(self) -> None:
         """Negative mtime is treated same as zero (no recency bonus)."""
         scorer = PrecedenceScorer()
-        entry = _fe("Customer/file.pdf", mtime=-100.0)
+        entry = _fe("Subject/file.pdf", mtime=-100.0)
         entry.version_rank = 5
         entry.folder_tier = 2
         score = scorer.compute_score(entry, max_mtime=1000.0)

@@ -25,12 +25,12 @@ class TestDataRoomAssessor:
 
     def test_healthy_data_room(self, tmp_path: Path) -> None:
         """Well-structured data room scores high."""
-        # Create customer folders with contract files
-        for customer in ["acme", "beta_corp", "gamma_llc"]:
-            customer_dir = tmp_path / customer
-            customer_dir.mkdir()
-            (customer_dir / "msa.pdf").write_bytes(b"%PDF-1.4 fake content here " * 100)
-            (customer_dir / "sow.docx").write_bytes(b"PK fake docx " * 100)
+        # Create subject folders with contract files
+        for subject in ["acme", "beta_corp", "gamma_llc"]:
+            subject_dir = tmp_path / subject
+            subject_dir.mkdir()
+            (subject_dir / "msa.pdf").write_bytes(b"%PDF-1.4 fake content here " * 100)
+            (subject_dir / "sow.docx").write_bytes(b"PK fake docx " * 100)
 
         # Add reference data
         (tmp_path / "reference_data.xlsx").write_bytes(b"PK fake xlsx " * 100)
@@ -78,7 +78,7 @@ class TestDataRoomAssessor:
         assert len(critical) >= 1
 
     def test_subject_detection(self, tmp_path: Path) -> None:
-        """Customer folders are detected from directory structure."""
+        """Subject folders are detected from directory structure."""
         for name in ["AlphaCo", "BetaInc", "GammaCorp"]:
             d = tmp_path / name
             d.mkdir()

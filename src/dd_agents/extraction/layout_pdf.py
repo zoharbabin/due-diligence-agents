@@ -20,10 +20,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 from dd_agents.extraction._constants import CONFIDENCE_FAILURE
+from dd_agents.extraction._constants import CONFIDENCE_LAYOUT_PDF as _CONFIDENCE_LAYOUT
 
 logger = logging.getLogger(__name__)
-
-_CONFIDENCE_LAYOUT = 0.85
 
 # Y-coordinate tolerance for grouping blocks into the same row (points).
 _Y_TOLERANCE = 5.0

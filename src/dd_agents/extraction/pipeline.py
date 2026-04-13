@@ -37,7 +37,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from dd_agents.extraction._constants import (
+    CONFIDENCE_CLAUDE_VISION as _CONFIDENCE_CLAUDE_VISION,
+)
+from dd_agents.extraction._constants import (
     IMAGE_EXTENSIONS,
+    MEDIA_EXTENSIONS,  # noqa: F811 - used at runtime in extract_single routing
     PLAINTEXT_EXTENSIONS,
     SPREADSHEET_EXTENSIONS,
 )
@@ -89,9 +93,6 @@ _JPEG_MAGIC_MARKERS = (b"\xff\xd8", b"\xff\xe0", b"\xff\xe1")
 # Replacement character U+FFFD — indicates decoded binary, not real text.
 _REPLACEMENT_CHAR = "\ufffd"
 _MAX_REPLACEMENT_RATIO = 0.01  # >1% replacement chars → reject
-
-# Confidence score for Claude vision descriptions.
-_CONFIDENCE_CLAUDE_VISION = 0.65
 
 # Timeout for Claude vision calls (seconds).
 _CLAUDE_VISION_TIMEOUT = 120
@@ -475,13 +476,16 @@ class ExtractionPipeline:
             return self._extract_plaintext(filepath, out_file)
 
         if suffix in SPREADSHEET_EXTENSIONS:
-            return self._extract_spreadsheet(filepath, out_file)
+            return self._extract_spreadsheet(filepath, out_file, suffix=suffix)
 
         if suffix in _PDF_EXTENSIONS:
             return self._extract_pdf(filepath, out_file)
 
         if suffix in IMAGE_EXTENSIONS:
             return self._extract_image(filepath, out_file)
+
+        if suffix in MEDIA_EXTENSIONS:
+            return self._extract_media(filepath, out_file)
 
         # Office / other formats -- markitdown then direct read.
         return self._extract_generic(filepath, out_file)
@@ -691,16 +695,81 @@ class ExtractionPipeline:
             )
         return self._failed_entry(filepath, chain)
 
-    def _extract_spreadsheet(self, filepath: Path, out_file: Path) -> ExtractionQualityEntry:
+    @staticmethod
+    def _is_ole2_encrypted(filepath: Path) -> bool:
+        """Check if an OLE2 file is password-protected.
+
+        Reads the OLE2 directory entries looking for ``EncryptionInfo``
+        or ``EncryptedPackage`` streams, which indicate the workbook
+        content is encrypted.  Returns ``False`` for non-OLE2 files
+        or on any read error.
+        """
+        try:
+            with open(filepath, "rb") as fh:
+                header = fh.read(512)
+                if len(header) < 512:
+                    return False
+                # Only check OLE2 files (magic: D0 CF 11 E0 A1 B1 1A E1).
+                if header[:8] != b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":
+                    return False
+                # Scan for encryption marker strings in the first 8 KB
+                # of the file.  OLE2 directory entries store stream names
+                # as UTF-16LE, so we check for encoded versions.
+                fh.seek(0)
+                chunk = fh.read(8192)
+                for marker in (b"E\x00n\x00c\x00r\x00y\x00p\x00t", b"EncryptedPackage", b"EncryptionInfo"):
+                    if marker in chunk:
+                        return True
+        except OSError:
+            pass
+        return False
+
+    def _extract_spreadsheet(
+        self,
+        filepath: Path,
+        out_file: Path,
+        *,
+        suffix: str | None = None,
+    ) -> ExtractionQualityEntry:
         """Extract spreadsheet files using native Python libraries.
 
         Routes by extension: openpyxl (.xlsx), csv module (.csv/.tsv),
         xlrd (.xls).  Each primary method falls back to markitdown then
         direct read if the native reader fails quality gates.
+
+        Parameters
+        ----------
+        suffix:
+            The (possibly magic-byte-corrected) file extension to route by.
+            If ``None``, falls back to ``filepath.suffix``.  This ensures
+            misnamed files (e.g. ``.xlsx`` with OLE2 content) are routed
+            to the correct reader (xlrd, not openpyxl).
         """
-        suffix = filepath.suffix.lower()
+        if suffix is None:
+            suffix = filepath.suffix.lower()
         chain: list[str] = []
         failure_reasons: list[str] = []
+
+        # Short-circuit for password-protected OLE2 files — no reader can
+        # open these without credentials, so avoid noisy fallback chains.
+        if suffix == ".xls" and self._is_ole2_encrypted(filepath):
+            logger.info("Skipping password-protected spreadsheet: %s", filepath.name)
+            chain.append("encrypted")
+            failure_reasons.append("Password-protected spreadsheet")
+            placeholder = (
+                f"[PASSWORD-PROTECTED SPREADSHEET: {filepath.name}]\n"
+                f"This file is encrypted and requires a password to open.\n"
+                f"Provide the decrypted version for extraction.\n"
+            )
+            out_file.write_text(placeholder, encoding="utf-8")
+            return ExtractionQualityEntry(
+                file_path=str(filepath),
+                method="encrypted",
+                bytes_extracted=len(placeholder.encode("utf-8")),
+                confidence=0.0,
+                fallback_chain=chain,
+                failure_reasons=failure_reasons,
+            )
 
         if suffix == ".xlsx":
             text, conf = self._read_xlsx(filepath)
@@ -1141,6 +1210,84 @@ class ExtractionPipeline:
             failure_reasons=failure_reasons,
         )
 
+    def _extract_media(self, filepath: Path, out_file: Path) -> ExtractionQualityEntry:
+        """Extract audio/video files via transcription if available.
+
+        Supported backends (in priority order):
+
+        1. **mlx_whisper** — CLI, optimized for Apple Silicon (macOS).
+        2. **whisperx** — Python API, GPU-accelerated.
+        3. **openai-whisper** — Original whisper, broadest compatibility.
+
+        Override with ``DD_TRANSCRIPTION_BACKEND`` env var.
+
+        Unlike other extractors, this does NOT fall back to markitdown or
+        direct text read — those produce garbage on binary media.  If no
+        transcription library is installed, writes a placeholder and returns
+        a low-confidence entry.
+        """
+        from dd_agents.extraction.transcribe import transcribe
+
+        chain: list[str] = []
+        failure_reasons: list[str] = []
+
+        # Try transcription via best available backend.
+        try:
+            result = transcribe(filepath)
+            if result is not None:
+                method_name = f"transcribe_{result.backend.value}"
+                if result.text:
+                    entry = self._try_method(
+                        method_name,
+                        result.text,
+                        0.7,  # Transcription confidence below markitdown.
+                        out_file,
+                        filepath,
+                        chain,
+                        failure_reasons,
+                        method_label=method_name,
+                    )
+                    if entry is not None:
+                        return entry
+                else:
+                    chain.append(method_name)
+                    failure_reasons.append(f"{method_name} returned empty transcription")
+            else:
+                logger.debug(
+                    "Skipping %s: no transcription library installed. "
+                    "Install mlx_whisper, whisperx, or openai-whisper to transcribe media files.",
+                    filepath.name,
+                )
+                failure_reasons.append(
+                    "no transcription library installed (install mlx_whisper, whisperx, or openai-whisper)"
+                )
+        except Exception as exc:  # noqa: BLE001
+            chain.append("transcribe")
+            failure_reasons.append(f"transcription failed: {exc}")
+            logger.debug("Transcription failed for %s: %s", filepath.name, exc)
+
+        # Write a media placeholder — never try markitdown or direct read.
+        placeholder = (
+            f"[MEDIA FILE: {filepath.name}]\n"
+            f"This is an audio/video file ({filepath.suffix.lower()}).  "
+            f"Text extraction is not applicable.\n"
+        )
+        if failure_reasons and "no transcription library" in failure_reasons[0]:
+            placeholder += (
+                "Install mlx_whisper (macOS), whisperx, or openai-whisper to enable automatic transcription.\n"
+            )
+
+        out_file.write_text(placeholder, encoding="utf-8")
+        chain.append("media_placeholder")
+        return ExtractionQualityEntry(
+            file_path=str(filepath),
+            method="media_placeholder",
+            bytes_extracted=len(placeholder.encode("utf-8")),
+            confidence=0.1,
+            fallback_chain=chain,
+            failure_reasons=failure_reasons,
+        )
+
     def _extract_generic(self, filepath: Path, out_file: Path) -> ExtractionQualityEntry:
         """Generic (Office/other) fallback chain: markitdown -> direct read."""
         chain: list[str] = []
@@ -1478,6 +1625,8 @@ class ExtractionPipeline:
             query,
         )
 
+        from dd_agents.utils import resolve_sdk_cli_path
+
         system_prompt = (
             "You are a document-analysis assistant.  The user will ask you "
             "to read an image file.  Respond with:\n"
@@ -1489,13 +1638,17 @@ class ExtractionPipeline:
 
         user_prompt = f"Use the Read tool to visually examine this file and describe everything you see: {filepath}"
 
-        options = ClaudeAgentOptions(
-            system_prompt=system_prompt,
-            max_turns=1,
-            permission_mode="bypassPermissions",
-            tools=["Read"],
-            allowed_tools=["Read"],
-        )
+        options_kwargs: dict[str, Any] = {
+            "system_prompt": system_prompt,
+            "max_turns": 1,
+            "permission_mode": "bypassPermissions",
+            "tools": ["Read"],
+            "allowed_tools": ["Read"],
+        }
+        cli_path = resolve_sdk_cli_path()
+        if cli_path is not None:
+            options_kwargs["cli_path"] = cli_path
+        options = ClaudeAgentOptions(**options_kwargs)
 
         text_parts: list[str] = []
         try:

@@ -10,7 +10,7 @@ from dd_agents.hooks.post_tool import (
     validate_manifest_json,
     validate_subject_json,
 )
-from dd_agents.hooks.pre_tool import bash_guard, file_size_guard, path_guard
+from dd_agents.hooks.pre_tool import bash_guard, file_size_guard, finding_schema_guard, path_guard
 from dd_agents.hooks.stop import check_audit_log, check_coverage, check_manifest
 
 if TYPE_CHECKING:
@@ -318,7 +318,7 @@ class TestValidateSubjectJson:
 
     def test_invalid_finding_in_array(self) -> None:
         data = {
-            "customer": "Test Corp",
+            "subject": "Test Corp",
             "subject_safe_name": "test_corp",
             "findings": [
                 {
@@ -338,7 +338,7 @@ class TestValidateSubjectJson:
 
     def test_findings_not_array(self) -> None:
         data = {
-            "customer": "Test",
+            "subject": "Test",
             "subject_safe_name": "test",
             "findings": "not an array",
             "file_headers": [],
@@ -428,7 +428,7 @@ class TestCheckCoverage:
         output_dir = tmp_path / "findings" / "legal"
         output_dir.mkdir(parents=True)
 
-        # Write only 1 of 3 expected customer files
+        # Write only 1 of 3 expected subject files
         (output_dir / "acme_corp.json").write_text("{}")
 
         result = check_coverage(output_dir, expected_subject_count=3)
@@ -498,6 +498,51 @@ class TestCheckManifest:
         assert result["decision"] == "allow"
         assert result["reason"] == ""
 
+    def test_allows_when_all_subjects_written_no_manifest(self, tmp_path: Path) -> None:
+        """When all subject JSONs exist, allow stop even without manifest."""
+        output_dir = tmp_path / "findings" / "legal"
+        output_dir.mkdir(parents=True)
+        for i in range(5):
+            (output_dir / f"subject_{i}.json").write_text("{}")
+
+        result = check_manifest(output_dir, expected_subject_count=5)
+        assert result["decision"] == "allow"
+        assert result["reason"] == ""
+
+    def test_blocks_when_partial_subjects_no_manifest(self, tmp_path: Path) -> None:
+        """When fewer subject JSONs than expected, still block without manifest."""
+        output_dir = tmp_path / "findings" / "legal"
+        output_dir.mkdir(parents=True)
+        for i in range(3):
+            (output_dir / f"subject_{i}.json").write_text("{}")
+
+        result = check_manifest(output_dir, expected_subject_count=5)
+        assert result["decision"] == "block"
+        assert "coverage_manifest.json" in result["reason"]
+
+    def test_blocks_when_no_expected_count_no_manifest(self, tmp_path: Path) -> None:
+        """Without expected_subject_count, manifest is still required."""
+        output_dir = tmp_path / "findings" / "legal"
+        output_dir.mkdir(parents=True)
+        for i in range(5):
+            (output_dir / f"subject_{i}.json").write_text("{}")
+
+        result = check_manifest(output_dir)
+        assert result["decision"] == "block"
+
+    def test_excludes_coverage_manifest_from_count(self, tmp_path: Path) -> None:
+        """coverage_manifest.json itself should not count as a subject JSON."""
+        output_dir = tmp_path / "findings" / "legal"
+        output_dir.mkdir(parents=True)
+        for i in range(4):
+            (output_dir / f"subject_{i}.json").write_text("{}")
+        # This should not be counted as a subject file
+        (output_dir / "coverage_manifest.json").write_text("{}")
+
+        # Only 4 subject JSONs but 5 expected — manifest exists so allow
+        result = check_manifest(output_dir, expected_subject_count=5)
+        assert result["decision"] == "allow"  # manifest exists
+
 
 # ===================================================================
 # Stop: check_audit_log
@@ -527,3 +572,279 @@ class TestCheckAuditLog:
         result = check_audit_log(output_dir)
         assert result["decision"] == "allow"
         assert result["reason"] == ""
+
+
+# ===================================================================
+# PreToolUse: bash_guard — compound command scope checks
+# ===================================================================
+
+
+class TestBashGuardCompoundCommands:
+    """Tests for scope-check in compound commands."""
+
+    def test_blocks_mv_absolute_after_echo(self) -> None:
+        result = bash_guard("Bash", {"command": "echo hello && mv /etc/passwd /tmp/"})
+        assert result["decision"] == "block"
+
+    def test_blocks_cp_parent_after_semicolon(self) -> None:
+        result = bash_guard("Bash", {"command": "ls; cp ../../etc/passwd ./stolen"})
+        assert result["decision"] == "block"
+
+    def test_blocks_mv_absolute_after_pipe_or(self) -> None:
+        result = bash_guard("Bash", {"command": "false || mv /etc/hosts /tmp/"})
+        assert result["decision"] == "block"
+
+    def test_allows_safe_compound(self) -> None:
+        result = bash_guard("Bash", {"command": "echo ok && mv old.txt new.txt"})
+        assert result["decision"] == "allow"
+
+
+# ===================================================================
+# PreToolUse: BATCH_FILE_PATTERN
+# ===================================================================
+
+
+class TestBatchFilePattern:
+    """Tests for the batch file regex pattern."""
+
+    def test_matches_batch_1(self) -> None:
+        from dd_agents.hooks.pre_tool import BATCH_FILE_PATTERN
+
+        assert BATCH_FILE_PATTERN.search("batch_1.json")
+
+    def test_matches_batch_99(self) -> None:
+        from dd_agents.hooks.pre_tool import BATCH_FILE_PATTERN
+
+        assert BATCH_FILE_PATTERN.search("batch_99.json")
+
+    def test_no_match_for_subject_file(self) -> None:
+        from dd_agents.hooks.pre_tool import BATCH_FILE_PATTERN
+
+        assert not BATCH_FILE_PATTERN.search("acme_corp.json")
+
+    def test_no_match_for_batch_summary(self) -> None:
+        from dd_agents.hooks.pre_tool import BATCH_FILE_PATTERN
+
+        assert not BATCH_FILE_PATTERN.search("batch_summary.json")
+
+
+# ===================================================================
+# PreToolUse: finding_schema_guard
+# ===================================================================
+
+
+class TestFindingSchemaGuard:
+    """Tests for finding_schema_guard — blocks writes with wrong field names."""
+
+    @staticmethod
+    def _write_input(file_path: str, content: dict) -> tuple[str, dict]:
+        return "Write", {"file_path": file_path, "content": json.dumps(content)}
+
+    def test_allows_valid_finding(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        (run_dir / "findings" / "legal").mkdir(parents=True)
+        tn, ti = self._write_input(
+            str(run_dir / "findings" / "legal" / "acme.json"),
+            {
+                "findings": [
+                    {
+                        "severity": "P1",
+                        "title": "CoC clause",
+                        "description": "Found issue",
+                        "citations": [
+                            {
+                                "source_type": "file",
+                                "source_path": "msa.pdf",
+                                "exact_quote": "upon change of control",
+                            }
+                        ],
+                    }
+                ]
+            },
+        )
+        result = finding_schema_guard(tn, ti, run_dir)
+        assert result["decision"] == "allow"
+
+    def test_blocks_evidence_instead_of_citations(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        (run_dir / "findings" / "producttech").mkdir(parents=True)
+        tn, ti = self._write_input(
+            str(run_dir / "findings" / "producttech" / "financials.json"),
+            {
+                "findings": [
+                    {
+                        "severity": "P2",
+                        "title": "NIST compliance",
+                        "description": "Issue",
+                        "evidence": [{"file": "sow.pdf", "exact_quote": "NIST/ISO 27000"}],
+                    }
+                ]
+            },
+        )
+        result = finding_schema_guard(tn, ti, run_dir)
+        assert result["decision"] == "block"
+        assert "evidence" in result["reason"]
+        assert "citations" in result["reason"]
+
+    def test_blocks_file_instead_of_source_path(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        (run_dir / "findings" / "finance").mkdir(parents=True)
+        tn, ti = self._write_input(
+            str(run_dir / "findings" / "finance" / "acme.json"),
+            {
+                "findings": [
+                    {
+                        "severity": "P2",
+                        "title": "Revenue gap",
+                        "description": "Issue",
+                        "citations": [{"file": "report.pdf", "exact_quote": "ARR $1.2M"}],
+                    }
+                ]
+            },
+        )
+        result = finding_schema_guard(tn, ti, run_dir)
+        assert result["decision"] == "block"
+        assert "'file'" in result["reason"]
+        assert "'source_path'" in result["reason"]
+
+    def test_blocks_empty_citations_array(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        (run_dir / "findings" / "legal").mkdir(parents=True)
+        tn, ti = self._write_input(
+            str(run_dir / "findings" / "legal" / "acme.json"),
+            {
+                "findings": [
+                    {
+                        "severity": "P1",
+                        "title": "No evidence",
+                        "description": "Issue",
+                        "citations": [],
+                    }
+                ]
+            },
+        )
+        result = finding_schema_guard(tn, ti, run_dir)
+        assert result["decision"] == "block"
+        assert "empty" in result["reason"]
+
+    def test_blocks_missing_citations_key(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        (run_dir / "findings" / "commercial").mkdir(parents=True)
+        tn, ti = self._write_input(
+            str(run_dir / "findings" / "commercial" / "beta.json"),
+            {
+                "findings": [
+                    {
+                        "severity": "P2",
+                        "title": "Pricing issue",
+                        "description": "No citations at all",
+                    }
+                ]
+            },
+        )
+        result = finding_schema_guard(tn, ti, run_dir)
+        assert result["decision"] == "block"
+        assert "missing" in result["reason"].lower()
+
+    def test_skips_coverage_manifest(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        (run_dir / "findings" / "legal").mkdir(parents=True)
+        tn, ti = self._write_input(
+            str(run_dir / "findings" / "legal" / "coverage_manifest.json"),
+            {"coverage_pct": 1.0, "subjects_processed": 15},
+        )
+        result = finding_schema_guard(tn, ti, run_dir)
+        assert result["decision"] == "allow"
+
+    def test_skips_non_findings_directory(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        (run_dir / "audit").mkdir(parents=True)
+        tn, ti = self._write_input(
+            str(run_dir / "audit" / "log.json"),
+            {"findings": [{"evidence": [{"file": "x.pdf"}]}]},
+        )
+        result = finding_schema_guard(tn, ti, run_dir)
+        assert result["decision"] == "allow"
+
+    def test_skips_non_write_tools(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        result = finding_schema_guard("Read", {"file_path": "anything"}, run_dir)
+        assert result["decision"] == "allow"
+
+    def test_skips_non_json_files(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        (run_dir / "findings" / "legal").mkdir(parents=True)
+        tn, ti = self._write_input(
+            str(run_dir / "findings" / "legal" / "notes.txt"),
+            {"findings": [{"evidence": [{"file": "x.pdf"}]}]},
+        )
+        # .txt extension — not validated
+        result = finding_schema_guard(tn, ti, run_dir)
+        assert result["decision"] == "allow"
+
+    def test_allows_malformed_json(self, tmp_path: Path) -> None:
+        """Malformed JSON should pass through (other guards handle it)."""
+        run_dir = tmp_path / "run"
+        (run_dir / "findings" / "legal").mkdir(parents=True)
+        result = finding_schema_guard(
+            "Write",
+            {
+                "file_path": str(run_dir / "findings" / "legal" / "acme.json"),
+                "content": "not valid json {{{",
+            },
+            run_dir,
+        )
+        assert result["decision"] == "allow"
+
+    def test_multiple_findings_reports_all_violations(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        (run_dir / "findings" / "producttech").mkdir(parents=True)
+        tn, ti = self._write_input(
+            str(run_dir / "findings" / "producttech" / "acme.json"),
+            {
+                "findings": [
+                    {
+                        "severity": "P1",
+                        "title": "Good finding",
+                        "citations": [{"source_path": "a.pdf", "exact_quote": "text"}],
+                    },
+                    {
+                        "severity": "P2",
+                        "title": "Bad finding",
+                        "evidence": [{"file": "b.pdf"}],
+                    },
+                    {
+                        "severity": "P2",
+                        "title": "Also bad",
+                        "citations": [{"file": "c.pdf"}],
+                    },
+                ]
+            },
+        )
+        result = finding_schema_guard(tn, ti, run_dir)
+        assert result["decision"] == "block"
+        # Should report violations for findings[1] and findings[2], not findings[0]
+        assert "findings[1]" in result["reason"]
+        assert "findings[2]" in result["reason"]
+        assert "findings[0]" not in result["reason"]
+
+    def test_blocks_quote_alias_in_citation(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        (run_dir / "findings" / "legal").mkdir(parents=True)
+        tn, ti = self._write_input(
+            str(run_dir / "findings" / "legal" / "acme.json"),
+            {
+                "findings": [
+                    {
+                        "severity": "P2",
+                        "title": "Issue",
+                        "description": "Desc",
+                        "citations": [{"source_path": "msa.pdf", "quote": "clause text"}],
+                    }
+                ]
+            },
+        )
+        result = finding_schema_guard(tn, ti, run_dir)
+        assert result["decision"] == "block"
+        assert "'quote'" in result["reason"]
+        assert "'exact_quote'" in result["reason"]

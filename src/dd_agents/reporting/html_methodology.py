@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import html
-
 from dd_agents.reporting.html_base import DOMAIN_AGENTS, DOMAIN_DISPLAY, SectionRenderer
 
 
@@ -56,7 +54,7 @@ class MethodologyRenderer(SectionRenderer):
             display = DOMAIN_DISPLAY.get(domain, domain)
             count = d.findings_by_domain.get(domain, 0)
             risk = d.domain_risk_labels.get(domain, "Clean")
-            parts.append(f"<tr><td>{html.escape(display)}</td><td>{count}</td><td>{html.escape(risk)}</td></tr>")
+            parts.append(f"<tr><td>{self.escape(display)}</td><td>{count}</td><td>{self.escape(risk)}</td></tr>")
         parts.append("</tbody></table>")
 
         # Data quality

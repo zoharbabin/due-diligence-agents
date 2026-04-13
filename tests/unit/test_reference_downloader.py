@@ -105,7 +105,7 @@ class TestIsReferenceUrl:
 
         If a URL is referenced in a contract and its path matches a legal
         keyword, it should be downloaded.  The analyzer controls which files
-        are included in each customer's analysis — not the downloader.
+        are included in each subject's analysis — not the downloader.
         """
         # These were previously excluded but are now accepted.
         assert is_reference_url("https://twitter.com/terms") is True
@@ -182,8 +182,8 @@ class TestReferenceDownloader:
         text_dir.mkdir()
 
         url = "https://vendor.com/terms"
-        (text_dir / "customer_a.md").write_text(f"Terms at {url}")
-        (text_dir / "customer_b.md").write_text(f"Also see {url}")
+        (text_dir / "subject_a.md").write_text(f"Terms at {url}")
+        (text_dir / "subject_b.md").write_text(f"Also see {url}")
 
         downloader = ReferenceDownloader(text_dir=text_dir)
         url_map = downloader._scan_for_urls()
@@ -317,7 +317,7 @@ class TestReferenceDownloader:
 
         # Write file with many URLs.
         urls = "\n".join(f"https://vendor{i}.com/terms" for i in range(20))
-        (text_dir / "customer.md").write_text(urls)
+        (text_dir / "subject.md").write_text(urls)
 
         downloader = ReferenceDownloader(text_dir=text_dir, max_downloads=3)
 
@@ -333,7 +333,7 @@ class TestReferenceDownloader:
         text_dir = tmp_path / "text"
         text_dir.mkdir()
 
-        # Customer file references a URL.
+        # Subject file references a URL.
         (text_dir / "customer_msa.md").write_text("Terms at https://vendor.com/terms")
         # Previously downloaded external file references another URL.
         (text_dir / "__external__vendor_com_terms.md").write_text(
@@ -343,7 +343,7 @@ class TestReferenceDownloader:
         downloader = ReferenceDownloader(text_dir=text_dir)
         url_map = downloader._scan_for_urls()
 
-        # Only the URL from the customer file should be found.
+        # Only the URL from the subject file should be found.
         assert "https://vendor.com/terms" in url_map
         assert "https://other-vendor.com/privacy-policy" not in url_map
 
@@ -375,7 +375,7 @@ class TestParallelDownloads:
         text_dir.mkdir()
 
         # Write file with 3 T&C URLs.
-        (text_dir / "customer.md").write_text("See https://a.com/terms and https://b.com/terms and https://c.com/terms")
+        (text_dir / "subject.md").write_text("See https://a.com/terms and https://b.com/terms and https://c.com/terms")
 
         mock_fetch.return_value = b"<html><body>Terms content</body></html>"
         mock_extract.return_value = "# External Reference\n\nThese are the terms and conditions. " * 5

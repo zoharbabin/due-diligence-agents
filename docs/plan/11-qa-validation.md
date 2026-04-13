@@ -1,6 +1,8 @@
 # 11 -- QA and Validation (Audit Gates, 31 DoD Checks, Numerical Validation)
 
-All validation is fail-closed. The Reporting Lead runs every QA check before finalizing the report. Any failure blocks the report. Numbers are validated by counting, not by LLM reasoning.
+All validation is fail-closed. The pre-merge validation runs every QA check before finalizing the report. Any failure blocks the report. Numbers are validated by counting, not by LLM reasoning.
+
+> **Historical note**: This document references the ReportingLead agent which was removed in v0.4.0. Step 23 is now deterministic pre-merge validation (`validation/pre_merge.py`). See `06-agents.md` §11.
 
 ---
 
@@ -10,7 +12,7 @@ Every number that appears in the final Excel report or any generated summary MUS
 
 ### Numerical Manifest
 
-Before Excel generation, build `{RUN_DIR}/numerical_manifest.json`. The manifest MUST use the exact schema below -- a `"numbers"` array of individually traceable entries. Do NOT produce a simplified summary object (e.g., `{"total_customers": 34, "total_findings": 601}`). Such flat summaries lack source traceability, derivation formulas, and cross-checks, and will fail Layer 1 validation.
+Before Excel generation, build `{RUN_DIR}/numerical_manifest.json`. The manifest MUST use the exact schema below -- a `"numbers"` array of individually traceable entries. Do NOT produce a simplified summary object (e.g., `{"total_subjects": 34, "total_findings": 601}`). Such flat summaries lack source traceability, derivation formulas, and cross-checks, and will fail Layer 1 validation.
 
 ```python
 # src/dd_agents/validation/numerical_manifest.py
@@ -46,7 +48,7 @@ These 10 entries are REQUIRED. Additional entries (N011+) are encouraged for any
 
 | ID | Label | Derivation | Used In |
 |----|-------|-----------|---------|
-| N001 | `total_customers` | `COUNT(rows)` in `customers.csv` | Summary sheet, `audit.json.summary.total_customers` |
+| N001 | `total_subjects` | `COUNT(rows)` in `subjects.csv` | Summary sheet, `audit.json.summary.total_subjects` |
 | N002 | `total_files` | `wc -l files.txt` minus exempt files | Summary sheet, `audit.json.summary.total_files` |
 | N003 | `total_findings` | `SUM(len(findings[]))` across all merged JSONs, EXCLUDING `domain_reviewed_no_issues` entries | Summary sheet total row, `audit.json.summary.total_findings` |
 | N004 | `findings_p0` | `COUNT(findings where severity='P0')` across all merged JSONs | Summary sheet P0 column, Wolf_Pack sheet row count |
@@ -77,11 +79,11 @@ N007 = (all P3 findings) - N008
   "numbers": [
     {
       "id": "N001",
-      "label": "total_customers",
+      "label": "total_subjects",
       "value": 183,
-      "source_file": "_dd/forensic-dd/inventory/customers.csv",
-      "derivation": "COUNT(rows) in customers.csv",
-      "used_in": ["Summary sheet", "audit.json.summary.total_customers"],
+      "source_file": "_dd/forensic-dd/inventory/subjects.csv",
+      "derivation": "COUNT(rows) in subjects.csv",
+      "used_in": ["Summary sheet", "audit.json.summary.total_subjects"],
       "verified": true
     },
     {
@@ -98,7 +100,7 @@ N007 = (all P3 findings) - N008
       "label": "total_findings",
       "value": 412,
       "source_file": "{RUN_DIR}/findings/merged/*.json",
-      "derivation": "SUM(len(findings[])) across all merged customer JSONs, EXCLUDING domain_reviewed_no_issues entries",
+      "derivation": "SUM(len(findings[])) across all merged subject JSONs, EXCLUDING domain_reviewed_no_issues entries",
       "used_in": ["Summary sheet total row", "audit.json.summary.total_findings"],
       "cross_check": "P0(3) + P1(24) + P2(89) + P3_substantive(296) = 412. P3_total(308) - clean_result_count(12) = 296.",
       "verified": true
@@ -170,7 +172,7 @@ N007 = (all P3 findings) - N008
 }
 ```
 
-**Additional recommended entries** (N011+): `active_customers_count` (if incremental mode), per-severity gap counts, per-agent finding counts, `governance_resolved_pct`, extraction success rate. Any number used in the Excel Summary sheet or _Metadata sheet SHOULD have a manifest entry.
+**Additional recommended entries** (N011+): `active_subjects_count` (if incremental mode), per-severity gap counts, per-agent finding counts, `governance_resolved_pct`, extraction success rate. Any number used in the Excel Summary sheet or _Metadata sheet SHOULD have a manifest entry.
 
 ---
 
@@ -228,7 +230,7 @@ class Layer2Validator:
         """Re-execute the derivation against the source file."""
         match entry.id:
             case "N001":
-                return self._count_csv_rows("customers.csv")
+                return self._count_csv_rows("subjects.csv")
             case "N002":
                 return self._count_file_lines("files.txt")
             case "N003":
@@ -262,7 +264,7 @@ class Layer2Validator:
 
 Numbers that appear in multiple sources must agree. Cross-check against RAW source files, NOT against `audit.json` (which is produced AFTER the numerical audit at pipeline step 28).
 
-**counts.json schema**: `{"total_customers": int, "total_files": int, "files_by_type": {ext: count}, "customers_by_file_count": {customer: count}, "extraction_stats": {"success": int, "failure": int, "skipped": int}}`. Generated during inventory (step 6) and stored in the FRESH tier at `_dd/forensic-dd/inventory/counts.json`.
+**counts.json schema**: `{"total_subjects": int, "total_files": int, "files_by_type": {ext: count}, "subjects_by_file_count": {subject: count}, "extraction_stats": {"success": int, "failure": int, "skipped": int}}`. Generated during inventory (step 6) and stored in the FRESH tier at `_dd/forensic-dd/inventory/counts.json`.
 
 ```python
 class Layer3Validator:
@@ -271,9 +273,9 @@ class Layer3Validator:
     CROSS_CHECKS = [
         # (description, source_a derivation, source_b derivation)
         (
-            "customers.csv row count == counts.json.total_customers",
-            lambda s: s.count_csv_rows("customers.csv"),
-            lambda s: s.read_json("counts.json")["total_customers"],
+            "subjects.csv row count == counts.json.total_subjects",
+            lambda s: s.count_csv_rows("subjects.csv"),
+            lambda s: s.read_json("counts.json")["total_subjects"],
         ),
         (
             "sum(files_by_group) == total_files in counts.json",
@@ -291,7 +293,7 @@ class Layer3Validator:
             lambda s: s.count_file_lines("files.txt"),
         ),
         (
-            "sum(per-customer finding counts) == manifest total_findings",
+            "sum(per-subject finding counts) == manifest total_findings",
             lambda s: s.count_findings(exclude_clean=True),
             lambda s: s.manifest_value("N003"),
         ),
@@ -370,7 +372,7 @@ class Layer5Validator:
         if n003 and n004 and n004.value > n003.value:
             failures.append("P0 findings count > total findings count")
 
-        # Customer count change >20% between runs without data room changes
+        # Subject count change >20% between runs without data room changes
         if prior_manifest:
             prior_n001 = prior_manifest.get("N001")
             curr_n001 = manifest.get("N001")
@@ -378,12 +380,12 @@ class Layer5Validator:
                 pct_change = abs(curr_n001.value - prior_n001.value) / max(prior_n001.value, 1)
                 if pct_change > 0.20:
                     failures.append(
-                        f"Customer count changed by {pct_change:.0%} "
+                        f"Subject count changed by {pct_change:.0%} "
                         f"({prior_n001.value} -> {curr_n001.value})"
                     )
 
-        # File count = 0 for a customer with a directory
-        # (checked per-customer during merge)
+        # File count = 0 for a subject with a directory
+        # (checked per-subject during merge)
 
         # Gap count decreased between runs
         if prior_manifest:
@@ -396,7 +398,7 @@ class Layer5Validator:
                 )
 
         # ARR values negative or exceed configurable threshold
-        # (checked per-customer during reconciliation)
+        # (checked per-subject during reconciliation)
 
         return LayerResult(layer=5, passed=len(failures) == 0, failures=failures)
 ```
@@ -407,7 +409,7 @@ class Layer5Validator:
 
 The numerical audit is a BLOCKING gate between analysis completion and Excel generation. It runs at pipeline step 27.
 
-When the numerical audit gate blocks, the Reporting Lead agent is responsible for resolution. The Reporting Lead receives the audit failure details and must either (1) correct the numerical inconsistency in the findings, or (2) add an explicit `numerical_override` annotation with justification. The pipeline re-runs the numerical audit after correction.
+When the numerical audit gate blocks, the pre-merge validation agent is responsible for resolution. The pre-merge validation receives the audit failure details and must either (1) correct the numerical inconsistency in the findings, or (2) add an explicit `numerical_override` annotation with justification. The pipeline re-runs the numerical audit after correction.
 
 ### Gate Protocol
 
@@ -491,14 +493,14 @@ class NumericalAuditGate:
 
 ## QA Checks (Section 8)
 
-The Reporting Lead runs ALL QA checks before finalizing. This is fail-closed -- any failure blocks the report.
+The pre-merge validation runs ALL QA checks before finalizing. This is fail-closed -- any failure blocks the report.
 
 ### 8a. Agent Manifest Reconciliation
 
 Verify all 4 agent manifests (`{RUN_DIR}/findings/{agent}/coverage_manifest.json`):
-- `customers_assigned == customers_processed == TOTAL` customer count
+- `subjects_assigned == subjects_processed == TOTAL` subject count
 - `files_assigned == files_processed`
-- Every customer status: `"complete"`
+- Every subject status: `"complete"`
 
 ```python
 # src/dd_agents/validation/qa_checks.py
@@ -514,12 +516,12 @@ class ManifestReconciliationCheck:
                 state.run_dir / "findings" / agent / "coverage_manifest.json"
             )
             manifest = json.loads(manifest_path.read_text())
-            assigned = manifest["customers_assigned"]
-            processed = manifest["customers_processed"]
-            match = assigned == processed == state.total_customers
+            assigned = manifest["subjects_assigned"]
+            processed = manifest["subjects_processed"]
+            match = assigned == processed == state.total_subjects
             details[agent] = {
-                "customers_assigned": assigned,
-                "customers_processed": processed,
+                "subjects_assigned": assigned,
+                "subjects_processed": processed,
                 "match": match,
             }
         all_match = all(d["match"] for d in details.values())
@@ -574,9 +576,9 @@ class FileCoverageCheck:
 
 ### 8b2. Audit Log Verification
 
-All 4 specialists AND the Reporting Lead MUST produce non-empty `audit_log.jsonl`. Missing audit logs are a QA failure.
+All 4 specialists AND the pre-merge validation MUST produce non-empty `audit_log.jsonl`. Missing audit logs are a QA failure.
 
-For each audit log, spot-check at least 3 entries to verify required fields per `audit-entry.schema.json`: `ts` (ISO-8601), `agent`, `skill` (must be "forensic-dd"), `action`, `target`, `result`. Any entry missing `agent` or `skill` fields is a QA warning (the Reporting Lead should repair by adding the correct values based on the log's directory path).
+For each audit log, spot-check at least 3 entries to verify required fields per `audit-entry.schema.json`: `ts` (ISO-8601), `agent`, `skill` (must be "forensic-dd"), `action`, `target`, `result`. Any entry missing `agent` or `skill` fields is a QA warning (the pre-merge validation should repair by adding the correct values based on the log's directory path).
 
 ```python
 class AuditLogCheck:
@@ -608,31 +610,31 @@ class AuditLogCheck:
         )
 ```
 
-### 8c. Customer Coverage Audit
+### 8c. Subject Coverage Audit
 
-Every customer must have output from ALL 4 agents (Legal AND Finance AND Commercial AND ProductTech).
+Every subject must have output from ALL 4 agents (Legal AND Finance AND Commercial AND ProductTech).
 
 ```python
 class CustomerCoverageCheck:
-    """QA 8c: Every customer has all 4 agent outputs."""
+    """QA 8c: Every subject has all 4 agent outputs."""
     DOD_CHECKS = [1]
 
     def run(self, state: PipelineState) -> CheckResult:
         missing_outputs = []
-        for customer in state.customer_safe_names:
+        for subject in state.subject_safe_names:
             for agent in AGENT_NAMES:
-                path = state.run_dir / "findings" / agent / f"{customer}.json"
+                path = state.run_dir / "findings" / agent / f"{subject}.json"
                 if not path.exists():
-                    missing_outputs.append({"customer": customer, "agent": agent})
+                    missing_outputs.append({"subject": subject, "agent": agent})
 
         return CheckResult(
-            name="customer_coverage",
+            name="subject_coverage",
             passed=len(missing_outputs) == 0,
             dod_checks=self.DOD_CHECKS,
             details={
-                "total_customers": state.total_customers,
-                "customers_with_all_4_agents": (
-                    state.total_customers - len({m["customer"] for m in missing_outputs})
+                "total_subjects": state.total_subjects,
+                "subjects_with_all_4_agents": (
+                    state.total_subjects - len({m["subject"] for m in missing_outputs})
                 ),
                 "missing_outputs": missing_outputs,
             },
@@ -652,14 +654,14 @@ class GovernanceCompletenessCheck:
         unresolved_count = 0
         unresolved_with_gaps = 0
 
-        for customer_file in (state.run_dir / "findings" / "merged").glob("*.json"):
-            data = json.loads(customer_file.read_text())
+        for subject_file in (state.run_dir / "findings" / "merged").glob("*.json"):
+            data = json.loads(subject_file.read_text())
             graph = data.get("governance_graph", {})
             for file_path, gov_info in graph.items():
                 governed_by = gov_info.get("governed_by", "UNRESOLVED")
                 if governed_by == "UNRESOLVED":
                     unresolved_count += 1
-                    if self._has_corresponding_gap(customer_file.stem, file_path, state):
+                    if self._has_corresponding_gap(subject_file.stem, file_path, state):
                         unresolved_with_gaps += 1
 
         return CheckResult(
@@ -719,32 +721,32 @@ class CitationIntegrityCheck:
 
 ### 8f. Gap Completeness Audit
 
-Run expected contract pack checklist for every customer. Log any missing items not already tracked.
+Run expected contract pack checklist for every subject. Log any missing items not already tracked.
 
 ```python
 class GapCompletenessCheck:
-    """QA 8f: Expected docs checked, ghost customers logged."""
+    """QA 8f: Expected docs checked, ghost subjects logged."""
     DOD_CHECKS = [6, 9]
 
     def run(self, state: PipelineState) -> CheckResult:
         referenced_missing = self._check_referenced_missing_docs(state)
-        ghost_customers = self._check_ghost_customers(state)
+        ghost_subjects = self._check_ghost_subjects(state)
 
         return CheckResult(
             name="gap_completeness",
-            passed=referenced_missing and ghost_customers["count"] == ghost_customers["logged"],
+            passed=referenced_missing and ghost_subjects["count"] == ghost_subjects["logged"],
             dod_checks=self.DOD_CHECKS,
             details={
                 "referenced_missing_docs_logged": referenced_missing,
-                "ghost_customers_logged": ghost_customers["count"] == ghost_customers["logged"],
-                "ghost_count": ghost_customers["count"],
+                "ghost_subjects_logged": ghost_subjects["count"] == ghost_subjects["logged"],
+                "ghost_count": ghost_subjects["count"],
             },
         )
 ```
 
 ### 8g. Cross-Reference Completeness Audit
 
-Every reference file processed by at least one agent. Ghost customer gaps (P0) logged. Phantom contract gaps logged. Data_Reconciliation sheet populated.
+Every reference file processed by at least one agent. Ghost subject gaps (P0) logged. Phantom contract gaps logged. Data_Reconciliation sheet populated.
 
 ```python
 class CrossReferenceCheck:
@@ -752,7 +754,7 @@ class CrossReferenceCheck:
     DOD_CHECKS = [7, 8]
 
     def run(self, state: PipelineState) -> CheckResult:
-        cross_patterns = self._verify_cross_customer_patterns(state)
+        cross_patterns = self._verify_cross_subject_patterns(state)
         reconciliation = self._verify_reconciliation_complete(state)
         phantom_count = self._count_phantom_gaps(state)
 
@@ -761,7 +763,7 @@ class CrossReferenceCheck:
             passed=cross_patterns and reconciliation,
             dod_checks=self.DOD_CHECKS,
             details={
-                "cross_customer_patterns_checked": cross_patterns,
+                "cross_subject_patterns_checked": cross_patterns,
                 "reconciliation_complete": reconciliation,
                 "phantom_count": phantom_count,
             },
@@ -770,25 +772,29 @@ class CrossReferenceCheck:
 
 ### 8g2. Domain Coverage Validation
 
-Every enabled analysis domain MUST have at least one finding OR a `domain_reviewed_no_issues` entry for every customer.
+Every enabled analysis domain MUST have at least one finding OR a `domain_reviewed_no_issues` entry for every subject.
 
 Coverage < 100% triggers a gap finding listing uncovered domains.
 
-Domain coverage percentage = `domains_with_output / total_enabled_domains` per customer.
+Domain coverage percentage = `domains_with_output / total_enabled_domains` per subject.
+
+**Coverage gap findings**: Step 17 (coverage gate) writes gap findings as proper agent output files in `findings/{agent}/{subject}.json` when an agent fails to produce output for a subject after re-spawn. These files count as agent coverage for domain coverage validation — a subject with a gap finding from an agent has that domain covered (the gap explicitly documents what was missing).
+
+**Floating-point tolerance**: Domain coverage comparison uses FP-safe tolerance (`>= threshold - 1e-9`) rather than exact comparison, since gap-based coverage percentages may produce values like 0.9999999 instead of 1.0.
 
 **Category validation** (warn-not-block): For each finding, verify its `category` appears in at least one enabled domain's `expected_finding_categories`. Log a warning (not a QA failure) for any finding using an unexpected category.
 
 ```python
 class DomainCoverageCheck:
-    """QA 8g2: Every domain has findings or clean-result per customer."""
+    """QA 8g2: Every domain has findings or clean-result per subject."""
     DOD_CHECKS = [12]
 
     def run(self, state: PipelineState) -> CheckResult:
-        customers_missing = []
+        subjects_missing = []
         category_warnings = []
 
-        for customer in state.customer_safe_names:
-            merged = self._load_merged(customer)
+        for subject in state.subject_safe_names:
+            merged = self._load_merged(subject)
             findings = merged.get("findings", [])
             covered_domains = set()
             for f in findings:
@@ -796,25 +802,25 @@ class DomainCoverageCheck:
                 # Category validation (warn, not block)
                 if f.get("category") not in self.expected_categories:
                     category_warnings.append(
-                        f"{customer}: unexpected category '{f.get('category')}'"
+                        f"{subject}: unexpected category '{f.get('category')}'"
                     )
 
             if covered_domains != self.enabled_domains:
                 missing = self.enabled_domains - covered_domains
-                customers_missing.append({
-                    "customer": customer,
+                subjects_missing.append({
+                    "subject": subject,
                     "missing_domains": list(missing),
                 })
 
-        coverage = 1.0 - (len(customers_missing) / max(len(state.customer_safe_names), 1))
+        coverage = 1.0 - (len(subjects_missing) / max(len(state.subject_safe_names), 1))
 
         return CheckResult(
             name="domain_coverage",
-            passed=len(customers_missing) == 0,
+            passed=len(subjects_missing) == 0,
             dod_checks=self.DOD_CHECKS,
             details={
                 "coverage_pct": coverage,
-                "customers_with_missing_domains": customers_missing,
+                "subjects_with_missing_domains": subjects_missing,
                 "category_warnings": category_warnings,
             },
         )
@@ -834,19 +840,19 @@ Write `{RUN_DIR}/audit.json`. This is the master audit record. Each check maps t
       "passed": true,
       "dod_checks": [3],
       "details": {
-        "legal": {"customers_assigned": 34, "customers_processed": 34, "match": true},
-        "finance": {"customers_assigned": 34, "customers_processed": 34, "match": true},
-        "commercial": {"customers_assigned": 34, "customers_processed": 34, "match": true},
-        "producttech": {"customers_assigned": 34, "customers_processed": 34, "match": true}
+        "legal": {"subjects_assigned": 34, "subjects_processed": 34, "match": true},
+        "finance": {"subjects_assigned": 34, "subjects_processed": 34, "match": true},
+        "commercial": {"subjects_assigned": 34, "subjects_processed": 34, "match": true},
+        "producttech": {"subjects_assigned": 34, "subjects_processed": 34, "match": true}
       }
     },
-    "customer_coverage": {
+    "subject_coverage": {
       "passed": true,
       "dod_checks": [1],
-      "total_customers": 34,
-      "customers_with_all_4_agents": 34,
+      "total_subjects": 34,
+      "subjects_with_all_4_agents": 34,
       "missing_outputs": [],
-      "_rule": "EVERY customer MUST have a {customer_safe_name}.json from ALL 4 agents. passed=false if ANY customer lacks ANY agent output."
+      "_rule": "EVERY subject MUST have a {subject_safe_name}.json from ALL 4 agents. passed=false if ANY subject lacks ANY agent output."
     },
     "file_coverage": {
       "passed": true,
@@ -873,13 +879,13 @@ Write `{RUN_DIR}/audit.json`. This is the master audit record. Each check maps t
       "passed": true,
       "dod_checks": [6, 9],
       "referenced_missing_docs_logged": true,
-      "ghost_customers_logged": true,
+      "ghost_subjects_logged": true,
       "ghost_count": 0
     },
     "cross_reference_completeness": {
       "passed": true,
       "dod_checks": [7, 8],
-      "cross_customer_patterns_checked": true,
+      "cross_subject_patterns_checked": true,
       "reconciliation_complete": true,
       "phantom_count": 0
     },
@@ -887,7 +893,7 @@ Write `{RUN_DIR}/audit.json`. This is the master audit record. Each check maps t
       "passed": true,
       "dod_checks": [12],
       "coverage_pct": 1.0,
-      "customers_with_missing_domains": [],
+      "subjects_with_missing_domains": [],
       "category_warnings": []
     },
     "audit_logs": {
@@ -907,7 +913,7 @@ Write `{RUN_DIR}/audit.json`. This is the master audit record. Each check maps t
     "merge_dedup": {
       "passed": true,
       "dod_checks": [13],
-      "merged_customer_count": 34,
+      "merged_subject_count": 34,
       "total_merged_findings": 412
     },
     "report_sheets": {
@@ -931,7 +937,7 @@ Write `{RUN_DIR}/audit.json`. This is the master audit record. Each check maps t
       "dod_checks": [18],
       "applicable": true,
       "reconciliation_file_exists": true,
-      "_rule": "Only checked if deal-config.json has source_of_truth.customer_database. Set applicable=false and passed=true if not applicable."
+      "_rule": "Only checked if deal-config.json has source_of_truth.subject_database. Set applicable=false and passed=true if not applicable."
     },
     "report_consistency": {
       "passed": true,
@@ -943,7 +949,7 @@ Write `{RUN_DIR}/audit.json`. This is the master audit record. Each check maps t
     }
   },
   "summary": {
-    "total_customers": 34,
+    "total_subjects": 34,
     "total_files": 431,
     "total_findings": 412,
     "total_gaps": 67,
@@ -961,7 +967,7 @@ Write `{RUN_DIR}/audit.json`. This is the master audit record. Each check maps t
 |--------------|-----------|-----------|
 | Judge quality checks | 20, 21, 22, 23 | `judge.enabled` in deal-config |
 | Incremental mode checks | 24, 25, 26, 27 | `execution_mode == "incremental"` |
-| Contract date reconciliation | 18 | `source_of_truth.customer_database` exists (otherwise `applicable: false`) |
+| Contract date reconciliation | 18 | `source_of_truth.subject_database` exists (otherwise `applicable: false`) |
 | Report diff | 30 | Set to `true` if no prior run exists |
 
 All other checks (DoD 1-17, 19, 28-29) are ALWAYS required.
@@ -1102,29 +1108,29 @@ Every applicable check must pass before the report is finalized. If ANY fails, D
 
 | # | Check | Description | QA Section | audit.json Key |
 |---|-------|-------------|-----------|----------------|
-| 1 | Customer outputs complete | `customers_missing_outputs[]` is empty -- every customer has output from ALL 4 agents | 8c | `customer_coverage` |
-| 2 | File coverage complete | `files_uncovered[]` is empty (includes both customer files AND reference files) | 8b | `file_coverage` |
-| 3 | Agent manifests valid | All 4 agent manifests show `customers_assigned == customers_processed == TOTAL` count (or scoped count if incremental) | 8a | `agent_manifest_reconciliation` |
-| 4 | Governance resolved | Every customer has governance resolved for all files OR explicit gaps | 8d | `governance_completeness` |
+| 1 | Subject outputs complete | `subjects_missing_outputs[]` is empty -- every subject has output from ALL 4 agents | 8c | `subject_coverage` |
+| 2 | File coverage complete | `files_uncovered[]` is empty (includes both subject files AND reference files) | 8b | `file_coverage` |
+| 3 | Agent manifests valid | All 4 agent manifests show `subjects_assigned == subjects_processed == TOTAL` count (or scoped count if incremental) | 8a | `agent_manifest_reconciliation` |
+| 4 | Governance resolved | Every subject has governance resolved for all files OR explicit gaps | 8d | `governance_completeness` |
 | 5 | Citations valid | Every finding has a citation with non-empty `exact_quote` pointing to a real file | 8e | `citation_integrity` |
 | 6 | Gaps tracked | Every referenced-but-missing document is logged as a gap | 8f | `gap_completeness` |
-| 7 | Cross-customer patterns | Cross-customer pattern check has run | 8g | `cross_reference_completeness` |
-| 8 | Cross-reference reconciliation | Completed for ALL customers with reference data | 8g | `cross_reference_completeness` |
-| 9 | Ghost customers | All ghost customers logged as P0 gaps | 8f | `gap_completeness` |
+| 7 | Cross-subject patterns | Cross-subject pattern check has run | 8g | `cross_reference_completeness` |
+| 8 | Cross-reference reconciliation | Completed for ALL subjects with reference data | 8g | `cross_reference_completeness` |
+| 9 | Ghost subjects | All ghost subjects logged as P0 gaps | 8f | `gap_completeness` |
 | 10 | Reference files processed | All reference files processed by at least one agent | 8b | `file_coverage` |
-| 11 | Audit logs exist | All 4 specialist audit logs AND Reporting Lead audit log exist at `{RUN_DIR}/audit/{agent}/audit_log.jsonl` | 8b2 | `audit_logs` |
-| 12 | Domain coverage | Every enabled analysis domain has findings OR `domain_reviewed_no_issues` entry for every customer | 8g2 | `domain_coverage` |
+| 11 | Audit logs exist | All 4 specialist audit logs AND pre-merge validation audit log exist at `{RUN_DIR}/audit/{agent}/audit_log.jsonl` | 8b2 | `audit_logs` |
+| 12 | Domain coverage | Every enabled analysis domain has findings OR `domain_reviewed_no_issues` entry for every subject | 8g2 | `domain_coverage` |
 
 ### Reporting and Audit (13-19) -- ALWAYS REQUIRED
 
 | # | Check | Description | QA Section | audit.json Key |
 |---|-------|-------------|-----------|----------------|
-| 13 | Merge/dedup complete | Reporting Lead merged and deduplicated findings from all 4 agents per customer | 8h | `merge_dedup` |
+| 13 | Merge/dedup complete | pre-merge validation merged and deduplicated findings from all 4 agents per subject | 8h | `merge_dedup` |
 | 14 | Excel sheets populated | Excel contains ALL required sheets (Summary, Wolf_Pack, Missing_Docs_Gaps, Data_Reconciliation, etc.) | 8h | `report_sheets` |
 | 15 | audit.json valid | `{RUN_DIR}/audit.json` exists with `audit_passed: true` | 8h | (self-referential) |
 | 16 | Entity resolution log | Entity resolution log exists with zero unmatched entities that have aliases available | 8h | `entity_resolution` |
 | 17 | Numerical manifest valid | Numerical manifest exists with all layers validated | 8i | `numerical_manifest` |
-| 18 | Contract dates reconciled | If `customer_database` exists: contract date reconciliation completed | 8h | `contract_date_reconciliation` |
+| 18 | Contract dates reconciled | If `subject_database` exists: contract date reconciliation completed | 8h | `contract_date_reconciliation` |
 | 19 | Extraction quality | Extraction quality log exists, covers all non-plaintext files, and zero unreadable files unless logged as gaps | 8i2 | `extraction_quality` |
 
 ### Judge Quality (20-23) -- CONDITIONAL: only if judge.enabled
@@ -1140,7 +1146,7 @@ Every applicable check must pass before the report is finalized. If ANY fails, D
 
 | # | Check | Description | QA Section | audit.json Key |
 |---|-------|-------------|-----------|----------------|
-| 24 | Classification exists | `{RUN_DIR}/classification.json` exists with valid status for every customer | -- | `incremental_classification` |
+| 24 | Classification exists | `{RUN_DIR}/classification.json` exists with valid status for every subject | -- | `incremental_classification` |
 | 25 | Carried-forward metadata | Every carried-forward finding has `_carried_forward: true` and `_original_run_id` | -- | `incremental_carry_forward` |
 | 26 | Run history updated | `_dd/run_history.json` updated with current run | -- | `incremental_run_history` |
 | 27 | Prior run archived | Prior run data archived intact, `{RUN_DIR}/metadata.json` finalized with `file_checksums` | -- | `incremental_archive` |
@@ -1224,7 +1230,7 @@ class QARunner:
         has_db = bool(
             self.deal_config
             .get("source_of_truth", {})
-            .get("customer_database")
+            .get("subject_database")
         )
         if has_db:
             for check_cls in self.CONDITIONAL_CHECKS["contract_dates"]:
@@ -1237,7 +1243,7 @@ class QARunner:
                 "dod_checks": [18],
                 "applicable": False,
                 "reconciliation_file_exists": False,
-                "_rule": "Not applicable -- no source_of_truth.customer_database in deal-config.",
+                "_rule": "Not applicable -- no source_of_truth.subject_database in deal-config.",
             }
 
         # Build audit.json
@@ -1262,7 +1268,7 @@ class QARunner:
         """Build summary section from numerical manifest."""
         manifest = self._load_manifest()
         return {
-            "total_customers": manifest.get("N001").value,
+            "total_subjects": manifest.get("N001").value,
             "total_files": manifest.get("N002").value,
             "total_findings": manifest.get("N003").value,
             "total_gaps": manifest.get("N009").value,
@@ -1286,7 +1292,7 @@ Every DoD check maps to an `audit.json` check section. This ensures the audit ou
 
 | DoD # | audit.json Check Key | Conditional? |
 |-------|---------------------|-------------|
-| 1 | `customer_coverage` | No |
+| 1 | `subject_coverage` | No |
 | 2 | `file_coverage` | No |
 | 3 | `agent_manifest_reconciliation` | No |
 | 4 | `governance_completeness` | No |
@@ -1303,7 +1309,7 @@ Every DoD check maps to an `audit.json` check section. This ensures the audit ou
 | 15 | (self-referential: `audit.json` existence) | No |
 | 16 | `entity_resolution` | No |
 | 17 | `numerical_manifest` | No |
-| 18 | `contract_date_reconciliation` | Yes: `source_of_truth.customer_database` |
+| 18 | `contract_date_reconciliation` | Yes: `source_of_truth.subject_database` |
 | 19 | `extraction_quality` | No |
 | 20 | `judge_quality` | Yes: `judge.enabled` |
 | 21 | `judge_quality` | Yes: `judge.enabled` |
@@ -1325,7 +1331,7 @@ The validation checks integrate into the main pipeline at specific steps:
 
 | Pipeline Step | Validation Action | Blocking? |
 |---------------|------------------|-----------|
-| 17 | Customer coverage gate (per-agent file count) | Yes |
+| 17 | Subject coverage gate (per-agent file count) | Yes |
 | 26 | Build numerical manifest | -- |
 | 27 | Numerical audit Layers 1-3, 5 | Yes |
 | 28 | Full QA audit (all 8a-8k checks) | Yes |

@@ -31,7 +31,7 @@ pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/ && ruff
 - [x] Implement `src/dd_agents/utils/constants.py` — tier names, agent names, severity levels, paths
 
 ### 1.3 Data Models
-**Status**: Complete — 102 model classes across 12 files
+**Status**: Complete — 137 model classes across 14 files
 - [x] Write `tests/unit/test_models/test_config.py` — 60 tests
 - [x] Implement `src/dd_agents/models/config.py` — 19 config models (DealConfig hierarchy)
 - [x] Implement `src/dd_agents/models/finding.py` — 13 finding/citation models
@@ -314,14 +314,14 @@ pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/ && ruff
 
 ### 8.4 Knowledge-Enriched Search (#181)
 **Status**: Complete — 15 tests
-- [x] Implement `src/dd_agents/knowledge/query.py` — KB search interface
-- [x] Write `tests/unit/test_knowledge_query.py` — 15 tests
+- [x] Implement `src/dd_agents/knowledge/search_context.py` — KB search interface
+- [x] Write `tests/unit/test_knowledge_search.py` — 15 tests
 
 ### 8.5 Knowledge Compounding / File-back (#182)
 **Status**: Complete — 25 tests
 - [x] Implement `src/dd_agents/knowledge/compiler.py` — Findings → articles compilation
 - [x] Implement `src/dd_agents/knowledge/filing.py` — File-back to data room
-- [x] Write `tests/unit/test_knowledge_compiler.py` — 25 tests
+- [x] Write compiler tests in `tests/unit/test_knowledge_base.py` — 25 tests
 
 ### 8.6 Finding Lineage (#183)
 **Status**: Complete — 22 tests
@@ -330,8 +330,8 @@ pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/ && ruff
 
 ### 8.7 Agent Context Enrichment (#184)
 **Status**: Complete — 12 tests
-- [x] Implement `src/dd_agents/knowledge/enrichment.py` — AgentKnowledgeEnricher, KnowledgeContextBuilder
-- [x] Write `tests/unit/test_knowledge_enrichment.py` — 12 tests
+- [x] Implement `src/dd_agents/knowledge/prompt_enrichment.py` — AgentKnowledgeEnricher, KnowledgeContextBuilder
+- [x] Write `tests/unit/test_agent_enrichment.py` — 12 tests
 
 ### 8.8 Knowledge Health Checks (#185)
 **Status**: Complete — 25 tests
@@ -347,8 +347,8 @@ pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/ && ruff
 - [x] Update `knowledge/__init__.py` with all public exports
 
 ### Phase 8 Acceptance
-- [x] `pytest tests/unit/ -x -q` — 3240+ tests pass (3289 as of v0.5.3)
-- [x] `mypy src/ --strict` — clean (181 source files)
+- [x] `pytest tests/unit/ -x -q` — 3323 tests pass (as of v1.0.2)
+- [x] `mypy src/ --strict` — clean (182 source files)
 - [x] `ruff check src/ tests/` — clean
 
 ---
@@ -394,8 +394,8 @@ Features shipped after the core 8 phases were complete. See [CHANGELOG.md](CHANG
 
 The project is complete when ALL of the following are true:
 - [x] All 8 phases have status "Complete"
-- [x] `pytest tests/ -x` passes — 3304 unit tests, 17 integration, 24 E2E
-- [x] `mypy src/ --strict` passes — 0 errors across 181 source files
+- [x] `pytest tests/ -x` passes — 3323 unit tests, 17 integration, 24 E2E
+- [x] `mypy src/ --strict` passes — 0 errors across 182 source files
 - [x] `ruff check src/ tests/` is clean
 - [x] `ruff format --check src/ tests/` is clean
 
@@ -405,9 +405,9 @@ The project is complete when ALL of the following are true:
 
 | Category | Count |
 |----------|-------|
-| Unit tests | 3304 |
+| Unit tests | 3323 |
 | Integration tests (pipeline steps 1-11) | 17 |
 | E2E tests (pre-agent: config, tiers, discovery, registry, run manager, cache, Bedrock auth) | 7 |
 | E2E tests (API-dependent: dry run, full pipeline, incremental) | 2 |
 | E2E tests (local-only: 15 live agent validation tests, `@pytest.mark.local`) | 15 |
-| **Total** | **3304 unit + 17 integration + 24 E2E** |
+| **Total** | **3323 unit + 17 integration + 24 E2E** |

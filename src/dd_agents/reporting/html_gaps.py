@@ -10,8 +10,6 @@ appendix with three collapsible sub-sections:
 
 from __future__ import annotations
 
-import html
-
 from dd_agents.reporting.html_base import SectionRenderer
 
 
@@ -77,7 +75,7 @@ class GapRenderer(SectionRenderer):
                 parts.append("</div>")
                 parts.append("<div class='metric-card'><div class='label'>By Type</div>")
                 for t, c in sorted(type_counts.items()):
-                    parts.append(f"<div><strong>{html.escape(t)}</strong>: {c}</div>")
+                    parts.append(f"<div><strong>{self.escape(t)}</strong>: {c}</div>")
                 parts.append("</div>")
                 parts.append("</div>")
 
@@ -91,14 +89,14 @@ class GapRenderer(SectionRenderer):
                 )
                 for g in material_gaps:
                     display_name = self._resolve_display_name(g)
-                    entity_name = html.escape(display_name)
-                    prio = html.escape(str(g.get("priority", "")))
-                    gtype = html.escape(str(g.get("gap_type", "")))
-                    item = html.escape(str(g.get("missing_item", "")))
-                    risk = html.escape(str(g.get("risk_if_missing", "")))
-                    why = html.escape(str(g.get("why_needed", "")))
-                    request = html.escape(str(g.get("request_to_company", "")))
-                    agent = html.escape(str(g.get("agent", "")))
+                    entity_name = self.escape(display_name)
+                    prio = self.escape(str(g.get("priority", "")))
+                    gtype = self.escape(str(g.get("gap_type", "")))
+                    item = self.escape(str(g.get("missing_item", "")))
+                    risk = self.escape(str(g.get("risk_if_missing", "")))
+                    why = self.escape(str(g.get("why_needed", "")))
+                    request = self.escape(str(g.get("request_to_company", "")))
+                    agent = self.escape(str(g.get("agent", "")))
                     parts.append(
                         f"<tr><td>{entity_name}</td><td>{prio}</td><td>{gtype}</td>"
                         f"<td>{item}</td><td>{risk}</td><td>{why}</td><td>{request}</td><td>{agent}</td></tr>"
@@ -135,9 +133,9 @@ class GapRenderer(SectionRenderer):
                 )
                 for g in noise_gaps:
                     display_name = self._resolve_display_name(g)
-                    entity_name = html.escape(display_name)
-                    item = html.escape(str(g.get("missing_item", "")))
-                    risk = html.escape(str(g.get("risk_if_missing", "")))
+                    entity_name = self.escape(display_name)
+                    item = self.escape(str(g.get("missing_item", "")))
+                    risk = self.escape(str(g.get("risk_if_missing", "")))
                     parts.append(f"<tr><td>{entity_name}</td><td>{item}</td><td>{risk}</td></tr>")
                 parts.append("</tbody></table>")
 

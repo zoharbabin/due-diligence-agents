@@ -1,6 +1,6 @@
 """Self-contained interactive HTML report generator.
 
-Generates a single HTML file with no external dependencies.
+Generates a single HTML file (Mermaid.js loaded from CDN for governance graphs).
 Top-down executive M&A decision-support report with progressive drill-down:
 
 Level 0: Deal-Level Decision View (go/no-go signals)

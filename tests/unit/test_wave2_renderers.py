@@ -32,13 +32,13 @@ def _make_data(**kwargs: Any) -> ReportComputedData:
 def _make_finding(
     severity: str = "P2",
     title: str = "Test finding",
-    customer: str = "Customer A",
+    subject: str = "Subject A",
 ) -> dict[str, Any]:
     return {
         "severity": severity,
         "title": title,
-        "_subject": customer,
-        "_subject_safe_name": "customer_a",
+        "_subject": subject,
+        "_subject_safe_name": "subject_a",
     }
 
 
@@ -166,13 +166,13 @@ class TestDiscountRenderer:
         data = _make_data(
             discount_analysis={
                 "total_pricing_findings": 3,
-                "customers_with_discounts": 2,
+                "subjects_with_discounts": 2,
                 "avg_discount_pct": 15.5,
                 "max_discount_pct": 40.0,
                 "distribution": {"0-10%": 1, "10-20%": 1, "20%+": 1},
                 "top_discounted": [
-                    {"entity": "Customer A", "discount_pct": 40.0},
-                    {"entity": "Customer B", "discount_pct": 15.0},
+                    {"entity": "Subject A", "discount_pct": 40.0},
+                    {"entity": "Subject B", "discount_pct": 15.0},
                 ],
                 "findings": [_make_finding()],
             }
@@ -183,14 +183,14 @@ class TestDiscountRenderer:
         assert "15.5%" in html
         assert "40.0%" in html
         assert "Top Discounted Entities" in html
-        assert "Customer A" in html
+        assert "Subject A" in html
 
     def test_top_discounted_uses_display_name(self) -> None:
         data = _make_data(
             display_names={"acme_corp": "Acme Corporation"},
             discount_analysis={
                 "total_pricing_findings": 1,
-                "customers_with_discounts": 1,
+                "subjects_with_discounts": 1,
                 "distribution": {},
                 "top_discounted": [
                     {"entity": "acme_corp", "discount_pct": 25.0},
@@ -207,7 +207,7 @@ class TestDiscountRenderer:
         data = _make_data(
             discount_analysis={
                 "total_pricing_findings": 1,
-                "customers_with_discounts": 1,
+                "subjects_with_discounts": 1,
                 "distribution": {},
                 "top_discounted": [
                     {"entity": "<script>alert(1)</script>", "discount_pct": 10.0},
@@ -619,14 +619,14 @@ class TestCrossDomainRenderer:
             "cross_domain_risks",
             [
                 {
-                    "entity": "Customer A",
+                    "entity": "Subject A",
                     "domain_count": 3,
                     "finding_count": 7,
                     "risk_score": 8.5,
                     "has_p0": True,
                 },
                 {
-                    "entity": "Customer B",
+                    "entity": "Subject B",
                     "domain_count": 2,
                     "finding_count": 3,
                     "risk_score": 4.0,
@@ -638,9 +638,9 @@ class TestCrossDomainRenderer:
         html = r.render()
         assert "sec-cross-domain" in html
         assert "Cross-Domain Risk Correlation" in html
-        assert "Customer A" in html
+        assert "Subject A" in html
         assert "8.5" in html
-        assert "alert-critical" in html  # P0 alert for Customer A
+        assert "alert-critical" in html  # P0 alert for Subject A
 
     def test_xss_escaping_entity(self) -> None:
         data = _make_data()

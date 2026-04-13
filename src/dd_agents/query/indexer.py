@@ -16,6 +16,8 @@ if TYPE_CHECKING:
 
 from pydantic import BaseModel, Field
 
+from dd_agents.utils.constants import ALL_SEVERITIES
+
 logger = logging.getLogger(__name__)
 
 
@@ -117,7 +119,7 @@ class FindingIndexer:
         parts = [f"{total} findings indexed."]
 
         sev_parts: list[str] = []
-        for sev in ["P0", "P1", "P2", "P3", "P4"]:
+        for sev in [*ALL_SEVERITIES, "P4"]:
             count = len(by_severity.get(sev, []))
             if count:
                 sev_parts.append(f"{count} {sev}")

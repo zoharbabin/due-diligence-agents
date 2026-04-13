@@ -111,6 +111,7 @@ Options:
   --groups TEXT         Filter to specific groups (comma-separated, case-insensitive partial match)
   --concurrency N      Parallel API calls, 1-20 (default: 5)
   --yes / -y           Skip cost confirmation prompt
+  --no-file            Skip filing search results back to Knowledge Base
   --verbose / -v       Show detailed logging
 ```
 

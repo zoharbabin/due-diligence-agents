@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
+from dd_agents.utils.constants import ALL_SEVERITIES
+
 if TYPE_CHECKING:
     from dd_agents.query.indexer import FindingIndex
 
@@ -133,6 +135,8 @@ class QueryEngine:
             from claude_agent_sdk import ClaudeAgentOptions
             from claude_agent_sdk import query as sdk_query
 
+            from dd_agents.utils import resolve_sdk_cli_path
+
             prompt = (
                 f"You are a due diligence analyst. Answer the following question based on the findings below.\n\n"
                 f"QUESTION: {question}\n\n"
@@ -141,10 +145,15 @@ class QueryEngine:
                 f"Answer concisely. If the findings don't contain enough information, say so."
             )
 
+            options_kwargs: dict[str, Any] = {"max_turns": 1}
+            cli_path = resolve_sdk_cli_path()
+            if cli_path is not None:
+                options_kwargs["cli_path"] = cli_path
+
             answer_parts: list[str] = []
             async for message in sdk_query(
                 prompt=prompt,
-                options=ClaudeAgentOptions(max_turns=1),
+                options=ClaudeAgentOptions(**options_kwargs),
             ):
                 content = getattr(message, "content", None)
                 if content and isinstance(content, list):
@@ -174,7 +183,7 @@ class QueryEngine:
         relevant = self._extract_relevant_findings(question, limit=max_findings)
         if not relevant:
             # Fall back to severity-ordered sample
-            for sev in ["P0", "P1", "P2", "P3"]:
+            for sev in ALL_SEVERITIES:
                 for i in self.index.by_severity.get(sev, [])[:10]:
                     f = self.index.findings[i]
                     relevant.append(

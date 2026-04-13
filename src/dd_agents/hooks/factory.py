@@ -12,9 +12,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from dd_agents.hooks.pre_tool import (
+    BATCH_FILE_PATTERN,
     BLOCKED_FILENAMES,
     bash_guard,
     file_size_guard,
+    finding_schema_guard,
     path_guard,
 )
 from dd_agents.hooks.stop import check_coverage, check_manifest
@@ -32,6 +34,7 @@ logger = logging.getLogger(__name__)
 
 def _build_pre_tool_hook(
     agent_name: str,
+    run_dir: Path,
     project_dir: Path,
 ) -> Any:
     """Return an async PreToolUse callback compatible with the SDK.
@@ -64,7 +67,7 @@ def _build_pre_tool_hook(
             if tn in ("Write", "Edit"):
                 file_path = ti.get("file_path", "")
                 filename = Path(file_path).name if file_path else ""
-                if filename in BLOCKED_FILENAMES:
+                if filename in BLOCKED_FILENAMES or BATCH_FILE_PATTERN.search(filename):
                     return {
                         "decision": "block",
                         "reason": (
@@ -72,6 +75,11 @@ def _build_pre_tool_hook(
                             f"Findings must be per-subject, not aggregated."
                         ),
                     }
+
+            # 5. Finding schema guard — validate JSON structure before write
+            result = finding_schema_guard(tn, ti, run_dir)
+            if result["decision"] == "block":
+                return {"decision": "block", "reason": result["reason"]}
 
             return {}
         except Exception as exc:  # noqa: BLE001
@@ -107,7 +115,7 @@ def _build_stop_hook(
                 return {"continue_": False, "stopReason": result["reason"]}
 
             # 2. Manifest check — coverage_manifest.json must exist
-            result = check_manifest(output_dir)
+            result = check_manifest(output_dir, expected_subjects)
             if result["decision"] == "block":
                 return {"continue_": False, "stopReason": result["reason"]}
 
@@ -161,7 +169,7 @@ def build_hooks_for_agent(
     return {
         "PreToolUse": [
             _HookMatcher(
-                hooks=[_build_pre_tool_hook(agent_name, project_dir)],
+                hooks=[_build_pre_tool_hook(agent_name, run_dir, project_dir)],
                 timeout=5.0,
             ),
         ],

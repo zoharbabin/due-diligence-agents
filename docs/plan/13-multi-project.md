@@ -17,8 +17,8 @@ Each deal gets its own `_dd/` directory rooted at the data room path. There is n
 ```
 /path/to/alpha-deal/                     # Data room root for Deal A
   deal-config.json
-  Customer A/
-  Customer B/
+  Subject A/
+  Subject B/
   _dd/                                    # All DD artifacts for THIS deal only
     forensic-dd/
       runs/
@@ -32,8 +32,8 @@ Each deal gets its own `_dd/` directory rooted at the data room path. There is n
 
 /path/to/beta-deal/                      # Data room root for Deal B (fully isolated)
   deal-config.json
-  Customer X/
-  Customer Y/
+  Subject X/
+  Subject Y/
   _dd/                                    # Completely separate artifact tree
     forensic-dd/
       runs/
@@ -85,7 +85,7 @@ class ProjectEntry(BaseModel):
     last_run_id: Optional[str] = None
     status: str = "created"                            # created | running | completed | failed
     total_runs: int = 0
-    total_customers: int = 0
+    total_subjects: int = 0
     total_findings: int = 0
     deal_type: str = ""                                # acquisition, merger, etc.
     notes: str = ""
@@ -235,7 +235,7 @@ async def spawn_specialist(self, agent_type: str, prompt: str) -> dict:
             setting_sources=[],                      # ISOLATION: no global settings
             mcp_servers={"dd": self.tools_server},
             hooks=get_specialist_hooks(agent_type, str(self.state.run_dir),
-                                       self.state.total_customers),
+                                       self.state.total_subjects),
             allowed_tools=SPECIALIST_TOOLS,
             permission_mode="bypassPermissions",
             model="claude-sonnet-4-20250514",
@@ -383,14 +383,14 @@ Each deal has its own log directory. No global log file that could leak deal nam
 
 ### 7.2 Console Output
 
-Console output during `dd-agents run` shows progress without exposing deal data to other terminal sessions. Customer names and finding details are logged to the per-deal log file only. Console shows step progress and summary counts.
+Console output during `dd-agents run` shows progress without exposing deal data to other terminal sessions. Subject names and finding details are logged to the per-deal log file only. Console shows step progress and summary counts.
 
 ```
-[Step  4/35] File discovery               182 customers, 431 files
+[Step  4/35] File discovery               182 subjects, 431 files
 [Step  5/35] Bulk extraction              429/431 extracted (2 OCR fallback)
 [Step  7/35] Entity resolution            182 matched, 0 unresolved
 [Step 16/35] Spawning specialists         4 agents (legal, finance, commercial, producttech)
-[Step 17/35] Coverage validation          PASS (all 182 customers covered)
+[Step 17/35] Coverage validation          PASS (all 182 subjects covered)
 [Step 28/35] QA audit                     PASS (16/16 checks)
 [Step 30/35] Excel generation             Due_Diligence_Report_20260221_093000.xlsx
 [Step 35/35] Shutdown                     Complete in 47m 23s ($8.42 total)

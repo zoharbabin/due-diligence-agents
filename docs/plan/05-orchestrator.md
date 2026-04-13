@@ -2,6 +2,7 @@
 
 > **Source of truth**: SKILL.md sections 0c, 0e, 1-9 (35 execution steps, persistence, incremental mode, error recovery, QA, Definition of Done)
 > **SDK reference**: `Claude_Agent_SDK_Complete_Reference.md` sections 2, 4, 5
+> **Historical note**: This document references the ReportingLead agent which was removed in v0.4.0. Step 23 is now deterministic pre-merge validation (`validation/pre_merge.py`). See `06-agents.md` §11.
 
 ## Overview
 
@@ -29,7 +30,7 @@ class PipelineStep(str, Enum):
     BUILD_INVENTORY             = "06_build_inventory"
     ENTITY_RESOLUTION           = "07_entity_resolution"
     REFERENCE_REGISTRY          = "08_reference_registry"
-    CUSTOMER_MENTIONS           = "09_customer_mentions"
+    SUBJECT_MENTIONS           = "09_subject_mentions"
     INVENTORY_INTEGRITY         = "10_inventory_integrity"
     CONTRACT_DATE_RECONCILIATION = "11_contract_date_reconciliation"
     INCREMENTAL_CLASSIFICATION  = "12_incremental_classification"
@@ -83,7 +84,7 @@ _BLOCKING_GATES = frozenset({
 # not listed here because it is a precondition, not a gate between phases.
 
 _CONDITIONAL_STEPS = frozenset({
-    PipelineStep.CONTRACT_DATE_RECONCILIATION,  # Only if source_of_truth.customer_database exists
+    PipelineStep.CONTRACT_DATE_RECONCILIATION,  # Only if source_of_truth.subject_database exists
     PipelineStep.INCREMENTAL_CLASSIFICATION,    # Only if execution_mode == "incremental"
     PipelineStep.INCREMENTAL_MERGE,             # Only if execution_mode == "incremental"
     PipelineStep.SPAWN_JUDGE,                   # Only if judge.enabled
@@ -152,8 +153,8 @@ class PipelineState:
 
     # --- Inventory ---
     total_files: int = 0
-    total_customers: int = 0
-    customer_safe_names: list[str] = field(default_factory=list)
+    total_subjects: int = 0
+    subject_safe_names: list[str] = field(default_factory=list)
     reference_file_count: int = 0
 
     # --- Pipeline progress ---
@@ -178,7 +179,7 @@ class PipelineState:
 
     # --- Incremental mode ---
     classification: Optional[dict] = None      # Full classification.json content
-    customers_to_analyze: list[str] = field(default_factory=list)
+    subjects_to_analyze: list[str] = field(default_factory=list)
 
     # --- Cross-skill ---
     cross_skill_run_ids: dict[str, str] = field(default_factory=dict)    # skill_name -> run_id
@@ -197,8 +198,8 @@ class PipelineState:
             "prior_run_dir": str(self.prior_run_dir) if self.prior_run_dir else None,
             "framework_version": self.framework_version,
             "total_files": self.total_files,
-            "total_customers": self.total_customers,
-            "customer_safe_names": self.customer_safe_names,
+            "total_subjects": self.total_subjects,
+            "subject_safe_names": self.subject_safe_names,
             "reference_file_count": self.reference_file_count,
             "current_step": self.current_step.value,
             "completed_steps": [s.value for s in self.completed_steps],
@@ -208,7 +209,7 @@ class PipelineState:
             "validation_results": self.validation_results,
             "audit_passed": self.audit_passed,
             "execution_mode": self.execution_mode,
-            "customers_to_analyze": self.customers_to_analyze,
+            "subjects_to_analyze": self.subjects_to_analyze,
             "cross_skill_run_ids": self.cross_skill_run_ids,
             "errors": [
                 {"step": e.step.value, "error_type": e.error_type,
@@ -234,8 +235,8 @@ class PipelineState:
         state.prior_run_dir = Path(data["prior_run_dir"]) if data.get("prior_run_dir") else None
         state.framework_version = data.get("framework_version", "unknown")
         state.total_files = data.get("total_files", 0)
-        state.total_customers = data.get("total_customers", 0)
-        state.customer_safe_names = data.get("customer_safe_names", [])
+        state.total_subjects = data.get("total_subjects", 0)
+        state.subject_safe_names = data.get("subject_safe_names", [])
         state.reference_file_count = data.get("reference_file_count", 0)
         state.current_step = PipelineStep(data["current_step"])
         state.completed_steps = [PipelineStep(v) for v in data.get("completed_steps", [])]
@@ -244,7 +245,7 @@ class PipelineState:
         state.batch_counts = data.get("batch_counts", {})
         state.validation_results = data.get("validation_results", {})
         state.audit_passed = data.get("audit_passed", False)
-        state.customers_to_analyze = data.get("customers_to_analyze", [])
+        state.subjects_to_analyze = data.get("subjects_to_analyze", [])
         state.cross_skill_run_ids = data.get("cross_skill_run_ids", {})
         state.errors = [
             PipelineError(
@@ -409,7 +410,7 @@ class PipelineEngine:
             step_06_build_inventory,
             step_07_entity_resolution,
             step_08_reference_registry,
-            step_09_customer_mentions,
+            step_09_subject_mentions,
             step_10_inventory_integrity,
             step_11_contract_date_reconciliation,
             step_12_incremental_classification,
@@ -447,7 +448,7 @@ class PipelineEngine:
             (PipelineStep.BUILD_INVENTORY,             step_06_build_inventory),
             (PipelineStep.ENTITY_RESOLUTION,           step_07_entity_resolution),
             (PipelineStep.REFERENCE_REGISTRY,          step_08_reference_registry),
-            (PipelineStep.CUSTOMER_MENTIONS,           step_09_customer_mentions),
+            (PipelineStep.SUBJECT_MENTIONS,           step_09_subject_mentions),
             (PipelineStep.INVENTORY_INTEGRITY,         step_10_inventory_integrity),
             (PipelineStep.CONTRACT_DATE_RECONCILIATION, step_11_contract_date_reconciliation),
             (PipelineStep.INCREMENTAL_CLASSIFICATION,  step_12_incremental_classification),
@@ -483,7 +484,7 @@ class PipelineEngine:
 
         Recovery strategies by error type:
         - AgentFailureError: Re-spawn once with same prompt.
-        - PartialFailureError: Re-spawn for missing customers only.
+        - PartialFailureError: Re-spawn for missing subjects only.
         - Other RecoverableError: Log and continue.
         """
         if isinstance(error, AgentFailureError):
@@ -501,24 +502,24 @@ class PipelineEngine:
                 )
         elif isinstance(error, PartialFailureError):
             agent_name = getattr(error, "agent_name", "unknown")
-            missing = getattr(error, "missing_customers", [])
+            missing = getattr(error, "missing_subjects", [])
             log.info(
-                f"  Attempting re-spawn of {agent_name} for {len(missing)} missing customers"
+                f"  Attempting re-spawn of {agent_name} for {len(missing)} missing subjects"
             )
             try:
                 from .step_implementations import respawn_for_missing
                 state = await respawn_for_missing(state, agent_name, missing)
                 state.errors[-1].recovered = True
                 state.errors[-1].recovery_action = (
-                    f"Re-spawned {agent_name} for {len(missing)} missing customers"
+                    f"Re-spawned {agent_name} for {len(missing)} missing subjects"
                 )
             except Exception as retry_err:
                 log.error(f"  Partial re-spawn also failed: {retry_err}")
-                # Log P1 gaps for every uncovered customer
+                # Log P1 gaps for every uncovered subject
                 from .step_implementations import log_coverage_gaps
                 log_coverage_gaps(state, agent_name, missing)
                 state.errors[-1].recovery_action = (
-                    f"Re-spawn failed. P1 gaps logged for {len(missing)} customers."
+                    f"Re-spawn failed. P1 gaps logged for {len(missing)} subjects."
                 )
         else:
             log.warning(f"  No specific recovery for {type(error).__name__}. Continuing.")
@@ -527,15 +528,15 @@ class PipelineEngine:
         return state
 ```
 
-**Partial failure**: Findings from successful agents are preserved. Failed agents are retried up to `max_retries` (default 2). If retry fails, the pipeline continues with available findings and marks the affected customers with `incomplete_analysis: true` in the merged output.
+**Partial failure**: Findings from successful agents are preserved. Failed agents are retried up to `max_retries` (default 2). If retry fails, the pipeline continues with available findings and marks the affected subjects with `incomplete_analysis: true` in the merged output.
 
 ### Error Classification → Recovery Action Mapping
 
 | `error_type` | Source | Recovery Action | Pipeline Outcome |
 |---|---|---|---|
 | `blocking_gate` | Blocking gate step fails validation | None -- pipeline halts immediately | `BlockingGateError` raised; checkpoint saved for manual intervention |
-| `agent_failure` | Agent spawn raises exception or `is_error=True` | Re-spawn agent once with same prompt | If retry fails: log P1 gaps for all affected customers, continue |
-| `partial_failure` | Agent completes but missing customer outputs | Re-spawn for missing customers only | If retry fails: log P1 gaps per missing customer, continue |
+| `agent_failure` | Agent spawn raises exception or `is_error=True` | Re-spawn agent once with same prompt | If retry fails: log P1 gaps for all affected subjects, continue |
+| `partial_failure` | Agent completes but missing subject outputs | Re-spawn for missing subjects only | If retry fails: log P1 gaps per missing subject, continue |
 | `recoverable` | Non-critical errors (e.g., stale cache, missing optional data) | Log warning, continue | Pipeline proceeds with warning in `errors[]` |
 
 ---
@@ -810,16 +811,16 @@ TOKEN_THRESHOLD = 80_000  # Max tokens per agent prompt before batching
 
 
 async def step_14_prepare_prompts(state: PipelineState) -> PipelineState:
-    """Prepare agent prompts with size estimation and customer batching.
+    """Prepare agent prompts with size estimation and subject batching.
 
     Prompt size estimation formula:
     (a) deal context:             ~500 tokens
-    (b) customer list with paths: ~50 tokens per customer
+    (b) subject list with paths: ~50 tokens per subject
     (c) reference file text:      actual_bytes / 4  (measured per file)
     (d) domain rules:             ~3,000 tokens
     (e) manifest/output schema:   ~500 tokens
 
-    If estimated total exceeds TOKEN_THRESHOLD, pre-split customers into
+    If estimated total exceeds TOKEN_THRESHOLD, pre-split subjects into
     batches and plan multiple agent instances per type.
     """
     builder = PromptBuilder(state)
@@ -833,46 +834,46 @@ async def step_14_prepare_prompts(state: PipelineState) -> PipelineState:
 
     agent_types = ["legal", "finance", "commercial", "producttech"]
 
-    # Determine customer list (full or scoped for incremental)
-    if state.execution_mode == "incremental" and state.customers_to_analyze:
-        customers = state.customers_to_analyze
+    # Determine subject list (full or scoped for incremental)
+    if state.execution_mode == "incremental" and state.subjects_to_analyze:
+        subjects = state.subjects_to_analyze
     else:
-        customers = state.customer_safe_names
+        subjects = state.subject_safe_names
 
     for agent_type in agent_types:
         # Estimate prompt size
         agent_ref_size = builder.get_agent_reference_size(agent_type, ref_text_sizes)
         estimated_tokens = (
             500                         # (a) deal context
-            + 50 * len(customers)       # (b) customer list + file paths
+            + 50 * len(subjects)       # (b) subject list + file paths
             + agent_ref_size            # (c) reference file text
             + 3000                      # (d) domain rules
             + 500                       # (e) manifest/output instructions
         )
 
         if estimated_tokens > TOKEN_THRESHOLD:
-            # Split customers into batches
+            # Split subjects into batches
             batch_size = _calculate_batch_size(
-                len(customers), estimated_tokens, TOKEN_THRESHOLD, agent_ref_size
+                len(subjects), estimated_tokens, TOKEN_THRESHOLD, agent_ref_size
             )
-            batches = _split_into_batches(customers, batch_size)
+            batches = _split_into_batches(subjects, batch_size)
             log.info(
                 f"Agent {agent_type}: {estimated_tokens} estimated tokens > {TOKEN_THRESHOLD} "
-                f"threshold. Splitting {len(customers)} customers into {len(batches)} batches "
-                f"of ~{batch_size} customers each."
+                f"threshold. Splitting {len(subjects)} subjects into {len(batches)} batches "
+                f"of ~{batch_size} subjects each."
             )
         else:
-            batches = [customers]
+            batches = [subjects]
             log.info(
                 f"Agent {agent_type}: {estimated_tokens} estimated tokens -- single batch"
             )
 
         # Build prompt for each batch
         prompts = []
-        for batch_idx, batch_customers in enumerate(batches):
+        for batch_idx, batch_subjects in enumerate(batches):
             prompt = builder.build_specialist_prompt(
                 agent_type=agent_type,
-                customers=batch_customers,
+                subjects=batch_subjects,
                 reference_files=reference_files,
                 batch_index=batch_idx if len(batches) > 1 else None,
                 total_batches=len(batches) if len(batches) > 1 else None,
@@ -886,26 +887,26 @@ async def step_14_prepare_prompts(state: PipelineState) -> PipelineState:
 
 
 def _calculate_batch_size(
-    total_customers: int, estimated_tokens: int,
+    total_subjects: int, estimated_tokens: int,
     threshold: int, ref_size: int,
 ) -> int:
-    """Calculate how many customers per batch to stay under token threshold.
+    """Calculate how many subjects per batch to stay under token threshold.
 
-    Reference text is shared across all batches (not split), so the per-customer
+    Reference text is shared across all batches (not split), so the per-subject
     portion is the variable part.
     """
-    fixed_tokens = 500 + ref_size + 3000 + 500  # non-customer tokens
-    available_for_customers = threshold - fixed_tokens
-    tokens_per_customer = 50  # approximate
-    max_per_batch = max(1, available_for_customers // tokens_per_customer)
-    return min(max_per_batch, total_customers)
+    fixed_tokens = 500 + ref_size + 3000 + 500  # non-subject tokens
+    available_for_subjects = threshold - fixed_tokens
+    tokens_per_subject = 50  # approximate
+    max_per_batch = max(1, available_for_subjects // tokens_per_subject)
+    return min(max_per_batch, total_subjects)
 
 
-def _split_into_batches(customers: list[str], batch_size: int) -> list[list[str]]:
-    """Split customer list into roughly equal batches."""
+def _split_into_batches(subjects: list[str], batch_size: int) -> list[list[str]]:
+    """Split subject list into roughly equal batches."""
     batches = []
-    for i in range(0, len(customers), batch_size):
-        batches.append(customers[i:i + batch_size])
+    for i in range(0, len(subjects), batch_size):
+        batches.append(subjects[i:i + batch_size])
     return batches
 ```
 
@@ -930,10 +931,10 @@ async def step_16_spawn_specialists(state: PipelineState) -> PipelineState:
     """Spawn 4 specialist agents IN PARALLEL using claude-agent-sdk.
 
     Each agent gets:
-    - Complete prompt with deal context, customer list, reference files,
+    - Complete prompt with deal context, subject list, reference files,
       domain rules, output schema, manifest requirement
     - MCP tools for validation (validate_finding, resolve_entity, etc.)
-    - Hooks for output path enforcement and per-customer JSON validation
+    - Hooks for output path enforcement and per-subject JSON validation
     - Working directory set to the project directory
 
     If prompt batching was triggered at step 14, spawns multiple instances
@@ -975,7 +976,7 @@ async def step_16_spawn_specialists(state: PipelineState) -> PipelineState:
                 "Read", "Write", "Glob", "Grep", "Bash",
                 "mcp__dd_tools__validate_finding",
                 "mcp__dd_tools__resolve_entity",
-                "mcp__dd_tools__get_customer_files",
+                "mcp__dd_tools__get_subject_files",
                 "mcp__dd_tools__report_progress",
             ],
             hooks=hooks,
@@ -1034,7 +1035,7 @@ def _merge_batch_outputs(state: PipelineState, agent_type: str) -> None:
     """Merge outputs from batch directories into the primary agent directory.
 
     Batch agents write to {run_dir}/findings/{agent_type}-batch{N}/.
-    This function moves all per-customer JSONs to {run_dir}/findings/{agent_type}/.
+    This function moves all per-subject JSONs to {run_dir}/findings/{agent_type}/.
     """
     primary_dir = state.run_dir / "findings" / agent_type
     for batch_idx in range(1, state.batch_counts[agent_type] + 1):
@@ -1072,59 +1073,59 @@ log = logging.getLogger("dd_agents.steps.17")
 
 
 async def step_17_coverage_gate(state: PipelineState) -> PipelineState:
-    """Validate all specialists produced output for all customers. BLOCKING GATE.
+    """Validate all specialists produced output for all subjects. BLOCKING GATE.
 
     For each agent type:
-    1. Count unique {customer_safe_name}.json files in findings/{agent}/
-    2. Compare against expected customer count
-    3. If missing: re-spawn for missing customers (one retry)
+    1. Count unique {subject_safe_name}.json files in findings/{agent}/
+    2. Compare against expected subject count
+    3. If missing: re-spawn for missing subjects (one retry)
     4. If still missing after retry: log P1 gaps
     5. Verify coverage_manifest.json exists
     6. Verify no aggregate files (_global.json, batch_summary.json, etc.)
-    7. Spot-check clean-result enforcement (3 customers per agent)
+    7. Spot-check clean-result enforcement (3 subjects per agent)
     8. Verify audit logs exist
     """
     agent_types = ["legal", "finance", "commercial", "producttech"]
 
-    # Determine expected customers
-    if state.execution_mode == "incremental" and state.customers_to_analyze:
-        expected_customers = set(state.customers_to_analyze)
+    # Determine expected subjects
+    if state.execution_mode == "incremental" and state.subjects_to_analyze:
+        expected_subjects = set(state.subjects_to_analyze)
     else:
-        expected_customers = set(state.customer_safe_names)
+        expected_subjects = set(state.subject_safe_names)
 
     total_missing = 0
 
     for agent_type in agent_types:
         output_dir = state.run_dir / "findings" / agent_type
 
-        # Collect actual per-customer JSON files (exclude manifest and non-customer files)
+        # Collect actual per-subject JSON files (exclude manifest and non-subject files)
         actual_files = set()
         aggregate_files = set()
         for p in output_dir.glob("*.json"):
             if p.stem == "coverage_manifest":
                 continue
             if p.stem.startswith("_") or p.stem in (
-                "batch_summary", "other_customers", "pipeline_items"
+                "batch_summary", "other_subjects", "pipeline_items"
             ):
                 aggregate_files.add(p.stem)
                 continue
             actual_files.add(p.stem)
 
-        # Flag aggregate files -- these indicate the agent did not follow per-customer format
+        # Flag aggregate files -- these indicate the agent did not follow per-subject format
         if aggregate_files:
             log.warning(
                 f"Agent {agent_type} produced aggregate files: {aggregate_files}. "
-                f"This indicates non-compliance with per-customer output format."
+                f"This indicates non-compliance with per-subject output format."
             )
 
-        missing = expected_customers - actual_files
+        missing = expected_subjects - actual_files
         if missing:
             log.warning(
-                f"Agent {agent_type} missing {len(missing)}/{len(expected_customers)} "
-                f"customers: {sorted(missing)[:5]}{'...' if len(missing) > 5 else ''}"
+                f"Agent {agent_type} missing {len(missing)}/{len(expected_subjects)} "
+                f"subjects: {sorted(missing)[:5]}{'...' if len(missing) > 5 else ''}"
             )
 
-            # Re-spawn for missing customers only (one retry)
+            # Re-spawn for missing subjects only (one retry)
             state = await _respawn_for_missing(state, agent_type, sorted(missing))
 
             # Re-check after re-spawn
@@ -1132,15 +1133,15 @@ async def step_17_coverage_gate(state: PipelineState) -> PipelineState:
                 p.stem for p in output_dir.glob("*.json")
                 if p.stem != "coverage_manifest"
                 and not p.stem.startswith("_")
-                and p.stem not in ("batch_summary", "other_customers", "pipeline_items")
+                and p.stem not in ("batch_summary", "other_subjects", "pipeline_items")
             }
-            still_missing = expected_customers - actual_files
+            still_missing = expected_subjects - actual_files
             if still_missing:
                 total_missing += len(still_missing)
-                for customer in sorted(still_missing):
-                    _log_coverage_gap(state, agent_type, customer)
+                for subject_name in sorted(still_missing):
+                    _log_coverage_gap(state, agent_type, subject_name)
                 log.error(
-                    f"Agent {agent_type} still missing {len(still_missing)} customers "
+                    f"Agent {agent_type} still missing {len(still_missing)} subjects "
                     f"after re-spawn. P1 gaps logged."
                 )
 
@@ -1159,14 +1160,18 @@ async def step_17_coverage_gate(state: PipelineState) -> PipelineState:
                 f"QA at step 28 will flag this."
             )
 
-        # Clean-result enforcement: spot-check 3 customer JSONs
+        # Clean-result enforcement: spot-check 3 subject JSONs
         _spot_check_clean_results(state, agent_type, output_dir)
 
     if total_missing > 0:
         log.warning(
-            f"Coverage gate: {total_missing} total customer-agent gaps across all agents. "
+            f"Coverage gate: {total_missing} total subject-agent gaps across all agents. "
             f"P1 gaps logged. Pipeline continues."
         )
+
+    # Write coverage gap findings as proper agent output files so merge picks them up.
+    # This ensures domain coverage validation (DoD #12) counts gap subjects as covered.
+    _write_gap_findings_as_agent_output(state, agent_types, expected_subjects)
 
     return state
 
@@ -1174,7 +1179,7 @@ async def step_17_coverage_gate(state: PipelineState) -> PipelineState:
 async def _respawn_for_missing(
     state: PipelineState, agent_type: str, missing: list[str]
 ) -> PipelineState:
-    """Re-spawn an agent for specific missing customers only."""
+    """Re-spawn an agent for specific missing subjects only."""
     from ...agents.prompt_builder import PromptBuilder
     from claude_agent_sdk import query, ClaudeAgentOptions, ResultMessage
 
@@ -1188,7 +1193,7 @@ async def _respawn_for_missing(
         cwd=str(state.project_dir),
     )
 
-    log.info(f"Re-spawning {agent_type} for {len(missing)} missing customers")
+    log.info(f"Re-spawning {agent_type} for {len(missing)} missing subjects")
     async for message in query(prompt=prompt, options=options):
         if isinstance(message, ResultMessage):
             cost = message.total_cost_usd or 0.0
@@ -1198,34 +1203,52 @@ async def _respawn_for_missing(
     return state
 
 
-def _log_coverage_gap(state: PipelineState, agent_type: str, customer: str) -> None:
-    """Log a P1 gap for a customer that an agent failed to cover."""
+def _log_coverage_gap(state: PipelineState, agent_type: str, subject: str) -> None:
+    """Log a P1 gap for a subject that an agent failed to cover.
+
+    Also writes the gap as a proper agent output file at
+    findings/{agent_type}/{subject}.json so the merge step and domain
+    coverage validation count this subject as covered by the agent.
+    """
     gap = {
-        "customer": customer,
+        "subject": subject,
         "priority": "P1",
         "gap_type": "Missing_Data",
-        "missing_item": f"{agent_type} analysis for {customer}",
-        "why_needed": f"Agent {agent_type} did not produce output for this customer",
+        "missing_item": f"{agent_type} analysis for {subject}",
+        "why_needed": f"Agent {agent_type} did not produce output for this subject",
         "risk_if_missing": f"{agent_type.title()} domain coverage missing entirely",
         "request_to_company": "N/A -- internal analysis gap",
-        "evidence": f"Agent {agent_type} output directory missing {customer}.json",
+        "evidence": f"Agent {agent_type} output directory missing {subject}.json",
         "detection_method": "pattern_check",
         "agent": agent_type,
         "run_id": state.run_id,
     }
     gap_dir = state.run_dir / "findings" / agent_type / "gaps"
     gap_dir.mkdir(parents=True, exist_ok=True)
-    gap_path = gap_dir / f"{customer}.json"
+    gap_path = gap_dir / f"{subject}.json"
     gap_path.write_text(json.dumps([gap], indent=2))
+
+    # Write as agent output file so merge picks it up
+    output_path = state.run_dir / "findings" / agent_type / f"{subject}.json"
+    if not output_path.exists():
+        output_path.write_text(json.dumps({
+            "subject": subject,
+            "subject_safe_name": subject,
+            "agent": agent_type,
+            "run_id": state.run_id,
+            "findings": [gap],
+            "file_headers": [],
+            "gaps": [gap],
+        }, indent=2))
 
 
 def _spot_check_clean_results(
     state: PipelineState, agent_type: str, output_dir: Path
 ) -> None:
-    """Spot-check 3 customer JSONs for clean-result enforcement.
+    """Spot-check 3 subject JSONs for clean-result enforcement.
 
-    Per SKILL.md step 17: any customer JSON with zero findings AND no
-    domain_reviewed_no_issues entry indicates the agent skipped the customer
+    Per SKILL.md step 17: any subject JSON with zero findings AND no
+    domain_reviewed_no_issues entry indicates the agent skipped the subject
     rather than reviewing it.
     """
     json_files = sorted(output_dir.glob("*.json"))
@@ -1249,8 +1272,8 @@ def _spot_check_clean_results(
             )
             if not has_substantive and not has_clean_result:
                 log.warning(
-                    f"Agent {agent_type} customer {path.stem}: zero findings AND no "
-                    f"domain_reviewed_no_issues entry -- possible skipped customer"
+                    f"Agent {agent_type} subject {path.stem}: zero findings AND no "
+                    f"domain_reviewed_no_issues entry -- possible skipped subject"
                 )
             checked += 1
         except (json.JSONDecodeError, KeyError):
@@ -1370,8 +1393,8 @@ async def step_28_full_qa_audit(state: PipelineState) -> PipelineState:
     Writes {RUN_DIR}/audit.json with per-check results.
 
     Checks (from SKILL.md section 9):
-    Core Analysis (1-12): customer coverage, file coverage, manifest reconciliation,
-        governance, citations, gaps, cross-references, ghost customers, reference files,
+    Core Analysis (1-12): subject coverage, file coverage, manifest reconciliation,
+        governance, citations, gaps, cross-references, ghost subjects, reference files,
         audit logs, domain coverage.
     Reporting & Audit (13-19): merge/dedup, report sheets, audit.json, entity resolution,
         numerical manifest, contract date reconciliation, extraction quality.
@@ -1495,7 +1518,7 @@ else:
 The `checkpoint.json` written after each step contains the full `PipelineState`, including:
 - All completed steps and their results
 - Agent session IDs (for potential session resumption via SDK `resume` parameter)
-- Inventory counts, customer lists, batch counts
+- Inventory counts, subject lists, batch counts
 - Error history with recovery actions
 - Validation results
 
@@ -1511,12 +1534,12 @@ Steps with preconditions check their condition and return early if not met. This
 
 ```python
 # Step 11: Contract Date Reconciliation
-# Condition: source_of_truth.customer_database exists in deal-config.json
+# Condition: source_of_truth.subject_database exists in deal-config.json
 async def step_11_contract_date_reconciliation(state: PipelineState) -> PipelineState:
-    """Reconcile contract dates against customer database. CONDITIONAL."""
+    """Reconcile contract dates against subject database. CONDITIONAL."""
     source_of_truth = state.deal_config.get("source_of_truth", {})
-    if not source_of_truth.get("customer_database"):
-        log.info("Skipping step 11 -- no source_of_truth.customer_database in config")
+    if not source_of_truth.get("subject_database"):
+        log.info("Skipping step 11 -- no source_of_truth.subject_database in config")
         return state
     # ... reconciliation logic ...
     return state
@@ -1525,7 +1548,7 @@ async def step_11_contract_date_reconciliation(state: PipelineState) -> Pipeline
 # Step 12: Incremental Classification
 # Condition: execution_mode == "incremental"
 async def step_12_incremental_classification(state: PipelineState) -> PipelineState:
-    """Classify customers as NEW/CHANGED/STALE/UNCHANGED/DELETED. CONDITIONAL."""
+    """Classify subjects as NEW/CHANGED/STALE/UNCHANGED/DELETED. CONDITIONAL."""
     if state.execution_mode != "incremental":
         log.info("Skipping step 12 -- not incremental mode")
         return state
@@ -1573,7 +1596,7 @@ async def step_21_judge_respawn(state: PipelineState) -> PipelineState:
     below_threshold = scores.get("agents_below_threshold", [])
     if not below_threshold:
         return state
-    # ... re-spawn with targeted prompt for up to 5 lowest-scoring customers ...
+    # ... re-spawn with targeted prompt for up to 5 lowest-scoring subjects ...
     return state
 
 async def step_22_judge_round2(state: PipelineState) -> PipelineState:
@@ -1593,7 +1616,7 @@ async def step_29_build_report_diff(state: PipelineState) -> PipelineState:
     if not state.prior_run_id or not state.prior_run_dir:
         log.info("Skipping step 29 -- no prior run for diff comparison")
         return state
-    # ... diff algorithm: match findings by customer + category + citation location ...
+    # ... diff algorithm: match findings by subject + category + citation location ...
     return state
 ```
 
@@ -1612,12 +1635,12 @@ Phase 2: Discovery & Extraction (Steps 4-5)
     5. Bulk pre-extraction [BLOCKING GATE]
 
 Phase 3: Inventory (Steps 6-12)
-    6. Build inventory (customers.csv, counts.json)
+    6. Build inventory (subjects.csv, counts.json)
     7. Entity resolution (6-pass matcher with cache)
     8. Reference registry (reference_files.json)
-    9. Customer-mention index (customer_mentions.json)
+    9. Subject-mention index (subject_mentions.json)
    10. Inventory integrity check (no orphan files)
-   11. Contract date reconciliation [CONDITIONAL: customer_database exists]
+   11. Contract date reconciliation [CONDITIONAL: subject_database exists]
    12. Incremental classification [CONDITIONAL: incremental mode]
 
 Phase 4: Agent Execution (Steps 13-17)
@@ -1635,14 +1658,14 @@ Phase 5: Quality Review (Steps 18-22)
    22. Judge Round 2 [CONDITIONAL: agents below threshold]
 
 Phase 6: Reporting (Steps 23-31)
-   23. Spawn Reporting Lead
-   24. Merge and deduplicate findings
+   23. Spawn pre-merge validation
+   24. Merge and deduplicate findings (incl. citation normalization: evidence→citations, file→source_path)
    25. Merge gap files
    26. Build numerical manifest
    27. Numerical audit [BLOCKING GATE]
    28. Full QA audit [BLOCKING GATE]
    29. Build report diff [CONDITIONAL: prior run exists]
-   30. Generate Excel from report_schema.json
+   30. Generate Excel from report_schema.json (loads numerical_manifest.json entries into run metadata for _Metadata sheet)
    31. Post-generation validation [BLOCKING GATE]
 
 Phase 7: Finalization (Steps 32-35)

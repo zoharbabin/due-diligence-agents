@@ -12,7 +12,7 @@ Cross-references: `01-architecture-decisions.md` (ADR-03, ADR-04), `14-vector-st
 
 The Due Diligence Agent SDK performs forensic M&A analysis on contract data rooms. Two categories of data infrastructure are relevant:
 
-1. **Graph operations** (required): Governance hierarchy modeling. MSAs govern Order Forms, Amendments modify MSAs, SOWs reference MSAs. Typical scale is 200 customers with 3-5 governance edges each, totaling 600-1,000 edges. Required operations: cycle detection, topological sort, ancestor/descendant queries, isolate detection, multi-parent conflict identification.
+1. **Graph operations** (required): Governance hierarchy modeling. MSAs govern Order Forms, Amendments modify MSAs, SOWs reference MSAs. Typical scale is 200 subjects with 3-5 governance edges each, totaling 600-1,000 edges. Required operations: cycle detection, topological sort, ancestor/descendant queries, isolate detection, multi-parent conflict identification.
 
 2. **Vector search** (optional): Cross-document semantic similarity for clause matching, pattern detection, and semantic gap discovery. Typical scale: 400 documents chunked into approximately 20,000 text segments.
 
@@ -31,11 +31,11 @@ This document evaluates nine solutions across both categories and one claimed hy
 
 ### 2.1 Graph Requirements
 
-The governance graph is a directed acyclic graph (DAG) built per customer from explicit text linkages found by the Legal agent.
+The governance graph is a directed acyclic graph (DAG) built per subject from explicit text linkages found by the Legal agent.
 
 | Requirement | Detail |
 |-------------|--------|
-| Scale | ~600-1,000 edges across all customers; ~3-5 edges per customer |
+| Scale | ~600-1,000 edges across all subjects; ~3-5 edges per subject |
 | Storage | In-memory during pipeline execution; serialized to JSON for persistence |
 | Algorithms | Cycle detection, topological sort, ancestor/descendant queries, isolate detection, multi-parent detection |
 | Deployment | Zero external services; must run in a single Python process |
@@ -48,7 +48,7 @@ Semantic search is supplementary to file-based keyword search (Grep). The system
 | Requirement | Detail |
 |-------------|--------|
 | Scale | ~400 documents, ~20,000 text chunks, ~384-768 dimensional embeddings |
-| Operations | k-NN similarity search with optional metadata filtering (by customer, file type, section) |
+| Operations | k-NN similarity search with optional metadata filtering (by subject, file type, section) |
 | Deployment | Preferably embedded (no server process); `pip install` only |
 | Persistence | Per-deal collection stored alongside deal artifacts |
 | License | Permissive OSI-approved open-source |
@@ -159,7 +159,7 @@ print(f"Governance resolved: {completeness:.1%}")
 **Strengths**:
 - Embedded mode: `pip install chromadb` is the entire deployment
 - Automatic embedding: pass raw text, ChromaDB handles embedding via built-in sentence-transformers
-- Metadata filtering: query with `where={"customer": "acme"}` for scoped results
+- Metadata filtering: query with `where={"subject": "acme"}` for scoped results
 - Persistent storage: SQLite-backed with on-disk collections
 - Python-native API with excellent developer experience
 - Active development with regular releases
@@ -172,7 +172,7 @@ print(f"Governance resolved: {completeness:.1%}")
 
 **Fit for this project**:
 - Graph needs: None. ChromaDB is not a graph database.
-- Vector needs: **Excellent**. ChromaDB is lightweight in deployment (embedded, no separate server process) but capable of handling the scale needed for DD data rooms (typically 200-500 documents, 5,000-50,000 chunks). For this use case, ChromaDB operates well within its comfortable range. For enterprise deployments exceeding 1M chunks, alternatives like Qdrant should be evaluated. Embedded mode means no server management. Metadata filtering supports per-customer scoping. The optional-dependency pattern (`pip install dd-agents[vector]`) aligns with ChromaDB's deployment model.
+- Vector needs: **Excellent**. ChromaDB is lightweight in deployment (embedded, no separate server process) but capable of handling the scale needed for DD data rooms (typically 200-500 documents, 5,000-50,000 chunks). For this use case, ChromaDB operates well within its comfortable range. For enterprise deployments exceeding 1M chunks, alternatives like Qdrant should be evaluated. Embedded mode means no server management. Metadata filtering supports per-subject scoping. The optional-dependency pattern (`pip install dd-agents[vector]`) aligns with ChromaDB's deployment model.
 
 **Code example**:
 
@@ -192,14 +192,14 @@ collection = client.get_or_create_collection(
 collection.add(
     ids=["acme_msa_0001", "acme_msa_0002", "beta_orderform_0001"],
     documents=[
-        "The Supplier shall indemnify and hold harmless the Customer...",
+        "The Supplier shall indemnify and hold harmless the Subject...",
         "Liability under this Agreement shall not exceed the total fees...",
         "This Order Form is governed by MSA dated January 15, 2024...",
     ],
     metadatas=[
-        {"customer": "acme_corp", "file_type": "pdf", "section": "Indemnification"},
-        {"customer": "acme_corp", "file_type": "pdf", "section": "Liability"},
-        {"customer": "beta_inc", "file_type": "pdf", "section": "Governance"},
+        {"subject": "acme_corp", "file_type": "pdf", "section": "Indemnification"},
+        {"subject": "acme_corp", "file_type": "pdf", "section": "Liability"},
+        {"subject": "beta_inc", "file_type": "pdf", "section": "Governance"},
     ],
 )
 
@@ -215,7 +215,7 @@ for doc, meta, dist in zip(
     results["metadatas"][0],
     results["distances"][0],
 ):
-    print(f"[{1 - dist:.2f} relevance] {meta['customer']}: {doc[:80]}...")
+    print(f"[{1 - dist:.2f} relevance] {meta['subject']}: {doc[:80]}...")
 ```
 
 ---
@@ -273,7 +273,7 @@ client.upsert(
         PointStruct(
             id=1,
             vector=embeddings[0],
-            payload={"customer": "acme_corp", "section": "Indemnification"},
+            payload={"subject": "acme_corp", "section": "Indemnification"},
         ),
     ],
 )
@@ -283,7 +283,7 @@ results = client.search(
     collection_name="forensic_dd",
     query_vector=model.encode("indemnification clause").tolist(),
     limit=5,
-    query_filter={"must": [{"key": "customer", "match": {"value": "acme_corp"}}]},
+    query_filter={"must": [{"key": "subject", "match": {"value": "acme_corp"}}]},
 )
 ```
 
@@ -333,7 +333,7 @@ client.create_collection(
 data = [
     {
         "vector": [0.1, 0.2, ...],  # 384-dimensional embedding
-        "customer": "acme_corp",
+        "subject": "acme_corp",
         "section": "Indemnification",
         "text": "The Supplier shall indemnify...",
     },
@@ -345,8 +345,8 @@ results = client.search(
     collection_name="clauses",
     data=[[0.1, 0.2, ...]],  # query vector
     limit=5,
-    filter='customer == "acme_corp"',
-    output_fields=["customer", "section", "text"],
+    filter='subject == "acme_corp"',
+    output_fields=["subject", "section", "text"],
 )
 ```
 
@@ -389,7 +389,7 @@ db = lancedb.connect("./forensic_dd_lance")
 data = [
     {
         "text": "The Supplier shall indemnify and hold harmless...",
-        "customer": "acme_corp",
+        "subject": "acme_corp",
         "section": "Indemnification",
         "vector": [0.1, 0.2, ...],  # pre-computed embedding
     },
@@ -399,11 +399,11 @@ table = db.create_table("clauses", data=data, mode="overwrite")
 # Search with SQL-like filtering
 results = (
     table.search([0.1, 0.2, ...])  # query vector
-    .where("customer = 'acme_corp'")
+    .where("subject = 'acme_corp'")
     .limit(5)
     .to_pandas()
 )
-print(results[["text", "customer", "_distance"]])
+print(results[["text", "subject", "_distance"]])
 ```
 
 ---
@@ -430,7 +430,7 @@ print(results[["text", "customer", "_distance"]])
 
 **Fit for this project**:
 - Graph needs: None.
-- Vector needs: **Partial**. FAISS provides the raw similarity search engine but nothing else. This project needs metadata filtering (by customer, section, file type), persistence, and a high-level query API. Building these on top of FAISS would replicate what ChromaDB already provides. FAISS is the right choice when building a custom vector database; it is not the right choice when using one.
+- Vector needs: **Partial**. FAISS provides the raw similarity search engine but nothing else. This project needs metadata filtering (by subject, section, file type), persistence, and a high-level query API. Building these on top of FAISS would replicate what ChromaDB already provides. FAISS is the right choice when building a custom vector database; it is not the right choice when using one.
 
 **Code example**:
 
@@ -500,7 +500,7 @@ clauses = client.collections.create(
     vectorizer_config=weaviate.classes.config.Configure.Vectorizer.text2vec_transformers(),
     properties=[
         weaviate.classes.config.Property(name="text", data_type=weaviate.classes.config.DataType.TEXT),
-        weaviate.classes.config.Property(name="customer", data_type=weaviate.classes.config.DataType.TEXT),
+        weaviate.classes.config.Property(name="subject", data_type=weaviate.classes.config.DataType.TEXT),
         weaviate.classes.config.Property(name="section", data_type=weaviate.classes.config.DataType.TEXT),
     ],
 )
@@ -509,7 +509,7 @@ clauses = client.collections.create(
 clauses.data.insert(
     properties={
         "text": "The Supplier shall indemnify and hold harmless...",
-        "customer": "acme_corp",
+        "subject": "acme_corp",
         "section": "Indemnification",
     },
 )
@@ -518,7 +518,7 @@ clauses.data.insert(
 response = clauses.query.near_text(
     query="indemnification provision",
     limit=5,
-    filters=weaviate.classes.query.Filter.by_property("customer").equal("acme_corp"),
+    filters=weaviate.classes.query.Filter.by_property("subject").equal("acme_corp"),
 )
 
 client.close()
@@ -565,7 +565,7 @@ cur.execute("""
     CREATE TABLE IF NOT EXISTS clauses (
         id SERIAL PRIMARY KEY,
         text TEXT,
-        customer TEXT,
+        subject TEXT,
         section TEXT,
         embedding vector(384)
     )
@@ -579,15 +579,15 @@ cur.execute("""
 
 # Insert (requires pre-computed embedding)
 cur.execute(
-    "INSERT INTO clauses (text, customer, section, embedding) VALUES (%s, %s, %s, %s)",
+    "INSERT INTO clauses (text, subject, section, embedding) VALUES (%s, %s, %s, %s)",
     ("The Supplier shall indemnify...", "acme_corp", "Indemnification", "[0.1,0.2,...]"),
 )
 
 # Search with SQL filtering
 cur.execute("""
-    SELECT text, customer, section, embedding <=> %s::vector AS distance
+    SELECT text, subject, section, embedding <=> %s::vector AS distance
     FROM clauses
-    WHERE customer = 'acme_corp'
+    WHERE subject = 'acme_corp'
     ORDER BY embedding <=> %s::vector
     LIMIT 5
 """, (query_embedding, query_embedding))
@@ -705,7 +705,7 @@ None of these conditions are unreasonable. They are standard expectations for in
 | ruvector | Maturity concerns (Section 5). Graph traversal correctness bugs. |
 | igraph | Capable but C-based with complex build dependencies. NetworkX is pure Python and sufficient at this scale. |
 
-**When to reconsider**: If the governance graph grows beyond 100,000 edges (e.g., a data room with 20,000+ customers), consider igraph (C-based, faster for large graphs) or a graph database. This threshold is approximately 100x beyond current maximum expected scale.
+**When to reconsider**: If the governance graph grows beyond 100,000 edges (e.g., a data room with 20,000+ subjects), consider igraph (C-based, faster for large graphs) or a graph database. This threshold is approximately 100x beyond current maximum expected scale.
 
 ### 6.2 Vector: ChromaDB, Optional (ADR-03)
 

@@ -50,8 +50,8 @@ def _make_finding(
 
 def _make_merged_data() -> dict[str, object]:
     return {
-        "customer_a": {
-            "subject": "Customer A",
+        "subject_a": {
+            "subject": "Subject A",
             "findings": [
                 _make_finding(
                     severity="P0",
@@ -79,8 +79,8 @@ def _make_merged_data() -> dict[str, object]:
                 },
             ],
         },
-        "customer_b": {
-            "subject": "Customer B",
+        "subject_b": {
+            "subject": "Subject B",
             "findings": [_make_finding(severity="P1", agent="legal", category="ip_ownership")],
             "gaps": [],
             "governance_resolution_pct": 95.0,
@@ -260,7 +260,7 @@ class TestDashboardRenderer:
         computed = _compute()
         r = DashboardRenderer(computed, _make_merged_data())
         html_out = r.render()
-        assert ">2</div>" in html_out  # customers
+        assert ">2</div>" in html_out  # subjects
         assert ">5</div>" in html_out  # findings
         assert ">2</div>" in html_out  # gaps
 
@@ -414,8 +414,8 @@ class TestGapRendererRestructured:
                 "severity": "P2",
                 "title": "Revenue waterfall data unavailable",
                 "agent": "finance",
-                "_subject_safe_name": "customer_a",
-                "_subject": "Customer A",
+                "_subject_safe_name": "subject_a",
+                "_subject": "Subject A",
             }
         ]
         computed.data_quality_count = 1
@@ -464,7 +464,7 @@ class TestCrossRefRenderer:
 
 
 # ===========================================================================
-# Customer tests (#105)
+# Subject tests (#105)
 # ===========================================================================
 
 
@@ -475,8 +475,8 @@ class TestSubjectRenderer:
         html_out = r.render()
         assert "id='sec-subjects'" in html_out
         assert "Entity Detail" in html_out
-        assert "Customer A" in html_out
-        assert "Customer B" in html_out
+        assert "Subject A" in html_out
+        assert "Subject B" in html_out
 
     def test_subject_severity_badges(self) -> None:
         computed = _compute()
@@ -909,10 +909,10 @@ class TestHeadingHierarchy:
         computed = _compute()
         r = DomainRenderer(computed, _make_merged_data())
         html_out = r.render()
-        # Category body should contain h3 for customer names
+        # Category body should contain h3 for subject names
         assert "<h3>" in html_out
         # Should NOT have h4 in domain sections (that would skip h3)
-        # h4 should only appear in customer sections, not domain sections
+        # h4 should only appear in subject sections, not domain sections
         domain_sections = html_out.split("id='sec-domain-")
         for section in domain_sections[1:]:  # skip first (before first domain)
             section_content = section.split("</section>")[0]
@@ -1157,7 +1157,7 @@ class TestCoCAnalysisRenderer:
         """CoC findings from change_of_control category should appear."""
         merged = {
             "c1": {
-                "subject": "Customer 1",
+                "subject": "Subject 1",
                 "findings": [
                     _make_finding(
                         severity="P0",
@@ -1170,7 +1170,7 @@ class TestCoCAnalysisRenderer:
                 "gaps": [],
             },
             "c2": {
-                "subject": "Customer 2",
+                "subject": "Subject 2",
                 "findings": [
                     _make_finding(
                         severity="P1",
@@ -1482,8 +1482,8 @@ class TestCategoryNormalization:
         }
         computed = _compute(merged)
         legal_cats = computed.category_groups.get("legal", {})
-        # Should either be in its original form or mapped to Other
-        assert len(legal_cats) >= 1
+        # Novel category passes through or maps to Other — exactly 1 entry
+        assert len(legal_cats) == 1
 
 
 # ===========================================================================
@@ -1791,7 +1791,7 @@ class TestCleanDisplayName:
     def test_clean_display_name_already_clean(self) -> None:
         from dd_agents.reporting.computed_metrics import _clean_display_name
 
-        assert _clean_display_name("customer_a") == "Customer A"
+        assert _clean_display_name("subject_a") == "Subject A"
 
 
 class TestMaterialNoiseComputed:
@@ -1800,7 +1800,7 @@ class TestMaterialNoiseComputed:
     def _make_noise_merged(self) -> dict[str, object]:
         return {
             "c1": {
-                "subject": "Customer A",
+                "subject": "Subject A",
                 "findings": [
                     _make_finding(severity="P0", title="CoC terminates contract"),
                     _make_finding(severity="P1", title="Binary xlsx inaccessible"),
@@ -1848,7 +1848,7 @@ class TestMaterialNoiseComputed:
         assert computed.noise_count == 2  # 2 noise findings in test data
 
     def test_display_names_generated(self) -> None:
-        """Display names should be generated for all customers."""
+        """Display names should be generated for all subjects."""
         merged = {
             "1_5_customer_contracts": {"subject": "1_5_customer_contracts", "findings": [], "gaps": []},
             "acme_app": {"subject": "acme_app", "findings": [], "gaps": []},
@@ -1897,7 +1897,7 @@ class TestKeyRisksSummaryTable:
         r = DashboardRenderer(computed, merged)
         html_out = r.render()
         # Should contain a summary table structure
-        assert "key-risks-table" in html_out
+        assert "subject-table sortable" in html_out
         assert "Domain" in html_out
 
     def test_key_risks_capped_per_domain(self) -> None:
@@ -1910,7 +1910,7 @@ class TestKeyRisksSummaryTable:
         r = DashboardRenderer(computed, merged)
         html_out = r.render()
         # The table should exist and be bounded
-        assert "key-risks-table" in html_out
+        assert "subject-table sortable" in html_out
 
 
 class TestDomainFindingsCap:
@@ -2053,8 +2053,8 @@ class TestDisplayNameResolution:
         """_resolve_display_name falls back to raw _subject if SSN not in display_names."""
         computed = ReportComputedData(display_names={})
         r = DomainRenderer(computed, {})
-        item = {"_subject": "Some Customer"}
-        assert r._resolve_display_name(item) == "Some Customer"
+        item = {"_subject": "Some Subject"}
+        assert r._resolve_display_name(item) == "Some Subject"
 
     def test_resolve_display_name_empty_csn(self) -> None:
         """_resolve_display_name handles empty _subject_safe_name gracefully."""
@@ -2141,7 +2141,7 @@ class TestDisplayNameResolution:
         assert "P2:1" in html_out
 
     def test_diff_renderer_resolves_display_names(self) -> None:
-        """DiffRenderer should resolve customer display names via display_names dict."""
+        """DiffRenderer should resolve subject display names via display_names dict."""
         import json
         import tempfile
         from pathlib import Path

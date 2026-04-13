@@ -720,7 +720,7 @@ The checksum file lives at `_dd/forensic-dd/index/text/checksums.sha256`. It per
 ```
 a1b2c3d4e5f6...  ./Above 200K USD/Acme Corp/MSA.pdf
 f7e8d9c0b1a2...  ./Above 200K USD/Acme Corp/Order Form 2023.docx
-9a8b7c6d5e4f...  ./Reference Data/Customers Cube Q4 2024.xlsx
+9a8b7c6d5e4f...  ./Reference Data/Subjects Cube Q4 2024.xlsx
 ```
 
 **Cache behavior on re-runs**:
@@ -870,14 +870,14 @@ When OCR yields fewer than 50 characters, the image is classified as a diagram. 
 This image could not be OCR-extracted. Use the Read tool to visually examine this file.
 ```
 
-When agents encounter this placeholder, they use the SDK's built-in Read tool (which supports image viewing since Claude is multimodal) to examine the diagram visually. Diagram descriptions are recorded in the customer JSON under `diagrams[]`:
+When agents encounter this placeholder, they use the SDK's built-in Read tool (which supports image viewing since Claude is multimodal) to examine the diagram visually. Diagram descriptions are recorded in the subject JSON under `diagrams[]`:
 
 ```json
 {
   "diagrams": [
     {
       "file_path": "./Reference Data/Org Structure.png",
-      "description": "Corporate org chart showing Acme Holdings Inc. as parent with two subsidiaries: Acme Corp (US) and Acme Solutions ULC (Canada). All customer contracts appear to be signed by Acme Holdings Inc.",
+      "description": "Corporate org chart showing Acme Holdings Inc. as parent with two subsidiaries: Acme Corp (US) and Acme Solutions ULC (Canada). All subject contracts appear to be signed by Acme Holdings Inc.",
       "relevance": "Entity validation for contract signing authority"
     }
   ]
@@ -894,7 +894,7 @@ The mapping from source file path to extracted text path follows a deterministic
 Source:    ./Above 200K USD/Acme Corp/MSA.pdf
 Text:      _dd/forensic-dd/index/text/Above_200K_USD__Acme_Corp__MSA.pdf.md
 
-Source:    ./Reference Data/Customers Cube.xlsx
+Source:    ./Reference Data/Subjects Cube.xlsx
 Text:      _dd/forensic-dd/index/text/Reference_Data__Customers_Cube.xlsx.md
 ```
 

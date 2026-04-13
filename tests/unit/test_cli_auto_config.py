@@ -72,7 +72,6 @@ def _make_scan_result(
     """Build a minimal scan_result dict for testing."""
     return {
         "groups": groups or ["GroupA", "GroupB"],
-        "customers": [],
         "subject_names": subject_names or ["Acme_Corp", "Beta_Inc", "Gamma_LLC"],
         "file_count": file_count,
         "counts": None,
@@ -140,12 +139,12 @@ def _make_buyer_strategy_response() -> dict:
         "buyer_strategy": {
             "thesis": "Acquire WidgetCo to expand Apex's platform into widget intelligence.",
             "key_synergies": [
-                "Cross-sell widget analytics to Apex enterprise customers",
+                "Cross-sell widget analytics to Apex enterprise subjects",
                 "Integrate WidgetCo data engine with Apex platform",
             ],
             "integration_priorities": [
                 "Unified analytics dashboard",
-                "Customer migration program",
+                "Subject migration program",
             ],
             "risk_tolerance": "moderate",
             "focus_areas": [
@@ -249,7 +248,7 @@ class TestBuildReferenceFileSummary:
     def test_excludes_subject_folder_files(self, tmp_path: Path) -> None:
         dr = _create_data_room(tmp_path)
         result = build_reference_file_summary(dr)
-        # Should only have root-level files, not files inside customer folders
+        # Should only have root-level files, not files inside subject folders
         filenames = [r["filename"] for r in result]
         assert "contract.pdf" not in filenames
         assert "agreement.pdf" not in filenames
@@ -526,7 +525,7 @@ class TestDataRoomAnalyzer:
         assert "overview.pdf" in prompt
         assert "BuyerCo" in prompt
         assert "TargetCo" in prompt
-        assert "Acme_Corp" in prompt  # customer names
+        assert "Acme_Corp" in prompt  # subject names
 
     @pytest.mark.asyncio
     async def test_user_prompt_includes_deal_type_hint(self, tmp_path: Path) -> None:

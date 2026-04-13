@@ -1,8 +1,6 @@
 # Production Hardening Plan
 
 > **ARCHIVED** — All issues in this plan are RESOLVED as of v0.4.1 (2026-03-05). This document is kept for historical reference. See [CHANGELOG.md](CHANGELOG.md) for the current state.
->
-> **Note (v1.0.0)**: This document uses "customer" terminology throughout. As of v1.0.0 (Issue #187), all internal code uses "subject" instead. References to "customer" below reflect the terminology at time of writing.
 
 > Original plan to bring the pipeline from functional prototype to
 > production-grade quality: resilient, complete, stable, and accurate.
@@ -10,7 +8,7 @@
 **Epic**: [#32](https://github.com/zoharbabin/due-diligence-agents/issues/32)
 **Baseline at plan creation**: 1635 unit tests passing, mypy strict clean, ruff clean (v0.3.1)
 
-> **Status (v0.4.1, 2026-03-05)**: ALL ISSUES RESOLVED. All P0/P1/P2/P3/P4 issues across 40+ tracked issues complete. Production hardening (#68-#80), post-production fixes (#81-#86), feature issues (#49, #65, #51, #11, #9, #6, #3, #2, #7), 100% coverage roadmap (#87-#94, #95), runaway agent defense (#96), Reporting Lead replacement (#97), board-ready report redesign (#113), severity calibration (#114), and data quality separation all implemented. 2149 unit tests, 17 integration, mypy strict, ruff clean. Pipeline production-tested: 73 merged customers, 498 findings, audit PASSED.
+> **Status (v0.4.1, 2026-03-05)**: ALL ISSUES RESOLVED. All P0/P1/P2/P3/P4 issues across 40+ tracked issues complete. Production hardening (#68-#80), post-production fixes (#81-#86), feature issues (#49, #65, #51, #11, #9, #6, #3, #2, #7), 100% coverage roadmap (#87-#94, #95), runaway agent defense (#96), Reporting Lead replacement (#97), report redesign (#113), severity calibration (#114), and data quality separation all implemented. 2149 unit tests, 17 integration, mypy strict, ruff clean. Pipeline production-tested: 73 merged subjects, 498 findings, audit PASSED.
 
 ---
 
@@ -39,7 +37,7 @@
 
 ### What we are building toward
 
-A pipeline that can process a production data room (100+ customers, 1000+ files,
+A pipeline that can process a production data room (100+ subjects, 1000+ files,
 mixed PDF/DOCX/images) end-to-end and produce a correct, complete, auditable
 Excel report — or fail loudly with actionable diagnostics.
 
@@ -48,7 +46,7 @@ Excel report — or fail loudly with actionable diagnostics.
 | Criterion | Metric | Current | Target |
 |-----------|--------|---------|--------|
 | **Stability** | Pipeline completes without crash on valid data rooms | Crashes on missing schema, missing manifest field | Zero crashes on valid input |
-| **Completeness** | Every customer appears in output with all required columns | Gaps silently dropped through merge/model/Excel chain | 100% customer coverage or explicit gap findings |
+| **Completeness** | Every subject appears in output with all required columns | Gaps silently dropped through merge/model/Excel chain | 100% subject coverage or explicit gap findings |
 | **Accuracy** | Citation quotes match source documents | Page markers stripped in multi-chunk, cross-file search incomplete | All citations verified against source text |
 | **Blocking gates** | 5 gates block on failure as specified | 4 of 5 gates do not actually block | All 5 gates enforce their contracts |
 | **Agent integration** | Agents produce real findings via Claude Agent SDK | All agent calls are placeholders returning empty strings | Full SDK integration with retry and recovery |
@@ -66,7 +64,7 @@ Every error must either be handled with an explicit recovery path or raised as
 a blocking gate failure. No `except Exception: pass`. No `or True` to bypass
 checks. No hardcoded `passed=True` in validation.
 
-**Why**: In legal due diligence, a silently dropped finding or a missed customer
+**Why**: In legal due diligence, a silently dropped finding or a missed subject
 is worse than a pipeline crash. Lawyers need to trust that absence of a finding
 means the contract was reviewed, not that the pipeline failed quietly.
 
@@ -113,13 +111,13 @@ descriptions, and PR content in this repository.
 
 - Real company names, people's names, financial figures, or addresses
 - Actual contract text, clause language, or deal terms
-- Data room file paths that reveal customer identities
+- Data room file paths that reveal subject identities
 - API keys, tokens, credentials, or connection strings
 
 ### Required practices
 
-- Tests use generic placeholders: `"Customer A"`, `"file_1.pdf"`, `42.0`
-- Example prompts use `"[CUSTOMER]"`, `"[DOCUMENT]"`, `"[AMOUNT]"`
+- Tests use generic placeholders: `"Subject A"`, `"file_1.pdf"`, `42.0`
+- Example prompts use `"[SUBJECT]"`, `"[DOCUMENT]"`, `"[AMOUNT]"`
 - Commit messages describe the code change, not the business context
 - Issue descriptions reference module paths and line numbers, not deal specifics
 - `.env` files are in `.gitignore` and never committed
@@ -171,10 +169,10 @@ ruff format src/ tests/ --check
 | 33 | Wire agent integration with claude-agent-sdk | P0 | Agent |
 | 34 | NumericalManifest missing `generated_at` crashes audit | P0 | Validation |
 | 35 | Excel generation crashes on missing `report_schema.json` | P0 | Reporting |
-| 37 | Implement customer batching in step 14 | P0 | Scale |
+| 37 | Implement subject batching in step 14 | P0 | Scale |
 | 46 | Agent output parsing: silent data loss, no validation | P0 | Agent |
 | 36 | Parallelize document extraction | P1 | Scale |
-| 38 | Activate coverage gate, respawn for missing customers | P1 | Resilience |
+| 38 | Activate coverage gate, respawn for missing subjects | P1 | Resilience |
 | 39 | Detect silent context exhaustion | P1 | Resilience |
 | 40 | Error taxonomy + ErrorRecoveryManager | P1 | Resilience |
 | 44 | Implement placeholder steps 15, 18, 20-22 | P1 | Orchestrator |
@@ -230,7 +228,7 @@ Wave 0 (P0 — no dependencies between them):
   #35 (Excel crash)        — standalone
   #46 (output parsing)     — standalone
   #33 (agent wiring)       — standalone
-  #37 (customer batching)  — standalone
+  #37 (subject batching)  — standalone
   #65 (model type safety)  — standalone
 
 Wave 1 (P1 — depends on Wave 0):
@@ -363,15 +361,15 @@ preservation, retry success)
 
 ### Issue #33 — Wire agent integration with claude-agent-sdk
 
-**What**: The agent subsystem (`agents/base.py`, `specialists.py`, `judge.py`,
-`reporting_lead.py`) contains placeholder implementations that return empty
-strings instead of calling the Claude Agent SDK.
+**What**: The agent subsystem (`agents/base.py`, `specialists.py`, `judge.py`)
+contains placeholder implementations that return empty strings instead of
+calling the Claude Agent SDK.
 
 **Why it matters**: This is the critical path. Nothing downstream of step 14
 produces real output until agents are wired. This blocks 15+ other issues.
 
 **Where**: `src/dd_agents/agents/base.py` (line ~167), `specialists.py`,
-`judge.py`, `reporting_lead.py`, `src/dd_agents/hooks/` (return types wrong),
+`judge.py`, `src/dd_agents/hooks/` (return types wrong),
 `src/dd_agents/tools/server.py` (missing MCP integration)
 
 **How**:
@@ -396,10 +394,10 @@ tests with mocked SDK calls
 
 ---
 
-### Issue #37 — Implement customer batching in step 14
+### Issue #37 — Implement subject batching in step 14
 
-**What**: Step 14 assigns customers to agents but uses a naive fixed-token
-estimation (`tokens_per_customer=50`) that does not account for actual extracted
+**What**: Step 14 assigns subjects to agents but uses a naive fixed-token
+estimation (`tokens_per_subject=50`) that does not account for actual extracted
 text size. For large data rooms, this produces poorly balanced batches.
 
 **Why it matters**: Unbalanced batches cause context exhaustion in some agents
@@ -407,19 +405,19 @@ while others are underutilized. This is the root cause of Scenarios 7-8 in the
 error recovery spec.
 
 **Where**: `src/dd_agents/orchestrator/engine.py` (step 14, ~line 704),
-`src/dd_agents/agents/prompt_builder.py` (batch_customers method, ~line 270)
+`src/dd_agents/agents/prompt_builder.py` (batch_subjects method, ~line 270)
 
 **How**:
 1. Replace fixed token estimation with actual extracted text size measurement
-2. Implement `_estimate_customer_tokens()` that reads text index file sizes
-3. Use bin-packing algorithm to distribute customers across batches
+2. Implement `_estimate_subject_tokens()` that reads text index file sizes
+3. Use bin-packing algorithm to distribute subjects across batches
 4. Target 150K chars per batch (per spec 22 and search guide finding)
 5. Add batch size validation: reject batches that exceed model context limit
 
 **Spec**: `docs/plan/05-orchestrator.md`, `docs/plan/22-llm-robustness.md`
 
 **Tests**: `tests/unit/test_orchestrator.py` — add 5 tests (balanced batching,
-single large customer, many small customers, empty data room, token estimation)
+single large subject, many small subjects, empty data room, token estimation)
 
 ---
 
@@ -472,7 +470,7 @@ bare `except Exception` and logged as warnings.
 
 ### Issue #57 — Pipeline state not serialized — resume broken
 
-**What**: Runtime attributes (`_discovered_files`, `_customer_entries`,
+**What**: Runtime attributes (`_discovered_files`, `_subject_entries`,
 `_reference_files`, `_entity_resolver`) are stored via `type: ignore[attr-defined]`
 and never included in checkpoint serialization. `deal_config` is also missing
 from `to_checkpoint_dict()`.
@@ -573,7 +571,7 @@ Excel generation bugs produce incorrect cell references.
 ### Issue #38 — Activate coverage gate + respawn
 
 **What**: Step 17 coverage gate is labeled "BLOCKING" but does not respawn
-agents for missing customers or generate gap findings.
+agents for missing subjects or generate gap findings.
 
 **Depends on**: #33 (agents), #46 (parsing), #40 (error taxonomy)
 
@@ -646,7 +644,7 @@ count. Add thread safety to `ExtractionQualityTracker` and `ExtractionCache`.
 ### Issue #61 — Search module bugs
 
 **What**: Page markers stripped from multi-chunk segments (critical for citation
-accuracy), unbounded API concurrency per customer, verification stops on first
+accuracy), unbounded API concurrency per subject, verification stops on first
 failure.
 
 **Where**: `src/dd_agents/search/chunker.py` (~line 194),
@@ -905,7 +903,7 @@ JSON-serializable or have explicit `to_dict()`/`from_dict()` methods.
 ### 14.5 Search module context management
 
 The search module's 4-phase analysis (map → merge → synthesis → validation)
-creates an unbounded number of concurrent API calls per customer. Issue #61
+creates an unbounded number of concurrent API calls per subject. Issue #61
 addresses the immediate bug, but the architectural concern is broader: the search
 module needs a global concurrency budget that respects API rate limits.
 
@@ -916,7 +914,7 @@ module needs a global concurrency budget that respects API rate limits.
 | Risk | Impact | Likelihood | Mitigation |
 |------|--------|------------|------------|
 | Claude Agent SDK breaking change | High | Low | Pin version, test in CI |
-| Agent context exhaustion on large data rooms | High | Medium | Customer batching (#37), context detection (#39) |
+| Agent context exhaustion on large data rooms | High | Medium | Subject batching (#37), context detection (#39) |
 | Non-atomic writes causing data corruption | Medium | Medium | Atomic writes (#63) across all modules |
 | Test suite becoming slow (>60s) | Low | Medium | Keep unit tests fast, use marks for slow tests |
 | Merge conflicts between concurrent issue branches | Medium | High | Small PRs, rebase frequently, implement in order |

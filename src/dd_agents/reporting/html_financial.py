@@ -163,7 +163,7 @@ class FinancialImpactRenderer(SectionRenderer):
         }
 
         parts: list[str] = [
-            "<h3>Customer Revenue Concentration</h3>",
+            "<h3>Entity Revenue Concentration</h3>",
             "<div style='display:flex;flex-wrap:wrap;gap:2px;min-height:120px'>",
         ]
 

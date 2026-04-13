@@ -177,6 +177,6 @@ class TestBuildRuntimeContext:
         project_dir.mkdir()
         run_dir.mkdir()
 
-        customers = [{"subject_safe_name": "acme", "file_list": ["a.pdf"]}]
-        ctx = _build_runtime_context(project_dir, run_dir, subjects_csv=customers)
-        assert ctx["subjects_csv"] is customers
+        subjects = [{"subject_safe_name": "acme", "file_list": ["a.pdf"]}]
+        ctx = _build_runtime_context(project_dir, run_dir, subjects_csv=subjects)
+        assert ctx["subjects_csv"] is subjects

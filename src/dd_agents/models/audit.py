@@ -13,6 +13,18 @@ from dd_agents.models.enums import (  # noqa: TC001
 )
 
 
+def _sev_count_init() -> dict[str, int]:
+    """Return ``{P0: 0, P1: 0, P2: 0, P3: 0}``.
+
+    Delegates to :func:`dd_agents.utils.constants._sev_count_init` via a
+    lazy import to avoid a circular import chain (models -> utils.constants
+    -> extraction -> models).
+    """
+    from dd_agents.utils.constants import _sev_count_init as _impl
+
+    return _impl()
+
+
 class AuditEntry(BaseModel):
     """
     Single audit log entry (one JSONL line).
@@ -51,11 +63,11 @@ class AuditSummary(BaseModel):
     # serialised directly to JSON and consumed by external tools that expect
     # plain string keys ("P0", "P1", etc.).
     findings_by_severity: dict[str, int] = Field(
-        default_factory=lambda: {"P0": 0, "P1": 0, "P2": 0, "P3": 0},
+        default_factory=_sev_count_init,
         description="Finding counts keyed by severity level",
     )
     gaps_by_priority: dict[str, int] = Field(
-        default_factory=lambda: {"P0": 0, "P1": 0, "P2": 0, "P3": 0},
+        default_factory=_sev_count_init,
         description="Gap counts keyed by priority level",
     )
     clean_result_count: int = Field(default=0, description="Number of domain_reviewed_no_issues findings")

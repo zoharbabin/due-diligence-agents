@@ -94,7 +94,9 @@ class GovernanceGraphRenderer(SectionRenderer):
 
         # Mermaid JS (client-side rendering)
         parts.append(
-            "<script src='https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js'></script>"
+            "<script src='https://cdn.jsdelivr.net/npm/mermaid@10.9.5/dist/mermaid.min.js'"
+            " integrity='sha384-enVdc7lTHDGtpROV85t9+VqPC2EyyB0hsRD0MrvQnHUsHmTHIz2D8SPP4EnBkstH'"
+            " crossorigin='anonymous'></script>"
             "<script>mermaid.initialize({startOnLoad:true, theme:'neutral', "
             "securityLevel:'strict'});</script>"
         )
@@ -105,15 +107,15 @@ class GovernanceGraphRenderer(SectionRenderer):
     def _collect_graphs(self) -> dict[str, list[dict[str, Any]]]:
         """Collect governance graph edges from merged data."""
         result: dict[str, list[dict[str, Any]]] = {}
-        for csn, cust_data in self.merged_data.items():
-            if not isinstance(cust_data, dict):
+        for csn, subj_data in self.merged_data.items():
+            if not isinstance(subj_data, dict):
                 continue
-            gov = cust_data.get("governance_graph")
+            gov = subj_data.get("governance_graph")
             if not gov or not isinstance(gov, dict):
                 continue
             edges = gov.get("edges", [])
             if edges:
-                display = cust_data.get("subject", csn)
+                display = subj_data.get("subject", csn)
                 result[display] = edges
         return result
 

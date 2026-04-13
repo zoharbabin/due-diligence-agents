@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import html
-
 from dd_agents.reporting.html_base import TIMELINE_COLORS, SectionRenderer
 
 
@@ -39,11 +37,10 @@ class RecommendationsRenderer(SectionRenderer):
         parts.append("</section>")
         return "\n".join(parts)
 
-    @staticmethod
-    def _render_rec_card(rec: dict[str, str]) -> str:
+    def _render_rec_card(self, rec: dict[str, str]) -> str:
         timeline = rec.get("timeline", "")
-        title = html.escape(rec.get("title", ""))
-        description = html.escape(rec.get("description", ""))
+        title = self.escape(rec.get("title", ""))
+        description = self.escape(rec.get("description", ""))
         color = TIMELINE_COLORS.get(timeline, "#6c757d")
 
         # Timeline badge background: lighter version of the color
@@ -58,7 +55,7 @@ class RecommendationsRenderer(SectionRenderer):
         return (
             f"<div class='rec-card' style='border-left-color:{color}'>"
             f"<span class='rec-timeline' style='background:{badge_bg};color:{color}'>"
-            f"{html.escape(timeline)}</span>"
+            f"{self.escape(timeline)}</span>"
             f"<div class='rec-title'>{title}</div>"
             f"<div class='rec-desc'>{description}</div>"
             f"</div>"

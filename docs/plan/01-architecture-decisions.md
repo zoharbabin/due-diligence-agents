@@ -12,10 +12,10 @@ M&A deal activity reached approximately $4.9 trillion in 2025, up 36-40% year-ov
 
 **Status**: Accepted
 
-**Context**: The existing forensic-dd system is a Claude Code Skill -- 3,102 lines of markdown instructions executed by Claude Code at runtime. The LLM controls the entire execution flow: it decides when to proceed between steps, when to retry, and how to validate. In a production retrospective (a real M&A deal, ~200 customers), all 17 quality failures were instruction-following failures:
+**Context**: The existing forensic-dd system is a Claude Code Skill -- 3,102 lines of markdown instructions executed by Claude Code at runtime. The LLM controls the entire execution flow: it decides when to proceed between steps, when to retry, and how to validate. In a production retrospective (a real M&A deal, ~200 subjects), all 17 quality failures were instruction-following failures:
 
-- Agents skipped customers (produced 28 of 34 expected outputs)
-- Agents produced aggregate files (`_global.json`, `batch_summary.json`) instead of per-customer output
+- Agents skipped subjects (produced 28 of 34 expected outputs)
+- Agents produced aggregate files (`_global.json`, `batch_summary.json`) instead of per-subject output
 - Agents fabricated citations (exact_quote not found in source document)
 - Agents missed gap detection (no gap files despite missing referenced documents)
 - Agents generated incorrect numerical counts (total_findings did not match sum of per-severity counts)
@@ -31,7 +31,7 @@ This is the **enforcement paradox** (i.e., the retrospective finding that all 17
 
 1. **Control inversion**: Python is the orchestrator, agents are workers. The 35-step pipeline is a Python state machine. Agents cannot skip steps because they do not control the flow.
 2. **Deterministic enforcement**: Validation gates are `if/else` in Python, not "MUST" in markdown. Coverage verification counts files on disk. Schema validation uses Pydantic. Numerical audit re-derives values from source files.
-3. **Hook-enforced boundaries**: PreToolUse hooks block dangerous operations programmatically. Stop hooks prevent agents from finishing before processing all customers. PostToolUse hooks validate output after every write.
+3. **Hook-enforced boundaries**: PreToolUse hooks block dangerous operations programmatically. Stop hooks prevent agents from finishing before processing all subjects. PostToolUse hooks validate output after every write.
 4. **Focused prompts**: Each agent receives a bounded prompt (< 80K tokens) with only its relevant rules, instead of the full 3,102-line specification. This is well within reliable instruction-following range.
 5. **Programmatic retry**: When an agent fails or produces incomplete output, the orchestrator re-spawns automatically with the missing subset. No manual intervention.
 6. **Cost controls**: `max_budget_usd` per agent prevents runaway API costs. `max_turns` bounds agent loop iterations.
@@ -68,7 +68,7 @@ Key SDK constructs used:
 
 **Status**: Accepted
 
-**Context**: The system processes 200-500 documents across 50-200 customers. Total data volume is typically <100MB of extracted text and <50MB of JSON artifacts. Evaluated: SQLite, PostgreSQL, MongoDB, file-based JSON.
+**Context**: The system processes 200-500 documents across 50-200 subjects. Total data volume is typically <100MB of extracted text and <50MB of JSON artifacts. Evaluated: SQLite, PostgreSQL, MongoDB, file-based JSON.
 
 **Decision**: File-based JSON/JSONL storage using the three-tier persistence model from the existing skill. No database dependency.
 
@@ -78,11 +78,11 @@ Key SDK constructs used:
 |------|-----------|------------------|
 | **PERMANENT** | Never wiped across runs | `_dd/forensic-dd/index/text/*.md` (extracted documents), `checksums.sha256`, `extraction_quality.json`, `_dd/entity_resolution_cache.json` (shared), `_dd/forensic-dd/runs/` (all prior runs preserved), `_dd/run_history.json` (shared) |
 | **VERSIONED** | Archived per run, never modified after completion | `_dd/forensic-dd/runs/{run_id}/findings/` (per-agent + merged), `audit/{agent}/audit_log.jsonl`, `audit.json`, `numerical_manifest.json`, `file_coverage.json`, `classification.json`, `contract_date_reconciliation.json`, `report_diff.json`, `judge/quality_scores.json`, `metadata.json`, `inventory_snapshot/` |
-| **FRESH** | Wiped and rebuilt every run | `_dd/forensic-dd/inventory/` (tree.txt, files.txt, file_types.txt, customers.csv, counts.json, reference_files.json, customer_mentions.json, entity_matches.json), generated reports |
+| **FRESH** | Wiped and rebuilt every run | `_dd/forensic-dd/inventory/` (tree.txt, files.txt, file_types.txt, subjects.csv, counts.json, reference_files.json, subject_mentions.json, entity_matches.json), generated reports |
 
 **Rationale**:
-- At 400-document / 200-customer scale, file-based queries are fast (< 1 second for any aggregation)
-- Agent outputs are naturally per-customer JSON files -- direct filesystem match
+- At 400-document / 200-subject scale, file-based queries are fast (< 1 second for any aggregation)
+- Agent outputs are naturally per-subject JSON files -- direct filesystem match
 - Three-tier lifecycle maps cleanly to directory operations (mkdir, cp -r, rm -rf)
 - No deployment dependency -- runs anywhere Python runs
 - Agent tools (Read, Write, Glob, Grep) operate directly on the filesystem
@@ -101,13 +101,13 @@ Key SDK constructs used:
 
 **Status**: Accepted
 
-**Context**: Cross-document semantic search can identify similar clauses across customers (e.g., "find all change-of-control clauses similar to this one"). Evaluated vector databases for this capability. Rejected `ruvector` (solo-developer project, 3 months old, critical bugs in SIMD inference and graph traversal). ChromaDB is mature and `pip install` simple.
+**Context**: Cross-document semantic search can identify similar clauses across subjects (e.g., "find all change-of-control clauses similar to this one"). Evaluated vector databases for this capability. Rejected `ruvector` (solo-developer project, 3 months old, critical bugs in SIMD inference and graph traversal). ChromaDB is mature and `pip install` simple.
 
 **Decision**: ChromaDB is an optional enhancement. The system must function fully without it. Core analysis uses keyword search (Grep) and deterministic matching.
 
 **When ChromaDB adds value**:
 - Cross-document semantic search: "find clauses similar to this indemnification carve-out"
-- Pattern detection across customers: identify non-standard clause variants
+- Pattern detection across subjects: identify non-standard clause variants
 - Reference file lookup by semantic similarity when keyword matching is insufficient
 
 **When ChromaDB is not needed** (and the system functions without it):
@@ -129,9 +129,9 @@ Key SDK constructs used:
 
 **Status**: Accepted
 
-**Context**: Each customer's contracts form a governance hierarchy. An MSA governs Order Forms, Amendments modify MSAs, SOWs reference MSAs, etc. The Legal agent builds this graph from explicit text linkages. The orchestrator needs to validate the graph (cycle detection, unreachable nodes, conflict identification) and the Reporting Lead needs to traverse it for the governance_resolved_pct metric.
+**Context**: Each subject's contracts form a governance hierarchy. An MSA governs Order Forms, Amendments modify MSAs, SOWs reference MSAs, etc. The Legal agent builds this graph from explicit text linkages. The orchestrator needs to validate the graph (cycle detection, unreachable nodes, conflict identification) and the Reporting Lead needs to traverse it for the governance_resolved_pct metric.
 
-At typical scale: 200 customers x ~3-5 governance edges each = ~600-1,000 edges total.
+At typical scale: 200 subjects x ~3-5 governance edges each = ~600-1,000 edges total.
 
 **Alternatives considered**:
 - Neo4j: Full graph database. JVM dependency, server management, Cypher learning curve. Overkill for 1,000 edges.
@@ -175,7 +175,7 @@ At typical scale: 200 customers x ~3-5 governance edges each = ~600-1,000 edges 
 | `Citation` | finding.schema.json (nested) | Finding validation |
 | `FileHeader` | domain-definitions.md section 1 | Agent output |
 | `GovernanceEdge` | domain-definitions.md section 5b | Graph construction |
-| `CustomerJSON` | agent-prompts.md section 4c | Per-customer agent output |
+| `SubjectJSON` | agent-prompts.md section 4c | Per-subject agent output |
 | `CoverageManifest` | coverage-manifest.schema.json | Step 17 coverage gate |
 | `AuditEntry` | audit-entry.schema.json | Agent audit logs |
 | `NumericalManifest` | numerical-validation.md section 1 | Step 27 numerical gate |
@@ -238,7 +238,7 @@ async def run_pipeline(project_dir: Path, resume: bool = False):
 |------|------|-----------|
 | Config validation | 1 | `config_version` present, required sections exist |
 | Extraction gate | 5 | < 50% systemic extraction failure rate |
-| Customer coverage | 17 | All customers have output from all 4 agents |
+| Subject coverage | 17 | All subjects have output from all 4 agents |
 | Numerical audit | 27 | All 5 validation layers pass |
 | QA audit | 28 | All applicable DoD checks pass |
 | Post-gen validation | 31 | Excel matches report_schema.json |

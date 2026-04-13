@@ -63,16 +63,16 @@ class TestSyntheticDataRoomGenerator:
         gen = SyntheticDataRoomGenerator(seed=42)
         root = gen.generate(tmp_path, num_subjects=5)
 
-        # Count customer directories (exclude _reference)
-        customer_dirs: list[Path] = []
+        # Count subject directories (exclude _reference)
+        subject_dirs: list[Path] = []
         for group_dir in root.iterdir():
             if group_dir.name.startswith("_"):
                 continue
-            for cust_dir in group_dir.iterdir():
-                if cust_dir.is_dir():
-                    customer_dirs.append(cust_dir)
+            for subj_dir in group_dir.iterdir():
+                if subj_dir.is_dir():
+                    subject_dirs.append(subj_dir)
 
-        assert len(customer_dirs) == 5
+        assert len(subject_dirs) == 5
 
     def test_files_are_markdown(self, tmp_path: Path) -> None:
         gen = SyntheticDataRoomGenerator(seed=42)
@@ -81,7 +81,7 @@ class TestSyntheticDataRoomGenerator:
         md_files = list(root.rglob("*.md"))
         assert len(md_files) > 0
 
-        # Every generated file in customer dirs must end with .md
+        # Every generated file in subject dirs must end with .md
         for group_dir in root.iterdir():
             if group_dir.name.startswith("_"):
                 continue
@@ -130,10 +130,10 @@ class TestSyntheticDataRoomGenerator:
         group_names = sorted(d.name for d in groups)
         assert group_names == ["GroupA", "GroupB"]
 
-        # Both groups have at least one customer
+        # Both groups have at least one subject
         for g in groups:
-            customers = [d for d in g.iterdir() if d.is_dir()]
-            assert len(customers) >= 1, f"Group {g.name} has no customers"
+            subjects = [d for d in g.iterdir() if d.is_dir()]
+            assert len(subjects) >= 1, f"Group {g.name} has no subjects"
 
     def test_ip_ownership_clause(self, tmp_path: Path) -> None:
         gen = SyntheticDataRoomGenerator(seed=42)
@@ -164,4 +164,4 @@ class TestSyntheticDataRoomGenerator:
                 continue
             for cust_dir in group_dir.iterdir():
                 files = list(cust_dir.iterdir())
-                assert 2 <= len(files) <= 4, f"Customer {cust_dir.name} has {len(files)} files, expected 2-4"
+                assert 2 <= len(files) <= 4, f"Subject {cust_dir.name} has {len(files)} files, expected 2-4"

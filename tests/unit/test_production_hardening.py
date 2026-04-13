@@ -5,7 +5,7 @@ Covers:
 - #88: Safe name enforcement in prompts + merge_all expected_subjects fuzzy matching
 - #89: Entity cache save() requires run_id (tested via orchestrator)
 - #90: JSON output constraint in system prompt
-- #91: Coverage gate retries all missing customers
+- #91: Coverage gate retries all missing subjects
 - #92: Per-agent batch sizing (FinanceAgent smaller batches)
 - #93: Citation verification mandate + verification_status field
 - #94: Tool list naming clarity (SPECIALIST_CUSTOM_TOOLS etc.)
@@ -202,7 +202,7 @@ class TestSafeNameEnforcement:
         builder: PromptBuilder,
         sample_subjects: list[SubjectEntry],
     ) -> None:
-        """Prompt includes CRITICAL filename instruction for each customer."""
+        """Prompt includes CRITICAL filename instruction for each subject."""
         prompt = builder.build_specialist_prompt(
             agent_name="legal",
             subjects=sample_subjects,
@@ -253,7 +253,7 @@ class TestSafeNameEnforcement:
         assert "acme_corp" in results
 
     def test_merge_all_fuzzy_matches_similar_stems(self, tmp_path: Path) -> None:
-        """merge_all fuzzy-matches a close stem to the expected customer."""
+        """merge_all fuzzy-matches a close stem to the expected subject."""
         findings_dir = tmp_path / "findings"
         legal_dir = findings_dir / "legal"
         legal_dir.mkdir(parents=True)
@@ -278,7 +278,7 @@ class TestSafeNameEnforcement:
         assert "acme_corp" in results or "acme_corp_inc" in results
 
     def test_merge_all_logs_missing_expected(self, tmp_path: Path) -> None:
-        """merge_all logs warning when expected customers have no findings."""
+        """merge_all logs warning when expected subjects have no findings."""
         findings_dir = tmp_path / "findings"
         legal_dir = findings_dir / "legal"
         legal_dir.mkdir(parents=True)
@@ -317,21 +317,31 @@ class TestJsonOutputConstraint:
         tmp_run_dir: Path,
         run_id: str,
     ) -> None:
-        """The CRITICAL CONSTRAINTS block (built in _spawn_agent) includes
-        constraint #5 requiring valid JSON output.  We verify by reading the
-        source code of _spawn_agent to confirm the constraint is present."""
+        """The CRITICAL CONSTRAINTS block (built in _spawn_agent) references
+        JSON_OUTPUT_CONSTRAINT for constraint #5.  Verify the constant contains
+        the expected rules and that _spawn_agent references it."""
         import inspect
 
+        from dd_agents.agents.prompt_constants import JSON_OUTPUT_CONSTRAINT
+
+        # The constant itself must contain the JSON output rules
+        assert "valid JSON object" in JSON_OUTPUT_CONSTRAINT
+        assert "markdown fences" in JSON_OUTPUT_CONSTRAINT or "```json" in JSON_OUTPUT_CONSTRAINT
+
+        # _spawn_agent must reference the shared constant
         src = inspect.getsource(BaseAgentRunner._spawn_agent)
-        assert "valid JSON object" in src
-        assert "markdown fences" in src or "```json" in src
+        assert "JSON_OUTPUT_CONSTRAINT" in src
 
     def test_constraint_5_is_present(self) -> None:
-        """Constraint #5 should be present in the _spawn_agent method source."""
+        """Constraint #5 references JSON_OUTPUT_CONSTRAINT in _spawn_agent."""
         import inspect
 
+        from dd_agents.agents.prompt_constants import JSON_OUTPUT_CONSTRAINT
+
         src = inspect.getsource(BaseAgentRunner._spawn_agent)
-        assert "5. Your final output message MUST be" in src
+        assert "JSON_OUTPUT_CONSTRAINT" in src
+        # Verify the constant itself has the expected content
+        assert "MUST be a single valid JSON object" in JSON_OUTPUT_CONSTRAINT
 
 
 # ===========================================================================
@@ -348,9 +358,9 @@ class TestPerAgentBatchSizing:
         assert BaseAgentRunner.max_tokens_per_batch == 40_000
 
     def test_finance_overrides(self) -> None:
-        """FinanceAgent uses smaller batches."""
-        assert FinanceAgent.max_subjects_per_batch == 10
-        assert FinanceAgent.max_tokens_per_batch == 25_000
+        """FinanceAgent uses smaller batches for dense spreadsheet content."""
+        assert FinanceAgent.max_subjects_per_batch == 7
+        assert FinanceAgent.max_tokens_per_batch == 20_000
 
     def test_legal_inherits_defaults(self) -> None:
         """LegalAgent inherits the base defaults."""
@@ -361,9 +371,10 @@ class TestPerAgentBatchSizing:
         assert CommercialAgent.max_subjects_per_batch == 20
         assert CommercialAgent.max_tokens_per_batch == 40_000
 
-    def test_producttech_inherits_defaults(self) -> None:
-        assert ProductTechAgent.max_subjects_per_batch == 20
-        assert ProductTechAgent.max_tokens_per_batch == 40_000
+    def test_producttech_reduced_batch_sizing(self) -> None:
+        """ProductTech uses reduced batches (dense docs like SOC2, DPAs)."""
+        assert ProductTechAgent.max_subjects_per_batch == 7
+        assert ProductTechAgent.max_tokens_per_batch == 20_000
 
     def test_instance_attributes(
         self,
@@ -373,8 +384,8 @@ class TestPerAgentBatchSizing:
     ) -> None:
         """Batch sizing is accessible on instances."""
         finance = FinanceAgent(tmp_project, tmp_run_dir, run_id)
-        assert finance.max_subjects_per_batch == 10
-        assert finance.max_tokens_per_batch == 25_000
+        assert finance.max_subjects_per_batch == 7
+        assert finance.max_tokens_per_batch == 20_000
 
         legal = LegalAgent(tmp_project, tmp_run_dir, run_id)
         assert legal.max_subjects_per_batch == 20
@@ -518,7 +529,7 @@ class TestDodCheck12bAssignments:
     """DoD check 12b should compare against assigned agents, not all 4."""
 
     def test_12b_passes_when_partial_assignment_covered(self, tmp_path: Path) -> None:
-        """Customer assigned to 2 agents passes when those 2 produce findings."""
+        """Subject assigned to 2 agents passes when those 2 produce findings."""
         from dd_agents.validation.dod import DefinitionOfDoneChecker
 
         run_dir = tmp_path / "run"
@@ -554,7 +565,7 @@ class TestDodCheck12bAssignments:
         assert result.passed, f"Should pass but got: {result.details}"
 
     def test_12b_fails_when_assigned_agent_missing(self, tmp_path: Path) -> None:
-        """Customer assigned to 3 agents fails when only 2 produce findings."""
+        """Subject assigned to 3 agents fails when only 2 produce findings."""
         from dd_agents.validation.dod import DefinitionOfDoneChecker
 
         run_dir = tmp_path / "run"

@@ -29,9 +29,9 @@ logger = logging.getLogger(__name__)
 class _RiskAlignment(BaseModel):  # noqa: TC001 — runtime use
     """Risk alignment for a single focus area."""
 
-    focus_area: str = ""
-    finding_count: int = 0
-    assessment: str = ""
+    focus_area: str = Field(default="", description="Buyer focus area being assessed")
+    finding_count: int = Field(default=0, description="Number of findings relevant to this focus area")
+    assessment: str = Field(default="", description="Risk alignment assessment narrative")
 
 
 class AcquirerIntelligenceOutput(BaseModel):  # noqa: TC001 — runtime use

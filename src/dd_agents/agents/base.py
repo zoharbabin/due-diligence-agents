@@ -152,6 +152,16 @@ class BaseAgentRunner(ABC):
         computed = max_size * 3
         return max(computed, self._MIN_BUFFER_BYTES)
 
+    @staticmethod
+    def _resolve_cli_path() -> str | None:
+        """Resolve the Claude CLI binary for agent SDK sessions.
+
+        Delegates to :func:`dd_agents.utils.resolve_sdk_cli_path`.
+        """
+        from dd_agents.utils import resolve_sdk_cli_path
+
+        return resolve_sdk_cli_path()
+
     def _raw_output_path(self) -> Path:
         """Return the path for saving raw agent output text."""
         return Path(self.run_dir) / "agent_output" / f"{self.get_agent_name()}_raw.txt"
@@ -322,6 +332,8 @@ class BaseAgentRunner(ABC):
         # treats it as developer instructions.  User-prompt-level rules were
         # observed to be ignored, so this constraint MUST be in the system prompt.
         base_system = self.get_system_prompt()
+        from dd_agents.agents.prompt_constants import JSON_OUTPUT_CONSTRAINT
+
         system_prompt = (
             f"{base_system}\n\n"
             "CRITICAL CONSTRAINTS (NEVER VIOLATE):\n"
@@ -333,9 +345,7 @@ class BaseAgentRunner(ABC):
             "fresh output directly. If a file exists at the output path, overwrite it.\n"
             "4. Do NOT summarize progress or produce status reports. Write JSON files "
             "and move to the next subject immediately.\n"
-            "5. Your final output message MUST be a single valid JSON object. Do not "
-            "wrap it in markdown fences (no ```json). Do not include explanatory text "
-            "before or after the JSON. Output ONLY the JSON object."
+            f"5. {JSON_OUTPUT_CONSTRAINT}"
         )
 
         # Build hooks and MCP server for the agent
@@ -366,6 +376,12 @@ class BaseAgentRunner(ABC):
             "allowed_tools": self.get_tools(),
             "max_buffer_size": self._compute_buffer_size(),
         }
+        # Allow overriding the Claude CLI binary used by the agent SDK.
+        # Workaround for bundled CLI version mismatches (e.g. Bedrock auth
+        # bugs fixed in newer system-installed versions).
+        cli_path = self._resolve_cli_path()
+        if cli_path is not None:
+            options_kwargs["cli_path"] = cli_path
         if hooks is not None:
             options_kwargs["hooks"] = hooks
         if mcp_server is not None:
@@ -546,7 +562,7 @@ class BaseAgentRunner(ABC):
 
         results: list[dict[str, Any]] = []
 
-        # Strategy 1: try entire output as JSON.
+        # Strategy 1a: try entire output as JSON (pure-JSON output).
         try:
             data = json.loads(cleaned)
             if isinstance(data, list):
@@ -554,11 +570,41 @@ class BaseAgentRunner(ABC):
             elif isinstance(data, dict):
                 results.append(data)
             return results
-        except (json.JSONDecodeError, ValueError) as exc:
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        # Strategy 1b: extract last top-level JSON object.
+        # In multi-turn sessions, agents produce intermediate prose before
+        # the final JSON output.  Find the last balanced {...} block by
+        # tracking brace depth from the end of the string.
+        depth = 0
+        json_end = -1
+        json_start = -1
+        for i in range(len(cleaned) - 1, -1, -1):
+            ch = cleaned[i]
+            if ch == "}":
+                if depth == 0:
+                    json_end = i + 1
+                depth += 1
+            elif ch == "{":
+                depth -= 1
+                if depth == 0 and json_end > 0:
+                    json_start = i
+                    break
+
+        if json_start >= 0 and json_end > json_start:
+            try:
+                data = json.loads(cleaned[json_start:json_end])
+                if isinstance(data, dict):
+                    results.append(data)
+                    return results
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+        if len(cleaned) > 200:
             logger.debug(
-                "Strategy 1 (full JSON parse) failed for output of %d chars: %s",
+                "Strategy 1 (full + last-object parse) failed for output of %d chars",
                 len(raw_output),
-                exc,
             )
 
         # Strategy 2: extract from markdown code fences.

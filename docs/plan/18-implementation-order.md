@@ -1,5 +1,7 @@
 # 18 — Implementation Order (Phased Build Plan)
 
+> **Historical note**: This document references `agents/reporting_lead.py` which was removed in v0.4.0. Step 23 is now deterministic pre-merge validation (`validation/pre_merge.py`). See `06-agents.md` §11.
+
 ## Overview
 
 This document defines the phased build plan with explicit dependency ordering. Each phase builds on the previous one. Within each phase, modules can be built in parallel where dependencies allow. The critical path determines the minimum time to production.
@@ -20,7 +22,7 @@ Phase 1: Foundation ────────────────────
     ├── coverage.py          CoverageManifest, FileCoverage
     ├── quality.py           QualityScore, SpotCheck, Contradiction
     ├── audit.py             AuditEntry, ConsolidatedAudit
-    ├── inventory.py         CustomerEntry, CountsJson, ReferenceFile, EntityMatch
+    ├── inventory.py         SubjectEntry, CountsJson, ReferenceFile, EntityMatch
     ├── classification.py    CustomerClassification (incremental mode)
     └── report.py            NumericalManifest, ReportDiff
 
@@ -37,7 +39,7 @@ Phase 1: Foundation ────────────────────
     └── chunking.py          Clause-aware chunking for vector store (22-llm-robustness.md §2)
 
     utils/*                  Shared utilities
-    ├── naming.py            customer_safe_name convention
+    ├── naming.py            subject_safe_name convention
     └── constants.py         Shared constants (tier names, agent names, etc.)
 
     config/
@@ -51,13 +53,13 @@ Phase 2: Infrastructure ──────────────────�
     ├── tiers.py             PERMANENT, VERSIONED, FRESH tier management
     ├── run_manager.py       Run initialization (mkdir, snapshot, wipe FRESH)
     ├── shared_files.py      read-validate-write for concurrency safety
-    └── incremental.py       Customer classification algorithm
+    └── incremental.py       Subject classification algorithm
 
-    inventory/*              File discovery + customer registry
+    inventory/*              File discovery + subject registry
     ├── discovery.py         tree.txt, files.txt, file_types.txt
-    ├── customers.py         customers.csv, counts.json
+    ├── subjects.py         subjects.csv, counts.json
     ├── references.py        reference_files.json
-    └── mentions.py          customer_mentions.json (using entity resolution)
+    └── mentions.py          subject_mentions.json (using entity resolution)
 
     hooks/*                  SDK hooks for deterministic enforcement
     ├── path_guard.py        PreToolUse: block outside project directory
@@ -70,7 +72,7 @@ Phase 2: Infrastructure ──────────────────�
     ├── validate_finding.py  Validate finding against schema
     ├── resolve_entity.py    Entity resolution lookup
     ├── check_governance.py  Governance graph validation
-    ├── get_customer_list.py Return customer list
+    ├── get_subject_list.py Return subject list
     └── report_progress.py   Agent progress reporting
 
     orchestrator/
@@ -102,7 +104,7 @@ Phase 4: Agent Implementation ────────────────�
   (the LLM-facing layer)
 
     agents/
-    ├── prompt_builder.py    Prompt assembly engine (deal context + customers + rules)
+    ├── prompt_builder.py    Prompt assembly engine (deal context + subjects + rules)
     ├── specialists.py       Specialist spawning (4 agents in parallel)
     ├── judge.py             Judge agent with iteration loop
     └── reporting_lead.py    Reporting Lead with checkpoint support
@@ -116,7 +118,7 @@ Phase 5: Reporting + Validation ────────────────
   (post-agent processing)
 
     reporting/*              Report generation
-    ├── merge.py             Per-customer merge + deduplication
+    ├── merge.py             Per-subject merge + deduplication
     ├── diff.py              Report diff (current vs prior run)
     ├── excel.py             14-sheet Excel from report_schema.json
     ├── schema.py            Load and interpret report_schema.json
@@ -181,7 +183,7 @@ Phase 6: Integration ───────────────────�
     ┌──────────────┐ ┌──────────────┐ ┌────────────────┐             │
     │ inventory/*  │ │   hooks/*    │ │   tools/*      │             │
     │ discovery    │ │ path_guard   │ │ server.py      │             │
-    │ customers    │ │ bash_guard   │ │ validate_find. │             │
+    │ subjects    │ │ bash_guard   │ │ validate_find. │             │
     │ references   │ │ output_val.  │ │ resolve_entity │             │
     │ mentions     │ │ stop_hook    │ │ check_govern.  │             │
     └──────┬───────┘ └──────┬───────┘ └───────┬────────┘             │
@@ -271,7 +273,7 @@ These modules can be built concurrently with the critical path:
 | Deliverable | Files | Acceptance |
 |-------------|-------|------------|
 | Persistence tiers | `src/dd_agents/persistence/*.py` | Run init creates correct dirs. FRESH wipe preserves PERMANENT. |
-| Inventory building | `src/dd_agents/inventory/*.py` | customers.csv, counts.json correct for sample data room |
+| Inventory building | `src/dd_agents/inventory/*.py` | subjects.csv, counts.json correct for sample data room |
 | Hooks | `src/dd_agents/hooks/*.py` | `pytest tests/unit/test_hooks.py` passes |
 | MCP tools | `src/dd_agents/tools/*.py` | Tools return expected output for sample inputs |
 | Pipeline state | `src/dd_agents/orchestrator/state.py` | State serializes and deserializes correctly |
@@ -292,7 +294,7 @@ These modules can be built concurrently with the critical path:
 |-------------|-------|------------|
 | Prompt builder | `src/dd_agents/agents/prompt_builder.py` | Prompts include all required sections |
 | Specialist spawning | `src/dd_agents/agents/specialists.py` | 4 agents spawn and produce output |
-| Coverage gate | `src/dd_agents/orchestrator/coverage.py` | Missing customers detected and re-spawned |
+| Coverage gate | `src/dd_agents/orchestrator/coverage.py` | Missing subjects detected and re-spawned |
 | Judge | `src/dd_agents/agents/judge.py` | Quality scores produced, iteration works |
 | Reporting Lead | `src/dd_agents/agents/reporting_lead.py` | Excel report generated |
 | Error recovery | `src/dd_agents/orchestrator/recovery.py` | All 15 scenarios handled |
@@ -302,7 +304,7 @@ These modules can be built concurrently with the critical path:
 
 | Deliverable | Files | Acceptance |
 |-------------|-------|------------|
-| Merge/dedup | `src/dd_agents/reporting/merge.py` | Correct merge from 4 agents per customer |
+| Merge/dedup | `src/dd_agents/reporting/merge.py` | Correct merge from 4 agents per subject |
 | Numerical validation | `src/dd_agents/validation/numerical_audit.py` | 6 layers validate correctly |
 | QA audit | `src/dd_agents/validation/qa_audit.py` | All 31 DoD checks pass on valid data |
 | Excel generation | `src/dd_agents/reporting/excel.py` | 14-sheet Excel matches report_schema.json |
@@ -359,10 +361,10 @@ Phase 1: Foundation
   [ ] models/coverage.py (CoverageManifest)
   [ ] models/quality.py (QualityScore, SpotCheck)
   [ ] models/audit.py (AuditEntry, ConsolidatedAudit)
-  [ ] models/inventory.py (CustomerEntry, CountsJson, ReferenceFile)
+  [ ] models/inventory.py (SubjectEntry, CountsJson, ReferenceFile)
   [ ] models/classification.py (CustomerClassification)
   [ ] models/report.py (NumericalManifest, ReportDiff)
-  [ ] utils/naming.py (customer_safe_name)
+  [ ] utils/naming.py (subject_safe_name)
   [ ] utils/constants.py
   [ ] entity_resolution/normalization.py
   [ ] entity_resolution/matcher.py (6 passes)
@@ -383,7 +385,7 @@ Phase 2: Infrastructure
   [ ] persistence/shared_files.py
   [ ] persistence/incremental.py
   [ ] inventory/discovery.py
-  [ ] inventory/customers.py
+  [ ] inventory/subjects.py
   [ ] inventory/references.py
   [ ] inventory/mentions.py
   [ ] hooks/path_guard.py
@@ -394,7 +396,7 @@ Phase 2: Infrastructure
   [ ] tools/validate_finding.py
   [ ] tools/resolve_entity.py
   [ ] tools/check_governance.py
-  [ ] tools/get_customer_list.py
+  [ ] tools/get_subject_list.py
   [ ] tools/report_progress.py
   [ ] orchestrator/state.py
   [ ] models/ontology.py (contract ontology — 21-ontology-and-reasoning.md §2)

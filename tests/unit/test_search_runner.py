@@ -24,7 +24,7 @@ def _write_prompts(path: Path) -> Path:
         "name": "Test Search",
         "description": "Unit test prompts",
         "columns": [
-            {"name": "Has MSA?", "prompt": "Does this customer have a master service agreement?"},
+            {"name": "Has MSA?", "prompt": "Does this subject have a master service agreement?"},
         ],
     }
     path.write_text(json.dumps(prompts))
@@ -35,7 +35,7 @@ def _make_data_room(tmp_path: Path) -> Path:
     """Create a minimal data room structure."""
     dr = tmp_path / "data_room"
     dr.mkdir()
-    # Create a customer folder with a file
+    # Create a subject folder with a file
     cust = dr / "Acme Corp"
     cust.mkdir()
     (cust / "MSA_2023.pdf.txt").write_text("Master Service Agreement between Acme Corp and...")

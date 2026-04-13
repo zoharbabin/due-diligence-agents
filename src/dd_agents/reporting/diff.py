@@ -15,6 +15,7 @@ from dd_agents.models.reporting import (
     ReportDiffChange,
     ReportDiffSummary,
 )
+from dd_agents.utils.constants import SEVERITY_WEIGHTS
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -314,10 +315,8 @@ class ReportTrendTracker:
         if len(self.snapshots) < 2:
             return "stable"
 
-        weights = {"P0": 10, "P1": 5, "P2": 2, "P3": 1}
-
         def _weighted(counts: dict[str, int]) -> float:
-            return sum(counts.get(k, 0) * v for k, v in weights.items())
+            return sum(counts.get(k, 0) * v for k, v in SEVERITY_WEIGHTS.items())
 
         first_score = _weighted(self.snapshots[0]["severity_counts"])
         last_score = _weighted(self.snapshots[-1]["severity_counts"])

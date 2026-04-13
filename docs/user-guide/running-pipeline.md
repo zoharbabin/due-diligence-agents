@@ -86,9 +86,9 @@ pymupdf with fallback to markitdown, OCR, or Claude vision. Step 5 is a **blocki
 extraction must succeed for at least a minimum threshold of files.
 
 **Phase 3: Inventory and Resolution (Steps 6-12)**
-Build customer inventory with document ranking (which version of a file to trust when
+Build subject inventory with document ranking (which version of a file to trust when
 duplicates exist), match company names across documents (handling aliases, abbreviations,
-and legal suffixes automatically), build reference registry, count customer mentions,
+and legal suffixes automatically), build reference registry, count subject mentions,
 and verify inventory integrity. Steps 11-12 are conditional (database reconciliation
 and incremental classification).
 
@@ -134,7 +134,7 @@ When a gate fails, the pipeline stops with exit code 2 and prints the reason for
 | Gate | Common Cause | How to Fix |
 |------|-------------|------------|
 | Bulk Extraction (step 5) | Corrupted or password-protected PDFs | Remove or replace problem files, then `--resume-from 4` |
-| Coverage Gate (step 17) | Too few documents per customer for meaningful analysis | Add missing documents to the data room, then `--resume-from 6` |
+| Coverage Gate (step 17) | Too few documents per subject for meaningful analysis | Add missing documents to the data room, then `--resume-from 6` |
 | Numerical Audit (step 27) | Contradictory financial figures across documents | Review flagged findings in `audit.json`, then `--resume-from 27` |
 | Full QA Audit (step 28) | Quality checks failed (missing citations, low confidence) | Review `dod_results.json` for specifics, then `--resume-from 28` |
 | Post-Generation (step 31) | Report generation produced incomplete output | Check disk space, then `--resume-from 30` |
@@ -163,7 +163,7 @@ All output goes under `_dd/forensic-dd/` relative to the data room:
 ```
 _dd/forensic-dd/
 ├── index/text/                     # PERMANENT: extracted document text
-├── inventory/                      # PERMANENT: customer registry, file counts
+├── inventory/                      # PERMANENT: subject registry, file counts
 ├── entity_resolution_cache.json    # PERMANENT: entity matching cache
 └── runs/
     └── 20260307_143000/            # VERSIONED: timestamped per run
@@ -185,7 +185,7 @@ _dd/forensic-dd/
 ### Persistence Tiers
 
 - **PERMANENT**: Never wiped between runs. Extraction cache, entity resolution cache,
-  customer registry. Reused across full and incremental runs.
+  subject registry. Reused across full and incremental runs.
 - **VERSIONED**: Archived per run in timestamped directories. Findings, reports,
   audit results. Each run gets its own copy.
 - **FRESH**: Rebuilt each run. Working state, intermediate computations.

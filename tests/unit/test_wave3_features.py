@@ -480,7 +480,7 @@ class TestIntegrationPlaybookRenderer:
                 "milestones": [
                     {"phase": "Pre-Close", "items": ["Identify consent requirements"]},
                     {"phase": "Day 1", "items": ["Send retention notices"]},
-                    {"phase": "Day 30-90", "items": ["Complete customer outreach"]},
+                    {"phase": "Day 30-90", "items": ["Complete subject outreach"]},
                 ],
                 "integration_complexity": "Medium",
             },

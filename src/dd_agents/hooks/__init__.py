@@ -10,11 +10,13 @@ from dd_agents.hooks.post_tool import (
 )
 from dd_agents.hooks.pre_tool import (
     BASH_BLOCKLIST,
+    BATCH_FILE_PATTERN,
     BLOCKED_FILENAMES,
     DEFAULT_MAX_BYTES,
     SCOPE_CHECKED_PREFIXES,
     bash_guard,
     file_size_guard,
+    finding_schema_guard,
     path_guard,
 )
 from dd_agents.hooks.stop import (
@@ -30,6 +32,7 @@ __all__ = [
     "bash_guard",
     "path_guard",
     "file_size_guard",
+    "finding_schema_guard",
     # PostToolUse
     "validate_subject_json",
     "validate_manifest_json",
@@ -41,6 +44,7 @@ __all__ = [
     # Constants
     "BASH_BLOCKLIST",
     "SCOPE_CHECKED_PREFIXES",
+    "BATCH_FILE_PATTERN",
     "BLOCKED_FILENAMES",
     "DEFAULT_MAX_BYTES",
 ]

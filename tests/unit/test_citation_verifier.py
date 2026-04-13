@@ -94,14 +94,14 @@ def _make_verifier(tmp_path: Path) -> CitationVerifier:
 
 
 def _make_result_with_citation(
-    file_path: str = "GroupA/Customer/msa.pdf",
+    file_path: str = "GroupA/Subject/msa.pdf",
     page: str = "5",
     section_ref: str = "Section 12.3",
     exact_quote: str = "Upon change of control, the agreement terminates.",
 ) -> SearchSubjectResult:
     """Create a SearchSubjectResult with a single citation."""
     return SearchSubjectResult(
-        subject_name="Test Customer",
+        subject_name="Test Subject",
         group="GroupA",
         files_analyzed=1,
         total_files=1,
@@ -131,7 +131,7 @@ class TestCitationVerifier:
         source_text = "\n--- Page 5 ---\nSection 12.3\nUpon change of control, the agreement terminates.\n"
         file_texts = [
             FileText(
-                file_path="GroupA/Customer/msa.pdf",
+                file_path="GroupA/Subject/msa.pdf",
                 text=source_text,
                 has_page_markers=True,
             )
@@ -152,7 +152,7 @@ class TestCitationVerifier:
         source_text = "\n--- Page 5 ---\nSection 12.3\nUpon change of controI, the agreernent terrninates.\n"
         file_texts = [
             FileText(
-                file_path="GroupA/Customer/msa.pdf",
+                file_path="GroupA/Subject/msa.pdf",
                 text=source_text,
                 has_page_markers=True,
             )
@@ -171,7 +171,7 @@ class TestCitationVerifier:
         source_text = "\n--- Page 5 ---\nSection 12.3\nThis agreement is for the provision of consulting services.\n"
         file_texts = [
             FileText(
-                file_path="GroupA/Customer/msa.pdf",
+                file_path="GroupA/Subject/msa.pdf",
                 text=source_text,
                 has_page_markers=True,
             )
@@ -192,7 +192,7 @@ class TestCitationVerifier:
         source_text = "\n--- Page 5 ---\nArticle 8\nUpon change of control, the agreement terminates.\n"
         file_texts = [
             FileText(
-                file_path="GroupA/Customer/msa.pdf",
+                file_path="GroupA/Subject/msa.pdf",
                 text=source_text,
                 has_page_markers=True,
             )
@@ -209,7 +209,7 @@ class TestCitationVerifier:
         verifier = _make_verifier(tmp_path)
         file_texts = [
             FileText(
-                file_path="GroupA/Customer/msa.pdf",
+                file_path="GroupA/Subject/msa.pdf",
                 text="Some content.",
                 has_page_markers=False,
             )
@@ -226,7 +226,7 @@ class TestCitationVerifier:
         verifier = _make_verifier(tmp_path)
         file_texts = [
             FileText(
-                file_path="GroupA/Customer/msa.pdf",
+                file_path="GroupA/Subject/msa.pdf",
                 text="Some content.",
                 has_page_markers=False,
             )
@@ -260,7 +260,7 @@ class TestCitationVerifier:
         )
         file_texts = [
             FileText(
-                file_path="GroupA/Customer/msa.pdf",
+                file_path="GroupA/Subject/msa.pdf",
                 text=source_text,
                 has_page_markers=True,
             )
@@ -282,7 +282,7 @@ class TestCitationVerifier:
         source_text = "Upon change of control, the agreement terminates."
         file_texts = [
             FileText(
-                file_path="GroupA/Customer/msa.pdf",
+                file_path="GroupA/Subject/msa.pdf",
                 text=source_text,
                 has_page_markers=False,
             )
@@ -306,7 +306,7 @@ class TestCitationVerifier:
         )
         file_texts = [
             FileText(
-                file_path="GroupA/Customer/msa.pdf",
+                file_path="GroupA/Subject/msa.pdf",
                 text=source_text,
                 has_page_markers=True,
             )
@@ -321,13 +321,13 @@ class TestCitationVerifier:
                     confidence="HIGH",
                     citations=[
                         SearchCitation(
-                            file_path="GroupA/Customer/msa.pdf",
+                            file_path="GroupA/Subject/msa.pdf",
                             page="3",
                             section_ref="Section 5.1",
                             exact_quote="Consent required for assignment.",
                         ),
                         SearchCitation(
-                            file_path="GroupA/Customer/msa.pdf",
+                            file_path="GroupA/Subject/msa.pdf",
                             page="7",
                             section_ref="Section 12.3",
                             exact_quote="Notice must be provided 30 days prior.",
@@ -513,7 +513,7 @@ class TestProgressiveSearchScope:
         )
         file_texts = [
             FileText(
-                file_path="GroupA/Customer/msa.pdf",
+                file_path="GroupA/Subject/msa.pdf",
                 text=source_text,
                 has_page_markers=True,
             )
@@ -534,7 +534,7 @@ class TestProgressiveSearchScope:
         source_text = "\n--- Page 5 ---\nSection 12.3\nUpon change of\ncontrol, the\nagreement terminates.\n"
         file_texts = [
             FileText(
-                file_path="GroupA/Customer/msa.pdf",
+                file_path="GroupA/Subject/msa.pdf",
                 text=source_text,
                 has_page_markers=True,
             )
@@ -557,20 +557,20 @@ class TestProgressiveSearchScope:
         # File B does NOT have the quote — LLM attributed it here incorrectly.
         file_b_text = "\n--- Page 1 ---\nThis purchase order is for consulting services.\n"
         file_texts = [
-            FileText(file_path="GroupA/Customer/contract_a.pdf", text=file_a_text, has_page_markers=True),
-            FileText(file_path="GroupA/Customer/contract_b.pdf", text=file_b_text, has_page_markers=True),
+            FileText(file_path="GroupA/Subject/contract_a.pdf", text=file_a_text, has_page_markers=True),
+            FileText(file_path="GroupA/Subject/contract_b.pdf", text=file_b_text, has_page_markers=True),
         ]
 
         # Citation incorrectly attributes the quote to contract_b.
         result = _make_result_with_citation(
-            file_path="GroupA/Customer/contract_b.pdf",
+            file_path="GroupA/Subject/contract_b.pdf",
             page="1",
         )
         verifier.verify_result(result, file_texts=file_texts)
 
         cit = result.columns["Q1"].citations[0]
         assert cit.quote_verified is True
-        assert cit.file_path == "GroupA/Customer/contract_a.pdf"
+        assert cit.file_path == "GroupA/Subject/contract_a.pdf"
         assert cit.quote_match_score >= QUOTE_MATCH_THRESHOLD
 
     def test_cross_file_correction_updates_page(self, tmp_path: Path) -> None:
@@ -585,18 +585,18 @@ class TestProgressiveSearchScope:
         )
         file_b_text = "\n--- Page 1 ---\nUnrelated purchase order.\n"
         file_texts = [
-            FileText(file_path="GroupA/Customer/msa.pdf", text=file_a_text, has_page_markers=True),
-            FileText(file_path="GroupA/Customer/po.pdf", text=file_b_text, has_page_markers=True),
+            FileText(file_path="GroupA/Subject/msa.pdf", text=file_a_text, has_page_markers=True),
+            FileText(file_path="GroupA/Subject/po.pdf", text=file_b_text, has_page_markers=True),
         ]
 
         result = _make_result_with_citation(
-            file_path="GroupA/Customer/po.pdf",
+            file_path="GroupA/Subject/po.pdf",
             page="1",
         )
         verifier.verify_result(result, file_texts=file_texts)
 
         cit = result.columns["Q1"].citations[0]
-        assert cit.file_path == "GroupA/Customer/msa.pdf"
+        assert cit.file_path == "GroupA/Subject/msa.pdf"
         assert cit.page == "4"
 
     def test_truly_hallucinated_quote_fails_all_scopes(self, tmp_path: Path) -> None:
@@ -605,19 +605,19 @@ class TestProgressiveSearchScope:
 
         file_texts = [
             FileText(
-                file_path="GroupA/Customer/msa.pdf",
+                file_path="GroupA/Subject/msa.pdf",
                 text="\n--- Page 1 ---\nThis is a standard consulting agreement.\n",
                 has_page_markers=True,
             ),
             FileText(
-                file_path="GroupA/Customer/sow.pdf",
+                file_path="GroupA/Subject/sow.pdf",
                 text="\n--- Page 1 ---\nStatement of work for project delivery.\n",
                 has_page_markers=True,
             ),
         ]
 
         result = _make_result_with_citation(
-            exact_quote="The vendor shall indemnify the customer for all losses arising from negligence."
+            exact_quote="The vendor shall indemnify the subject for all losses arising from negligence."
         )
         verifier.verify_result(result, file_texts=file_texts)
 
@@ -632,7 +632,7 @@ class TestProgressiveSearchScope:
 
 
 class TestColonInFilenameFallback:
-    """Tests for the colon → &#x3a_ filename fallback in _load_customer_texts."""
+    """Tests for the colon → &#x3a_ filename fallback in text file loading."""
 
     def test_colon_in_path_resolved_via_encoded_fallback(self, tmp_path: Path) -> None:
         """LLM cites path with literal colon; filesystem stores &#x3a_ encoding."""
@@ -679,7 +679,7 @@ class TestColonInFilenameFallback:
         data_room = tmp_path / "data_room"
         data_room.mkdir()
 
-        normal_path = "GroupA/Customer/msa.pdf"
+        normal_path = "GroupA/Subject/msa.pdf"
         absolute = str(data_room / normal_path)
         safe_name = ExtractionPipeline._safe_text_name(absolute)
         text_file = text_dir / safe_name
@@ -731,22 +731,22 @@ class TestVerifierCaching:
         source_text = "\n--- Page 1 ---\nSection 12.3\nUpon change of control, the agreement terminates.\n"
         file_texts = [
             FileText(
-                file_path="GroupA/Customer/msa.pdf",
+                file_path="GroupA/Subject/msa.pdf",
                 text=source_text,
                 has_page_markers=True,
             )
         ]
 
         result = _make_result_with_citation(
-            file_path="GroupA/Customer/msa.pdf",
+            file_path="GroupA/Subject/msa.pdf",
             page="1",
             exact_quote="Upon change of control, the agreement terminates.",
         )
         verifier.verify_result(result, file_texts=file_texts)
 
         # The page cache should now contain the file's split pages.
-        assert "GroupA/Customer/msa.pdf" in verifier._page_cache
-        pages = verifier._page_cache["GroupA/Customer/msa.pdf"]
+        assert "GroupA/Subject/msa.pdf" in verifier._page_cache
+        pages = verifier._page_cache["GroupA/Subject/msa.pdf"]
         assert "1" in pages
         assert "Upon change of control" in pages["1"]
 
@@ -756,7 +756,7 @@ class TestVerifierCaching:
         source_text = "\n--- Page 5 ---\nSection 12.3\nUpon change of control, the agreement terminates.\n"
         file_texts = [
             FileText(
-                file_path="GroupA/Customer/msa.pdf",
+                file_path="GroupA/Subject/msa.pdf",
                 text=source_text,
                 has_page_markers=True,
             )
@@ -768,7 +768,7 @@ class TestVerifierCaching:
         # At least the page-level normalization key should be cached.
         assert len(verifier._norm_cache) > 0
         # Check that a page-level key exists.
-        assert "GroupA/Customer/msa.pdf:page:5" in verifier._norm_cache
+        assert "GroupA/Subject/msa.pdf:page:5" in verifier._norm_cache
 
     def test_exact_substring_short_circuits(self, tmp_path: Path) -> None:
         """Exact substring match returns 100.0 without calling fuzz."""

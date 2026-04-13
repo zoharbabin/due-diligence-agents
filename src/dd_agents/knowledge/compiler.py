@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 
 from dd_agents.knowledge._utils import now_iso
 from dd_agents.knowledge.articles import ArticleType, KnowledgeArticle, KnowledgeSource
-from dd_agents.utils.constants import FINDINGS_DIR
+from dd_agents.utils.constants import ALL_SEVERITIES, FINDINGS_DIR, SEVERITY_P3, _sev_count_init
 
 logger = logging.getLogger(__name__)
 
@@ -177,12 +177,12 @@ class KnowledgeCompiler:
         existing = self._kb.get_article(article_id)
 
         # Compute severity distribution
-        severity_dist: dict[str, int] = {"P0": 0, "P1": 0, "P2": 0, "P3": 0}
+        severity_dist: dict[str, int] = _sev_count_init()
         categories: dict[str, str] = {}
         sources: list[KnowledgeSource] = []
 
         for f in findings:
-            sev = f.get("severity", "P3")
+            sev = f.get("severity", SEVERITY_P3)
             if sev in severity_dist:
                 severity_dist[sev] += 1
             cat = f.get("category", "unknown")
@@ -195,8 +195,8 @@ class KnowledgeCompiler:
             "run_id": run_id,
             "findings_count": len(findings),
             "top_severity": next(
-                (s for s in ["P0", "P1", "P2", "P3"] if severity_dist.get(s, 0) > 0),
-                "P3",
+                (s for s in ALL_SEVERITIES if severity_dist.get(s, 0) > 0),
+                SEVERITY_P3,
             ),
         }
 
@@ -267,10 +267,10 @@ class KnowledgeCompiler:
             article_id = _clause_article_id(category)
             existing = self._kb.get_article(article_id)
 
-            severity_dist: dict[str, int] = {"P0": 0, "P1": 0, "P2": 0, "P3": 0}
+            severity_dist: dict[str, int] = _sev_count_init()
             entities_affected: set[str] = set()
             for f in findings:
-                sev = f.get("severity", "P3")
+                sev = f.get("severity", SEVERITY_P3)
                 if sev in severity_dist:
                     severity_dist[sev] += 1
                 entities_affected.add(f.get("analysis_unit", "unknown"))

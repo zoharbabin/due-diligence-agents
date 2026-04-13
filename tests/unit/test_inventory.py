@@ -114,6 +114,18 @@ class TestFileDiscovery:
         paths = {f.path for f in files}
         assert not any("_dd" in p for p in paths)
 
+    def test_discover_excludes_dd_output_directory(self, tmp_path: Path) -> None:
+        """discover should skip the dd_output SDK artifact directory."""
+        dr = _create_data_room(tmp_path)
+        sdk_out = dr / "dd_output" / "run_12345"
+        sdk_out.mkdir(parents=True)
+        (sdk_out / "output.json").write_text("{}")
+
+        disco = FileDiscovery()
+        files = disco.discover(dr)
+        paths = {f.path for f in files}
+        assert not any("dd_output" in p for p in paths)
+
     def test_discover_excludes_patterns(self, tmp_path: Path) -> None:
         """discover should skip files matching exclude patterns."""
         dr = _create_data_room(tmp_path)

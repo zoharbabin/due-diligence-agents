@@ -7,6 +7,8 @@ import io
 import json
 from typing import TYPE_CHECKING, Any
 
+from dd_agents.utils.constants import SEVERITY_P3
+
 if TYPE_CHECKING:
     from dd_agents.reporting.computed_metrics import ReportComputedData
 
@@ -18,7 +20,7 @@ def export_findings_json(computed: ReportComputedData, merged_data: dict[str, An
         findings_out.append(
             {
                 "title": f.get("title", ""),
-                "severity": f.get("severity", "P3"),
+                "severity": f.get("severity", SEVERITY_P3),
                 "confidence": f.get("confidence", "medium"),
                 "category": f.get("category", ""),
                 "domain": f.get("_domain", ""),
@@ -73,7 +75,7 @@ def export_findings_csv(computed: ReportComputedData) -> str:
     for f in computed.material_findings:
         writer.writerow(
             {
-                "severity": _sanitize_csv_field(str(f.get("severity", "P3"))),
+                "severity": _sanitize_csv_field(str(f.get("severity", SEVERITY_P3))),
                 "title": _sanitize_csv_field(str(f.get("title", ""))),
                 "category": _sanitize_csv_field(str(f.get("category", ""))),
                 "domain": _sanitize_csv_field(str(f.get("_domain", ""))),

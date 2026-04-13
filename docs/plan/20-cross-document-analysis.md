@@ -1,8 +1,10 @@
 # 20 -- Cross-Document Analysis
 
+> **Historical note**: This document references the ReportingLead agent which was removed in v0.4.0. Step 23 is now deterministic pre-merge validation (`validation/pre_merge.py`). See `06-agents.md` §11.
+
 How the DD system analyzes relationships between contracts, detects overrides, contradictions, and missing documents, and maintains a governance graph that ensures no legal relationship is lost or misrepresented. Cross-document analysis is the core differentiator between naive per-file extraction and forensic-grade due diligence.
 
-Cross-references: `04-data-models.md` (GovernanceEdge, Finding, Citation, Gap, GapType, GovernanceRelationship), `05-orchestrator.md` (pipeline steps 7-11, 17, 24-25), `06-agents.md` (specialist focus areas, Judge protocol), `07-tools-and-hooks.md` (check_governance tool, verify_citation hook), `09-entity-resolution.md` (customer name normalization), `10-reporting.md` (merge/dedup, Excel sheets), `11-qa-validation.md` (governance validation, cross-reference checks), `21-ontology-and-reasoning.md` (ontology schema, graph reasoning, document type taxonomy).
+Cross-references: `04-data-models.md` (GovernanceEdge, Finding, Citation, Gap, GapType, GovernanceRelationship), `05-orchestrator.md` (pipeline steps 7-11, 17, 24-25), `06-agents.md` (specialist focus areas, Judge protocol), `07-tools-and-hooks.md` (check_governance tool, verify_citation hook), `09-entity-resolution.md` (subject name normalization), `10-reporting.md` (merge/dedup, Excel sheets), `11-qa-validation.md` (governance validation, cross-reference checks), `21-ontology-and-reasoning.md` (ontology schema, graph reasoning, document type taxonomy).
 
 ---
 
@@ -12,13 +14,13 @@ Cross-references: `04-data-models.md` (GovernanceEdge, Finding, Citation, Gap, G
 
 Analyzing contracts in isolation -- treating each file as an independent document -- produces structurally incomplete due diligence. In M&A, contracts form networks of legal relationships. An MSA governs multiple Order Forms. Amendments modify specific clauses in the MSA. Side Letters create exceptions. Renewal Agreements supersede prior terms while inheriting unchanged ones.
 
-When an analyst (human or AI) reads a single Order Form without understanding that Amendment No. 3 to the governing MSA changed the liability cap from $5M to unlimited, the entire financial risk assessment for that customer is wrong. This is not an edge case -- it is the standard operating pattern for enterprise SaaS contracts.
+When an analyst (human or AI) reads a single Order Form without understanding that Amendment No. 3 to the governing MSA changed the liability cap from $5M to unlimited, the entire financial risk assessment for that subject is wrong. This is not an edge case -- it is the standard operating pattern for enterprise SaaS contracts.
 
 ### 1.2 Failure Modes from Isolated Analysis
 
 | Failure Mode | Example | Consequence |
 |-------------|---------|-------------|
-| **Missed override** | Amendment changes payment terms from Net-30 to Net-60; analyst reads the MSA and reports Net-30 | Incorrect financial modeling; cash flow projection wrong by 30 days per customer |
+| **Missed override** | Amendment changes payment terms from Net-30 to Net-60; analyst reads the MSA and reports Net-30 | Incorrect financial modeling; cash flow projection wrong by 30 days per subject |
 | **Phantom provision** | MSA contains auto-renewal clause; Amendment explicitly removes it; analyst reports auto-renewal exists | Buyer assumes recurring revenue protection that does not exist |
 | **Orphaned addendum** | Order Form references MSA-2023-001 which is not in the data room | Cannot determine governance chain; unknown liability exposure |
 | **Superseded terms** | Renewal Agreement replaces pricing schedule; analyst reports old pricing from original contract | Incorrect revenue projections; potential purchase price miscalculation |
@@ -29,13 +31,13 @@ When an analyst (human or AI) reads a single Order Form without understanding th
 
 The system operates at the following typical scale:
 
-- ~200 customers in a data room
-- ~400 documents total (~2 documents per customer average, range 1-20)
-- ~600-1,000 governance edges across all customers (~3-5 per customer)
+- ~200 subjects in a data room
+- ~400 documents total (~2 documents per subject average, range 1-20)
+- ~600-1,000 governance edges across all subjects (~3-5 per subject)
 - 13 document types recognized (see `21-ontology-and-reasoning.md` Section 2.1)
 - 4 governance relationship types: governs, amends, supersedes, references
 
-Cross-document analysis touches every customer. It is not an optional enhancement -- it is the primary mechanism by which the system ensures legal accuracy.
+Cross-document analysis touches every subject. It is not an optional enhancement -- it is the primary mechanism by which the system ensures legal accuracy.
 
 ---
 
@@ -94,26 +96,26 @@ class GovernanceRelationship(str, Enum):
 
 ### 2.3 Governance Graph Construction
 
-The governance graph is built per-customer as a NetworkX DiGraph during pipeline step 7 (ENTITY_RESOLUTION) and enriched during specialist analysis (step 16). The graph is validated at step 17 (COVERAGE_GATE).
+The governance graph is built per-subject as a NetworkX DiGraph during pipeline step 7 (ENTITY_RESOLUTION) and enriched during specialist analysis (step 16). The graph is validated at step 17 (COVERAGE_GATE).
 
 ```python
 import networkx as nx
 from dd_agents.models.finding import GovernanceRelationship
 
 def build_governance_graph(
-    customer_safe_name: str,
+    subject_safe_name: str,
     edges: list[dict],
 ) -> nx.DiGraph:
-    """Build a per-customer governance graph from agent-detected relationships.
+    """Build a per-subject governance graph from agent-detected relationships.
 
     Args:
-        customer_safe_name: Normalized customer name.
+        subject_safe_name: Normalized subject name.
         edges: List of dicts with keys: source, target, relation, evidence.
             source/target are filenames.
             relation is a GovernanceRelationship value.
             evidence is the text excerpt proving the relationship.
     """
-    G = nx.DiGraph(customer=customer_safe_name)
+    G = nx.DiGraph(subject=subject_safe_name)
 
     for edge in edges:
         G.add_edge(
@@ -153,13 +155,13 @@ def validate_governance_graph(G: nx.DiGraph) -> list[dict]:
             "file": node,
         })
 
-    # 3. Multi-root detection -- more than one root MSA per customer is unusual
+    # 3. Multi-root detection -- more than one root MSA per subject is unusual
     roots = [n for n in G.nodes() if G.in_degree(n) == 0 and G.out_degree(n) > 0]
     if len(roots) > 1:
         issues.append({
             "type": "multiple_governance_roots",
             "severity": "P1",
-            "detail": f"Customer has {len(roots)} root documents: {roots}. Expected one MSA as root.",
+            "detail": f"Subject has {len(roots)} root documents: {roots}. Expected one MSA as root.",
             "roots": roots,
         })
 
@@ -184,11 +186,11 @@ def validate_governance_graph(G: nx.DiGraph) -> list[dict]:
 
 ### 2.4 Root Document Identification
 
-Every customer should have exactly one root document (typically the MSA). The root is identified by:
+Every subject should have exactly one root document (typically the MSA). The root is identified by:
 
 1. **Explicit MSA**: A document classified as `DocumentType.MSA` with `out_degree > 0`
 2. **Implicit MSA**: If no explicit MSA exists, the oldest contract with the broadest scope (most governance edges out) serves as the root, annotated with `governed_by: "SELF"`
-3. **No root**: If the customer has only standalone documents with no governance links, each is treated as independent. This triggers a `Missing_Doc` gap for the expected MSA.
+3. **No root**: If the subject has only standalone documents with no governance links, each is treated as independent. This triggers a `Missing_Doc` gap for the expected MSA.
 
 ```python
 def find_root_document(G: nx.DiGraph) -> str | None:
@@ -252,7 +254,7 @@ def detect_orphaned_documents(
             "referencing_file": ref["referencing_file"],
             "recommendation": (
                 "Request the missing document from the seller. "
-                "Without it, the governance chain for this customer is incomplete."
+                "Without it, the governance chain for this subject is incomplete."
             ),
         })
     return gaps
@@ -321,7 +323,7 @@ class SupersessionChain(BaseModel):
     """A chain of documents where each supersedes the previous."""
     model_config = ConfigDict(populate_by_name=True)
 
-    customer_safe_name: str
+    subject_safe_name: str
     chain: list[str] = Field(
         description="Ordered list of filenames from oldest to newest. Each supersedes the previous.",
     )
@@ -440,10 +442,10 @@ class CrossReference(BaseModel):
 
 
 class CrossReferenceIntegrity(BaseModel):
-    """Cross-reference integrity summary for a customer."""
+    """Cross-reference integrity summary for a subject."""
     model_config = ConfigDict(populate_by_name=True)
 
-    customer_safe_name: str
+    subject_safe_name: str
     total_references: int = Field(description="Total cross-references detected")
     resolved_references: int = Field(description="References resolved to a file in the data room")
     unresolved_references: int = Field(description="References to documents not in the data room")
@@ -464,7 +466,7 @@ For each cross-reference extracted by an agent:
 
 1. **Exact match**: Search the data room for a file whose name or metadata matches the referenced identifier (agreement number, date + type).
 2. **Fuzzy match**: If no exact match, use the entity resolution system (`09-entity-resolution.md`) to check for name variations, OCR-mangled identifiers, or alternative file naming conventions.
-3. **Contextual match**: If the reference says "the MSA" without a specific identifier, and the customer has exactly one MSA in the data room, resolve to that MSA with `confidence: "medium"`.
+3. **Contextual match**: If the reference says "the MSA" without a specific identifier, and the subject has exactly one MSA in the data room, resolve to that MSA with `confidence: "medium"`.
 4. **Unresolved**: If no match is found, the reference becomes an unresolved cross-reference, triggering a `GapType.MISSING_DOC` gap finding.
 
 ```python
@@ -559,7 +561,7 @@ class Contradiction(BaseModel):
     """A detected contradiction between two documents."""
     model_config = ConfigDict(populate_by_name=True)
 
-    customer_safe_name: str
+    subject_safe_name: str
     category: str = Field(
         description="One of: financial, payment_term, scope, term, governing_law, date, administrative",
     )
@@ -644,7 +646,7 @@ Every contradiction finding must include exact citations from **both** conflicti
     "finding_type": "Contradiction",
     "title": "Payment term conflict between MSA and Order Form",
     "severity": "P0",
-    "customer_safe_name": "acme_corp",
+    "subject_safe_name": "acme_corp",
     "citations": [
         {
             "file_name": "Acme_MSA_2023.pdf",
@@ -697,14 +699,14 @@ Sequential numbering in document names or references implies the existence of in
 
 #### Method 3: Structural (Expected Document Patterns)
 
-Certain document combinations are expected for enterprise SaaS customers. Absence of expected documents suggests incompleteness.
+Certain document combinations are expected for enterprise SaaS subjects. Absence of expected documents suggests incompleteness.
 
-| Customer Profile | Expected Documents | Gap Trigger |
+| Subject Profile | Expected Documents | Gap Trigger |
 |-----------------|-------------------|-------------|
-| SaaS customer with MSA | At least one Order Form or SOW | Missing Order Form/SOW if revenue exists but no transactional document |
-| Customer with data processing | DPA or data protection clauses in MSA | Missing DPA if customer handles personal data |
-| Multi-year customer | Renewal documentation or auto-renewal clause | Missing renewal if contract age exceeds initial term |
-| Customer with custom SLA | SLA document or SLA section in MSA | Informational only (P3) -- SLAs may be embedded |
+| SaaS subject with MSA | At least one Order Form or SOW | Missing Order Form/SOW if revenue exists but no transactional document |
+| Subject with data processing | DPA or data protection clauses in MSA | Missing DPA if subject handles personal data |
+| Multi-year subject | Renewal documentation or auto-renewal clause | Missing renewal if contract age exceeds initial term |
+| Subject with custom SLA | SLA document or SLA section in MSA | Informational only (P3) -- SLAs may be embedded |
 
 **Detection method**: `DetectionMethod.CHECKLIST`
 
@@ -760,14 +762,14 @@ def detect_temporal_gaps(
 
 ### 6.2 Completeness Score
 
-Each customer receives a document completeness score:
+Each subject receives a document completeness score:
 
 ```python
 class DocumentCompleteness(BaseModel):
-    """Document completeness assessment for a customer."""
+    """Document completeness assessment for a subject."""
     model_config = ConfigDict(populate_by_name=True)
 
-    customer_safe_name: str
+    subject_safe_name: str
     total_documents: int = Field(description="Documents present in the data room")
     expected_documents: int = Field(description="Documents expected based on cross-references and patterns")
     missing_documents: int = Field(description="Expected documents that are absent")
@@ -793,7 +795,7 @@ class DocumentCompleteness(BaseModel):
 
 ### 7.1 Renewal Chain Construction
 
-A renewal chain is a sequence of agreements for the same customer where each agreement replaces (supersedes) the previous one. The chain represents the complete contractual history.
+A renewal chain is a sequence of agreements for the same subject where each agreement replaces (supersedes) the previous one. The chain represents the complete contractual history.
 
 ```
 MSA_2020.pdf  ──supersedes──►  Renewal_2022.pdf  ──supersedes──►  Renewal_2024.pdf
@@ -803,17 +805,17 @@ MSA_2020.pdf  ──supersedes──►  Renewal_2022.pdf  ──supersedes─�
 The system builds renewal chains by:
 
 1. **Explicit supersession**: Document states "This Agreement replaces the Agreement dated..."
-2. **Date-based inference**: Documents of the same type (MSA or Renewal) for the same customer, ordered by effective date
+2. **Date-based inference**: Documents of the same type (MSA or Renewal) for the same subject, ordered by effective date
 3. **Naming convention**: Files named with sequential years or renewal numbers
 
 ### 7.2 Renewal Analysis Data Model
 
 ```python
 class RenewalChainAnalysis(BaseModel):
-    """Analysis of a customer's renewal chain."""
+    """Analysis of a subject's renewal chain."""
     model_config = ConfigDict(populate_by_name=True)
 
-    customer_safe_name: str
+    subject_safe_name: str
     chain_length: int = Field(description="Number of agreements in the chain")
     chain_documents: list[str] = Field(description="Ordered list of filenames, oldest to newest")
     current_agreement: str = Field(description="Currently active agreement filename")
@@ -882,7 +884,7 @@ The distinction matters for revenue predictability:
 
 - **Auto-renewal**: Contract continues under the same terms unless one party provides notice. Revenue is predictable but terms may be stale. The system checks for notice-of-non-renewal documents.
 - **Explicit renewal**: A new agreement is signed for each term. Revenue requires active re-engagement. The system checks for gaps between renewal documents.
-- **Mixed**: Original MSA auto-renewed for some periods, then an explicit renewal changed terms. Common in long-running customer relationships.
+- **Mixed**: Original MSA auto-renewed for some periods, then an explicit renewal changed terms. Common in long-running subject relationships.
 
 The system determines renewal type by examining the MSA's renewal clause and checking whether explicit renewal documents exist:
 
@@ -891,7 +893,7 @@ def classify_renewal_type(
     msa_has_auto_renewal: bool,
     explicit_renewals_count: int,
 ) -> str:
-    """Classify the renewal pattern for a customer.
+    """Classify the renewal pattern for a subject.
 
     Args:
         msa_has_auto_renewal: Whether the MSA contains an auto-renewal clause.
@@ -919,7 +921,7 @@ Each specialist agent handles cross-document analysis within its domain. The Jud
 |-------|---------------------------------|
 | **Legal** | Governance graph construction, override detection, amendment chain analysis, governing law consistency, signature verification, termination analysis |
 | **Finance** | Financial contradiction detection (liability caps, payment terms, pricing), price escalation across renewals, revenue impact of overrides |
-| **Commercial** | Scope contradiction detection (product coverage, service levels, exclusivity), renewal pattern analysis, customer classification based on contract evolution |
+| **Commercial** | Scope contradiction detection (product coverage, service levels, exclusivity), renewal pattern analysis, subject classification based on contract evolution |
 | **ProductTech** | SLA chaining (MSA SLA → Order Form SLA → DPA), data protection lineage (DPA references in MSAs), technology scope tracking across amendments |
 | **Judge** | Cross-agent contradiction resolution (when Legal and Finance disagree on override interpretation), spot-checking of cross-reference resolution, verification of governance graph completeness |
 | **ReportingLead** | Merging cross-document findings from all agents, deduplication of findings about the same cross-document issue reported by multiple agents, populating governance-related Excel sheets |
@@ -928,20 +930,20 @@ Each specialist agent handles cross-document analysis within its domain. The Jud
 
 Cross-document analysis instructions are injected into agent prompts via the prompt builder (`agents/prompt_builder.py`). Each agent receives:
 
-1. **Governance graph summary**: For each customer, a text summary of the known governance relationships, generated from the NetworkX graph at step 14 (PREPARE_PROMPTS).
+1. **Governance graph summary**: For each subject, a text summary of the known governance relationships, generated from the NetworkX graph at step 14 (PREPARE_PROMPTS).
 2. **Cross-reference index**: All detected cross-references with resolution status.
 3. **Override alerts**: Known overrides from previous agents (for Judge) or from governance graph analysis (for specialists).
 4. **Missing document context**: Any already-detected missing documents, so agents do not duplicate gap findings.
 
 ```python
 def build_cross_document_context(
-    customer_safe_name: str,
+    subject_safe_name: str,
     governance_graph: nx.DiGraph,
     cross_references: list[CrossReference],
 ) -> str:
     """Build cross-document context section for agent prompts."""
     lines = [
-        f"## Cross-Document Context for {customer_safe_name}",
+        f"## Cross-Document Context for {subject_safe_name}",
         "",
         "### Governance Hierarchy",
     ]
@@ -976,7 +978,7 @@ def build_cross_document_context(
 
 When multiple agents detect the same cross-document issue (e.g., Legal flags a payment term contradiction and Finance also flags it):
 
-**Cross-document finding dedup criteria**: Two findings are considered duplicates when ALL of the following match: (1) same `customer_safe_name`, (2) same `issue_type` (from the finding taxonomy), (3) overlapping source documents (at least one document in common), and (4) semantic similarity > 0.85 (computed via normalized text comparison using rapidfuzz.fuzz.token_sort_ratio). When duplicates are found, the finding with higher severity is kept; the other is marked as `deduplicated_by: <finding_id>`.
+**Cross-document finding dedup criteria**: Two findings are considered duplicates when ALL of the following match: (1) same `subject_safe_name`, (2) same `issue_type` (from the finding taxonomy), (3) overlapping source documents (at least one document in common), and (4) semantic similarity > 0.85 (computed via normalized text comparison using rapidfuzz.fuzz.token_sort_ratio). When duplicates are found, the finding with higher severity is kept; the other is marked as `deduplicated_by: <finding_id>`.
 
 1. **Deduplication**: Findings matching the criteria above are candidates for merge.
 2. **Agent attribution**: The merged finding retains both agents' names in the `agents` field.
@@ -997,7 +999,7 @@ Cross-document analysis is distributed across multiple pipeline steps. The follo
 |-----------|-----------------|----------------|
 | Governance graph construction (initial) | Step 7: ENTITY_RESOLUTION | `entity_resolution/matcher.py` builds initial edges from file naming patterns |
 | Reference file registry | Step 8: REFERENCE_REGISTRY | `inventory/references.py` identifies shared reference documents |
-| Customer mention index | Step 9: CUSTOMER_MENTIONS | `inventory/mentions.py` maps document cross-references |
+| Subject mention index | Step 9: CUSTOMER_MENTIONS | `inventory/mentions.py` maps document cross-references |
 | Inventory integrity check | Step 10: INVENTORY_INTEGRITY | Validates governance graph structure, detects orphans |
 | Contract date reconciliation | Step 11: CONTRACT_DATE_RECONCILIATION | `reporting/contract_dates.py` builds temporal chains |
 | Agent cross-document analysis | Step 16: SPAWN_SPECIALISTS | Agents receive governance context in prompts; produce override/contradiction findings |
@@ -1013,12 +1015,12 @@ Cross-document artifacts are stored in the three-tier persistence model:
 
 | Artifact | Tier | Path | Format |
 |----------|------|------|--------|
-| Governance graph (per-customer) | VERSIONED | `runs/{run_id}/governance/{customer_safe_name}.json` | NetworkX node-link JSON |
-| Cross-reference index | VERSIONED | `runs/{run_id}/cross_references/{customer_safe_name}.json` | List of CrossReference |
-| Override log | VERSIONED | `runs/{run_id}/overrides/{customer_safe_name}.json` | List of Override |
-| Contradiction log | VERSIONED | `runs/{run_id}/contradictions/{customer_safe_name}.json` | List of Contradiction |
-| Renewal chains | VERSIONED | `runs/{run_id}/renewal_chains/{customer_safe_name}.json` | RenewalChainAnalysis |
-| Document completeness | VERSIONED | `runs/{run_id}/completeness/{customer_safe_name}.json` | DocumentCompleteness |
+| Governance graph (per-subject) | VERSIONED | `runs/{run_id}/governance/{subject_safe_name}.json` | NetworkX node-link JSON |
+| Cross-reference index | VERSIONED | `runs/{run_id}/cross_references/{subject_safe_name}.json` | List of CrossReference |
+| Override log | VERSIONED | `runs/{run_id}/overrides/{subject_safe_name}.json` | List of Override |
+| Contradiction log | VERSIONED | `runs/{run_id}/contradictions/{subject_safe_name}.json` | List of Contradiction |
+| Renewal chains | VERSIONED | `runs/{run_id}/renewal_chains/{subject_safe_name}.json` | RenewalChainAnalysis |
+| Document completeness | VERSIONED | `runs/{run_id}/completeness/{subject_safe_name}.json` | DocumentCompleteness |
 
 ### 9.3 NetworkX Serialization
 
@@ -1049,7 +1051,7 @@ Cross-document findings appear in these Excel sheets (defined in `10-reporting.m
 
 | Sheet | Cross-Document Content |
 |-------|----------------------|
-| **Summary** | Governance completeness column, contradiction count per customer |
+| **Summary** | Governance completeness column, contradiction count per subject |
 | **Wolf_Pack** | P0/P1 cross-document findings (contradictions, missing critical documents) |
 | **Legal_Risks** | Override chain details, governing law conflicts, amendment analysis |
 | **Missing_Docs_Gaps** | All missing document gaps with detection method and severity |
@@ -1081,7 +1083,7 @@ def validate_date_consistency(
     """Validate that document dates are logically consistent with governance relationships.
 
     Args:
-        governance_graph: Per-customer governance graph.
+        governance_graph: Per-subject governance graph.
         document_dates: Dict mapping filename to {effective_date, execution_date, expiry_date}.
     """
     issues = []
@@ -1130,15 +1132,15 @@ def validate_date_consistency(
 
 ### 10.3 Counterparty Consistency
 
-The entity resolution system (`09-entity-resolution.md`) normalizes customer names. For cross-document consistency, the system also checks that the counterparty is consistent across a customer's documents:
+The entity resolution system (`09-entity-resolution.md`) normalizes subject names. For cross-document consistency, the system also checks that the counterparty is consistent across a subject's documents:
 
 1. Extract counterparty name from each document's preamble
 2. Normalize using the entity resolution matcher
-3. Flag if different canonical names appear across documents for the same customer folder
+3. Flag if different canonical names appear across documents for the same subject folder
 4. Distinguish between legitimate variations (subsidiary names, name changes due to acquisition) and genuine inconsistencies
 
 This check helps detect:
-- Documents misfiled in the wrong customer folder
+- Documents misfiled in the wrong subject folder
 - Assignment of contracts (Acme Corp's contract assigned to Acme Holdings after reorganization) without an Assignment Agreement
 - Name changes (legal entity renamed) without corresponding documentation
 
@@ -1203,14 +1205,14 @@ Cross-document analysis is validated at three pipeline gates:
 |------|------|-----------------------|
 | **Coverage Gate** (Step 17) | COVERAGE_GATE | Every governance edge has been analyzed by at least one agent. No orphaned documents remain unaddressed. |
 | **Numerical Audit** (Step 27) | NUMERICAL_AUDIT | Financial values in override chains are consistent. Price escalation figures match source documents. |
-| **QA Audit** (Step 28) | FULL_QA_AUDIT | Cross-reference integrity score computed per customer. Contradiction findings have dual citations. Missing document gaps have detection methods. |
+| **QA Audit** (Step 28) | FULL_QA_AUDIT | Cross-reference integrity score computed per subject. Contradiction findings have dual citations. Missing document gaps have detection methods. |
 
 ### 11.2 Definition of Done Checks
 
 The following DoD checks (from `11-qa-validation.md`) apply to cross-document analysis:
 
 - **DoD-7**: Every finding cites exact_quote from source file (enforced by verify_citation hook)
-- **DoD-9**: Governance graph is a DAG (no cycles) per customer
+- **DoD-9**: Governance graph is a DAG (no cycles) per subject
 - **DoD-10**: All cross-references are either resolved or flagged as Missing_Doc gaps
 - **DoD-11**: Contradictions have dual citations (both conflicting documents)
 - **DoD-12**: Override chains are temporally consistent (no date contradictions)
@@ -1221,7 +1223,7 @@ The following DoD checks (from `11-qa-validation.md`) apply to cross-document an
 The Judge agent (`06-agents.md`, Section 7) applies targeted spot-checks to cross-document findings:
 
 1. **Citation verification**: For each contradiction finding, verify that both exact_quotes exist in their claimed source files
-2. **Governance graph validation**: For a sample of customers, independently verify that the governance edges match the document contents
+2. **Governance graph validation**: For a sample of subjects, independently verify that the governance edges match the document contents
 3. **Override correctness**: For P0/P1 overrides, verify that the overriding document actually contains override language and that the governance chain supports the override
 4. **Cross-agent consistency**: When Legal and Finance both analyze the same cross-document issue, verify their findings are consistent
 
@@ -1241,15 +1243,15 @@ Some documents in data rooms defy standard governance patterns:
 | **Redacted documents** | Document exists but content is partially or fully redacted. Flag as `GapType.UNREADABLE` if critical sections are redacted. |
 | **Draft agreements** | Unsigned drafts in the data room. Flag as informational (P3). Do not include in governance graph unless no signed version exists. |
 
-### 12.2 Multi-Entity Customers
+### 12.2 Multi-Entity Subjects
 
-Some customers appear under multiple legal entities (subsidiary, parent, acquired name). The entity resolution system handles name normalization, but cross-document analysis must also consider:
+Some subjects appear under multiple legal entities (subsidiary, parent, acquired name). The entity resolution system handles name normalization, but cross-document analysis must also consider:
 
 - An MSA signed with "Acme Corp" and an Order Form signed with "Acme Holdings" (parent company)
 - An Assignment Agreement transferring contracts from "Acme Corp" to "Acme International" after a corporate restructuring
 - Joint ventures where two entities co-sign different documents
 
-The system groups these under a single customer using the entity resolution cache (`09-entity-resolution.md`), but flags the entity variation as a finding (P2 or P3 depending on whether an Assignment Agreement exists).
+The system groups these under a single subject using the entity resolution cache (`09-entity-resolution.md`), but flags the entity variation as a finding (P2 or P3 depending on whether an Assignment Agreement exists).
 
 ### 12.3 Conflicting Governance Claims
 
@@ -1265,7 +1267,7 @@ The system detects this via the multi-parent check in `validate_governance_graph
 
 ```
 Step 7-10: Inventory Phase
-    File Discovery → Entity Resolution → Reference Registry → Customer Mentions
+    File Discovery → Entity Resolution → Reference Registry → Subject Mentions
     ↓
     Initial governance graph (from file names, folder structure)
     Initial cross-reference index (from document text patterns)
@@ -1273,7 +1275,7 @@ Step 7-10: Inventory Phase
 
 Step 11: Contract Date Reconciliation
     Extract dates from all documents
-    Build temporal chains per customer
+    Build temporal chains per subject
     Detect date gaps and anomalies
     ↓
 
@@ -1290,14 +1292,14 @@ Step 16: Specialist Analysis
     ProductTech: SLA/DPA chaining, technology scope tracking
     ↓
     Each agent writes:
-      _findings/{agent}/{customer}.json  (with cross-document findings)
-      _findings/{agent}/governance_updates/{customer}.json  (graph edges to add/update)
+      _findings/{agent}/{subject}.json  (with cross-document findings)
+      _findings/{agent}/governance_updates/{subject}.json  (graph edges to add/update)
     ↓
 
 Step 17: Coverage Gate
     Merge governance updates from all agents
     Validate final governance graph (DAG check, isolate check)
-    Verify all customers have governance analysis
+    Verify all subjects have governance analysis
     ↓
 
 Steps 24-25: Merge + Gap Consolidation
@@ -1329,9 +1331,9 @@ All models defined in this document belong in `src/dd_agents/models/cross_docume
 | `Override` | Records an override relationship between two documents with citation evidence |
 | `SupersessionChain` | Tracks a chain of documents where each supersedes the previous |
 | `CrossReference` | Records a reference from one document to another with resolution status |
-| `CrossReferenceIntegrity` | Per-customer summary of cross-reference resolution quality |
+| `CrossReferenceIntegrity` | Per-subject summary of cross-reference resolution quality |
 | `Contradiction` | Records a detected contradiction between two documents with dual citations |
-| `DocumentCompleteness` | Per-customer document completeness assessment |
-| `RenewalChainAnalysis` | Analysis of a customer's renewal chain with price tracking |
+| `DocumentCompleteness` | Per-subject document completeness assessment |
+| `RenewalChainAnalysis` | Analysis of a subject's renewal chain with price tracking |
 
 These models extend the existing model hierarchy in `04-data-models.md`. They are validated by the orchestrator at steps 24-28 and serialized to the VERSIONED tier.

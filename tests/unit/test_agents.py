@@ -148,7 +148,7 @@ class TestPromptBuilder:
         assert "LEGAL SPECIALIST AGENT" in prompt
         assert "legal" in prompt
 
-        # Customer list
+        # Subject list
         assert "Acme Corp" in prompt
         assert "acme_corp" in prompt
         assert "Beta Inc" in prompt
@@ -206,6 +206,30 @@ class TestPromptBuilder:
         )
         assert "PRODUCTTECH SPECIALIST AGENT" in prompt
         assert "DPA" in prompt
+
+    def test_gap_schema_lists_all_detection_methods(
+        self,
+        builder: PromptBuilder,
+        sample_subjects: list[SubjectEntry],
+    ) -> None:
+        """Gap schema in prompt must list all 9 canonical DetectionMethod values."""
+        from dd_agents.models.enums import DetectionMethod
+
+        prompt = builder.build_specialist_prompt(
+            agent_name="legal",
+            subjects=sample_subjects,
+        )
+        for member in DetectionMethod:
+            assert member.value in prompt, (
+                f"DetectionMethod.{member.name} ({member.value!r}) missing from gap schema in prompt"
+            )
+
+    def test_producttech_domain_robustness_has_citation_enforcement(self) -> None:
+        """ProductTech domain_robustness must include strong citation-or-gap enforcement."""
+        robustness = ProductTechAgent.domain_robustness()
+        assert "STRICT RULE" in robustness or "MANDATORY" in robustness
+        assert "DOWNGRADED" in robustness
+        assert "GAP" in robustness
 
     def test_build_specialist_prompt_no_reference_files(
         self,
@@ -267,7 +291,7 @@ class TestPromptBuilder:
             tokens_per_subject=50,
             overhead_tokens=10,
         )
-        # With 90 available tokens and 50 per customer, max 1 per batch.
+        # With 90 available tokens and 50 per subject, max 1 per batch.
         assert len(batches) == 2
         assert len(batches[0]) == 1
         assert len(batches[1]) == 1
@@ -285,7 +309,8 @@ class TestPromptBuilder:
             overhead_tokens=200,  # exceeds max_tokens
         )
         # Falls back to max_tokens as available => max 2 per batch.
-        assert len(batches) >= 1
+        # 2 subjects / 2 per batch = 1 batch.
+        assert len(batches) == 1
 
     def test_estimate_subject_tokens(self) -> None:
         """Data-driven estimate accounts for file listing size."""
@@ -488,7 +513,7 @@ class TestPromptBuilder:
             subjects=sample_subjects,
         )
         assert "non-empty `citations` array" in prompt
-        assert "P0/P1 finding has `exact_quote`" in prompt
+        assert "P0/P1/P2 finding has `exact_quote`" in prompt
 
 
 # =========================================================================
@@ -867,7 +892,7 @@ class TestParseAgentOutput:
     def test_mixed_prose_and_json(self) -> None:
         raw = 'Analysis: {"severity": "P0", "title": "Issue"} is concerning.'
         result = BaseAgentRunner._parse_agent_output(raw)
-        assert len(result) >= 1
+        assert len(result) == 1
         assert result[0]["severity"] == "P0"
 
     def test_parse_empty_output_returns_empty(self) -> None:
@@ -923,7 +948,7 @@ class TestParseAgentOutput:
         assert result == []
         # Check that an ERROR-level record was emitted.
         error_messages = [r.message for r in caplog.records if r.levelno >= _logging.ERROR]
-        assert len(error_messages) >= 1
+        assert len(error_messages) == 1
         assert "no parseable JSON" in error_messages[0]
         assert "38 chars" in error_messages[0]  # length of the input
 
@@ -940,6 +965,30 @@ class TestParseAgentOutput:
         assert result == []
         assert raw_path.exists()
         assert raw_path.read_text(encoding="utf-8") == raw_text
+
+    def test_parse_preamble_before_json(self) -> None:
+        """Strategy 1b: JSON with preamble text is extracted correctly."""
+        data = {"status": "complete", "subjects_analyzed": 5}
+        raw = (
+            "I have completed analyzing all 5 subjects assigned to me.\n"
+            "My coverage manifest has been written.\n\n" + json.dumps(data)
+        )
+        result = BaseAgentRunner._parse_agent_output(raw)
+        assert result == [data]
+
+    def test_parse_preamble_multiline_json(self) -> None:
+        """Strategy 1b handles multi-line JSON after preamble."""
+        data = {"status": "complete", "items": [{"a": 1}, {"b": 2}]}
+        raw = "Analysis complete. Here are the results:\n" + json.dumps(data, indent=2)
+        result = BaseAgentRunner._parse_agent_output(raw)
+        assert result == [data]
+
+    def test_parse_preamble_nested_json(self) -> None:
+        """Strategy 1b correctly finds the outermost JSON object."""
+        data = {"status": "ok", "nested": {"inner": {"deep": True}}}
+        raw = "Summary text goes here.\n" + json.dumps(data)
+        result = BaseAgentRunner._parse_agent_output(raw)
+        assert result == [data]
 
     def test_parse_no_file_written_on_success(self, tmp_path: Path) -> None:
         """When parsing succeeds, no raw output file is written even if path given."""
@@ -1001,7 +1050,7 @@ class TestBaseAgentRunnerRun:
 
         monkeypatch.setattr(base_mod, "_HAS_SDK", False)
         agent = LegalAgent(tmp_project, tmp_run_dir, run_id)
-        result = await agent.run({"customers": []})
+        result = await agent.run({"subjects": []})
         assert result["agent_name"] == "legal"
         # SDK unavailable -- agent produces empty output → error.
         assert result["status"] == "error"
@@ -1799,6 +1848,11 @@ class TestDomainRobustness:
         assert "Excel date serial" in text
         assert "currency units" in text
         assert "cite BOTH" in text.upper() or "Cite BOTH" in text or "cite BOTH" in text
+        # Citation mandate (parity with ProductTech)
+        assert "MANDATORY Citation Requirements" in text
+        assert "exact_quote" in text
+        assert "AUTOMATICALLY DOWNGRADED" in text
+        assert "Write a gap instead" in text or "Write a gap" in text
 
     def test_commercial_domain_robustness(self) -> None:
         text = CommercialAgent.domain_robustness()
@@ -2188,7 +2242,7 @@ class TestSystemPromptConstraints:
 
         assert len(captured_options) == 1
         opts = captured_options[0]
-        # disallowed_tools was removed because it doesn't work
+        # disallowed_tools is not used — tool control is handled via hooks
         assert "disallowed_tools" not in opts.kwargs  # type: ignore[union-attr]
 
 

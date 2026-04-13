@@ -75,7 +75,7 @@ def _make_finding(
     severity: str = "P2",
     category: str = "change_of_control",
     agent: str = "legal",
-    customer: str = "test_customer",
+    subject: str = "test_customer",
     description: str = "",
 ) -> dict[str, Any]:
     return {
@@ -83,8 +83,8 @@ def _make_finding(
         "severity": severity,
         "category": category,
         "agent": agent,
-        "_subject_safe_name": customer,
-        "_subject": customer,
+        "_subject_safe_name": subject,
+        "_subject": subject,
         "description": description,
     }
 
@@ -496,13 +496,13 @@ class TestProductAdoption:
         adoption = {
             "products": ["Platform A", "Platform B"],
             "matrix": {
-                "customer_1": ["Platform A", "Platform B"],
-                "customer_2": ["Platform A"],
+                "subject_1": ["Platform A", "Platform B"],
+                "subject_2": ["Platform A"],
             },
         }
         data = _make_computed_data(
             product_adoption=adoption,
-            display_names={"customer_1": "Customer One", "customer_2": "Customer Two"},
+            display_names={"subject_1": "Subject One", "subject_2": "Subject Two"},
         )
         r = ProductAdoptionRenderer(data, {}, {})
         html = r.render()
@@ -516,7 +516,7 @@ class TestProductAdoption:
 
         adoption = {
             "products": ["<script>alert(1)</script>"],
-            "matrix": {"evil_customer": ["<script>alert(1)</script>"]},
+            "matrix": {"evil_subject": ["<script>alert(1)</script>"]},
         }
         data = _make_computed_data(product_adoption=adoption)
         r = ProductAdoptionRenderer(data, {}, {})
@@ -893,17 +893,17 @@ class TestComputeProductAdoption:
             _make_finding(
                 title="Platform license — Enterprise Suite",
                 category="product_scope",
-                customer="acme",
+                subject="acme",
             ),
             _make_finding(
                 title="Module: Analytics Dashboard",
                 category="product_scope",
-                customer="acme",
+                subject="acme",
             ),
             _make_finding(
                 title="Platform — Core API",
                 category="product",
-                customer="beta_corp",
+                subject="beta_corp",
             ),
         ]
         result = ReportDataComputer._compute_product_adoption(findings, {})
@@ -924,7 +924,7 @@ class TestComputeProductAdoption:
         from dd_agents.reporting.computed_metrics import ReportDataComputer
 
         findings = [
-            _make_finding(title="Platform scope", category="product_scope", customer=""),
+            _make_finding(title="Platform scope", category="product_scope", subject=""),
         ]
         result = ReportDataComputer._compute_product_adoption(findings, {})
         assert result == {}

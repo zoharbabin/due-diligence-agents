@@ -142,8 +142,8 @@ class TestContractKnowledgeGraph:
     def test_get_clauses_by_type(self, graph: ContractKnowledgeGraph) -> None:
         coc = graph.get_clauses_by_type(ClauseType.CHANGE_OF_CONTROL)
         assert len(coc) == 2
-        customers = {c.subject_safe_name for c in coc}
-        assert customers == {"acme", "beta"}
+        subjects = {c.subject_safe_name for c in coc}
+        assert subjects == {"acme", "beta"}
 
     def test_get_clauses_by_subject(self, graph: ContractKnowledgeGraph) -> None:
         acme_clauses = graph.get_clauses_by_subject("acme")

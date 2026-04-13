@@ -27,7 +27,7 @@ from dd_agents.models.finding import (
     MergedSubjectOutput,
 )
 from dd_agents.models.governance import GovernanceEdge, GovernanceGraph
-from dd_agents.utils.constants import ALL_SPECIALIST_AGENTS, NON_SUBJECT_STEMS, SEVERITY_ORDER
+from dd_agents.utils.constants import ALL_SPECIALIST_AGENTS, NON_SUBJECT_STEMS, SEVERITY_ORDER, SEVERITY_P3
 from dd_agents.utils.naming import subject_safe_name as compute_safe_name
 
 if TYPE_CHECKING:
@@ -203,7 +203,7 @@ class FindingMerger:
         deduped = self._resolve_severity_disagreements(deduped)
 
         # Auto-generate finding IDs and promote to full Finding dicts
-        promoted = self._promote_findings(
+        promoted, dropped = self._promote_findings(
             deduped,
             subject_name,
             subject_safe_name,
@@ -244,6 +244,8 @@ class FindingMerger:
             cross_reference_summary=xref_summary,
             governance_graph=governance,
             governance_resolved_pct=gov_pct,
+            dropped_findings=dropped,
+            cross_agent_conflicts=conflicts,
         )
 
     # Non-subject JSON files that agents may write alongside subject findings.
@@ -331,6 +333,7 @@ class FindingMerger:
                 )
 
         results: dict[str, MergedSubjectOutput] = {}
+        failed_subjects: list[dict[str, Any]] = []
         for csn in sorted(subject_names):
             agent_outputs: dict[str, dict[str, Any]] = {}
             for agent in ALL_SPECIALIST_AGENTS:
@@ -351,8 +354,31 @@ class FindingMerger:
                         agent_outputs,
                         subject_safe_name=csn,
                     )
-                except Exception:  # noqa: BLE001
-                    logger.exception("Failed to merge subject %s — skipping", csn)
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception("Failed to merge subject %s — quarantined", csn)
+                    failed_subjects.append(
+                        {
+                            "subject": csn,
+                            "error": str(exc),
+                            "agents_available": list(agent_outputs.keys()),
+                            "timestamp": self.timestamp,
+                        }
+                    )
+
+        # Persist quarantine manifest so failed subjects leave an audit trail.
+        if failed_subjects:
+            quarantine_dir = findings_dir / "merged"
+            quarantine_dir.mkdir(parents=True, exist_ok=True)
+            quarantine_path = quarantine_dir / "_quarantine.json"
+            quarantine_path.write_text(
+                json.dumps(failed_subjects, indent=2),
+                encoding="utf-8",
+            )
+            logger.error(
+                "%d subject(s) quarantined due to merge failure — see %s",
+                len(failed_subjects),
+                quarantine_path,
+            )
         # Check agent coverage (Issue #85).
         coverage_gaps = self.check_agent_coverage(results)
         if coverage_gaps:
@@ -380,16 +406,23 @@ class FindingMerger:
         """
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Remove stale files before writing.
+        # Archive stale files before writing (never delete outright).
         if clean_stale:
             expected_stems = set(merged.keys())
+            # Internal merge artefacts — never treated as stale subjects.
+            internal_prefixes = ("_quarantine", "_dropped", "_archive")
+            archive_dir = output_dir / "_archive"
             for existing in output_dir.glob("*.json"):
+                if existing.stem.startswith(internal_prefixes):
+                    continue
                 if existing.stem not in expected_stems:
-                    logger.info("Removing stale merged file: %s", existing.name)
+                    archive_dir.mkdir(parents=True, exist_ok=True)
+                    dest = archive_dir / existing.name
+                    logger.info("Archiving stale merged file: %s → _archive/", existing.name)
                     try:
-                        existing.unlink()
+                        existing.rename(dest)
                     except OSError as exc:
-                        logger.warning("Failed to remove stale file %s: %s", existing, exc)
+                        logger.warning("Failed to archive stale file %s: %s", existing, exc)
 
         for csn, mco in merged.items():
             out_path = output_dir / f"{csn}.json"
@@ -402,10 +435,24 @@ class FindingMerger:
     @staticmethod
     def check_agent_coverage(
         merged: dict[str, MergedSubjectOutput],
+        findings_dir: Path | None = None,
     ) -> list[dict[str, Any]]:
         """Verify every subject has findings or gaps from all 4 specialist agents.
 
-        Returns a list of coverage gaps: ``[{subject, missing_agents}]``.
+        Distinguishes two failure modes when *findings_dir* is provided:
+
+        - ``missing_output``: Agent never produced a JSON file for this subject.
+          Indicates a pipeline failure (agent crash, batch omission).
+        - ``no_findings``: Agent produced a file but it contained zero findings
+          and zero gaps.  May be legitimate (clean subject) or indicate
+          extraction/analysis failure.
+
+        Returns a list of coverage gaps::
+
+            [{"subject": str,
+              "missing_agents": [str],       # no content at all
+              "missing_output": [str],       # no JSON file on disk
+              "no_findings": [str]}]         # file exists, empty content
         """
         expected_agents = set(ALL_SPECIALIST_AGENTS)
         gaps: list[dict[str, Any]] = []
@@ -418,12 +465,40 @@ class FindingMerger:
                     actual_agents.add(g.agent.value if hasattr(g.agent, "value") else str(g.agent))
             missing = expected_agents - actual_agents
             if missing:
-                gaps.append({"subject": csn, "missing_agents": sorted(missing)})
-                logger.warning(
-                    "Subject %s missing agent output: %s",
-                    csn,
-                    sorted(missing),
+                missing_output: list[str] = []
+                no_findings: list[str] = []
+
+                if findings_dir is not None:
+                    for agent_name in sorted(missing):
+                        agent_file = findings_dir / agent_name / f"{csn}.json"
+                        if agent_file.exists():
+                            no_findings.append(agent_name)
+                        else:
+                            missing_output.append(agent_name)
+                else:
+                    # Without findings_dir, all missing agents are undifferentiated.
+                    missing_output = sorted(missing)
+
+                gaps.append(
+                    {
+                        "subject": csn,
+                        "missing_agents": sorted(missing),
+                        "missing_output": missing_output,
+                        "no_findings": no_findings,
+                    }
                 )
+                if missing_output:
+                    logger.warning(
+                        "Subject %s missing agent output files: %s",
+                        csn,
+                        missing_output,
+                    )
+                if no_findings:
+                    logger.info(
+                        "Subject %s has empty agent output (no findings/gaps): %s",
+                        csn,
+                        no_findings,
+                    )
         if gaps:
             logger.warning(
                 "%d/%d subjects have incomplete agent coverage",
@@ -498,7 +573,7 @@ class FindingMerger:
         sorted_group = sorted(
             group,
             key=lambda f: (
-                SEVERITY_ORDER.get(f.get("severity", "P3"), 9),
+                SEVERITY_ORDER.get(f.get("severity", SEVERITY_P3), 9),
                 -self._source_precedence(f),
                 -len(FindingMerger._first_quote(f)),
             ),
@@ -1023,8 +1098,14 @@ class FindingMerger:
         raw_findings: list[dict[str, Any]],
         subject_name: str,
         subject_safe_name: str,
-    ) -> list[Finding]:
-        """Transform raw dicts into full ``Finding`` models with auto-IDs."""
+    ) -> tuple[list[Finding], list[dict[str, Any]]]:
+        """Transform raw dicts into full ``Finding`` models with auto-IDs.
+
+        Returns
+        -------
+        tuple[list[Finding], list[dict[str, Any]]]
+            (promoted findings, dropped findings with error context).
+        """
         results: list[Finding] = []
         dropped: list[dict[str, Any]] = []
         counters: dict[str, int] = {}
@@ -1035,7 +1116,7 @@ class FindingMerger:
             finding_id = f"forensic-dd_{agent}_{subject_safe_name}_{seq:04d}"
 
             # Normalise severity BEFORE Pydantic validation.
-            raw_severity = f.get("severity", "P3")
+            raw_severity = f.get("severity", SEVERITY_P3)
             severity = self._normalize_severity(str(raw_severity))
 
             # Truncate title to 120 chars to prevent max_length validation failure.
@@ -1043,7 +1124,18 @@ class FindingMerger:
 
             # Build Citation objects — handle both nested citations array and
             # flat finding-level fields (file_path, page, section_ref, exact_quote).
-            citations_raw = f.get("citations", [])
+            # Also accept "evidence" as an alias (some agents produce this key).
+            citations_raw = f.get("citations") or f.get("evidence") or []
+
+            # Normalise "evidence" items: map {"file": ..., "page": ...}
+            # to the standard citation shape {"file_path": ..., "page": ...}.
+            if citations_raw and isinstance(citations_raw[0], dict) and "file" in citations_raw[0]:
+                citations_raw = [
+                    {("file_path" if k == "file" else k): v for k, v in item.items()}
+                    if isinstance(item, dict)
+                    else item
+                    for item in citations_raw
+                ]
 
             # If no citations array, construct one from flat finding-level fields.
             if not citations_raw:
@@ -1128,12 +1220,20 @@ class FindingMerger:
 
             # P2 findings: require exact_quote on at least one citation.
             # Downgrade to P3 if all citations are synthetic OR missing quotes.
+            # Exception: if step 23 already downgraded for citation issues, don't
+            # apply a second penalty — one severity-level drop is sufficient.
             elif severity == Severity.P2:
+                pre_merge_downgraded = "Downgraded" in str(f.get("verification_note", ""))
                 all_synthetic = has_synthetic or all(
                     not cit.source_path or cit.source_path.startswith("[synthetic:") for cit in citations
                 )
                 all_missing_quote = all(not cit.exact_quote for cit in citations)
-                if all_synthetic:
+                if pre_merge_downgraded:
+                    logger.debug(
+                        "Preserving P2 for '%s': already downgraded at pre-merge validation",
+                        title,
+                    )
+                elif all_synthetic:
                     severity = Severity.P3
                     logger.warning(
                         "Downgraded finding '%s' from P2 to P3: no real citation provided",
@@ -1170,15 +1270,15 @@ class FindingMerger:
                 if was_deduped
                 else ("severity_escalated" if meta.get("severity_disagreement") else "kept")
             )
+            original_sev = self._normalize_severity(str(raw_severity))
             meta["provenance"] = {
                 "agent_name": agent,
                 "contributing_agents": contributing if isinstance(contributing, list) else [agent],
                 "merge_action": merge_action,
                 "citation_verified": not has_synthetic,
-                "recalibrated": severity != self._normalize_severity(str(raw_severity)),
-                "recalibration_reason": (
-                    "citation_downgrade" if severity != self._normalize_severity(str(raw_severity)) else ""
-                ),
+                "original_severity": original_sev,
+                "recalibrated": severity != original_sev,
+                "recalibration_reason": ("citation_downgrade" if severity != original_sev else ""),
             }
 
             try:
@@ -1218,7 +1318,7 @@ class FindingMerger:
                 len(raw_findings),
             )
 
-        return results
+        return results, dropped
 
     # ------------------------------------------------------------------
     # Step 6 -- Gap collection
@@ -1424,8 +1524,8 @@ class FindingMerger:
                     seen[dedup_key] = gap_dict
                 else:
                     # Keep higher priority
-                    existing_prio = SEVERITY_ORDER.get(existing.get("priority", "P3"), 9)
-                    new_prio = SEVERITY_ORDER.get(gap_dict.get("priority", "P3"), 9)
+                    existing_prio = SEVERITY_ORDER.get(existing.get("priority", SEVERITY_P3), 9)
+                    new_prio = SEVERITY_ORDER.get(gap_dict.get("priority", SEVERITY_P3), 9)
                     if new_prio < existing_prio:
                         seen[dedup_key] = gap_dict
 

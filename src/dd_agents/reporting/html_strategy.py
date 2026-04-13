@@ -7,8 +7,6 @@ contains buyer-contextualized interpretation.
 
 from __future__ import annotations
 
-import html
-
 from dd_agents.reporting.html_base import SectionRenderer
 
 
@@ -41,7 +39,7 @@ class StrategyRenderer(SectionRenderer):
             parts.append(
                 f"<div class='metric-card'>"
                 f"<div class='label'>Acquisition Thesis</div>"
-                f"<div style='text-align:left;padding:8px'>{html.escape(thesis)}</div>"
+                f"<div style='text-align:left;padding:8px'>{self.escape(thesis)}</div>"
                 f"</div>"
             )
 
@@ -50,7 +48,7 @@ class StrategyRenderer(SectionRenderer):
         if synergies:
             parts.append("<h3>Expected Synergies</h3><ul>")
             for s in synergies:
-                parts.append(f"<li>{html.escape(str(s))}</li>")
+                parts.append(f"<li>{self.escape(str(s))}</li>")
             parts.append("</ul>")
 
         # Integration priorities
@@ -58,7 +56,7 @@ class StrategyRenderer(SectionRenderer):
         if priorities:
             parts.append("<h3>Integration Priorities</h3><ol>")
             for p in priorities:
-                parts.append(f"<li>{html.escape(str(p))}</li>")
+                parts.append(f"<li>{self.escape(str(p))}</li>")
             parts.append("</ol>")
 
         # Risk tolerance
@@ -69,7 +67,7 @@ class StrategyRenderer(SectionRenderer):
             )
             parts.append(
                 f"<div class='mb-8'>Risk Tolerance: "
-                f"<strong style='color:{color}'>{html.escape(tolerance)}</strong></div>"
+                f"<strong style='color:{color}'>{self.escape(tolerance)}</strong></div>"
             )
 
         # Focus areas
@@ -77,7 +75,7 @@ class StrategyRenderer(SectionRenderer):
         if focus:
             parts.append("<h3>Buyer Focus Areas</h3><ul>")
             for f in focus:
-                parts.append(f"<li>{html.escape(str(f))}</li>")
+                parts.append(f"<li>{self.escape(str(f))}</li>")
             parts.append("</ul>")
 
         # Risk alignment summary (findings in buyer focus areas)
@@ -101,12 +99,12 @@ class StrategyRenderer(SectionRenderer):
             parts.append("<h3>AI-Enhanced Acquirer Analysis</h3>")
             summary = acq_intel.get("summary", "")
             if summary:
-                parts.append(f"<p>{html.escape(str(summary))}</p>")
+                parts.append(f"<p>{self.escape(str(summary))}</p>")
             recommendations = acq_intel.get("recommendations", [])
             if recommendations:
                 parts.append("<ul>")
                 for r in recommendations:
-                    parts.append(f"<li>{html.escape(str(r))}</li>")
+                    parts.append(f"<li>{self.escape(str(r))}</li>")
                 parts.append("</ul>")
 
         parts.append("</section>")

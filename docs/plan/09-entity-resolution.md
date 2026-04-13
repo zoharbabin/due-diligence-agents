@@ -2,7 +2,7 @@
 
 ## Overview
 
-Matching customer names across contracts, databases, directories, and financial data is the single largest source of errors in due diligence. Names vary: "GAG" vs "Global Analytics Group", "AlpineSys" vs "Alpine Systems, Inc.", "Metro Solutions" vs "MetroSoft" (wrong match). Entity resolution runs at pipeline step 7 and must complete before agents start.
+Matching subject names across contracts, databases, directories, and financial data is the single largest source of errors in due diligence. Names vary: "GAG" vs "Global Analytics Group", "AlpineSys" vs "Alpine Systems, Inc.", "Metro Solutions" vs "MetroSoft" (wrong match). Entity resolution runs at pipeline step 7 and must complete before agents start.
 
 The module implements a deterministic 6-pass cascading matcher with short-name guards (defined in §3, Pass 3 below -- these prevent false-positive matches on common abbreviated names like 'AI', 'IT', 'US'), an exclusion list, per-entry cache invalidation, and comprehensive match logging. Every resolution decision is auditable.
 
@@ -14,12 +14,12 @@ The entity resolver receives names from four sources and matches them against ea
 
 | Source | Description | Loaded From |
 |--------|-------------|-------------|
-| **customers.csv** | Customer names derived from data room directory structure | `_dd/forensic-dd/inventory/customers.csv` |
+| **subjects.csv** | Subject names derived from data room directory structure | `_dd/forensic-dd/inventory/subjects.csv` |
 | **deal-config.json entity_aliases** | Human-curated canonical-to-variant mappings, short name guards, exclusions, parent-child relationships | `deal-config.json` `entity_aliases` section |
-| **Reference files** | Customer names found in financial, pricing, and operational data | `_dd/forensic-dd/inventory/reference_files.json` `customers_mentioned` arrays |
-| **Customer database** | External customer list from `source_of_truth.customer_database` | If configured in deal-config.json |
+| **Reference files** | Subject names found in financial, pricing, and operational data | `_dd/forensic-dd/inventory/reference_files.json` `subjects_mentioned` arrays |
+| **Subject database** | External subject list from `source_of_truth.subject_database` | If configured in deal-config.json |
 
-The primary matching direction is: **reference file names -> customers.csv names**. The goal is to map every customer name found in reference data to its canonical entry in customers.csv.
+The primary matching direction is: **reference file names -> subjects.csv names**. The goal is to map every subject name found in reference data to its canonical entry in subjects.csv.
 
 ---
 
@@ -102,8 +102,8 @@ def preprocess_name(name: str) -> str:
     return name
 
 
-def to_customer_safe_name(name: str) -> str:
-    """Convert a customer name to the safe filename convention.
+def to_subject_safe_name(name: str) -> str:
+    """Convert a subject name to the safe filename convention.
 
     Steps:
         1. Lowercase
@@ -420,7 +420,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from dd_agents.entity.preprocessing import preprocess_name, to_customer_safe_name
+from dd_agents.entity.preprocessing import preprocess_name, to_subject_safe_name
 from dd_agents.entity.passes import (
     pass_1_exact_match,
     pass_2_alias_lookup,
@@ -439,12 +439,12 @@ class EntityResolver:
 
     def __init__(
         self,
-        customers_csv: list[dict],
+        subjects_csv: list[dict],
         entity_aliases: dict,
         cache_path: Path,
         run_id: str,
     ):
-        self.customers = customers_csv
+        self.subjects = subjects_csv
         self.run_id = run_id
 
         # Parse alias config (with safe defaults if absent)
@@ -455,8 +455,8 @@ class EntityResolver:
 
         # Build target name lookup: preprocessed -> original
         self.target_names: dict[str, str] = {}
-        for cust in customers_csv:
-            original = cust["customer_name"]
+        for entry in subjects_csv:
+            original = entry["subject_name"]
             preprocessed = preprocess_name(original)
             self.target_names[preprocessed] = original
 
@@ -486,7 +486,7 @@ class EntityResolver:
             source_type: Where the name came from ("reference_file", "database", etc.)
 
         Returns:
-            Canonical customer name from customers.csv, or None if unmatched.
+            Canonical subject name from subjects.csv, or None if unmatched.
         """
         preprocessed = preprocess_name(source_name)
         attempts = []
@@ -511,7 +511,7 @@ class EntityResolver:
                 "source_name": source_name,
                 "source": source_type,
                 "matched_name": canonical,
-                "target": "customers.csv",
+                "target": "subjects.csv",
                 "match_pass": cached_result["match_pass"],
                 "match_method": "cache_hit",
                 "confidence": cached_result["confidence"],
@@ -649,7 +649,7 @@ class EntityResolver:
             "source_name": source_name,
             "source": source_type,
             "matched_name": matched_name,
-            "target": "customers.csv",
+            "target": "subjects.csv",
             "match_pass": pass_num,
             "match_method": method,
             "confidence": confidence,
@@ -681,7 +681,7 @@ Every entity resolution attempt is recorded in `_dd/forensic-dd/inventory/entity
       "source_name": "GAG",
       "source": "reference_file",
       "matched_name": "Global Analytics Group",
-      "target": "customers.csv",
+      "target": "subjects.csv",
       "match_pass": 2,
       "match_method": "alias_lookup",
       "confidence": 1.0,
@@ -691,7 +691,7 @@ Every entity resolution attempt is recorded in `_dd/forensic-dd/inventory/entity
       "source_name": "Alpine Systems, Inc.",
       "source": "database",
       "matched_name": "AlpineSys",
-      "target": "customers.csv",
+      "target": "subjects.csv",
       "match_pass": 2,
       "match_method": "alias_lookup",
       "confidence": 1.0,
@@ -701,7 +701,7 @@ Every entity resolution attempt is recorded in `_dd/forensic-dd/inventory/entity
       "source_name": "Sierra Networks, Inc.",
       "source": "reference_file",
       "matched_name": "Sierra",
-      "target": "customers.csv",
+      "target": "subjects.csv",
       "match_pass": 3,
       "match_method": "fuzzy",
       "confidence": 0.91,
@@ -769,7 +769,7 @@ The entity resolution cache at `_dd/entity_resolution_cache.json` (shared across
       "match_pass": 2,
       "match_type": "alias_lookup",
       "confidence": 1.0,
-      "entity_type": "customer",
+      "entity_type": "subject",
       "first_seen_run": "20250218_143000",
       "last_confirmed_run": "20250218_143000",
       "confirmation_count": 1
@@ -779,7 +779,7 @@ The entity resolution cache at `_dd/entity_resolution_cache.json` (shared across
       "match_pass": 3,
       "match_type": "fuzzy",
       "confidence": 0.91,
-      "entity_type": "customer",
+      "entity_type": "subject",
       "first_seen_run": "20250218_143000",
       "last_confirmed_run": "20250220_091500",
       "confirmation_count": 3
@@ -978,11 +978,11 @@ class EntityResolutionCache:
         if entry is None:
             return None
 
-        # Validate: canonical must still exist in customers.csv
+        # Validate: canonical must still exist in subjects.csv
         from dd_agents.entity.preprocessing import preprocess_name
         canonical_preprocessed = preprocess_name(entry["canonical"])
         if canonical_preprocessed not in target_names:
-            # Canonical no longer in customers.csv -- invalidate
+            # Canonical no longer in subjects.csv -- invalidate
             del self.data["entries"][source_name]
             return None
 
@@ -1008,7 +1008,7 @@ class EntityResolutionCache:
                 "match_pass": match_pass,
                 "match_type": match_type,
                 "confidence": confidence,
-                "entity_type": "customer",
+                "entity_type": "subject",
                 "first_seen_run": run_id,
                 "last_confirmed_run": run_id,
                 "confirmation_count": 1,
@@ -1050,21 +1050,21 @@ class EntityResolutionCache:
 | `entity_aliases` config hash unchanged | No invalidation |
 | Config changed, prior snapshot available | Per-entry diff (see algorithm above) |
 | Config changed, no prior snapshot | Full invalidation (delete all entries) |
-| Canonical name no longer in customers.csv | Remove that entry on lookup |
+| Canonical name no longer in subjects.csv | Remove that entry on lookup |
 | Name added to exclusions | Invalidate entry for that name |
 | Alias removed from canonical's variant list | Invalidate entries matched via that alias |
 | Parent-child mapping changed | Invalidate entries matched via parent_child |
 | Cache file deleted or corrupted | Full rebuild from 6-pass matcher |
 
-**Cache invalidation summary**: Cache entries are invalidated when (1) deal-config aliases change, (2) a canonical name is removed from customers.csv, or (3) a name is added to the exclusions list. All other cache entries persist across runs.
+**Cache invalidation summary**: Cache entries are invalidated when (1) deal-config aliases change, (2) a canonical name is removed from subjects.csv, or (3) a name is added to the exclusions list. All other cache entries persist across runs.
 
-**Expected cache hit rate**: After 2-3 runs on the same data room with stable configuration, cache hit rate exceeds 90%. This reduces entity resolution from the primary bottleneck (many fuzzy comparisons) to near-instant for unchanged customer sets.
+**Expected cache hit rate**: After 2-3 runs on the same data room with stable configuration, cache hit rate exceeds 90%. This reduces entity resolution from the primary bottleneck (many fuzzy comparisons) to near-instant for unchanged subject sets.
 
 ---
 
-## 8. customer_safe_name Convention
+## 8. subject_safe_name Convention
 
-The `customer_safe_name` is a deterministic, filesystem-safe identifier derived from the canonical customer name. It is used for all per-customer output filenames.
+The `subject_safe_name` is a deterministic, filesystem-safe identifier derived from the canonical subject name. It is used for all per-subject output filenames.
 
 ### Transformation Rules
 
@@ -1091,11 +1091,11 @@ The `customer_safe_name` is a deterministic, filesystem-safe identifier derived 
 ### Usage Across the System
 
 The safe name appears in:
-- Agent output files: `{RUN_DIR}/findings/{agent}/{customer_safe_name}.json`
-- Gap files: `{RUN_DIR}/findings/{agent}/gaps/{customer_safe_name}.json`
-- Merged files: `{RUN_DIR}/findings/merged/{customer_safe_name}.json`
-- Agent prompts: `Customer 1: Acme Corp (safe_name: acme_corp)`
-- Clean-result IDs: `forensic-dd_legal_clean_{customer_safe_name}_0000`
+- Agent output files: `{RUN_DIR}/findings/{agent}/{subject_safe_name}.json`
+- Gap files: `{RUN_DIR}/findings/{agent}/gaps/{subject_safe_name}.json`
+- Merged files: `{RUN_DIR}/findings/merged/{subject_safe_name}.json`
+- Agent prompts: `Subject 1: Acme Corp (safe_name: acme_corp)`
+- Clean-result IDs: `forensic-dd_legal_clean_{subject_safe_name}_0000`
 - Incremental classification entries
 
 The safe name is computed once during inventory building (step 6) and included in agent prompts. Agents MUST use the pre-computed safe names -- they do not derive them independently.
@@ -1107,20 +1107,20 @@ The safe name is computed once during inventory building (step 6) and included i
 Entity resolution runs at pipeline step 7 and feeds into multiple downstream steps:
 
 ```
-Step 6: Build inventory (customers.csv)
+Step 6: Build inventory (subjects.csv)
     |
 Step 7: Entity resolution
     |   - Load cache from _dd/entity_resolution_cache.json
     |   - Compute config invalidation diff
-    |   - Resolve all reference file names against customers.csv
-    |   - Resolve database names against customers.csv (if source_of_truth exists)
+    |   - Resolve all reference file names against subjects.csv
+    |   - Resolve database names against subjects.csv (if source_of_truth exists)
     |   - Write entity_matches.json to FRESH tier
     |
-Step 8: Reference registry (uses entity matches for customers_mentioned)
+Step 8: Reference registry (uses entity matches for subjects_mentioned)
     |
-Step 9: Customer-mention index (builds on entity matches)
+Step 9: Subject-mention index (builds on entity matches)
     |
-Steps 14-16: Agent prompts (include entity lookup tool, customer safe names)
+Steps 14-16: Agent prompts (include entity lookup tool, subject safe names)
     |
 Step 34: Save cache (persist confirmed matches to PERMANENT tier)
 ```
@@ -1138,7 +1138,7 @@ async def step_07_entity_resolution(state: PipelineState) -> PipelineState:
     entity_aliases = state.deal_config.get("entity_aliases", {})
 
     resolver = EntityResolver(
-        customers_csv=state.customers_csv,
+        subjects_csv=state.subjects_csv,
         entity_aliases=entity_aliases,
         cache_path=cache_path,
         run_id=state.run_id,
@@ -1154,12 +1154,12 @@ async def step_07_entity_resolution(state: PipelineState) -> PipelineState:
     # From reference files
     reference_files = _load_reference_files(state)
     for ref_file in reference_files:
-        for name in ref_file.get("customers_mentioned", []):
+        for name in ref_file.get("subjects_mentioned", []):
             names_to_resolve.add(name)
 
-    # From customer database (if exists)
+    # From subject database (if exists)
     if "source_of_truth" in state.deal_config:
-        db_names = _load_database_customer_names(state)
+        db_names = _load_database_subject_names(state)
         for name in db_names:
             names_to_resolve.add(name)
 
@@ -1207,7 +1207,7 @@ scikit-learn>=1.3.0         # TF-IDF vectorizer + cosine similarity (Pass 4)
 src/dd_agents/
   entity/
     __init__.py
-    preprocessing.py         # preprocess_name(), to_customer_safe_name()
+    preprocessing.py         # preprocess_name(), to_subject_safe_name()
     passes.py                # pass_1 through pass_6, is_excluded()
     resolver.py              # EntityResolver class
     cache.py                 # EntityResolutionCache class
@@ -1222,7 +1222,7 @@ _dd/
   forensic-dd/
     inventory/
       entity_matches.json                         # FRESH (rebuilt every run)
-      customers.csv                               # FRESH (input to resolver)
+      subjects.csv                               # FRESH (input to resolver)
     index/
       text/                                       # PERMANENT (extraction cache)
 ```

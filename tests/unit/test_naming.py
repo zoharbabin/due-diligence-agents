@@ -68,7 +68,7 @@ class TestPreprocessName:
 # ---------------------------------------------------------------------------
 
 
-class TestCustomerSafeName:
+class TestSubjectSafeName:
     @pytest.mark.parametrize(
         "input_name, expected",
         [

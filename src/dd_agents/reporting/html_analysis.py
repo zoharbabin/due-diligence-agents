@@ -6,10 +6,10 @@ alert boxes providing executive context.
 
 from __future__ import annotations
 
-import html
 from typing import Any
 
 from dd_agents.reporting.html_base import SectionRenderer
+from dd_agents.utils.constants import SEVERITY_P0, SEVERITY_P3
 
 _SEV_RANK: dict[str, int] = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
 
@@ -78,8 +78,8 @@ class CoCAnalysisRenderer(SectionRenderer):
         # CoC findings by subject with Type column
         by_subject: dict[str, list[dict[str, Any]]] = {}
         for f in coc:
-            cust = str(f.get("_subject_safe_name", f.get("_subject", "Unknown")))
-            by_subject.setdefault(cust, []).append(f)
+            subj = str(f.get("_subject_safe_name", f.get("_subject", "Unknown")))
+            by_subject.setdefault(subj, []).append(f)
 
         parts.append(
             "<table class='subject-table sortable'><thead><tr>"
@@ -94,15 +94,15 @@ class CoCAnalysisRenderer(SectionRenderer):
         for subject_csn, findings in sorted(by_subject.items(), key=lambda x: -len(x[1])):
             display_name = self.data.display_names.get(subject_csn, subject_csn) if self.data else subject_csn
             count = len(findings)
-            max_sev = "P3"
+            max_sev = SEVERITY_P3
             for f in findings:
-                sev = f.get("severity", "P3")
+                sev = f.get("severity", SEVERITY_P3)
                 if _SEV_RANK.get(sev, 3) < _SEV_RANK.get(max_sev, 3):
                     max_sev = sev
-            primary = html.escape(str(findings[0].get("title", "")))
-            subtype = html.escape(self._detect_subtype(findings[0]))
+            primary = self.escape(str(findings[0].get("title", "")))
+            subtype = self.escape(self._detect_subtype(findings[0]))
             parts.append(
-                f"<tr><td><strong>{html.escape(display_name)}</strong></td>"
+                f"<tr><td><strong>{self.escape(display_name)}</strong></td>"
                 f"<td>{subtype}</td>"
                 f"<td>{count}</td>"
                 f"<td>{self.severity_badge(max_sev)}</td>"
@@ -144,8 +144,8 @@ class TfCAnalysisRenderer(SectionRenderer):
         # TfC findings table
         by_subject: dict[str, list[dict[str, Any]]] = {}
         for f in tfc:
-            cust = str(f.get("_subject_safe_name", f.get("_subject", "Unknown")))
-            by_subject.setdefault(cust, []).append(f)
+            subj = str(f.get("_subject_safe_name", f.get("_subject", "Unknown")))
+            by_subject.setdefault(subj, []).append(f)
 
         parts.append(
             "<table class='subject-table sortable'><thead><tr>"
@@ -165,13 +165,13 @@ class TfCAnalysisRenderer(SectionRenderer):
             desc_lower = desc.lower()
             for marker in ("notice", "day", "month"):
                 if marker in desc_lower:
-                    notice = html.escape(desc[:80])
+                    notice = self.escape(desc[:80])
                     break
             # Revenue impact from finding text
             revenue = "See valuation model"
-            title_text = html.escape(str(primary.get("title", "")))
+            title_text = self.escape(str(primary.get("title", "")))
             parts.append(
-                f"<tr><td><strong>{html.escape(display_name)}</strong></td>"
+                f"<tr><td><strong>{self.escape(display_name)}</strong></td>"
                 f"<td>{notice}</td>"
                 f"<td>{revenue}</td>"
                 f"<td>{title_text}</td></tr>"
@@ -192,8 +192,8 @@ class PrivacyAnalysisRenderer(SectionRenderer):
 
         by_subject: dict[str, list[dict[str, Any]]] = {}
         for f in privacy:
-            cust = str(f.get("_subject_safe_name", f.get("_subject", "Unknown")))
-            by_subject.setdefault(cust, []).append(f)
+            subj = str(f.get("_subject_safe_name", f.get("_subject", "Unknown")))
+            by_subject.setdefault(subj, []).append(f)
 
         parts: list[str] = [
             "<section class='report-section' id='sec-privacy'>",
@@ -201,7 +201,7 @@ class PrivacyAnalysisRenderer(SectionRenderer):
         ]
 
         # Alert
-        p0_count = sum(1 for f in privacy if f.get("severity") == "P0")
+        p0_count = sum(1 for f in privacy if f.get("severity") == SEVERITY_P0)
         level = "critical" if p0_count > 0 else ("high" if len(privacy) > 5 else "info")
         parts.append(
             self.render_alert(
@@ -223,10 +223,14 @@ class PrivacyAnalysisRenderer(SectionRenderer):
 
         for subject_csn, findings in sorted(by_subject.items(), key=lambda x: -len(x[1])):
             display_name = self.data.display_names.get(subject_csn, subject_csn) if self.data else subject_csn
-            max_sev = min((f.get("severity", "P3") for f in findings), key=lambda s: _SEV_RANK.get(s, 3), default="P3")
-            primary = html.escape(str(findings[0].get("title", "")))
+            max_sev = min(
+                (f.get("severity", SEVERITY_P3) for f in findings),
+                key=lambda s: _SEV_RANK.get(s, 3),
+                default=SEVERITY_P3,
+            )
+            primary = self.escape(str(findings[0].get("title", "")))
             parts.append(
-                f"<tr><td><strong>{html.escape(display_name)}</strong></td>"
+                f"<tr><td><strong>{self.escape(display_name)}</strong></td>"
                 f"<td>{len(findings)}</td>"
                 f"<td>{self.severity_badge(max_sev)}</td>"
                 f"<td>{primary}</td></tr>"
@@ -315,13 +319,13 @@ class SubjectHealthRenderer(SectionRenderer):
         if tier1:
             parts.append("<h3>Tier 1 &mdash; Immediate Attention</h3><ul>")
             for name in tier1:
-                parts.append(f"<li><span class='tier-badge tier-1'>T1</span> {html.escape(name)}</li>")
+                parts.append(f"<li><span class='tier-badge tier-1'>T1</span> {self.escape(name)}</li>")
             parts.append("</ul>")
 
         if tier2:
             parts.append("<h3>Tier 2 &mdash; Pre-Close Review</h3><ul>")
             for name in tier2:
-                parts.append(f"<li><span class='tier-badge tier-2'>T2</span> {html.escape(name)}</li>")
+                parts.append(f"<li><span class='tier-badge tier-2'>T2</span> {self.escape(name)}</li>")
             parts.append("</ul>")
 
         parts.append("</section>")

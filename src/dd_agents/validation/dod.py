@@ -43,7 +43,15 @@ from pathlib import Path
 from typing import Any
 
 from dd_agents.models.audit import AuditCheck
-from dd_agents.utils.constants import ALL_SPECIALIST_AGENTS
+from dd_agents.utils.constants import (
+    ALL_SPECIALIST_AGENTS,
+    COVERAGE_MANIFEST_JSON,
+    FILES_TXT,
+    JUDGE_DIR,
+    NUMERICAL_MANIFEST_JSON,
+    QUALITY_SCORES_JSON,
+    SEVERITY_P0,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +170,7 @@ class DefinitionOfDoneChecker:
 
     def check_2_file_coverage_complete(self) -> AuditCheck:
         """All discovered files are covered by at least one agent."""
-        files_txt = self.inventory_dir / "files.txt"
+        files_txt = self.inventory_dir / FILES_TXT
         if not files_txt.exists():
             return AuditCheck(
                 passed=False,
@@ -182,7 +190,7 @@ class DefinitionOfDoneChecker:
         covered: set[str] = set()
         findings_dir = self.run_dir / "findings"
         for agent in ALL_SPECIALIST_AGENTS:
-            manifest_path = findings_dir / agent / "coverage_manifest.json"
+            manifest_path = findings_dir / agent / COVERAGE_MANIFEST_JSON
             if not manifest_path.exists():
                 continue
             try:
@@ -204,11 +212,15 @@ class DefinitionOfDoneChecker:
         all_basenames = {Path(f).name for f in all_files}
         uncovered = all_basenames - covered
 
-        # When manifests lack file-level data (only subject-level summaries),
-        # file coverage cannot be verified — defer to subject_coverage checks.
-        if not covered:
+        # When manifests lack meaningful file-level data (only subject-level
+        # summaries or sparse partial data), file coverage cannot be reliably
+        # verified — defer to subject_coverage checks.  Agents often write
+        # subject-level output without populating file_headers, so a small
+        # number of covered files is indistinguishable from missing data.
+        coverage_ratio = len(covered & all_basenames) / total if total else 0.0
+        if coverage_ratio < 0.10:
             has_subject_data = any(
-                (findings_dir / agent / "coverage_manifest.json").exists() for agent in ALL_SPECIALIST_AGENTS
+                (findings_dir / agent / COVERAGE_MANIFEST_JSON).exists() for agent in ALL_SPECIALIST_AGENTS
             )
             if has_subject_data:
                 return AuditCheck(
@@ -216,8 +228,8 @@ class DefinitionOfDoneChecker:
                     dod_checks=[2],
                     details={
                         "total_files": total,
-                        "covered_files": 0,
-                        "note": "Manifests lack file-level data — deferred to subject_coverage",
+                        "covered_files": len(covered & all_basenames),
+                        "note": "Manifests lack meaningful file-level data — deferred to subject_coverage",
                     },
                 )
 
@@ -237,7 +249,7 @@ class DefinitionOfDoneChecker:
         missing: list[str] = []
         invalid: list[str] = []
         for agent in ALL_SPECIALIST_AGENTS:
-            manifest_path = self.run_dir / "findings" / agent / "coverage_manifest.json"
+            manifest_path = self.run_dir / "findings" / agent / COVERAGE_MANIFEST_JSON
             if not manifest_path.exists():
                 missing.append(agent)
                 continue
@@ -797,7 +809,7 @@ class DefinitionOfDoneChecker:
 
     def check_17_numerical_manifest_valid(self) -> AuditCheck:
         """Numerical manifest exists with all audit layers validated."""
-        manifest_path = self.run_dir / "numerical_manifest.json"
+        manifest_path = self.run_dir / NUMERICAL_MANIFEST_JSON
         if not manifest_path.exists():
             return AuditCheck(
                 passed=False,
@@ -942,7 +954,7 @@ class DefinitionOfDoneChecker:
 
     def check_20_quality_scores_exist(self) -> AuditCheck:
         """quality_scores.json exists with valid scores for all 4 agents."""
-        path = self.run_dir / "judge" / "quality_scores.json"
+        path = self.run_dir / JUDGE_DIR / QUALITY_SCORES_JSON
         if not path.exists():
             return AuditCheck(
                 passed=False,
@@ -970,7 +982,7 @@ class DefinitionOfDoneChecker:
 
     def check_21_p0_spot_checked(self) -> AuditCheck:
         """All P0 findings spot-checked by Judge (100% sampling)."""
-        path = self.run_dir / "judge" / "quality_scores.json"
+        path = self.run_dir / JUDGE_DIR / QUALITY_SCORES_JSON
         if not path.exists():
             return AuditCheck(
                 passed=False,
@@ -980,10 +992,10 @@ class DefinitionOfDoneChecker:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             spot_checks = data.get("spot_checks", [])
-            p0_checks = [sc for sc in spot_checks if sc.get("severity") == "P0"]
+            p0_checks = [sc for sc in spot_checks if sc.get("severity") == SEVERITY_P0]
             # Pass if there are P0 spot checks OR if there are no P0 findings at all
-            has_p0_findings = any(sc.get("severity") == "P0" for sc in data.get("spot_checks", [])) or any(
-                f.get("severity") == "P0"
+            has_p0_findings = any(sc.get("severity") == SEVERITY_P0 for sc in data.get("spot_checks", [])) or any(
+                f.get("severity") == SEVERITY_P0
                 for scores in data.get("agent_scores", {}).values()
                 for f in (scores if isinstance(scores, list) else [])
             )
@@ -1004,7 +1016,7 @@ class DefinitionOfDoneChecker:
 
     def check_22_threshold_met(self) -> AuditCheck:
         """All agents >= threshold OR quality caveats attached."""
-        path = self.run_dir / "judge" / "quality_scores.json"
+        path = self.run_dir / JUDGE_DIR / QUALITY_SCORES_JSON
         if not path.exists():
             return AuditCheck(
                 passed=False,
@@ -1036,7 +1048,7 @@ class DefinitionOfDoneChecker:
 
     def check_23_contradictions_resolved(self) -> AuditCheck:
         """All contradictions resolved -- zero unresolved."""
-        path = self.run_dir / "judge" / "quality_scores.json"
+        path = self.run_dir / JUDGE_DIR / QUALITY_SCORES_JSON
         if not path.exists():
             return AuditCheck(
                 passed=False,

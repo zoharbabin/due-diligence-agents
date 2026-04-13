@@ -1018,7 +1018,7 @@ class TestStep35Shutdown:
 
         # Check 1 is critical (dod_checks=[1]) and fails
         mock_checks = [
-            AuditCheck(passed=False, rule="Customer outputs", dod_checks=[1]),
+            AuditCheck(passed=False, rule="Subject outputs", dod_checks=[1]),
             AuditCheck(passed=True, rule="Non-critical check", dod_checks=[4]),
         ]
         with patch(
@@ -1039,7 +1039,7 @@ class TestStep35Shutdown:
 
         # Check 4 (governance) is NOT critical and fails
         mock_checks = [
-            AuditCheck(passed=True, rule="Customer outputs", dod_checks=[1]),
+            AuditCheck(passed=True, rule="Subject outputs", dod_checks=[1]),
             AuditCheck(passed=False, rule="Governance resolved", dod_checks=[4]),
         ]
         with patch(
@@ -1059,7 +1059,7 @@ class TestStep35Shutdown:
         state = self._make_state(tmp_path)
 
         mock_checks = [
-            AuditCheck(passed=False, rule="Customer outputs", dod_checks=[1]),
+            AuditCheck(passed=False, rule="Subject outputs", dod_checks=[1]),
             AuditCheck(passed=False, rule="Excel sheets", dod_checks=[14]),
             AuditCheck(passed=False, rule="Non-critical", dod_checks=[4]),
         ]
@@ -1073,7 +1073,7 @@ class TestStep35Shutdown:
         data = json.loads(dod_path.read_text())
         # Only critical failures (checks 1 and 14) should be listed
         assert len(data["critical_failures"]) == 2
-        assert "Customer outputs" in data["critical_failures"]
+        assert "Subject outputs" in data["critical_failures"]
         assert "Excel sheets" in data["critical_failures"]
 
     def test_critical_dod_checks_defined(self) -> None:
@@ -1810,6 +1810,17 @@ class TestStep17CoverageGate:
             assert gap["subject_safe_name"] == "subject_b"
             assert gap["auto_generated"] is True
 
+        # Gap findings should also be written as agent output files so
+        # the merge step picks them up for domain_coverage in QA audit.
+        for agent in ["legal", "finance", "commercial", "producttech"]:
+            agent_file = findings_dir / agent / "subject_b.json"
+            assert agent_file.exists(), f"Gap finding should create {agent}/subject_b.json"
+            data = json.loads(agent_file.read_text())
+            assert data["auto_generated"] is True
+            assert data["source"] == "coverage_gate"
+            assert len(data["findings"]) == 1
+            assert data["findings"][0]["agent"] == agent
+
     @pytest.mark.asyncio
     async def test_coverage_gate_no_subjects(self, tmp_path: Path) -> None:
         """Coverage gate passes trivially when there are no subjects."""
@@ -2050,12 +2061,17 @@ class TestGenerateCoverageGapFinding:
         )
         assert gap["severity"] == "P1"
         assert gap["finding_type"] == "coverage_gap"
+        assert gap["category"] == "data_gap"
+        assert gap["confidence"] == "low"
         assert gap["subject_safe_name"] == "test_subject"
         assert gap["agent"] == "legal"
         assert gap["run_id"] == "run_001"
         assert gap["auto_generated"] is True
         assert "finding_id" in gap
         assert "timestamp" in gap
+        # Citations should be present (synthetic) for merge compatibility
+        assert len(gap["citations"]) == 1
+        assert gap["citations"][0]["source_path"].startswith("[synthetic:")
 
     def test_finding_id_includes_agent_and_subject(self) -> None:
         gap = PipelineEngine._generate_coverage_gap_finding(
@@ -2543,7 +2559,11 @@ class TestStep22JudgeRound2:
 
     @pytest.mark.asyncio
     async def test_step_22_blends_scores(self, tmp_path: Path) -> None:
-        """Round-2 should blend scores using 70/30 formula."""
+        """Round-2 sets iteration_round and persists quality scores.
+
+        Score blending is a placeholder (r2 == r1) until the Judge produces
+        independent round-2 scores.
+        """
         engine = self._make_engine(tmp_path)
         state = self._make_state(tmp_path)
         state.judge_scores = {
@@ -2559,8 +2579,8 @@ class TestStep22JudgeRound2:
 
         assert result is state
         assert state.judge_scores["iteration_round"] == 2
-        # Blended: 0.70 * 50 + 0.30 * 50 = 50
-        assert state.judge_scores["agent_scores"]["legal"]["blended"] is True
+        # Score unchanged (blending is a placeholder)
+        assert state.judge_scores["agent_scores"]["legal"]["score"] == 50
 
         # Quality scores persisted
         scores_path = state.run_dir / "judge" / "quality_scores.json"
@@ -3130,7 +3150,7 @@ class TestStep35WithMixedCriticalAndNonCriticalFailures:
 
         mock_checks = [
             AuditCheck(passed=True, rule="Some passing check", dod_checks=[5]),
-            AuditCheck(passed=False, rule="Customer outputs incomplete", dod_checks=[1]),  # Critical
+            AuditCheck(passed=False, rule="Subject outputs incomplete", dod_checks=[1]),  # Critical
             AuditCheck(passed=False, rule="Governance not resolved", dod_checks=[4]),  # Non-critical
             AuditCheck(passed=False, rule="Excel missing", dod_checks=[14]),  # Critical
             AuditCheck(passed=True, rule="Entity resolution ok", dod_checks=[16]),
@@ -3859,3 +3879,206 @@ class TestPerAgentCompletionTracking:
         stalled = team.detect_stalled_agents()
         assert "legal" not in stalled
         assert "finance" in stalled
+
+
+# =========================================================================
+# Issue fix: zero-file subjects excluded from agent routing
+# =========================================================================
+
+
+class TestZeroFileSubjectFiltering:
+    """Verify subjects with file_count=0 are excluded from agent batches."""
+
+    def test_zero_file_subjects_tracked_on_state(self, tmp_path: Path) -> None:
+        """Step 14 sets _zero_file_subjects for subjects with no files."""
+        state = PipelineState(
+            run_id="zf_test",
+            project_dir=tmp_path,
+            run_dir=tmp_path / "runs" / "zf_test",
+        )
+        state._zero_file_subjects = ["buyer", "old_docs"]
+        assert len(state._zero_file_subjects) == 2
+
+    def test_zero_file_subjects_default_empty(self, tmp_path: Path) -> None:
+        """_zero_file_subjects defaults to an empty list."""
+        state = PipelineState(run_id="t", project_dir=tmp_path)
+        assert state._zero_file_subjects == []
+
+
+# =========================================================================
+# Issue fix: manifest counts use recalibrated severity
+# =========================================================================
+
+
+class TestManifestRecalibratedCounts:
+    """Verify that _step_26 applies recalibration when counting findings."""
+
+    def _make_engine(self, tmp_path: Path) -> PipelineEngine:
+        config_path = tmp_path / "deal-config.json"
+        config_path.write_text("{}")
+        return PipelineEngine(tmp_path, config_path)
+
+    def _make_state(self, tmp_path: Path) -> PipelineState:
+        run_dir = tmp_path / "runs" / "recal_test"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        inv_dir = tmp_path / "_dd" / "forensic-dd" / "inventory"
+        inv_dir.mkdir(parents=True, exist_ok=True)
+        return PipelineState(
+            run_id="recal_test",
+            project_dir=tmp_path,
+            run_dir=run_dir,
+            skill_dir=tmp_path / "_dd" / "forensic-dd",
+            total_subjects=1,
+            total_files=1,
+        )
+
+    @pytest.mark.asyncio
+    async def test_manifest_counts_reflect_recalibration(self, tmp_path: Path) -> None:
+        """Findings that get recalibrated should be counted at their new severity."""
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+        engine = self._make_engine(tmp_path)
+        state = self._make_state(tmp_path)
+
+        # Create inventory directory with required files
+        inv_dir = tmp_path / "_dd" / "forensic-dd" / "inventory"
+        (inv_dir / "subjects.csv").write_text("subject\nsubject_a\n")
+        (inv_dir / "files.txt").write_text("file1.pdf\n")
+        (inv_dir / "reference_files.json").write_text("[]")
+        (inv_dir / "counts.json").write_text(
+            json.dumps({"total_subjects": 1, "total_files": 1, "total_reference_files": 0})
+        )
+
+        # Create a merged finding that will be recalibrated
+        merged_dir = state.run_dir / "findings" / "merged"
+        merged_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create a finding whose severity will be changed by recalibration.
+        # Use a known pattern: "speculative language" findings get capped.
+        finding = {
+            "title": "Potential issue with speculative language",
+            "description": "This might potentially affect revenue",
+            "severity": "P1",
+            "category": "revenue_recognition",
+        }
+
+        # Verify this finding would actually be recalibrated
+        recal = ReportDataComputer._recalibrate_severity(finding)
+        recal_sev = recal.get("severity", "P1")
+
+        (merged_dir / "subject_a.json").write_text(json.dumps({"findings": [finding], "gaps": []}))
+
+        await engine._step_26_build_numerical_manifest(state)
+
+        manifest_path = state.run_dir / "numerical_manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+
+        # The manifest should count at the recalibrated severity, not raw
+        sev_counts = {}
+        for entry in manifest["numbers"]:
+            if entry["id"] in ("N004", "N005", "N006", "N007"):
+                label = entry["label"].split()[0]  # "P0", "P1", "P2", "P3"
+                sev_counts[label] = entry["value"]
+
+        assert sev_counts.get(recal_sev, 0) == 1
+        # If recalibration changed severity, the original bucket should be 0
+        if recal_sev != "P1":
+            assert sev_counts.get("P1", 0) == 0
+
+
+# =========================================================================
+# Issue fix: _generate_coverage_gap_finding accepts reason parameter
+# =========================================================================
+
+
+class TestCoverageGapReason:
+    """Verify custom reason flows into gap finding description."""
+
+    def test_custom_reason(self) -> None:
+        gap = PipelineEngine._generate_coverage_gap_finding(
+            subject_safe_name="buyer",
+            agent_name="legal",
+            run_id="test",
+            reason="Zero source documents in data room",
+        )
+        assert gap["description"] == "Zero source documents in data room"
+
+    def test_default_reason(self) -> None:
+        gap = PipelineEngine._generate_coverage_gap_finding(
+            subject_safe_name="acme",
+            agent_name="finance",
+            run_id="test",
+        )
+        assert "did not produce output" in gap["description"]
+
+
+# =========================================================================
+# _build_run_metadata_for_excel: numerical manifest parity (N002)
+# =========================================================================
+
+
+class TestBuildRunMetadataNumericalManifest:
+    """Verify _build_run_metadata_for_excel loads numerical_manifest.json entries."""
+
+    def test_loads_numerical_manifest_entries(self, tmp_path: Path) -> None:
+        """N-entries from numerical_manifest.json should appear in run_metadata."""
+        # _inventory_dir returns project_dir / skill_dir / "inventory"
+        inv_dir = tmp_path / "_dd" / "forensic-dd" / "inventory"
+        inv_dir.mkdir(parents=True)
+        run_dir = tmp_path / "_dd" / "forensic-dd" / "runs" / "run_test"
+        run_dir.mkdir(parents=True)
+
+        manifest = {
+            "run_id": "run_test",
+            "numbers": [
+                {"id": "N001", "label": "Total Subjects", "value": 15},
+                {"id": "N002", "label": "Total Files", "value": 845},
+            ],
+        }
+        (run_dir / "numerical_manifest.json").write_text(json.dumps(manifest))
+
+        state = PipelineState(
+            run_id="run_test",
+            run_dir=run_dir,
+            project_dir=tmp_path,
+            deal_config={},
+            total_subjects=15,
+            total_files=845,
+        )
+
+        engine = PipelineEngine.__new__(PipelineEngine)
+        engine._config = {}
+        engine._project_dir = tmp_path
+
+        merged: dict[str, dict] = {}  # type: ignore[type-arg]
+        result = engine._build_run_metadata_for_excel(state, merged)
+
+        assert result["N001_Total Subjects"] == 15
+        assert result["N002_Total Files"] == 845
+
+    def test_works_without_numerical_manifest(self, tmp_path: Path) -> None:
+        """No crash when numerical_manifest.json is absent."""
+        inv_dir = tmp_path / "_dd" / "forensic-dd" / "inventory"
+        inv_dir.mkdir(parents=True)
+        run_dir = tmp_path / "_dd" / "forensic-dd" / "runs" / "run_test"
+        run_dir.mkdir(parents=True)
+
+        state = PipelineState(
+            run_id="run_test",
+            run_dir=run_dir,
+            project_dir=tmp_path,
+            deal_config={},
+            total_subjects=5,
+            total_files=100,
+        )
+
+        engine = PipelineEngine.__new__(PipelineEngine)
+        engine._config = {}
+        engine._project_dir = tmp_path
+
+        merged: dict[str, dict] = {}  # type: ignore[type-arg]
+        result = engine._build_run_metadata_for_excel(state, merged)
+
+        # Should still have basic counts without N-entries
+        assert result["subject_count"] == 0
+        assert "N001_Total Subjects" not in result

@@ -38,7 +38,7 @@ class TestValidateFinding:
                 {
                     "source_type": "file",
                     "source_path": "./Acme/MSA.pdf",
-                    "exact_quote": "Customer may terminate immediately.",
+                    "exact_quote": "Subject may terminate immediately.",
                 }
             ],
             "confidence": "high",
@@ -92,11 +92,12 @@ class TestValidateFinding:
         assert result["valid"] is False
         assert any("category" in e for e in result["errors"])
 
-    def test_p0_without_exact_quote_auto_downgraded(self) -> None:
+    def test_p0_without_exact_quote_auto_downgraded_and_flagged(self) -> None:
         """P0 without exact_quote is auto-downgraded to P2 by AgentFinding model.
 
-        The AgentFinding model validator now catches this at parse time,
-        so validate_finding sees a P2 finding which is valid without exact_quote.
+        The AgentFinding model validator catches this at parse time (P0→P2).
+        Then validate_finding flags the P2 for missing exact_quote (will be
+        downgraded to P3 during merge).
         """
         finding = {
             "severity": "P0",
@@ -113,8 +114,9 @@ class TestValidateFinding:
             "confidence": "high",
         }
         result = validate_finding(finding)
-        # Finding is valid because AgentFinding auto-downgraded P0→P2
-        assert result["valid"] is True
+        # P0 auto-downgraded to P2, then P2 flagged for missing exact_quote
+        assert result["valid"] is False
+        assert any("P2" in e and "exact_quote" in e for e in result["errors"])
 
     def test_p3_without_exact_quote_allowed(self) -> None:
         finding = {
@@ -130,6 +132,64 @@ class TestValidateFinding:
                 }
             ],
             "confidence": "high",
+        }
+        result = validate_finding(finding)
+        assert result["valid"] is True
+
+    def test_finding_with_no_real_citation_rejected(self) -> None:
+        """A finding where all citations have synthetic source_path should be flagged."""
+        finding = {
+            "severity": "P2",
+            "category": "termination",
+            "title": "Finding without real citations",
+            "description": "No real source cited.",
+            "citations": [
+                {
+                    "source_type": "file",
+                    "source_path": "[synthetic:no_citation_provided]",
+                }
+            ],
+            "confidence": "medium",
+        }
+        result = validate_finding(finding)
+        assert result["valid"] is False
+        assert any("source_path" in e for e in result["errors"])
+
+    def test_p2_without_exact_quote_flagged(self) -> None:
+        """P2 finding without exact_quote should get a warning about downgrade."""
+        finding = {
+            "severity": "P2",
+            "category": "termination",
+            "title": "P2 without quote",
+            "description": "Missing exact quote.",
+            "citations": [
+                {
+                    "source_type": "file",
+                    "source_path": "./Acme/MSA.pdf",
+                    # No exact_quote
+                }
+            ],
+            "confidence": "medium",
+        }
+        result = validate_finding(finding)
+        assert result["valid"] is False
+        assert any("P2" in e and "exact_quote" in e for e in result["errors"])
+
+    def test_p2_with_exact_quote_valid(self) -> None:
+        """P2 finding with exact_quote should pass validation."""
+        finding = {
+            "severity": "P2",
+            "category": "termination",
+            "title": "P2 with proper citation",
+            "description": "Well cited finding.",
+            "citations": [
+                {
+                    "source_type": "file",
+                    "source_path": "./Acme/MSA.pdf",
+                    "exact_quote": "Either party may terminate with 30 days notice.",
+                }
+            ],
+            "confidence": "medium",
         }
         result = validate_finding(finding)
         assert result["valid"] is True
@@ -273,7 +333,7 @@ class TestVerifyCitation:
         source_path = "Acme/MSA.pdf"
         safe_name = source_path.replace("/", "__")
         text_file = text_dir / f"{safe_name}.md"
-        text_file.write_text("This agreement grants Customer the right to terminate immediately upon written notice.")
+        text_file.write_text("This agreement grants Subject the right to terminate immediately upon written notice.")
 
         citation = {
             "source_path": "Acme/MSA.pdf",
@@ -286,6 +346,10 @@ class TestVerifyCitation:
         )
         assert result["found"] is True
         assert result["method"] == "exact"
+        assert "char_offset" in result
+        assert isinstance(result["char_offset"], int)
+        assert "context_before" in result
+        assert "context_after" in result
 
     def test_citation_not_found_missing_source(self, tmp_path: Path) -> None:
         text_dir = tmp_path / "text"
@@ -407,7 +471,9 @@ class TestGetSubjectFiles:
         result = get_subject_files("acme_corp", subjects_csv)
         assert result["subject"] == "acme_corp"
         assert result["file_count"] == 3
-        assert result["files"] == ["MSA.pdf", "SOW.pdf", "NDA.pdf"]
+        # Files are now dicts with metadata
+        paths = [f["path"] for f in result["files"]]
+        assert paths == ["MSA.pdf", "SOW.pdf", "NDA.pdf"]
 
     def test_unknown_subject(self) -> None:
         subjects_csv = [{"subject_safe_name": "acme_corp", "file_list": ["a.pdf"]}]
@@ -430,8 +496,53 @@ class TestGetSubjectFiles:
         ]
         result = get_subject_files("csv_corp", subjects_csv)
         assert result["file_count"] == 2
-        assert "MSA.pdf" in result["files"]
-        assert "SOW.pdf" in result["files"]
+        paths = [f["path"] for f in result["files"]]
+        assert "MSA.pdf" in paths
+        assert "SOW.pdf" in paths
+
+    def test_file_metadata_includes_type(self) -> None:
+        subjects_csv = [
+            {
+                "subject_safe_name": "typed_corp",
+                "file_list": ["contract.pdf", "data.xlsx", "notes.txt"],
+            }
+        ]
+        result = get_subject_files("typed_corp", subjects_csv)
+        types = {f["path"]: f["file_type"] for f in result["files"]}
+        assert types["contract.pdf"] == "pdf"
+        assert types["data.xlsx"] == "excel"
+        assert types["notes.txt"] == "text"
+
+    def test_file_metadata_extraction_status(self, tmp_path: Path) -> None:
+        text_dir = tmp_path / "text"
+        text_dir.mkdir()
+        # Create extracted text for one file only
+        (text_dir / "contract.pdf.md").write_text("extracted content")
+
+        subjects_csv = [
+            {
+                "subject_safe_name": "ext_corp",
+                "file_list": ["contract.pdf", "missing.docx"],
+            }
+        ]
+        result = get_subject_files(
+            "ext_corp",
+            subjects_csv,
+            text_dir=str(text_dir),
+        )
+        # Both files should have the "extracted" key regardless of status
+        assert all("extracted" in f for f in result["files"])
+
+    def test_display_name_included(self) -> None:
+        subjects_csv = [
+            {
+                "subject_safe_name": "acme_corp",
+                "subject_display_name": "Acme Corporation",
+                "file_list": ["MSA.pdf"],
+            }
+        ]
+        result = get_subject_files("acme_corp", subjects_csv)
+        assert result["display_name"] == "Acme Corporation"
 
 
 # ===================================================================
@@ -556,6 +667,9 @@ class TestCreateToolDefinitions:
             "search_similar",
             "read_office",
             "report_progress",
+            "search_in_file",
+            "get_page_content",
+            "batch_verify_citations",
         }
         assert names == expected
 
@@ -579,6 +693,7 @@ class TestCreateToolDefinitions:
     def test_judge_tools(self) -> None:
         tools = get_tools_for_agent("judge")
         assert "verify_citation" in tools
+        assert "batch_verify_citations" in tools
         assert "validate_finding" not in tools
 
     def test_unknown_agent_type(self) -> None:

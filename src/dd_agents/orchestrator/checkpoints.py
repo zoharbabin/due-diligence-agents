@@ -83,7 +83,7 @@ def save_checkpoint(state: PipelineState, checkpoint_dir: Path) -> Path:
     data = state.to_checkpoint_dict()
     try:
         tmp_path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
-        os.replace(str(tmp_path), str(path))
+        os.replace(tmp_path, path)
     except Exception:
         # Clean up temp file on serialization or write failure.
         tmp_path.unlink(missing_ok=True)
@@ -248,7 +248,7 @@ def save_sub_checkpoint(
 
     try:
         tmp_path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
-        os.replace(str(tmp_path), str(path))
+        os.replace(tmp_path, path)
     except Exception:
         tmp_path.unlink(missing_ok=True)
         raise

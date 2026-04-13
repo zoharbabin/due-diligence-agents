@@ -564,7 +564,7 @@ class TestNumericalAuditor:
         """N003 rederivation counts total findings from merged dir."""
         merged_dir = tmp_path / "findings" / "merged"
         merged_dir.mkdir(parents=True)
-        (merged_dir / "customer_a.json").write_text(
+        (merged_dir / "subject_a.json").write_text(
             json.dumps(
                 {
                     "findings": [
@@ -574,7 +574,7 @@ class TestNumericalAuditor:
                 }
             )
         )
-        (merged_dir / "customer_b.json").write_text(json.dumps({"findings": [{"severity": "P2", "category": "risk"}]}))
+        (merged_dir / "subject_b.json").write_text(json.dumps({"findings": [{"severity": "P2", "category": "risk"}]}))
         auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
         entry = ManifestEntry(
             id="N003", label="Total Findings", value=0, source_file="findings/*.json", derivation="count"
@@ -585,7 +585,7 @@ class TestNumericalAuditor:
         """N003 rederivation excludes findings with category domain_reviewed_no_issues."""
         merged_dir = tmp_path / "findings" / "merged"
         merged_dir.mkdir(parents=True)
-        (merged_dir / "customer_a.json").write_text(
+        (merged_dir / "subject_a.json").write_text(
             json.dumps(
                 {
                     "findings": [
@@ -605,7 +605,7 @@ class TestNumericalAuditor:
         """N004-N007 rederivation counts findings by severity P0-P3."""
         merged_dir = tmp_path / "findings" / "merged"
         merged_dir.mkdir(parents=True)
-        (merged_dir / "customer_a.json").write_text(
+        (merged_dir / "subject_a.json").write_text(
             json.dumps(
                 {
                     "findings": [
@@ -650,7 +650,7 @@ class TestNumericalAuditor:
         """N008 rederivation counts findings with category=domain_reviewed_no_issues."""
         merged_dir = tmp_path / "findings" / "merged"
         merged_dir.mkdir(parents=True)
-        (merged_dir / "customer_a.json").write_text(
+        (merged_dir / "subject_a.json").write_text(
             json.dumps(
                 {
                     "findings": [
@@ -668,13 +668,13 @@ class TestNumericalAuditor:
         assert auditor._rederive(entry) == 2
 
     def test_rederive_n009_counts_total_gaps(self, tmp_path: Path) -> None:
-        """N009 rederivation counts gaps embedded in merged customer files."""
+        """N009 rederivation counts gaps embedded in merged subject files."""
         merged_dir = tmp_path / "findings" / "merged"
         merged_dir.mkdir(parents=True)
-        (merged_dir / "customer_a.json").write_text(
+        (merged_dir / "subject_a.json").write_text(
             json.dumps({"findings": [], "gaps": [{"gap": "missing clause"}, {"gap": "no termination"}]})
         )
-        (merged_dir / "customer_b.json").write_text(json.dumps({"findings": [], "gaps": [{"gap": "no renewal"}]}))
+        (merged_dir / "subject_b.json").write_text(json.dumps({"findings": [], "gaps": [{"gap": "no renewal"}]}))
         auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
         entry = ManifestEntry(
             id="N009",
@@ -1062,7 +1062,7 @@ class TestQAAuditorDeferredChecks:
         inventory_dir = tmp_path / "inventory"
         self._populate_minimal(run_dir, inventory_dir)
 
-        # Remove one merged file (simulating a skipped customer)
+        # Remove one merged file (simulating a skipped subject)
         (run_dir / "findings" / "merged" / "initech.json").unlink()
 
         auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
@@ -1071,7 +1071,7 @@ class TestQAAuditorDeferredChecks:
         assert check.passed is False
 
     def test_merge_dedup_exact_match_still_passes(self, tmp_path: Path) -> None:
-        """merge_dedup passes when all customers are merged."""
+        """merge_dedup passes when all subjects are merged."""
         run_dir = tmp_path / "run"
         inventory_dir = tmp_path / "inventory"
         self._populate_minimal(run_dir, inventory_dir)
@@ -1123,7 +1123,7 @@ class TestQAAuditorDeferredChecks:
 
         auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
         name, check = auditor.check_agent_manifest_reconciliation()
-        # File-counting fallback finds all customer files → passes
+        # File-counting fallback finds all subject files → passes
         assert check.passed is True
 
     def test_citation_integrity_tolerance(self, tmp_path: Path) -> None:
@@ -1427,10 +1427,10 @@ class TestSchemaValidator:
                     name="Summary",
                     required=True,
                     columns=[
-                        ColumnDef(name="Customer", key="customer", type="string"),
+                        ColumnDef(name="Subject", key="subject", type="string"),
                         ColumnDef(name="Findings", key="findings", type="integer"),
                     ],
-                    sort_order=[SortOrder(column="Customer", direction="asc")],
+                    sort_order=[SortOrder(column="Subject", direction="asc")],
                 ),
                 SheetDef(
                     name="Wolf_Pack",
@@ -1450,7 +1450,7 @@ class TestSchemaValidator:
 
         ws_summary = wb.active
         ws_summary.title = "Summary"
-        ws_summary.append(["Customer", "Findings"])
+        ws_summary.append(["Subject", "Findings"])
         ws_summary.append(["Acme Corp", 10])
         ws_summary.append(["Globex", 5])
         ws_summary.append(["Initech", 8])
@@ -1491,7 +1491,7 @@ class TestSchemaValidator:
                     name="Summary",
                     required=True,
                     columns=[
-                        ColumnDef(name="Customer", key="customer", type="string"),
+                        ColumnDef(name="Subject", key="subject", type="string"),
                     ],
                 ),
                 SheetDef(
@@ -1509,7 +1509,7 @@ class TestSchemaValidator:
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Summary"
-        ws.append(["Customer"])
+        ws.append(["Subject"])
         # "Details" sheet is missing
         excel_path = tmp_path / "report.xlsx"
         wb.save(excel_path)
@@ -1536,7 +1536,7 @@ class TestSchemaValidator:
                     name="Summary",
                     required=True,
                     columns=[
-                        ColumnDef(name="Customer", key="customer", type="string"),
+                        ColumnDef(name="Subject", key="subject", type="string"),
                         ColumnDef(name="Findings Count", key="findings", type="integer"),
                     ],
                 ),
@@ -1548,7 +1548,7 @@ class TestSchemaValidator:
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Summary"
-        ws.append(["Customer", "Total Issues"])  # wrong column name
+        ws.append(["Subject", "Total Issues"])  # wrong column name
         excel_path = tmp_path / "report.xlsx"
         wb.save(excel_path)
 
@@ -1567,7 +1567,7 @@ class TestSchemaValidator:
             sheets=[
                 SheetDef(
                     name="Summary",
-                    columns=[ColumnDef(name="Customer", key="customer", type="string")],
+                    columns=[ColumnDef(name="Subject", key="subject", type="string")],
                 ),
             ],
         )
@@ -1593,9 +1593,9 @@ class TestSchemaValidator:
                     name="Summary",
                     required=True,
                     columns=[
-                        ColumnDef(name="Customer", key="customer", type="string"),
+                        ColumnDef(name="Subject", key="subject", type="string"),
                     ],
-                    sort_order=[SortOrder(column="Customer", direction="asc")],
+                    sort_order=[SortOrder(column="Subject", direction="asc")],
                 ),
             ],
         )
@@ -1605,7 +1605,7 @@ class TestSchemaValidator:
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Summary"
-        ws.append(["Customer"])
+        ws.append(["Subject"])
         ws.append(["Zebra"])  # wrong order
         ws.append(["Acme"])
         ws.append(["Middle"])
@@ -1633,7 +1633,7 @@ class TestSchemaValidator:
                     name="Summary",
                     required=True,
                     columns=[
-                        ColumnDef(name="Customer", key="customer", type="string"),
+                        ColumnDef(name="Subject", key="subject", type="string"),
                     ],
                 ),
                 SheetDef(
@@ -1652,7 +1652,7 @@ class TestSchemaValidator:
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Summary"
-        ws.append(["Customer"])
+        ws.append(["Subject"])
         # Conditional_Sheet is NOT present but should not be required
         excel_path = tmp_path / "report.xlsx"
         wb.save(excel_path)
@@ -1678,7 +1678,7 @@ class TestSchemaValidator:
                     name="Summary",
                     required=True,
                     columns=[
-                        ColumnDef(name="Customer", key="customer", type="string"),
+                        ColumnDef(name="Subject", key="subject", type="string"),
                         ColumnDef(
                             name="Optional_Col",
                             key="optional",
@@ -1695,7 +1695,7 @@ class TestSchemaValidator:
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Summary"
-        ws.append(["Customer"])  # Only "Customer", no "Optional_Col"
+        ws.append(["Subject"])  # Only "Subject", no "Optional_Col"
         ws.append(["Acme Corp"])
         excel_path = tmp_path / "report.xlsx"
         wb.save(excel_path)
@@ -1705,6 +1705,43 @@ class TestSchemaValidator:
 
         col_check = next(c for c in checks if c.details.get("check") == "columns_match")
         assert col_check.passed is True
+
+
+# ===================================================================== #
+# DoD check [2] — partial file-level data deferral
+# ===================================================================== #
+
+
+class TestDoDCheck2PartialFileCoverage:
+    """When manifests have sparse file data (<10% coverage), DoD check [2]
+    should defer to subject_coverage rather than failing."""
+
+    def test_partial_file_data_defers(self, tmp_path: Path) -> None:
+        """Sparse file-level data in manifests should trigger deferral."""
+        from dd_agents.validation.dod import DefinitionOfDoneChecker
+
+        run_dir = tmp_path / "run"
+        inv_dir = tmp_path / "inv"
+        inv_dir.mkdir()
+        # 100 files in inventory
+        (inv_dir / "files.txt").write_text("\n".join(f"file_{i}.pdf" for i in range(100)))
+
+        findings_dir = run_dir / "findings"
+        # Legal: no file data
+        legal_dir = findings_dir / "legal"
+        legal_dir.mkdir(parents=True)
+        (legal_dir / "coverage_manifest.json").write_text(json.dumps({"subjects": [{"name": "a"}]}))
+        # Commercial: partial file data (3 files out of 100 = 3%)
+        comm_dir = findings_dir / "commercial"
+        comm_dir.mkdir(parents=True)
+        (comm_dir / "coverage_manifest.json").write_text(
+            json.dumps({"files_read": [{"path": f"file_{i}.pdf"} for i in range(3)]})
+        )
+
+        checker = DefinitionOfDoneChecker(run_dir=run_dir, inventory_dir=inv_dir, subject_safe_names=["a"])
+        result = checker.check_2_file_coverage_complete()
+        assert result.passed is True
+        assert "deferred" in result.details.get("note", "").lower()
 
 
 # ===================================================================== #
@@ -1816,8 +1853,8 @@ class TestDoDHardcodedPassesRemoved:
             json.dumps(
                 {
                     "entries": [
-                        {"name": "Customer A", "matched": True},
-                        {"name": "Customer B", "matched": False, "aliases": ["Cust B Inc"]},
+                        {"name": "Subject A", "matched": True},
+                        {"name": "Subject B", "matched": False, "aliases": ["Cust B Inc"]},
                     ]
                 }
             )
@@ -1833,7 +1870,7 @@ class TestDoDHardcodedPassesRemoved:
         run_dir.mkdir(parents=True)
         inventory_dir = tmp_path / "inventory"
         inventory_dir.mkdir(parents=True)
-        (run_dir / "entity_matches.json").write_text(json.dumps({"entries": [{"name": "Customer A", "matched": True}]}))
+        (run_dir / "entity_matches.json").write_text(json.dumps({"entries": [{"name": "Subject A", "matched": True}]}))
         checker = DefinitionOfDoneChecker(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
         check = checker.check_16_entity_resolution_log()
         assert check.passed is True
@@ -2130,8 +2167,8 @@ class TestGapsMerge:
         merger = FindingMerger(run_id="test_run", timestamp="2025-01-01T00:00:00Z")
         result = merger.merge_subject(
             agent_outputs,
-            subject_name="Customer A",
-            subject_safe_name="customer_a",
+            subject_name="Subject A",
+            subject_safe_name="subject_a",
         )
 
         assert len(result.gaps) == 2, "Both gaps should be collected"
@@ -2383,7 +2420,7 @@ class TestDoDCheck9GhostSubjects:
 
         audit_data = {
             "checks": {
-                "gap_completeness": {"passed": False, "ghost_customers": 3},
+                "gap_completeness": {"passed": False, "ghost_subjects": 3},
             }
         }
         (run_dir / "audit.json").write_text(json.dumps(audit_data))
@@ -2634,7 +2671,7 @@ class TestDoDCheck30ReportDiff:
         assert check.passed is True
 
     # ------------------------------------------------------------------ #
-    # DoD [13] -- merged file count filters non-customer files
+    # DoD [13] -- merged file count filters non-subject files
     # ------------------------------------------------------------------ #
 
     def test_check_13_filters_non_subject_files(self, tmp_path: Path) -> None:
@@ -2644,10 +2681,10 @@ class TestDoDCheck30ReportDiff:
         inventory_dir.mkdir(parents=True)
         merged_dir = run_dir / "findings" / "merged"
         merged_dir.mkdir(parents=True)
-        # Write customer files
+        # Write subject files
         for c in SUBJECTS:
             (merged_dir / f"{c}.json").write_text(json.dumps(_make_merged_json(c)))
-        # Write non-customer files (pipeline artefacts that should be excluded)
+        # Write non-subject files (pipeline artefacts that should be excluded)
         (merged_dir / "coverage_manifest.json").write_text("{}")
         (merged_dir / "numerical_audit.json").write_text("{}")
         (merged_dir / "report_diff.json").write_text("{}")
@@ -2669,7 +2706,7 @@ class TestDoDCheck30ReportDiff:
         inventory_dir.mkdir(parents=True)
         merged_dir = run_dir / "findings" / "merged"
         merged_dir.mkdir(parents=True)
-        # Only write 2 of 3 customers
+        # Only write 2 of 3 subjects
         for c in SUBJECTS[:2]:
             (merged_dir / f"{c}.json").write_text(json.dumps(_make_merged_json(c)))
 
@@ -2863,7 +2900,7 @@ class TestNumericalAuditLayer2Fixes:
         """N007 (P3 count) must NOT include domain_reviewed_no_issues findings."""
         merged_dir = tmp_path / "findings" / "merged"
         merged_dir.mkdir(parents=True)
-        (merged_dir / "customer_a.json").write_text(
+        (merged_dir / "subject_a.json").write_text(
             json.dumps(
                 {
                     "findings": [
@@ -2883,7 +2920,7 @@ class TestNumericalAuditLayer2Fixes:
         """N008 counts only domain_reviewed_no_issues findings."""
         merged_dir = tmp_path / "findings" / "merged"
         merged_dir.mkdir(parents=True)
-        (merged_dir / "customer_a.json").write_text(
+        (merged_dir / "subject_a.json").write_text(
             json.dumps(
                 {
                     "findings": [
@@ -2902,13 +2939,13 @@ class TestNumericalAuditLayer2Fixes:
         """Cached findings are loaded from disk only once."""
         merged_dir = tmp_path / "findings" / "merged"
         merged_dir.mkdir(parents=True)
-        (merged_dir / "customer_a.json").write_text(json.dumps({"findings": [{"severity": "P2", "category": "risk"}]}))
+        (merged_dir / "subject_a.json").write_text(json.dumps({"findings": [{"severity": "P2", "category": "risk"}]}))
         auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
         # First call populates cache
         result1 = auditor._cached_findings()
         assert len(result1) == 1
         # Add more data to disk — cache should NOT reflect it
-        (merged_dir / "customer_b.json").write_text(json.dumps({"findings": [{"severity": "P1", "category": "risk"}]}))
+        (merged_dir / "subject_b.json").write_text(json.dumps({"findings": [{"severity": "P1", "category": "risk"}]}))
         result2 = auditor._cached_findings()
         assert len(result2) == 1  # Still cached, not reloaded
         assert result1 is result2  # Same object
@@ -2956,7 +2993,7 @@ class TestNumericalAuditLayer2Fixes:
         """N003 (total findings) should exclude domain_reviewed_no_issues."""
         merged_dir = tmp_path / "findings" / "merged"
         merged_dir.mkdir(parents=True)
-        (merged_dir / "customer_a.json").write_text(
+        (merged_dir / "subject_a.json").write_text(
             json.dumps(
                 {
                     "findings": [
@@ -2972,17 +3009,17 @@ class TestNumericalAuditLayer2Fixes:
 
 
 # ===========================================================================
-# N009 gap count from merged customer files
+# N009 gap count from merged subject files
 # ===========================================================================
 
 
 class TestN009GapCountFromMergedFiles:
-    """N009 should count gaps from merged customer JSON, not gaps/ dir."""
+    """N009 should count gaps from merged subject JSON, not gaps/ dir."""
 
     def test_n009_counts_gaps_from_merged_subject_files(self, tmp_path: Path) -> None:
         merged_dir = tmp_path / "findings" / "merged"
         merged_dir.mkdir(parents=True)
-        # Two customers with gaps inside their merged JSON
+        # Two subjects with gaps inside their merged JSON
         (merged_dir / "acme_corp.json").write_text(
             json.dumps(
                 {
@@ -3022,6 +3059,43 @@ class TestN009GapCountFromMergedFiles:
         auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
         entry = ManifestEntry(id="N009", label="Gaps", value=0, source_file="x", derivation="count")
         assert auditor._rederive(entry) == 0
+
+
+# ===========================================================================
+# Severity rederivation must apply recalibration
+# ===========================================================================
+
+
+class TestSeverityRederivationRecalibration:
+    """_count_findings_by_severity must apply _recalibrate_severity so
+    rederived counts match the manifest (which also applies recalibration).
+    Regression test for the Layer 2 failure when recalibration shifts findings
+    between severity tiers."""
+
+    def test_rederive_uses_recalibrated_severity(self, tmp_path: Path) -> None:
+        """A P1 finding that recalibration downgrades to P2 should be counted as P2."""
+        merged_dir = tmp_path / "findings" / "merged"
+        merged_dir.mkdir(parents=True)
+        # "auditor independence" triggers recalibration rule that caps at P2
+        (merged_dir / "subject_a.json").write_text(
+            json.dumps(
+                {
+                    "findings": [
+                        {
+                            "severity": "P1",
+                            "title": "Auditor Independence Concern",
+                            "description": "auditor independence requirements not met",
+                            "category": "risk",
+                        },
+                        {"severity": "P2", "title": "Normal risk", "description": "standard issue", "category": "risk"},
+                    ]
+                }
+            )
+        )
+        auditor = NumericalAuditor(run_dir=tmp_path, inventory_dir=tmp_path)
+        # After recalibration, the P1 finding becomes P2 → P1 count = 0, P2 count = 2
+        assert auditor._count_findings_by_severity("P1") == 0
+        assert auditor._count_findings_by_severity("P2") == 2
 
 
 # ===========================================================================
@@ -3149,7 +3223,7 @@ class TestAuditSummaryGapPopulation:
 
 
 class TestCoverageManifestExclusion:
-    """merge_all should not treat coverage_manifest.json as a customer."""
+    """merge_all should not treat coverage_manifest.json as a subject."""
 
     def test_coverage_manifest_excluded_from_subjects(self, tmp_path: Path) -> None:
         from dd_agents.reporting.merge import FindingMerger
@@ -3158,10 +3232,10 @@ class TestCoverageManifestExclusion:
         for agent in AGENTS:
             agent_dir = findings_dir / agent
             agent_dir.mkdir(parents=True)
-            # Real customer
+            # Real subject
             (agent_dir / "acme_corp.json").write_text(json.dumps(_make_subject_json("acme_corp", agent)))
-            # Non-customer files that agents sometimes write
-            (agent_dir / "coverage_manifest.json").write_text(json.dumps({"agent": agent, "customers_processed": 1}))
+            # Non-subject files that agents sometimes write
+            (agent_dir / "coverage_manifest.json").write_text(json.dumps({"agent": agent, "subjects_processed": 1}))
 
         merger = FindingMerger(run_id="test", timestamp="2025-01-01T00:00:00Z")
         result = merger.merge_all(findings_dir)
@@ -3177,7 +3251,7 @@ class TestCoverageManifestExclusion:
         agent_dir = findings_dir / "legal"
         agent_dir.mkdir(parents=True)
         (agent_dir / "acme_corp.json").write_text(json.dumps(_make_subject_json("acme_corp", "legal")))
-        # All known non-customer stems
+        # All known non-subject stems
         for stem in ("coverage_manifest", "numerical_manifest", "report_diff", "quality_scores", "metadata"):
             (agent_dir / f"{stem}.json").write_text("{}")
 
@@ -3332,12 +3406,12 @@ class TestFinancialCitationVerification:
                 }
             ]
         }
-        (merged_dir / "customer_a.json").write_text(json.dumps(finding_data))
+        (merged_dir / "subject_a.json").write_text(json.dumps(finding_data))
 
         # Create text dir with source file.
         text_dir = tmp_path / "text"
-        (text_dir / "customer_a").mkdir(parents=True)
-        (text_dir / "customer_a" / "balance_sheet.xlsx.md").write_text(
+        (text_dir / "subject_a").mkdir(parents=True)
+        (text_dir / "subject_a" / "balance_sheet.xlsx.md").write_text(
             "Cash and equivalents: $1,983,348\nTotal assets: $5,000,000"
         )
 
@@ -3365,12 +3439,12 @@ class TestFinancialCitationVerification:
                 }
             ]
         }
-        (merged_dir / "customer_a.json").write_text(json.dumps(finding_data))
+        (merged_dir / "subject_a.json").write_text(json.dumps(finding_data))
 
         # Source actually has different values.
         text_dir = tmp_path / "text"
-        (text_dir / "customer_a").mkdir(parents=True)
-        (text_dir / "customer_a" / "tax_return.pdf.md").write_text(
+        (text_dir / "subject_a").mkdir(parents=True)
+        (text_dir / "subject_a" / "tax_return.pdf.md").write_text(
             "Current deferred revenue: $9,086,173\nPrior year: $12,088,616"
         )
 

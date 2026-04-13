@@ -53,10 +53,10 @@ class ReportTemplate(BaseModel):
 
     id: str = Field(description="Template identifier")
     name: str = Field(description="Human-readable name")
-    description: str = Field(default="")
-    branding: ReportBranding = Field(default_factory=ReportBranding)
-    sections: ReportSections = Field(default_factory=ReportSections)
-    metadata: dict[str, str] = Field(default_factory=dict)
+    description: str = Field(default="", description="Template description")
+    branding: ReportBranding = Field(default_factory=ReportBranding, description="Report branding settings")
+    sections: ReportSections = Field(default_factory=ReportSections, description="Section visibility configuration")
+    metadata: dict[str, str] = Field(default_factory=dict, description="Arbitrary template metadata")
 
 
 # Pre-built templates

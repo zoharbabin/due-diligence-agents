@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import html
 from collections import defaultdict
 
 from dd_agents.reporting.html_base import (
@@ -11,6 +10,7 @@ from dd_agents.reporting.html_base import (
     DOMAIN_DISPLAY,
     SectionRenderer,
 )
+from dd_agents.utils.constants import SEVERITY_P3
 
 
 class DomainRenderer(SectionRenderer):
@@ -33,12 +33,12 @@ class DomainRenderer(SectionRenderer):
         top_findings = self.data.top_findings_by_domain.get(domain, [])
 
         parts: list[str] = [
-            f"<section class='report-section' id='sec-domain-{html.escape(domain)}'>",
-            f"<div class='domain-section' data-domain='{html.escape(domain)}'>",
+            f"<section class='report-section' id='sec-domain-{self.escape(domain)}'>",
+            f"<div class='domain-section' data-domain='{self.escape(domain)}'>",
             f"<div class='domain-header' style='border-left-color:{domain_color}' "
             f"tabindex='0' role='button' aria-expanded='false'>",
-            f"<h2>{html.escape(display)} ({total} findings)</h2>",
-            f"<span><span class='severity-badge' style='background:{risk_color}'>{html.escape(risk)}</span> "
+            f"<h2>{self.escape(display)} ({total} findings)</h2>",
+            f"<span><span class='severity-badge' style='background:{risk_color}'>{self.escape(risk)}</span> "
             f"<span class='arrow'>&#9654;</span></span>",
             "</div>",
             "<div class='domain-body'>",
@@ -57,15 +57,15 @@ class DomainRenderer(SectionRenderer):
                 cat_sev: dict[str, int] = defaultdict(int)
                 subject_counts: dict[str, int] = defaultdict(int)
                 for cf in cat_findings:
-                    cat_sev[cf.get("severity", "P3")] += 1
+                    cat_sev[cf.get("severity", SEVERITY_P3)] += 1
                     subject_counts[str(cf.get("_subject_safe_name", cf.get("_subject", "")))] += 1
                 top_subject_raw = max(subject_counts, key=lambda c: subject_counts.get(c, 0)) if subject_counts else ""
                 top_subject_display = self.data.display_names.get(top_subject_raw, top_subject_raw)
                 sev_mix = ", ".join(f"{k}:{v}" for k, v in sorted(cat_sev.items()) if v > 0)
 
                 parts.append(
-                    f"<tr><td>{html.escape(cat)}</td><td>{len(cat_findings)}</td>"
-                    f"<td>{html.escape(sev_mix)}</td><td>{html.escape(top_subject_display)}</td></tr>"
+                    f"<tr><td>{self.escape(cat)}</td><td>{len(cat_findings)}</td>"
+                    f"<td>{self.escape(sev_mix)}</td><td>{self.escape(top_subject_display)}</td></tr>"
                 )
             parts.append("</tbody></table>")
 

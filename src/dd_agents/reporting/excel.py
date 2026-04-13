@@ -23,7 +23,14 @@ from dd_agents.models.reporting import (
     SummaryFormulaEntry,
 )
 from dd_agents.reporting.computed_metrics import ReportDataComputer
-from dd_agents.utils.constants import SEVERITY_ORDER
+from dd_agents.utils.constants import (
+    SEVERITY_ORDER,
+    SEVERITY_P0,
+    SEVERITY_P1,
+    SEVERITY_P2,
+    SEVERITY_P3,
+    _sev_count_init,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -90,9 +97,9 @@ def compute_overall_risk(
     for g in gaps:
         sev_counter[g.get("priority", "")] += 1
 
-    p0 = sev_counter.get("P0", 0)
-    p1 = sev_counter.get("P1", 0)
-    p2 = sev_counter.get("P2", 0)
+    p0 = sev_counter.get(SEVERITY_P0, 0)
+    p1 = sev_counter.get(SEVERITY_P1, 0)
+    p2 = sev_counter.get(SEVERITY_P2, 0)
 
     if p0 >= 3:
         return "Critical"
@@ -102,7 +109,7 @@ def compute_overall_risk(
         return "High"
     if p1 > 0 or p2 >= 5:
         return "Medium"
-    if p2 > 0 or sev_counter.get("P3", 0) > 0:
+    if p2 > 0 or sev_counter.get(SEVERITY_P3, 0) > 0:
         return "Low"
     return "Clean"
 
@@ -354,21 +361,21 @@ class ExcelReportGenerator:
             findings = data.get("findings", [])
             gaps = data.get("gaps", [])
 
-            sev_counts = {"P0": 0, "P1": 0, "P2": 0, "P3": 0}
+            sev_counts = _sev_count_init()
             for f in findings:
                 if f.get("category") == "domain_reviewed_no_issues":
                     continue
-                sev = f.get("severity", "P3")
+                sev = f.get("severity", SEVERITY_P3)
                 if sev in sev_counts:
                     sev_counts[sev] += 1
 
             row = {
                 "subject": data.get("subject", _csn),
                 "overall_risk_rating": compute_overall_risk(findings, gaps),
-                "p0_count": sev_counts["P0"],
-                "p1_count": sev_counts["P1"],
-                "p2_count": sev_counts["P2"],
-                "p3_count": sev_counts["P3"],
+                "p0_count": sev_counts[SEVERITY_P0],
+                "p1_count": sev_counts[SEVERITY_P1],
+                "p2_count": sev_counts[SEVERITY_P2],
+                "p3_count": sev_counts[SEVERITY_P3],
                 "total_findings": len(findings),
                 "gap_count": len(gaps),
                 "files_analyzed": data.get("files_analyzed", 0),
@@ -388,8 +395,8 @@ class ExcelReportGenerator:
         rows: list[dict[str, Any]] = []
         for _csn, data in sorted(merged.items()):
             for f in data.get("findings", []):
-                sev = f.get("severity", "P3")
-                if sev in ("P0", "P1"):
+                sev = f.get("severity", SEVERITY_P3)
+                if sev in (SEVERITY_P0, SEVERITY_P1):
                     rows.append(self._finding_to_row(f, data))
         return rows
 

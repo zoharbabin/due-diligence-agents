@@ -46,10 +46,10 @@ class PipelineStep(StrEnum):
     JUDGE_ROUND2 = "22_judge_round2"  # CONDITIONAL
 
     # Phase 6: Reporting (Steps 23-31)
-    SPAWN_REPORTING_LEAD = (
-        "23_spawn_reporting_lead"  # Pre-merge validation (was: Reporting Lead agent, removed as redundant)
-    )
-    PRE_MERGE_VALIDATION = "23_spawn_reporting_lead"  # Backward-compatible alias for SPAWN_REPORTING_LEAD
+    # Legacy checkpoint string kept for backward-compat; the step now runs
+    # deterministic pre-merge validation (ReportingLead agent removed v0.4.0).
+    SPAWN_REPORTING_LEAD = "23_spawn_reporting_lead"
+    PRE_MERGE_VALIDATION = "23_spawn_reporting_lead"  # Preferred alias
     MERGE_DEDUP = "24_merge_dedup"
     MERGE_GAPS = "25_merge_gaps"
     BUILD_NUMERICAL_MANIFEST = "26_build_numerical_manifest"

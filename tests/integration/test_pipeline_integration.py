@@ -430,7 +430,7 @@ class TestFileDiscovery:
 
         state = asyncio.run(run())
 
-        # 13 customer files + 2 reference files + 1 deal-config = 16
+        # 13 subject files + 2 reference files + 1 deal-config = 16
         # (deal-config.json is in the root, so it's a reference file too)
         assert state.total_files >= 14  # At least the files we created
 
@@ -481,7 +481,7 @@ class TestInventoryBuilding:
     """Test step 6: build inventory."""
 
     def test_builds_subject_registry(self, tmp_path: Path) -> None:
-        """Step 6 builds the customer registry with correct counts."""
+        """Step 6 builds the subject registry with correct counts."""
         data_room = _create_data_room(tmp_path)
         config_path = _create_deal_config(data_room)
 
@@ -563,11 +563,11 @@ class TestReferenceRegistry:
             assert len(rf["assigned_to_agents"]) >= 1
 
 
-class TestCustomerMentions:
-    """Test step 9: customer mention building."""
+class TestSubjectMentions:
+    """Test step 9: subject mention building."""
 
     def test_builds_mention_index(self, tmp_path: Path) -> None:
-        """Step 9 builds the customer mention index."""
+        """Step 9 builds the subject mention index."""
         data_room = _create_data_room(tmp_path)
         config_path = _create_deal_config(data_room)
 

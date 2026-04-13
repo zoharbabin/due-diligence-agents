@@ -18,7 +18,7 @@ from dd_agents.models.enums import (
 )
 from dd_agents.models.governance import GovernanceGraph
 
-_logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 _MATCH_STATUS_ALIASES: dict[str, str] = {
     "": "unverified",
@@ -27,14 +27,26 @@ _MATCH_STATUS_ALIASES: dict[str, str] = {
     "partial_match": "mismatch",
     "consistent": "match",
     "approximate_match": "match",
+    "match_with_adjustments": "match",
     "reference_only": "not_available",
     "derived": "match",
     "informational": "not_available",
     "explainable_difference": "mismatch",
     "concern": "mismatch",
     "gap": "not_available",
+    "no_contract_comparison": "not_available",
     "unverifiable": "unverified",
     "requires_investigation": "unverified",
+    # Values observed in production agent outputs:
+    "conditional_match": "unverified",
+    "discrepancy": "mismatch",
+    "requires_cross_agent_verification": "unverified",
+    "needs_verification": "unverified",
+    "not_verified": "unverified",
+    "variance": "mismatch",
+    "within_tolerance": "match",
+    "conflicting": "mismatch",
+    "resolved": "match",
 }
 
 _VALID_MATCH_STATUSES: set[str] = {s.value for s in MatchStatus}
@@ -47,10 +59,26 @@ _DETECTION_METHOD_ALIASES: dict[str, str] = {
     "document_review": "checklist",
     "questionnaire": "checklist",
     "manual_review": "checklist",
+    "automated_scan": "checklist",
     "pattern": "pattern_check",
     "cross_ref": "cross_reference",
     "crossref": "cross_reference",
     "governance": "governance_resolution",
+    # Values observed in production agent outputs:
+    "read_failure": "file_read_failure",
+    "scope_limitation": "checklist",
+    "coverage_limitation": "checklist",
+    "temporal_analysis": "checklist",
+    "directory_search": "file_inventory",
+    "file_format_limitation": "file_read_failure",
+    "absence_in_dataroom": "file_inventory",
+    "directory_listing": "file_inventory",
+    "file_content_review": "checklist",
+    "timeline_gap": "checklist",
+    "review_limitation": "checklist",
+    "tool_failure": "file_read_failure",
+    "temporal_gap": "checklist",
+    "document_age": "checklist",
 }
 
 
@@ -285,14 +313,14 @@ class Gap(BaseModel):
         if isinstance(v, DetectionMethod):
             return v.value
         if not isinstance(v, str):
-            _logger.warning("Non-string detection_method %r coerced to 'checklist'", v)
+            logger.warning("Non-string detection_method %r coerced to 'checklist'", v)
             return "checklist"
         raw: str = v.strip().lower()
         if raw in _DETECTION_METHOD_ALIASES:
             return _DETECTION_METHOD_ALIASES[raw]
         if raw in _VALID_DETECTION_METHODS:
             return raw
-        _logger.warning("Unknown detection_method %r coerced to 'checklist'", v)
+        logger.warning("Unknown detection_method %r coerced to 'checklist'", v)
         return "checklist"
 
     @field_validator("agent", mode="before")
@@ -384,7 +412,7 @@ class CrossReference(BaseModel):
     def coerce_match_status(cls, v: Any) -> str:
         """Coerce common match_status variants to canonical values."""
         if not isinstance(v, str):
-            _logger.warning("Non-string match_status %r coerced to 'unverified'", v)
+            logger.warning("Non-string match_status %r coerced to 'unverified'", v)
             return "unverified"
         raw: str = v.strip()
         # Check aliases first
@@ -394,7 +422,7 @@ class CrossReference(BaseModel):
         if raw in _VALID_MATCH_STATUSES:
             return raw
         # Unknown value -> unverified with warning
-        _logger.warning("Unknown match_status %r coerced to 'unverified'", raw)
+        logger.warning("Unknown match_status %r coerced to 'unverified'", raw)
         return "unverified"
 
 
@@ -468,4 +496,12 @@ class MergedSubjectOutput(BaseModel):
     )
     governance_resolved_pct: float = Field(
         default=0.0, ge=0.0, le=1.0, description="(files with governed_by in [file_path, SELF]) / total_subject_files"
+    )
+    dropped_findings: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Findings that failed validation during promotion — preserved for audit trail",
+    )
+    cross_agent_conflicts: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Cross-agent data conflicts (different values for same data point)",
     )

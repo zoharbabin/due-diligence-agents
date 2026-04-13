@@ -8,7 +8,7 @@ Covers:
 - Executive summary renderer (Go/No-Go, heatmap, top 5 deal breakers)
 - Report diff renderer (new/resolved/changed findings)
 - Quality audit check rendering
-- Terminology: "Customer" -> "Entity" throughout
+- Terminology: "Subject" -> "Entity" throughout
 """
 
 from __future__ import annotations
@@ -74,8 +74,8 @@ def _make_gap(
 def _make_merged_data_with_model_xrefs() -> dict[str, Any]:
     """Build merged data using CrossReference model field names."""
     return {
-        "customer_a": {
-            "subject": "Customer A",
+        "subject_a": {
+            "subject": "Subject A",
             "findings": [_make_finding(severity="P1", title="Revenue mismatch", agent="finance")],
             "gaps": [],
             "cross_references": [
@@ -113,7 +113,7 @@ class TestCategoryNormalization:
         """Freeform legal categories are mapped to canonical categories."""
         merged: dict[str, Any] = {
             "cust_a": {
-                "subject": "Customer A",
+                "subject": "Subject A",
                 "findings": [
                     _make_finding(category="change_of_control_clauses", agent="legal"),
                     _make_finding(category="termination_provisions_and_exit_clauses", agent="legal"),
@@ -135,7 +135,7 @@ class TestCategoryNormalization:
         """Categories that don't match any canonical pattern pass through as-is."""
         merged: dict[str, Any] = {
             "cust_a": {
-                "subject": "Customer A",
+                "subject": "Subject A",
                 "findings": [
                     _make_finding(category="very_unusual_unique_category_xyz", agent="legal"),
                 ],
@@ -163,7 +163,7 @@ class TestWolfPackOverhaul:
         """wolf_pack_p0 contains only P0 findings."""
         merged: dict[str, Any] = {
             "cust_a": {
-                "subject": "Customer A",
+                "subject": "Subject A",
                 "findings": [
                     _make_finding(severity="P0", title="Critical issue"),
                     _make_finding(severity="P1", title="High issue"),
@@ -183,7 +183,7 @@ class TestWolfPackOverhaul:
         findings = [_make_finding(severity="P0", title=f"Critical issue {i}") for i in range(20)]
         merged: dict[str, Any] = {
             "cust_a": {
-                "subject": "Customer A",
+                "subject": "Subject A",
                 "findings": findings,
                 "gaps": [],
             },
@@ -197,7 +197,7 @@ class TestWolfPackOverhaul:
         """Findings with >0.7 title similarity are grouped with 'N similar' badge."""
         merged: dict[str, Any] = {
             "cust_a": {
-                "subject": "Customer A",
+                "subject": "Subject A",
                 "findings": [
                     _make_finding(severity="P0", title="Change of control clause terminates agreement"),
                     _make_finding(severity="P0", title="Change of control clause terminates contract"),
@@ -277,8 +277,8 @@ class TestGapTableColumns:
     def test_gap_table_all_columns(self, tmp_path: Path) -> None:
         """Gap table renders why_needed, request_to_company, and agent columns."""
         merged: dict[str, Any] = {
-            "customer_a": {
-                "subject": "Customer A",
+            "subject_a": {
+                "subject": "Subject A",
                 "findings": [],
                 "gaps": [
                     _make_gap(
@@ -317,7 +317,7 @@ class TestExecutiveSummary:
         """deal_risk_score maps to a Go/No-Go signal label."""
         merged: dict[str, Any] = {
             "cust_a": {
-                "subject": "Customer A",
+                "subject": "Subject A",
                 "findings": [
                     _make_finding(severity="P0", title="Critical deal issue"),
                 ],
@@ -340,7 +340,7 @@ class TestExecutiveSummary:
         """Executive summary renders a domain x severity data visualization."""
         merged: dict[str, Any] = {
             "cust_a": {
-                "subject": "Customer A",
+                "subject": "Subject A",
                 "findings": [
                     _make_finding(severity="P0", agent="legal"),
                     _make_finding(severity="P1", agent="finance"),
@@ -384,17 +384,17 @@ class TestDiffRenderer:
             "changes": [
                 {
                     "change_type": "new_finding",
-                    "subject": "Customer A",
+                    "subject": "Subject A",
                     "finding_summary": "New compliance issue found",
                 },
                 {
                     "change_type": "new_finding",
-                    "subject": "Customer B",
+                    "subject": "Subject B",
                     "finding_summary": "New IP risk identified",
                 },
                 {
                     "change_type": "resolved_finding",
-                    "subject": "Customer A",
+                    "subject": "Subject A",
                     "finding_summary": "Prior revenue issue resolved",
                 },
             ],
@@ -483,13 +483,13 @@ class TestQualityAuditChecks:
 
 
 class TestTerminology:
-    """Tests for Customer -> Entity terminology change."""
+    """Tests for Subject -> Entity terminology change."""
 
     def test_terminology_entity_not_customer(self, tmp_path: Path) -> None:
-        """Report uses 'Entity' instead of 'Customer' in section headers and metric labels."""
+        """Report uses 'Entity' instead of 'Subject' in section headers and metric labels."""
         merged: dict[str, Any] = {
             "cust_a": {
-                "subject": "Customer A",
+                "subject": "Subject A",
                 "findings": [_make_finding()],
                 "gaps": [_make_gap()],
                 "governance_resolution_pct": 85.0,
@@ -503,15 +503,15 @@ class TestTerminology:
 
         # Metric card should say "Entities" not "Customers"
         assert "Entities" in content
-        # The section heading should say "Entity Detail" not "Customer Detail"
+        # The section heading should say "Entity Detail" not "Subject Detail"
         assert "Entity Detail" in content
 
-        # "Customer" label in metric cards and navigation should be gone
-        # (but actual customer names like "Customer A" remain in data)
+        # "Subject" label in metric cards and navigation should be gone
+        # (but actual subject names like "Subject A" remain in data)
         # Check the nav bar
-        assert "href='#sec-customers'" not in content or "Entities" in content
+        assert "href='#sec-subjects'" not in content or "Entities" in content
 
-        # Finding card meta should say "Source:" not "Customer:"
+        # Finding card meta should say "Source:" not "Subject:"
         # Check for the specific meta label
         assert "Source:" in content
 

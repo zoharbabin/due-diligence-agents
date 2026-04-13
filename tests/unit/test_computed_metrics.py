@@ -58,8 +58,8 @@ def _make_merged_data(
     if subjects is not None:
         return subjects  # type: ignore[return-value]
     return {
-        "customer_a": {
-            "subject": "Customer A",
+        "subject_a": {
+            "subject": "Subject A",
             "findings": [
                 _make_finding(severity="P0", agent="legal", category="change_of_control"),
                 _make_finding(severity="P1", agent="finance", category="revenue_recognition"),
@@ -73,8 +73,8 @@ def _make_merged_data(
                 {"data_point": "Headcount", "match_status": "mismatch"},
             ],
         },
-        "customer_b": {
-            "subject": "Customer B",
+        "subject_b": {
+            "subject": "Subject B",
             "findings": [
                 _make_finding(severity="P1", agent="legal", category="ip_ownership"),
             ],
@@ -182,8 +182,8 @@ class TestReportDataComputer:
     def test_customer_risk_scores(self) -> None:
         computer = ReportDataComputer()
         result = computer.compute(_make_merged_data())
-        # Customer A has P0 -> higher risk than Customer B with only P1
-        assert result.subject_risk_scores["customer_a"] > result.subject_risk_scores["customer_b"]
+        # Subject A has P0 -> higher risk than Subject B with only P1
+        assert result.subject_risk_scores["subject_a"] > result.subject_risk_scores["subject_b"]
 
     def test_gap_breakdown_by_priority(self) -> None:
         computer = ReportDataComputer()
@@ -209,8 +209,8 @@ class TestReportDataComputer:
         computer = ReportDataComputer()
         result = computer.compute(_make_merged_data())
         assert result.avg_governance_pct == pytest.approx(90.0, rel=1e-3)
-        assert result.governance_scores["customer_a"] == 85.0
-        assert result.governance_scores["customer_b"] == 95.0
+        assert result.governance_scores["subject_a"] == 85.0
+        assert result.governance_scores["subject_b"] == 95.0
 
     def test_wolf_pack_only_p0_p1(self) -> None:
         computer = ReportDataComputer()
@@ -261,14 +261,14 @@ class TestReportDataComputer:
         computer = ReportDataComputer()
         data = {
             f"c{i}": {
-                "subject": f"Customer {i}",
+                "subject": f"Subject {i}",
                 "findings": [_make_finding()],
                 "gaps": [],
             }
             for i in range(4)
         }
         result = computer.compute(data)
-        # 4 equal customers: HHI = 4 * (25^2) = 2500
+        # 4 equal subjects: HHI = 4 * (25^2) = 2500
         assert result.concentration_hhi == pytest.approx(2500.0)
 
     def test_top_subjects_by_risk_sorted(self) -> None:
@@ -277,7 +277,7 @@ class TestReportDataComputer:
         assert len(result.top_subjects_by_risk) >= 1
         # First subject should have highest risk
         first = result.top_subjects_by_risk[0]
-        assert first == "customer_a"  # Has P0 finding
+        assert first == "subject_a"  # Has P0 finding
 
     def test_hhi_zero_findings_no_division_by_zero(self) -> None:
         """HHI with zero total findings should return 0.0, not raise."""
@@ -468,15 +468,15 @@ class TestSeverityRecalibration:
             }
         }
         computed = ReportDataComputer().compute(merged)
-        # After recalibration, P0 count for this customer should be 0
+        # After recalibration, P0 count for this subject should be 0
         p0_rows = computed.subject_p0_summary
         assert len(p0_rows) == 0, f"Expected no P0 rows but got {p0_rows}"
 
     def test_subject_severity_table_keeps_genuine_p0(self) -> None:
         """Genuine P0 findings should still appear in the P0 table."""
         merged: dict[str, object] = {
-            "customer_a": {
-                "subject": "Customer A",
+            "subject_a": {
+                "subject": "Subject A",
                 "findings": [
                     _make_finding(
                         severity="P0",
@@ -546,8 +546,8 @@ class TestSeverityRecalibration:
     def test_wolf_pack_excludes_recalibrated_findings(self) -> None:
         """Wolf pack should exclude findings recalibrated from P0/P1 to lower severity."""
         merged: dict[str, object] = {
-            "customer_a": {
-                "subject": "Customer A",
+            "subject_a": {
+                "subject": "Subject A",
                 "findings": [
                     _make_finding(
                         severity="P0",
@@ -565,10 +565,10 @@ class TestSeverityRecalibration:
         assert len(computed.material_wolf_pack_p0) == 0
 
     def test_mixed_genuine_and_false_positive_p0(self) -> None:
-        """Customer with both genuine and false-positive P0 should count correctly."""
+        """Subject with both genuine and false-positive P0 should count correctly."""
         merged: dict[str, object] = {
-            "customer_a": {
-                "subject": "Customer A",
+            "subject_a": {
+                "subject": "Subject A",
                 "findings": [
                     _make_finding(
                         severity="P0",
@@ -634,8 +634,8 @@ class TestDataQualityClassification:
     def test_three_way_counts(self) -> None:
         """compute() should produce correct material/DQ/noise counts in a three-way split."""
         merged: dict[str, object] = {
-            "customer_a": {
-                "subject": "Customer A",
+            "subject_a": {
+                "subject": "Subject A",
                 "findings": [
                     _make_finding(severity="P1", title="CoC consent required", category="change_of_control"),
                     _make_finding(severity="P2", title="Revenue waterfall data unavailable"),
@@ -652,8 +652,8 @@ class TestDataQualityClassification:
     def test_dq_excluded_from_wolf_pack(self) -> None:
         """A P1 data-quality finding should NOT appear in the wolf pack."""
         merged: dict[str, object] = {
-            "customer_a": {
-                "subject": "Customer A",
+            "subject_a": {
+                "subject": "Subject A",
                 "findings": [
                     _make_finding(severity="P1", title="Billing data unavailable — cannot verify AR quality"),
                     _make_finding(severity="P1", title="Genuine P1 issue", category="ip_ownership"),
@@ -669,8 +669,8 @@ class TestDataQualityClassification:
     def test_dq_excluded_from_category_groups(self) -> None:
         """Data quality findings should not appear in domain category_groups."""
         merged: dict[str, object] = {
-            "customer_a": {
-                "subject": "Customer A",
+            "subject_a": {
+                "subject": "Subject A",
                 "findings": [
                     _make_finding(
                         severity="P2",
@@ -699,8 +699,8 @@ class TestDataQualityClassification:
     def test_noise_excluded_from_category_groups(self) -> None:
         """Noise findings should not appear in domain category_groups."""
         merged: dict[str, object] = {
-            "customer_a": {
-                "subject": "Customer A",
+            "subject_a": {
+                "subject": "Subject A",
                 "findings": [
                     _make_finding(
                         severity="P3",

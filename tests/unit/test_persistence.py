@@ -414,7 +414,7 @@ class TestIncrementalClassifier:
         (gaps_dir / "acme.json").write_text(
             json.dumps(
                 [
-                    {"gap_type": "Missing_Doc", "customer": "acme"},
+                    {"gap_type": "Missing_Doc", "subject": "acme"},
                 ]
             )
         )

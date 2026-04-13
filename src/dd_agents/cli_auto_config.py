@@ -7,6 +7,7 @@ import logging
 import re
 import subprocess
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from rich.table import Table
@@ -14,8 +15,6 @@ from rich.table import Table
 from dd_agents.cli_init import DEFAULT_FOCUS_AREAS, VALID_DEAL_TYPES
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from rich.console import Console
 
 logger = logging.getLogger(__name__)
@@ -265,8 +264,6 @@ class BuyerContextIngester:
         so agents can read them at runtime. SPA and press release content are
         extracted to memory only (not placed in data room for sensitivity reasons).
         """
-        from pathlib import Path as PathCls
-
         ctx = IngestedContext(buyer_docs_dir=buyer_docs_dir)
 
         # Process buyer documents
@@ -275,7 +272,7 @@ class BuyerContextIngester:
             dest_dir.mkdir(parents=True, exist_ok=True)
 
             for doc_path in buyer_docs:
-                doc_path = PathCls(doc_path)
+                doc_path = Path(doc_path)
                 if not doc_path.is_file():
                     logger.warning("Buyer doc not found: %s", doc_path)
                     continue
@@ -295,7 +292,7 @@ class BuyerContextIngester:
 
         # Extract SPA content (not placed in data room)
         if spa_path:
-            spa_path_resolved = PathCls(spa_path)
+            spa_path_resolved = Path(spa_path)
             if spa_path_resolved.is_file():
                 ctx.spa_content = convert_document_to_markdown(spa_path_resolved)
                 if ctx.spa_content:
@@ -307,7 +304,7 @@ class BuyerContextIngester:
 
         # Extract press release content (not placed in data room)
         if press_release_path:
-            pr_path_resolved = PathCls(press_release_path)
+            pr_path_resolved = Path(press_release_path)
             if pr_path_resolved.is_file():
                 ctx.press_release_content = convert_document_to_markdown(pr_path_resolved)
                 if ctx.press_release_content:
@@ -733,17 +730,23 @@ class DataRoomAnalyzer:
             query,
         )
 
+        from dd_agents.utils import resolve_sdk_cli_path
+
         logger.debug(
             "Calling Claude: system_prompt=%d chars, user_prompt=%d chars",
             len(system_prompt),
             len(user_prompt),
         )
 
-        options = ClaudeAgentOptions(
-            system_prompt=system_prompt,
-            max_turns=3,
-            permission_mode="bypassPermissions",
-        )
+        options_kwargs: dict[str, Any] = {
+            "system_prompt": system_prompt,
+            "max_turns": 3,
+            "permission_mode": "bypassPermissions",
+        }
+        cli_path = resolve_sdk_cli_path()
+        if cli_path is not None:
+            options_kwargs["cli_path"] = cli_path
+        options = ClaudeAgentOptions(**options_kwargs)
 
         text_parts: list[str] = []
         async for message in query(prompt=user_prompt, options=options):

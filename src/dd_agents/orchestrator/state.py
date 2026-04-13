@@ -123,6 +123,9 @@ class PipelineState:
     validation_results: dict[str, bool] = field(default_factory=dict)
     audit_passed: bool = False
 
+    # --- Agent routing ------------------------------------------------------
+    _zero_file_subjects: list[str] = field(default_factory=list)
+
     # --- Incremental mode ---------------------------------------------------
     classification: dict[str, Any] | None = None
     subjects_to_analyze: list[str] = field(default_factory=list)

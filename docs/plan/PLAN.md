@@ -3,8 +3,6 @@
 > Status: Implemented — pipeline and search command operational
 > Package: `dd_agents` under `src/dd_agents/`
 > SDK: `claude-agent-sdk` v0.1.39+ (Python 3.12+)
->
-> **Terminology note (v1.0.0)**: These spec docs use "customer" to refer to DD investigation targets. As of v1.0.0 (Issue #187), all code uses "subject" instead. When reading these specs, mentally substitute "subject" for "customer" in code identifiers (e.g., `customer_safe_name` → `subject_safe_name`, `customers.csv` → `subjects.csv`).
 
 ---
 
@@ -22,7 +20,7 @@ M&A due diligence runs in silos — legal, financial, and commercial advisors ea
 
 ## Why: The Enforcement Paradox
 
-In a production retrospective analyzing a real deal, all 17 quality failures were instruction-following failures -- the LLM was told "MUST do X" in prose but skipped it. Examples: skipping customers, fabricating citations, producing aggregate summaries instead of per-customer analysis, missing gap detection, generating incorrect counts. The Skill architecture gives the LLM both orchestration and execution roles; prose constraints ("MUST", "BLOCKING") have no enforcement mechanism. The SDK inverts this: Python code enforces flow control, hooks enforce output format, and validation gates are `if/else` in code, not markdown emphasis.
+In a production retrospective analyzing a real deal, all 17 quality failures were instruction-following failures -- the LLM was told "MUST do X" in prose but skipped it. Examples: skipping subjects, fabricating citations, producing aggregate summaries instead of per-subject analysis, missing gap detection, generating incorrect counts. The Skill architecture gives the LLM both orchestration and execution roles; prose constraints ("MUST", "BLOCKING") have no enforcement mechanism. The SDK inverts this: Python code enforces flow control, hooks enforce output format, and validation gates are `if/else` in code, not markdown emphasis.
 
 ## What Transfers Directly
 
@@ -34,11 +32,11 @@ All 3,102 lines of domain knowledge -- extraction rules, severity taxonomy (P0-P
 
 **ADR-01: SDK over Skills** -- Python orchestrator with hook-enforced gates replaces LLM-directed pipeline. Eliminates the enforcement paradox where all 17 failures were instruction-following failures.
 
-**ADR-02: File-based storage** -- Three-tier persistence (PERMANENT/VERSIONED/FRESH) on the filesystem. At 400 docs / 200 customers, file-based JSON handles all queries; no DB needed.
+**ADR-02: File-based storage** -- Three-tier persistence (PERMANENT/VERSIONED/FRESH) on the filesystem. At 400 docs / 200 subjects, file-based JSON handles all queries; no DB needed.
 
 **ADR-03: ChromaDB optional** -- File-based keyword search (Grep) sufficient for core analysis. ChromaDB adds cross-document semantic search when enabled but is not required.
 
-**ADR-04: NetworkX for governance** -- ~900 edges total across all customers. In-memory directed graph handles cycle detection, topological sort, and path queries. No external graph DB needed.
+**ADR-04: NetworkX for governance** -- ~900 edges total across all subjects. In-memory directed graph handles cycle detection, topological sort, and path queries. No external graph DB needed.
 
 **ADR-05: Pydantic v2 for all schemas** -- 20+ models covering every JSON artifact. `model_json_schema()` feeds SDK structured outputs. `model_validate()` replaces LLM-based QA checks.
 
@@ -89,7 +87,7 @@ All 3,102 lines of domain knowledge -- extraction rules, severity taxonomy (P0-P
           |  Three-Tier Filesystem
           |  PERMANENT: index/text/, checksums, entity cache
           |  VERSIONED: runs/{id}/findings, audit, judge, report
-          |  FRESH: inventory/ (tree, files, customers, counts)
+          |  FRESH: inventory/ (tree, files, subjects, counts)
           +------------------------------------------+
 ```
 
@@ -147,7 +145,7 @@ Detailed content is distributed across 22 numbered files. Each file is self-cont
 
 ## Key Conventions
 
-**customer_safe_name**: lowercase, strip legal suffixes (Inc., Corp., LLC, Ltd.), replace special chars (`&`, `'`, `/`, `,`, `.`, spaces) with `_`, collapse consecutive underscores, strip leading/trailing underscores. Example: "Smith & Partners, Inc." becomes `smith_partners`.
+**subject_safe_name**: lowercase, strip legal suffixes (Inc., Corp., LLC, Ltd.), replace special chars (`&`, `'`, `/`, `,`, `.`, spaces) with `_`, collapse consecutive underscores, strip leading/trailing underscores. Example: "Smith & Partners, Inc." becomes `smith_partners`.
 
 **Data room layout**: `_dd/forensic-dd/` for skill-specific artifacts, `_dd/` for shared files (entity cache, run history).
 

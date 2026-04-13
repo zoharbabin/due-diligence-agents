@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import html
 from collections import defaultdict
 from typing import Any
 
@@ -14,6 +13,7 @@ from dd_agents.reporting.html_base import (
     SEVERITY_COLORS,
     SectionRenderer,
 )
+from dd_agents.utils.constants import SEVERITY_P3
 
 
 class SubjectRenderer(SectionRenderer):
@@ -49,10 +49,10 @@ class SubjectRenderer(SectionRenderer):
         finding_count = len(findings)
         sev_summary: dict[str, int] = defaultdict(int)
         for f in findings:
-            sev_summary[f.get("severity", "P3")] += 1
+            sev_summary[f.get("severity", SEVERITY_P3)] += 1
         sev_str = " ".join(
             f"<span class='severity-badge' style='background:{SEVERITY_COLORS.get(s, '#ccc')}'>"
-            f"{html.escape(str(s))}:{c}</span>"
+            f"{self.escape(str(s))}:{c}</span>"
             for s, c in sorted(sev_summary.items())
             if c > 0
         )
@@ -60,7 +60,7 @@ class SubjectRenderer(SectionRenderer):
         parts: list[str] = [
             "<div class='subject-section'>",
             f"<div class='subject-header' tabindex='0' role='button' aria-expanded='false'>"
-            f"<span><strong>{html.escape(subject_name)}</strong> "
+            f"<span><strong>{self.escape(subject_name)}</strong> "
             f"({finding_count} finding{'s' if finding_count != 1 else ''}, "
             f"{len(gaps)} gap{'s' if len(gaps) != 1 else ''}) {sev_str}</span>"
             f"<span class='arrow'>&#9654;</span></div>",
@@ -90,9 +90,9 @@ class SubjectRenderer(SectionRenderer):
             for xr in xrefs:
                 if not isinstance(xr, dict):
                     continue
-                field = html.escape(str(xr.get("data_point", xr.get("field", ""))))
-                src_a = html.escape(str(xr.get("contract_value", xr.get("source_a", xr.get("value_a", "")))))
-                src_b = html.escape(str(xr.get("reference_value", xr.get("source_b", xr.get("value_b", "")))))
+                field = self.escape(str(xr.get("data_point", xr.get("field", ""))))
+                src_a = self.escape(str(xr.get("contract_value", xr.get("source_a", xr.get("value_a", "")))))
+                src_b = self.escape(str(xr.get("reference_value", xr.get("source_b", xr.get("value_b", "")))))
                 raw_status = str(xr.get("match_status", xr.get("match", ""))).lower()
                 is_match = raw_status in ("match", "true", "yes")
                 is_mismatch = raw_status in ("mismatch", "false", "no")
@@ -116,7 +116,7 @@ class SubjectRenderer(SectionRenderer):
                 if not domain_f:
                     continue
                 display = DOMAIN_DISPLAY.get(domain, domain)
-                parts.append(f"<h4 style='color:{DOMAIN_COLORS.get(domain, '#666')}'>{html.escape(display)}</h4>")
+                parts.append(f"<h4 style='color:{DOMAIN_COLORS.get(domain, '#666')}'>{self.escape(display)}</h4>")
                 for f in domain_f:
                     parts.append(self.render_finding_card(f))
                     parts.append(self.render_finding_detail(f))
@@ -133,13 +133,13 @@ class SubjectRenderer(SectionRenderer):
             )
             for g in gaps:
                 if isinstance(g, dict):
-                    prio = html.escape(str(g.get("priority", "")))
-                    gtype = html.escape(str(g.get("gap_type", "")))
-                    item = html.escape(str(g.get("missing_item", "")))
-                    risk = html.escape(str(g.get("risk_if_missing", "")))
-                    why = html.escape(str(g.get("why_needed", "")))
-                    request = html.escape(str(g.get("request_to_company", "")))
-                    agent = html.escape(str(g.get("agent", "")))
+                    prio = self.escape(str(g.get("priority", "")))
+                    gtype = self.escape(str(g.get("gap_type", "")))
+                    item = self.escape(str(g.get("missing_item", "")))
+                    risk = self.escape(str(g.get("risk_if_missing", "")))
+                    why = self.escape(str(g.get("why_needed", "")))
+                    request = self.escape(str(g.get("request_to_company", "")))
+                    agent = self.escape(str(g.get("agent", "")))
                     parts.append(
                         f"<tr><td>{prio}</td><td>{gtype}</td><td>{item}</td><td>{risk}</td>"
                         f"<td>{why}</td><td>{request}</td><td>{agent}</td></tr>"

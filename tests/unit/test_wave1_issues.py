@@ -140,7 +140,7 @@ class TestDiscountAnalysis:
                 "A",
                 findings=[
                     _finding(
-                        "Customer receives 30% discount on list price",
+                        "Subject receives 30% discount on list price",
                         category="discount",
                         agent="finance",
                         description="Enterprise discount of 30% applied to $100K contract",
@@ -337,7 +337,7 @@ class TestEntityDistribution:
                         "Contract signed by TargetCo LLC",
                         category="governance",
                         agent="legal",
-                        description="Agreement between TargetCo LLC and Customer A",
+                        description="Agreement between TargetCo LLC and Subject A",
                     ),
                 ],
             ),
@@ -446,11 +446,11 @@ class TestNewRenderers:
 
         computed = ReportComputedData(
             discount_analysis={
-                "customers_with_discounts": 3,
+                "subjects_with_discounts": 3,
                 "total_pricing_findings": 5,
                 "distribution": {"0-10%": 1, "10-25%": 1, "25-50%": 1, ">50%": 0},
                 "findings": [
-                    {"title": "30% discount", "severity": "P2", "_customer": "A", "agent": "finance"},
+                    {"title": "30% discount", "severity": "P2", "_subject": "A", "agent": "finance"},
                 ],
             },
         )
@@ -469,7 +469,7 @@ class TestNewRenderers:
                 "regulatory_findings_count": 2,
                 "total_compliance_findings": 10,
                 "findings": [
-                    {"title": "Missing DPA", "severity": "P1", "_customer": "A", "agent": "legal"},
+                    {"title": "Missing DPA", "severity": "P1", "_subject": "A", "agent": "legal"},
                 ],
             },
         )
@@ -487,7 +487,7 @@ class TestNewRenderers:
                 "manual_renew_count": 1,
                 "escalation_cap_count": 2,
                 "findings": [
-                    {"title": "Auto-renewal", "severity": "P2", "_customer": "A", "agent": "commercial"},
+                    {"title": "Auto-renewal", "severity": "P2", "_subject": "A", "agent": "commercial"},
                 ],
             },
         )
@@ -501,14 +501,14 @@ class TestNewRenderers:
 
         computed = ReportComputedData(
             discount_analysis={
-                "customers_with_discounts": 1,
+                "subjects_with_discounts": 1,
                 "total_pricing_findings": 1,
                 "distribution": {},
                 "findings": [
                     {
                         "title": "<script>alert('xss')</script>",
                         "severity": "P2",
-                        "_customer": "Evil<Corp",
+                        "_subject": "Evil<Corp",
                         "agent": "finance",
                     },
                 ],
@@ -533,7 +533,7 @@ class TestNewRenderers:
                     {
                         "title": "<img onerror=alert(1)>",
                         "severity": "P1",
-                        "_customer": "Evil<Corp",
+                        "_subject": "Evil<Corp",
                     },
                 ],
             },
@@ -556,7 +556,7 @@ class TestNewRenderers:
                     {
                         "title": "<script>xss</script>",
                         "severity": "P2",
-                        "_customer": "Test&Co",
+                        "_subject": "Test&Co",
                         "agent": "commercial",
                     },
                 ],
@@ -578,7 +578,7 @@ class TestNewRenderers:
                     {
                         "title": "<b onmouseover=alert(1)>",
                         "severity": "P2",
-                        "_customer": "A",
+                        "_subject": "A",
                     },
                 ],
             },
@@ -599,7 +599,7 @@ class TestNewRenderers:
                     {
                         "title": "<script>alert('xss')</script>",
                         "severity": "P2",
-                        "_customer": "X",
+                        "_subject": "X",
                     },
                 ],
             },
@@ -659,7 +659,7 @@ class TestDiscountAnalysisStrengthened:
                 "A",
                 findings=[
                     _finding(
-                        "Customer receives 10% discount on subscription",
+                        "Subject receives 10% discount on subscription",
                         category="discount",
                         agent="finance",
                         description="Standard enterprise pricing applied",
@@ -679,7 +679,7 @@ class TestDiscountAnalysisStrengthened:
                 "A",
                 findings=[
                     _finding(
-                        "Customer receives 25% discount on renewal",
+                        "Subject receives 25% discount on renewal",
                         category="discount",
                         agent="finance",
                         description="Standard enterprise pricing applied",
@@ -711,7 +711,7 @@ class TestDiscountAnalysisStrengthened:
                 "A",
                 findings=[
                     _finding(
-                        "Annual rebate program for volume customers",
+                        "Annual rebate program for volume subjects",
                         category="discount",
                         agent="finance",
                         description="Quarterly rebate of 5% on spend over $100K",
@@ -757,7 +757,7 @@ class TestRenewalAnalysisStrengthened:
                         "Manual renewal required before term end",
                         category="renewal",
                         agent="commercial",
-                        description="Contract requires manual renewal by customer",
+                        description="Contract requires manual renewal by subject",
                     ),
                 ],
             ),
@@ -1066,10 +1066,10 @@ class TestNoiseClassificationStrengthened:
         from dd_agents.reporting.computed_metrics import _is_noise_finding
 
         f = _finding(
-            "Change of control consent not available from Customer X",
+            "Change of control consent not available from Subject X",
             category="coc",
             agent="legal",
-            description="Customer has not provided consent for assignment",
+            description="Subject has not provided consent for assignment",
         )
         assert not _is_noise_finding(f)
 
