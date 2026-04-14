@@ -9,7 +9,7 @@
     <a href="https://github.com/zoharbabin/due-diligence-agents/actions"><img src="https://github.com/zoharbabin/due-diligence-agents/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
     <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.12+-blue.svg" alt="Python 3.12+"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green.svg" alt="License"></a>
-    <img src="https://img.shields.io/badge/tests-3,323-brightgreen.svg" alt="Tests">
+    <img src="https://img.shields.io/badge/tests-3,481-brightgreen.svg" alt="Tests">
     <img src="https://img.shields.io/badge/mypy-strict-blue.svg" alt="mypy strict">
     <a href="https://github.com/zoharbabin/due-diligence-agents/stargazers"><img src="https://img.shields.io/github/stars/zoharbabin/due-diligence-agents?style=social" alt="GitHub Stars"></a>
   </p>
@@ -93,6 +93,10 @@ dd-agents assess ./data_room                                # Check data room qu
 dd-agents portfolio add "Deal A" --data-room ./data_room_a  # Track multiple deals
 dd-agents portfolio compare                                 # Compare risk across deals
 dd-agents export-pdf report.html                            # Export to PDF
+dd-agents log                                               # Browse the deal knowledge timeline
+dd-agents lineage --finding-id F-001                        # Trace a finding back to source
+dd-agents health                                            # Check knowledge base integrity
+dd-agents annotate F-001 "Confirmed with counsel"           # Add analyst notes to findings
 ```
 
 ## Quick Start
@@ -247,6 +251,10 @@ _dd/forensic-dd/
       audit.json                  # 31 quality validation checks
       numerical_manifest.json     # Every financial figure traced to source
       metadata.json               # Run metadata and API costs
+  knowledge/                      # Deal Knowledge Base (compounds across runs)
+    articles/                     # Structured knowledge articles
+    chronicle.jsonl               # Append-only timeline of all events
+    graph.json                    # Cross-reference knowledge graph
   entity_resolution_cache.json    # Company name matching (reused across runs)
 ```
 
