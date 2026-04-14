@@ -1372,10 +1372,30 @@ def chat(
     )
     console.print()
 
+    # Enable arrow-key editing and history in the input prompt
+    import readline  # noqa: F401 — enables arrow keys + line editing for input()
+
+    # Human-readable labels for tool status updates
+    _tool_labels: dict[str, str] = {
+        "verify_citation": "Verifying citation",
+        "search_in_file": "Searching in file",
+        "get_page_content": "Reading page",
+        "read_office": "Reading document",
+        "get_subject_files": "Looking up files",
+        "resolve_entity": "Resolving entity",
+        "search_similar": "Searching similar",
+        "batch_verify_citations": "Verifying citations",
+        "save_memory": "Saving memory",
+        "search_chat_memory": "Searching memories",
+        "Read": "Reading file",
+        "Glob": "Searching files",
+        "Grep": "Searching content",
+    }
+
     # Interactive loop
     while True:
         try:
-            user_input = console.input("[bold cyan]> [/bold cyan]")
+            user_input = input("> ")
         except (EOFError, KeyboardInterrupt):
             console.print("\n[dim]Goodbye.[/dim]")
             break
@@ -1394,45 +1414,39 @@ def chat(
             continue
 
         try:
-            first_chunk = True
             spinner = console.status("[dim]Thinking...[/dim]", spinner="dots")
             spinner.start()
 
-            def _on_text(chunk: str, _spinner: Any = spinner) -> None:
-                nonlocal first_chunk
-                if first_chunk:
-                    _spinner.stop()
-                    console.print()
-                    first_chunk = False
-                console.print(chunk, end="")
+            def _on_tool_status(
+                tool_name: str,
+                _spinner: Any = spinner,
+                _labels: dict[str, str] = _tool_labels,
+            ) -> None:
+                label = _labels.get(tool_name, tool_name.replace("_", " ").title())
+                # Strip mcp__ prefix for display
+                if label.startswith("mcp__"):
+                    label = label.split("__")[-1].replace("_", " ").title()
+                _spinner.update(f"[dim]{label}...[/dim]")
 
-            response = asyncio.run(engine.ask(user_input, on_text=_on_text))
+            response = asyncio.run(engine.ask(user_input, on_tool_status=_on_tool_status))
+            spinner.stop()
 
-            if first_chunk:
-                # No streaming happened — stop spinner and print the full response
-                spinner.stop()
-                console.print()
-                console.print(Markdown(response.text))
-            else:
-                console.print()  # newline after streamed text
-
-            # Verbose: show tool usage
-            if verbose and response.tools_used:
-                console.print(f"[dim]Tools: {', '.join(response.tools_used)}[/dim]")
-
-            # Memory indicator
-            if response.memories_saved > 0:
-                console.print(
-                    f"[dim italic]{response.memories_saved} "
-                    f"{'memory' if response.memories_saved == 1 else 'memories'} saved[/dim italic]"
-                )
-
-            console.print(
-                f"[dim]Turn {response.turn_number} | "
-                f"${response.estimated_cost:.4f} this turn | "
-                f"${response.session_cost:.4f} total[/dim]"
-            )
+            # Render the complete response as markdown
             console.print()
+            console.print(Markdown(response.text))
+
+            # Footer: tools, memory, cost
+            footer_parts: list[str] = []
+            if verbose and response.tools_used:
+                footer_parts.append(f"Tools: {', '.join(response.tools_used)}")
+            if response.memories_saved > 0:
+                label = "memory" if response.memories_saved == 1 else "memories"
+                footer_parts.append(f"{response.memories_saved} {label} saved")
+            footer_parts.append(
+                f"Turn {response.turn_number} | ${response.estimated_cost:.4f} | ${response.session_cost:.4f} total"
+            )
+            console.print(f"[dim]{'  ·  '.join(footer_parts)}[/dim]")
+            console.rule(style="dim")
 
         except BudgetExhaustedError:
             spinner.stop()
@@ -1443,10 +1457,14 @@ def chat(
             break
         except Exception as exc:
             spinner.stop()
-            console.print(f"\n[red]Error: {exc}[/red]")
+            err_msg = str(exc)
+            # Collapse noisy SDK subprocess errors into a clean message
+            if "exit code" in err_msg or "Fatal error" in err_msg:
+                console.print("\n[yellow]The agent encountered an error processing this request.[/yellow]")
+                console.print("[dim]Try rephrasing your question or use --verbose for details.[/dim]")
+            else:
+                console.print(f"\n[red]Error: {err_msg}[/red]")
             if verbose:
-                import traceback
-
                 console.print(f"[dim]{traceback.format_exc()}[/dim]")
 
     # Finalize session (save transcript, fallback summarization)

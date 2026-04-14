@@ -8,6 +8,16 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 > The first public release was **v0.4.0** (2026-03-30). Tagged releases on PyPI and
 > GitHub begin at **v0.4.1**.
 
+## [1.2.1] — 2026-04-14
+
+### Fixed
+
+- **Chat: intermediate reasoning leaked to output** — Tool-use "thinking" text (e.g. "Let me search...") no longer appears in the response. Only the final answer is rendered as markdown.
+- **Chat: no spinner during tool use** — Spinner now stays visible with descriptive status labels ("Verifying citation...", "Reading document...") while the agent works, instead of disappearing immediately.
+- **Chat: arrow keys not working in prompt** — Switched to readline-backed input, enabling arrow key navigation, backspace, and line editing.
+- **Chat: SDK crash kills session** — Engine now catches SDK failures gracefully, returns a clean error message, and keeps the session alive for the next question.
+- **Chat: noisy error output** — Raw SDK subprocess errors ("exit code 1", "Fatal error in message reader") collapsed into a friendly one-line message with `--verbose` hint.
+
 ## [1.2.0] — 2026-04-14
 
 ### Added

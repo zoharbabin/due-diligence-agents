@@ -243,6 +243,7 @@ class ChatEngine:
         self,
         question: str,
         on_text: Callable[[str], None] | None = None,
+        on_tool_status: Callable[[str], None] | None = None,
     ) -> ChatResponse:
         """Process a single user question and return the assistant's response.
 
@@ -251,7 +252,12 @@ class ChatEngine:
         question:
             The user's question.
         on_text:
-            Optional callback for streaming text chunks to the terminal.
+            Optional callback for streaming final answer text chunks.
+            Only called for text in AssistantMessages that contain no tool
+            calls (i.e., the final answer, not intermediate reasoning).
+        on_tool_status:
+            Optional callback for tool-use progress updates.  Called with
+            the tool name each time the model invokes a tool.
 
         Returns
         -------
@@ -282,32 +288,62 @@ class ChatEngine:
         # Build SDK options
         options = self._build_options(remaining)
 
-        # Execute query
+        # Execute query — wrapped in try/except so SDK crashes don't
+        # kill the session.  We return whatever text was collected.
         text_parts: list[str] = []
+        final_text_parts: list[str] = []
         tools_used: list[str] = []
         msg_count = 0
         memories_this_turn = 0
+        sdk_error: str | None = None
 
-        async for message in _query(prompt=turn_prompt, options=options):
-            msg_count += 1
+        try:
+            async for message in _query(prompt=turn_prompt, options=options):
+                msg_count += 1
 
-            if isinstance(message, _AssistantMessage):
-                for block in message.content:
-                    if isinstance(block, _TextBlock):
-                        text_parts.append(block.text)
-                        if on_text is not None:
-                            on_text(block.text)
-                    elif hasattr(block, "name"):
-                        tool_name = getattr(block, "name", "unknown")
-                        if tool_name not in tools_used:
-                            tools_used.append(tool_name)
-                        if tool_name == "save_memory":
-                            memories_this_turn += 1
+                if isinstance(message, _AssistantMessage):
+                    # Check whether this message contains tool-use blocks.
+                    has_tool_use = any(
+                        hasattr(block, "name") and not isinstance(block, _TextBlock) for block in message.content
+                    )
 
-            elif isinstance(message, _ResultMessage) and message.is_error:
-                logger.warning("Chat SDK error: %s", message.result)
+                    for block in message.content:
+                        if isinstance(block, _TextBlock):
+                            text_parts.append(block.text)
+                            if not has_tool_use:
+                                final_text_parts.append(block.text)
+                                if on_text is not None:
+                                    on_text(block.text)
+                        elif hasattr(block, "name"):
+                            tool_name = getattr(block, "name", "unknown")
+                            if tool_name not in tools_used:
+                                tools_used.append(tool_name)
+                            if tool_name == "save_memory":
+                                memories_this_turn += 1
+                            if on_tool_status is not None:
+                                on_tool_status(tool_name)
 
-        full_text = "\n".join(text_parts) if text_parts else "I wasn't able to generate a response."
+                elif isinstance(message, _ResultMessage) and message.is_error:
+                    if message.result:
+                        logger.debug("SDK error result: %s", message.result)
+        except Exception as exc:
+            sdk_error = str(exc)
+            logger.debug("SDK query failed: %s", exc)
+
+        # Prefer text from pure-text messages (the final answer).
+        # Fall back to all collected text, then to an error message.
+        if final_text_parts:
+            full_text = "\n".join(final_text_parts)
+        elif text_parts:
+            full_text = "\n".join(text_parts)
+        elif sdk_error:
+            full_text = (
+                "The analysis encountered an error. "
+                "Please try rephrasing your question or use "
+                f"`--verbose` for details.\n\nTechnical: {sdk_error}"
+            )
+        else:
+            full_text = "I wasn't able to generate a response. Try rephrasing your question."
         self._turn_count += 1
         self._memories_saved_this_session += memories_this_turn
 
