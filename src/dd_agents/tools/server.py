@@ -376,12 +376,26 @@ JUDGE_CUSTOM_TOOLS: list[str] = [
     "batch_verify_citations",
 ]
 
+# Chat: read-only document tools + persistent memory (custom tools only)
+CHAT_CUSTOM_TOOLS: list[str] = [
+    "verify_citation",
+    "get_subject_files",
+    "resolve_entity",
+    "search_similar",
+    "read_office",
+    "search_in_file",
+    "get_page_content",
+    "batch_verify_citations",
+    "save_memory",
+    "search_chat_memory",
+]
+
 
 def get_tools_for_agent(agent_type: str) -> list[str]:
     """Return the list of allowed tool names for the given *agent_type*.
 
     Args:
-        agent_type: One of ``"specialist"``, ``"judge"``.
+        agent_type: One of ``"specialist"``, ``"judge"``, ``"chat"``.
 
     Returns:
         List of tool name strings.
@@ -389,5 +403,6 @@ def get_tools_for_agent(agent_type: str) -> list[str]:
     mapping: dict[str, list[str]] = {
         "specialist": SPECIALIST_CUSTOM_TOOLS,
         "judge": JUDGE_CUSTOM_TOOLS,
+        "chat": CHAT_CUSTOM_TOOLS,
     }
     return mapping.get(agent_type, [])

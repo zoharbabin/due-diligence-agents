@@ -78,7 +78,7 @@ class TestInteractionType:
         assert InteractionType.KNOWLEDGE_COMPILATION == "knowledge_compilation"
 
     def test_member_count(self) -> None:
-        assert len(InteractionType) == 5
+        assert len(InteractionType) == 6
 
 
 # ---------------------------------------------------------------------------

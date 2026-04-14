@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from pathlib import Path
 
+from datetime import UTC
+
 from dd_agents.tools.server import get_tools_for_agent
 
 logger = logging.getLogger(__name__)
@@ -31,14 +33,16 @@ def build_mcp_server(
     allowed_dir: str | Path | None = None,
     data_room_path: str | Path | None = None,
     file_precedence: dict[str, float] | None = None,
+    memory_store: Any | None = None,
+    session_id: str = "",
 ) -> Any | None:
     """Build an in-process MCP server with DD tools for the given agent type.
 
     Parameters
     ----------
     agent_type:
-        One of ``"specialist"`` or ``"judge"``.  Controls which tools are
-        registered on the server.
+        One of ``"specialist"``, ``"judge"``, or ``"chat"``.  Controls
+        which tools are registered on the server.
     text_dir:
         Path to the extracted text directory (``index/text/``).
         Required by ``verify_citation``, ``read_office``, ``search_in_file``,
@@ -463,6 +467,98 @@ def build_mcp_server(
             )
 
         tools.append(batch_verify_citations_tool)
+
+    # ------------------------------------------------------------------
+    # Chat memory tools (only for agent_type="chat")
+    # ------------------------------------------------------------------
+
+    if "save_memory" in allowed_tool_names and memory_store is not None:
+        from dd_agents.chat.memory import ChatMemory, MemoryType, generate_memory_id
+
+        _mem_store = memory_store
+        _mem_session_id = session_id
+
+        @tool(
+            "save_memory",
+            "Save an important insight or conclusion for future chat sessions.",
+            {
+                "type": "object",
+                "properties": {
+                    "content": {
+                        "type": "string",
+                        "description": "The insight (1-3 concise sentences)",
+                    },
+                    "topics": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Subject names, categories, or keywords",
+                    },
+                    "memory_type": {
+                        "type": "string",
+                        "enum": ["insight", "cross_reference", "user_note", "conclusion"],
+                        "description": "Classification of the memory",
+                    },
+                },
+                "required": ["content", "topics", "memory_type"],
+            },
+        )
+        async def save_memory_tool(input_data: dict[str, Any]) -> dict[str, Any]:
+            from datetime import datetime
+
+            mem = ChatMemory(
+                id=generate_memory_id(),
+                timestamp=datetime.now(tz=UTC).isoformat(),
+                session_id=_mem_session_id,
+                content=input_data["content"],
+                topics=input_data.get("topics", []),
+                memory_type=MemoryType(input_data.get("memory_type", "insight")),
+                source_turn=0,
+            )
+            _mem_store.save_memory(mem)
+            return {"status": "saved", "memory_id": mem.id}
+
+        tools.append(save_memory_tool)
+
+    if "search_chat_memory" in allowed_tool_names and memory_store is not None:
+        _search_mem_store = memory_store
+
+        @tool(
+            "search_chat_memory",
+            "Search memories from prior chat sessions about this deal.",
+            {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "What to search for",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max results (default 10)",
+                        "default": 10,
+                    },
+                },
+                "required": ["query"],
+            },
+        )
+        async def search_chat_memory_tool(input_data: dict[str, Any]) -> dict[str, Any]:
+            limit = input_data.get("limit", 10)
+            results = _search_mem_store.search_memories(input_data["query"], limit=limit)
+            return {
+                "matches": [
+                    {
+                        "content": m.content,
+                        "topics": m.topics,
+                        "memory_type": m.memory_type,
+                        "timestamp": m.timestamp,
+                        "session_id": m.session_id,
+                    }
+                    for m in results
+                ],
+                "total_memories": _search_mem_store.memory_count,
+            }
+
+        tools.append(search_chat_memory_tool)
 
     if not tools:
         logger.debug("No tools registered for agent_type=%r", agent_type)

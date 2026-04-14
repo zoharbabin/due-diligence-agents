@@ -35,6 +35,7 @@ class InteractionType(StrEnum):
     QUERY = "query"
     ANNOTATION = "annotation"
     KNOWLEDGE_COMPILATION = "knowledge_compilation"
+    CHAT = "chat"
 
 
 class FindingsSummary(BaseModel):

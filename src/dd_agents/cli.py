@@ -15,6 +15,7 @@ from typing import Any
 
 import click
 from rich.console import Console
+from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.table import Table
 
@@ -1240,6 +1241,222 @@ def _print_query_result(question: str, result: Any) -> None:
                 src.get("category", ""),
             )
         console.print(table)
+
+
+# ---------------------------------------------------------------------------
+# chat command
+# ---------------------------------------------------------------------------
+
+
+@main.command()
+@click.option(
+    "--report",
+    "report_dir",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=None,
+    help="Path to the pipeline run directory. Default: runs/latest.",
+)
+@click.option(
+    "--model",
+    "model",
+    default=None,
+    help="Override the LLM model for chat (e.g. claude-sonnet-4-6).",
+)
+@click.option(
+    "--max-cost",
+    "max_cost",
+    type=float,
+    default=2.0,
+    show_default=True,
+    help="Maximum session cost in USD.",
+)
+@click.option(
+    "--no-tools",
+    "no_tools",
+    is_flag=True,
+    default=False,
+    help="Disable document tools (findings-only mode).",
+)
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    default=False,
+    help="Enable verbose logging output.",
+)
+def chat(
+    report_dir: Path | None,
+    model: str | None,
+    max_cost: float,
+    no_tools: bool,
+    verbose: bool,
+) -> None:
+    """Interactive chat about due diligence findings.
+
+    Start a multi-turn conversation about the DD analysis results.
+    Ask questions about findings, drill into documents, verify citations.
+    Insights are automatically saved as persistent memories across sessions.
+
+    \b
+    Example:
+        dd-agents chat
+        dd-agents chat --report _dd/forensic-dd/runs/latest
+        dd-agents chat --no-tools
+        dd-agents chat --max-cost 5.0 --model claude-sonnet-4-6
+    """
+    if verbose:
+        logging.basicConfig(level=logging.WARNING, format="%(name)s: %(message)s")
+        logging.getLogger("dd_agents").setLevel(logging.DEBUG)
+
+    from dd_agents.chat import BudgetExhaustedError, ChatConfig, ChatEngine
+
+    # Resolve report directory
+    if report_dir is None:
+        candidates = [
+            Path("_dd/forensic-dd/runs/latest"),
+            Path("runs/latest"),
+        ]
+        for c in candidates:
+            if c.exists():
+                report_dir = c.resolve()
+                break
+        if report_dir is None:
+            _print_error(
+                "No Report",
+                "No --report specified and no runs/latest found.\n"
+                "  Run the pipeline first: dd-agents run deal-config.json\n"
+                "  Or specify: dd-agents chat --report /path/to/run",
+            )
+            raise SystemExit(1)
+
+    # Resolve project directory (parent of _dd/)
+    project_dir = report_dir
+    for _ in range(5):
+        if (project_dir / "_dd").is_dir():
+            break
+        project_dir = project_dir.parent
+    else:
+        project_dir = report_dir.parent
+
+    config = ChatConfig(
+        model=model,
+        max_session_cost=max_cost,
+        enable_tools=not no_tools,
+        verbose=verbose,
+    )
+
+    try:
+        engine = ChatEngine(
+            run_dir=report_dir,
+            project_dir=project_dir,
+            config=config,
+        )
+    except Exception as exc:
+        _print_error("Chat Init Error", str(exc))
+        raise SystemExit(1) from exc
+
+    # Print banner
+    mode_label = "findings + documents" if config.enable_tools else "findings only"
+    memory_note = f", {engine.memory_count} memories" if engine.memory_count > 0 else ""
+    console.print()
+    console.print(
+        Panel(
+            f"[bold green]DD Chat[/bold green] ({mode_label})\n"
+            f"Report: {report_dir}\n"
+            f"Findings: {engine.finding_count}{memory_note}\n"
+            f"Budget: ${max_cost:.2f}\n"
+            f"Type [bold]quit[/bold] to exit, [bold]cost[/bold] for session cost.",
+            title="Chat",
+            border_style="green",
+        )
+    )
+    console.print()
+
+    # Interactive loop
+    while True:
+        try:
+            user_input = console.input("[bold cyan]> [/bold cyan]")
+        except (EOFError, KeyboardInterrupt):
+            console.print("\n[dim]Goodbye.[/dim]")
+            break
+
+        user_input = user_input.strip()
+        if not user_input:
+            continue
+        if user_input.lower() in ("quit", "exit", "q"):
+            console.print("[dim]Goodbye.[/dim]")
+            break
+        if user_input.lower() == "cost":
+            console.print(f"[dim]Session cost: ${engine.session_cost:.4f} / ${max_cost:.2f}[/dim]")
+            continue
+        if user_input.lower() == "history":
+            console.print(f"[dim]Turns: {engine.turn_count}, History: {engine.history_chars} chars[/dim]")
+            continue
+
+        try:
+            first_chunk = True
+            spinner = console.status("[dim]Thinking...[/dim]", spinner="dots")
+            spinner.start()
+
+            def _on_text(chunk: str, _spinner: Any = spinner) -> None:
+                nonlocal first_chunk
+                if first_chunk:
+                    _spinner.stop()
+                    console.print()
+                    first_chunk = False
+                console.print(chunk, end="")
+
+            response = asyncio.run(engine.ask(user_input, on_text=_on_text))
+
+            if first_chunk:
+                # No streaming happened — stop spinner and print the full response
+                spinner.stop()
+                console.print()
+                console.print(Markdown(response.text))
+            else:
+                console.print()  # newline after streamed text
+
+            # Verbose: show tool usage
+            if verbose and response.tools_used:
+                console.print(f"[dim]Tools: {', '.join(response.tools_used)}[/dim]")
+
+            # Memory indicator
+            if response.memories_saved > 0:
+                console.print(
+                    f"[dim italic]{response.memories_saved} "
+                    f"{'memory' if response.memories_saved == 1 else 'memories'} saved[/dim italic]"
+                )
+
+            console.print(
+                f"[dim]Turn {response.turn_number} | "
+                f"${response.estimated_cost:.4f} this turn | "
+                f"${response.session_cost:.4f} total[/dim]"
+            )
+            console.print()
+
+        except BudgetExhaustedError:
+            spinner.stop()
+            console.print(
+                f"\n[bold yellow]Session budget exhausted (${max_cost:.2f}).[/bold yellow]\n"
+                "Start a new session to continue."
+            )
+            break
+        except Exception as exc:
+            spinner.stop()
+            console.print(f"\n[red]Error: {exc}[/red]")
+            if verbose:
+                import traceback
+
+                console.print(f"[dim]{traceback.format_exc()}[/dim]")
+
+    # Finalize session (save transcript, fallback summarization)
+    try:
+        asyncio.run(engine.close())
+    except Exception as exc:
+        if verbose:
+            console.print(f"[dim]Session close warning: {exc}[/dim]")
+
+    _terminate_child_processes()
 
 
 # ---------------------------------------------------------------------------
