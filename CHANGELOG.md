@@ -8,6 +8,33 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 > The first public release was **v0.4.0** (2026-03-30). Tagged releases on PyPI and
 > GitHub begin at **v0.4.1**.
 
+## [1.2.0] — 2026-04-14
+
+### Added
+
+- **Chat Mode** (`dd-agents chat`) — Interactive multi-turn conversation over DD findings. Ask questions, drill into source documents, verify citations — all in one session.
+- **Persistent Chat Memory** — The model saves key insights during conversation and recalls them in future sessions. Memory stored in append-only JSONL, searched via rapidfuzz keyword matching.
+- **MCP Memory Tools** — Two new tools (`save_memory`, `search_chat_memory`) available to the model during chat for cross-session context.
+- **Session Transcripts** — Full conversation transcripts saved automatically on session exit, with session index for browsing history.
+- **Streaming Output with Spinner** — Animated "Thinking..." indicator while waiting for the agent, replaced by streamed text as it arrives.
+- **Budget Tracking** — Per-turn and per-session cost limits (`--max-cost`) with automatic exhaustion detection.
+- **CHAT Interaction Type** — Chat turns logged to the Analysis Chronicle for the deal timeline.
+
+## [1.1.1] — 2026-04-13
+
+### Fixed
+
+- **mypy CI failure** — Added `type: ignore[import-not-found]` for optional dependencies (playwright, weasyprint, chromadb) that caused strict type checking to fail in CI.
+
+## [1.1.0] — 2026-04-13
+
+### Added
+
+- **Finding Schema Guard** — PreToolUse hook validates finding JSON structure on Write, blocking wrong field names before they reach disk.
+- **Citation Enforcement** — Agents required to provide exact citations; validation rejects findings without source references.
+- **Agent Hardening** — Improved prompt robustness and output parsing across all 8 agents.
+- **New MCP Tools** — Additional document analysis tools for agent use.
+
 ## [1.0.2] — 2026-04-10
 
 ### Fixed

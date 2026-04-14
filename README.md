@@ -9,7 +9,7 @@
     <a href="https://github.com/zoharbabin/due-diligence-agents/actions"><img src="https://github.com/zoharbabin/due-diligence-agents/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
     <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.12+-blue.svg" alt="Python 3.12+"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green.svg" alt="License"></a>
-    <img src="https://img.shields.io/badge/tests-3,481-brightgreen.svg" alt="Tests">
+    <img src="https://img.shields.io/badge/tests-3,523-brightgreen.svg" alt="Tests">
     <img src="https://img.shields.io/badge/mypy-strict-blue.svg" alt="mypy strict">
     <a href="https://github.com/zoharbabin/due-diligence-agents/stargazers"><img src="https://img.shields.io/github/stars/zoharbabin/due-diligence-agents?style=social" alt="GitHub Stars"></a>
   </p>
@@ -88,7 +88,8 @@ See [`examples/search/`](examples/search/) for ready-to-use templates.
 ### Post-Run Tools
 
 ```bash
-dd-agents query --report _dd/forensic-dd/runs/latest       # Ask questions about findings
+dd-agents chat --report _dd/forensic-dd/runs/latest         # Interactive multi-turn chat with memory
+dd-agents query --report _dd/forensic-dd/runs/latest        # Ask questions about findings
 dd-agents assess ./data_room                                # Check data room quality
 dd-agents portfolio add "Deal A" --data-room ./data_room_a  # Track multiple deals
 dd-agents portfolio compare                                 # Compare risk across deals

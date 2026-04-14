@@ -325,6 +325,47 @@ dd-agents query --report _dd/forensic-dd/runs/latest
 
 ---
 
+## chat
+
+Interactive multi-turn chat about due diligence findings. Explore results, drill into source documents, verify citations, and save insights that persist across sessions.
+
+```bash
+dd-agents chat [OPTIONS]
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--report` | Path | `runs/latest` | Path to the pipeline run directory |
+| `--model` | String | SDK default | Override the LLM model (e.g. `claude-sonnet-4-6`) |
+| `--max-cost` | Float | 2.00 | Maximum session cost in USD |
+| `--no-tools` | Flag | Off | Disable document tools (findings-only mode) |
+| `--verbose / -v` | Flag | Off | Enable verbose logging |
+
+Chat mode provides MCP document tools (citation verification, page reading, entity resolution) and persistent memory. The model can save key insights during conversation and recall them in future sessions.
+
+**In-session commands:**
+- `cost` — show current session cost
+- `history` — show turn count and history size
+- `quit` / `exit` / `q` — end session
+
+**Examples:**
+
+```bash
+# Start chatting about the latest run
+dd-agents chat
+
+# Specify a run directory
+dd-agents chat --report _dd/forensic-dd/runs/latest
+
+# Findings-only mode (no document tools, faster responses)
+dd-agents chat --no-tools
+
+# Higher budget with specific model
+dd-agents chat --max-cost 5.0 --model claude-sonnet-4-6
+```
+
+---
+
 ## portfolio
 
 Manage multiple DD projects and compare across deals.

@@ -184,6 +184,16 @@ Open `dd_report.html` in a browser. See [Reading the Report](reading-report.md) 
 
 ## Post-Run Tools
 
+### Interactive Chat
+
+Explore findings in a multi-turn conversation with document tools and persistent memory:
+
+```bash
+dd-agents chat --report _dd/forensic-dd/runs/latest
+```
+
+Ask follow-up questions, drill into source documents, verify citations — insights are saved automatically and recalled in future sessions.
+
 ### Contract Search
 
 Search contracts with custom questions without running the full pipeline:
@@ -194,11 +204,10 @@ dd-agents search prompts.json --data-room ./data_room
 
 ### Natural Language Query
 
-Ask questions about findings interactively or via a single question:
+Ask a single question about findings (for multi-turn conversations, use `chat` instead):
 
 ```bash
 dd-agents query --report _dd/forensic-dd/runs/latest -q "How many high-severity findings?"
-dd-agents query --report _dd/forensic-dd/runs/latest  # interactive mode
 ```
 
 ### PDF Export
