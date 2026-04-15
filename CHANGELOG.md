@@ -8,6 +8,15 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 > The first public release was **v0.4.0** (2026-03-30). Tagged releases on PyPI and
 > GitHub begin at **v0.4.1**.
 
+## [1.3.1] — 2026-04-14
+
+### Improved
+
+- **Chat: multiline input** — Shift+Enter inserts a newline for composing multi-line messages (iTerm2 key binding: Shift+Return → Send "\n"). Option+Enter works as a fallback in any terminal.
+- **Chat: Esc to cancel** — Press Esc during thinking to cancel the active query and preserve your message for editing.
+- **Chat: word wrap fix** — Markdown output no longer hard-wraps mid-word at the terminal edge. Rich renders with a 2-char margin to prevent Unicode width miscalculation overflow.
+- **Chat: prompt_toolkit input** — Replaced `readline` with `prompt_toolkit` for the input prompt, enabling proper multiline editing, prompt continuation markers, and robust key binding.
+
 ## [1.3.0] — 2026-04-14
 
 ### Added

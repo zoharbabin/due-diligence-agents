@@ -1244,6 +1244,82 @@ def _print_query_result(question: str, result: Any) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Chat query runner with Esc cancellation
+# ---------------------------------------------------------------------------
+
+
+def _run_chat_query(
+    engine: Any,
+    user_input: str,
+    on_tool_status: Any,
+    spinner: Any,
+) -> Any:
+    """Run a chat query in a background thread, watching for Esc to cancel.
+
+    Returns:
+        ChatResponse on success, ``None`` if cancelled by Esc,
+        or an error message string on failure.
+    """
+    import select
+    import sys
+    import threading
+
+    result: dict[str, Any] = {"response": None, "error": None}
+    done = threading.Event()
+
+    def _query() -> None:
+        try:
+            result["response"] = asyncio.run(engine.ask(user_input, on_tool_status=on_tool_status))
+        except Exception as exc:
+            result["error"] = str(exc)
+        finally:
+            done.set()
+
+    thread = threading.Thread(target=_query, daemon=True)
+    thread.start()
+
+    # Watch for Esc key while the query runs.
+    # Esc = 0x1b.  Escape *sequences* (arrow keys, etc.) send 0x1b
+    # followed immediately by more bytes, so we wait 50 ms after
+    # receiving 0x1b — if nothing follows, it was a bare Esc press.
+    cancelled = False
+    try:
+        import termios
+        import tty
+
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        try:
+            tty.setcbreak(fd)
+            while not done.is_set():
+                readable, _, _ = select.select([sys.stdin], [], [], 0.15)
+                if readable:
+                    ch = sys.stdin.read(1)
+                    if ch == "\x1b":
+                        # Bare Esc? Wait briefly for escape-sequence bytes.
+                        more, _, _ = select.select([sys.stdin], [], [], 0.05)
+                        if not more:
+                            cancelled = True
+                            break
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+    except (ImportError, OSError, ValueError):
+        # Not a terminal (piped input, Windows, etc.) — just wait.
+        done.wait()
+
+    if cancelled:
+        spinner.stop()
+        return None
+
+    # Wait for the thread to finish if it hasn't already
+    thread.join(timeout=30)
+
+    if result["error"]:
+        return result["error"]
+    return result["response"]
+
+
+# ---------------------------------------------------------------------------
 # chat command
 # ---------------------------------------------------------------------------
 
@@ -1308,7 +1384,7 @@ def chat(
         logging.basicConfig(level=logging.WARNING, format="%(name)s: %(message)s")
         logging.getLogger("dd_agents").setLevel(logging.DEBUG)
 
-    from dd_agents.chat import BudgetExhaustedError, ChatConfig, ChatEngine
+    from dd_agents.chat import ChatConfig, ChatEngine
 
     # Resolve report directory
     if report_dir is None:
@@ -1365,15 +1441,44 @@ def chat(
             f"Report: {report_dir}\n"
             f"Findings: {engine.finding_count}{memory_note}\n"
             f"Budget: ${max_cost:.2f}\n"
-            f"Type [bold]quit[/bold] to exit, [bold]cost[/bold] for session cost.",
+            f"[bold]Enter[/bold] send · [bold]Shift+Enter[/bold] newline · "
+            f"[bold]Esc[/bold] cancel · [bold]Ctrl+C[/bold] exit",
             title="Chat",
             border_style="green",
         )
     )
     console.print()
 
-    # Enable arrow-key editing and history in the input prompt
-    import readline  # noqa: F401 — enables arrow keys + line editing for input()
+    # Build multiline prompt session.
+    # Enter (\r = ControlM) = send.
+    # Shift+Enter = newline — iTerm2 sends \n (ControlJ) for Shift+Return
+    #   via its key binding: Settings > Keys > Key Bindings > Send "\n".
+    # Option+Enter (Alt+Enter) = newline (standard terminal fallback).
+    from prompt_toolkit import PromptSession
+    from prompt_toolkit.key_binding import KeyBindings
+
+    _kb = KeyBindings()
+
+    @_kb.add("enter", eager=True)
+    def _kb_submit(event: Any) -> None:
+        """Enter (\r) = send message."""
+        event.current_buffer.validate_and_handle()
+
+    @_kb.add("c-j")
+    def _kb_newline_shift_enter(event: Any) -> None:
+        """Shift+Enter — iTerm2 sends \n (ControlJ) for Shift+Return."""
+        event.current_buffer.insert_text("\n")
+
+    @_kb.add("escape", "enter")
+    def _kb_newline_alt_enter(event: Any) -> None:
+        """Option+Enter (Alt+Enter) — standard terminal fallback."""
+        event.current_buffer.insert_text("\n")
+
+    _prompt_session: PromptSession[str] = PromptSession(
+        multiline=True,
+        key_bindings=_kb,
+        prompt_continuation="  ",
+    )
 
     # Human-readable labels for tool status updates
     _tool_labels: dict[str, str] = {
@@ -1387,16 +1492,24 @@ def chat(
         "batch_verify_citations": "Verifying citations",
         "save_memory": "Saving memory",
         "search_chat_memory": "Searching memories",
+        "flag_finding": "Flagging finding",
+        "list_corrections": "Loading corrections",
         "Read": "Reading file",
         "Glob": "Searching files",
         "Grep": "Searching content",
     }
 
     # Interactive loop
+    _prefill = ""
     while True:
         try:
-            user_input = input("> ")
-        except (EOFError, KeyboardInterrupt):
+            user_input = _prompt_session.prompt("> ", default=_prefill)
+            _prefill = ""
+        except KeyboardInterrupt:
+            # Ctrl+C = close app
+            console.print("\n[dim]Goodbye.[/dim]")
+            break
+        except EOFError:
             console.print("\n[dim]Goodbye.[/dim]")
             break
 
@@ -1413,59 +1526,64 @@ def chat(
             console.print(f"[dim]Turns: {engine.turn_count}, History: {engine.history_chars} chars[/dim]")
             continue
 
-        try:
-            spinner = console.status("[dim]Thinking...[/dim]", spinner="dots")
-            spinner.start()
+        spinner = console.status("[dim]Thinking...[/dim]", spinner="dots")
+        spinner.start()
 
-            def _on_tool_status(
-                tool_name: str,
-                _spinner: Any = spinner,
-                _labels: dict[str, str] = _tool_labels,
-            ) -> None:
-                label = _labels.get(tool_name, tool_name.replace("_", " ").title())
-                # Strip mcp__ prefix for display
-                if label.startswith("mcp__"):
-                    label = label.split("__")[-1].replace("_", " ").title()
-                _spinner.update(f"[dim]{label}...[/dim]")
+        def _on_tool_status(
+            tool_name: str,
+            _spinner: Any = spinner,
+            _labels: dict[str, str] = _tool_labels,
+        ) -> None:
+            label = _labels.get(tool_name, tool_name.replace("_", " ").title())
+            if label.startswith("mcp__"):
+                label = label.split("__")[-1].replace("_", " ").title()
+            _spinner.update(f"[dim]{label}...[/dim]")
 
-            response = asyncio.run(engine.ask(user_input, on_tool_status=_on_tool_status))
-            spinner.stop()
+        response = _run_chat_query(engine, user_input, _on_tool_status, spinner)
+        spinner.stop()
 
-            # Render the complete response as markdown
-            console.print()
-            console.print(Markdown(response.text))
+        if response is None:
+            # Esc was pressed — preserve message for editing
+            console.print("\n[dim]Cancelled. Your message is preserved — edit or resend.[/dim]")
+            _prefill = user_input
+            continue
 
-            # Footer: tools, memory, cost
-            footer_parts: list[str] = []
-            if verbose and response.tools_used:
-                footer_parts.append(f"Tools: {', '.join(response.tools_used)}")
-            if response.memories_saved > 0:
-                label = "memory" if response.memories_saved == 1 else "memories"
-                footer_parts.append(f"{response.memories_saved} {label} saved")
-            footer_parts.append(
-                f"Turn {response.turn_number} | ${response.estimated_cost:.4f} | ${response.session_cost:.4f} total"
-            )
-            console.print(f"[dim]{'  ·  '.join(footer_parts)}[/dim]")
-            console.rule(style="dim")
-
-        except BudgetExhaustedError:
-            spinner.stop()
-            console.print(
-                f"\n[bold yellow]Session budget exhausted (${max_cost:.2f}).[/bold yellow]\n"
-                "Start a new session to continue."
-            )
-            break
-        except Exception as exc:
-            spinner.stop()
-            err_msg = str(exc)
-            # Collapse noisy SDK subprocess errors into a clean message
+        if isinstance(response, str):
+            # Error message
+            err_msg = response
             if "exit code" in err_msg or "Fatal error" in err_msg:
                 console.print("\n[yellow]The agent encountered an error processing this request.[/yellow]")
                 console.print("[dim]Try rephrasing your question or use --verbose for details.[/dim]")
+            elif "budget exhausted" in err_msg.lower():
+                console.print(
+                    f"\n[bold yellow]Session budget exhausted (${max_cost:.2f}).[/bold yellow]\n"
+                    "Start a new session to continue."
+                )
+                break
             else:
                 console.print(f"\n[red]Error: {err_msg}[/red]")
             if verbose:
-                console.print(f"[dim]{traceback.format_exc()}[/dim]")
+                console.print(f"[dim]{err_msg}[/dim]")
+            continue
+
+        # Render the complete response as markdown.
+        # width - 2 prevents terminal hard-wrap when Rich miscalculates
+        # the visual width of Unicode characters (em dashes, curly quotes).
+        console.print()
+        console.print(Markdown(response.text), width=console.width - 2)
+
+        # Footer: tools, memory, cost
+        footer_parts: list[str] = []
+        if verbose and response.tools_used:
+            footer_parts.append(f"Tools: {', '.join(response.tools_used)}")
+        if response.memories_saved > 0:
+            label = "memory" if response.memories_saved == 1 else "memories"
+            footer_parts.append(f"{response.memories_saved} {label} saved")
+        footer_parts.append(
+            f"Turn {response.turn_number} | ${response.estimated_cost:.4f} | ${response.session_cost:.4f} total"
+        )
+        console.print(f"[dim]{'  ·  '.join(footer_parts)}[/dim]")
+        console.rule(style="dim")
 
     # Finalize session (save transcript, fallback summarization)
     try:
