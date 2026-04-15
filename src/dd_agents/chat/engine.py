@@ -106,7 +106,7 @@ class ChatResponse(BaseModel):
 # MCP tools available in chat mode
 CHAT_READ_TOOLS: list[str] = ["Read", "Glob", "Grep"]
 
-# Custom MCP tools (document + memory)
+# Custom MCP tools (document + memory + corrections)
 CHAT_MCP_TOOL_NAMES: list[str] = [
     "verify_citation",
     "search_in_file",
@@ -118,6 +118,8 @@ CHAT_MCP_TOOL_NAMES: list[str] = [
     "batch_verify_citations",
     "save_memory",
     "search_chat_memory",
+    "flag_finding",
+    "list_corrections",
 ]
 
 # Cost estimation constants
@@ -192,12 +194,19 @@ class ChatEngine:
         self._memory_store = ChatMemoryStore(chat_dir)
         self._memory_store.ensure_dirs()
 
+        # Correction store (chat-to-pipeline feedback)
+        from dd_agents.chat.corrections import CorrectionStore
+
+        self._correction_store = CorrectionStore(chat_dir)
+        self._correction_store.ensure_dirs()
+
         # Build context and cache system prompt
         self._context_builder = ChatContextBuilder(
             finding_index=self._index,
             knowledge_base=self._kb,
             chronicle=self._chronicle,
             memory_store=self._memory_store,
+            correction_store=self._correction_store,
             run_dir=run_dir,
         )
         self._system_prompt = self._context_builder.build_system_prompt()
@@ -234,6 +243,11 @@ class ChatEngine:
     def memory_count(self) -> int:
         """Total memories in the store (across all sessions)."""
         return self._memory_store.memory_count
+
+    @property
+    def correction_count(self) -> int:
+        """Total finding corrections stored."""
+        return self._correction_store.correction_count
 
     # ------------------------------------------------------------------
     # Core: ask
@@ -492,6 +506,8 @@ class ChatEngine:
                 agent_type="chat",
                 memory_store=self._memory_store,
                 session_id=self._session_id,
+                correction_store=self._correction_store,
+                finding_index=self._index,
                 **ctx,
             )
             return self._mcp_server

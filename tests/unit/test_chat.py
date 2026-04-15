@@ -473,7 +473,7 @@ class TestToolServerChat:
         from dd_agents.tools.server import get_tools_for_agent
 
         tools = get_tools_for_agent("chat")
-        assert len(tools) == 10
+        assert len(tools) == 12
 
     def test_chat_tools_include_memory(self) -> None:
         from dd_agents.tools.server import get_tools_for_agent
@@ -518,6 +518,300 @@ class TestChatCLI:
         assert "--max-cost" in result.output
         assert "--no-tools" in result.output
         assert "--verbose" in result.output
+
+
+# ===================================================================
+# CorrectionStore
+# ===================================================================
+
+
+class TestCorrectionStore:
+    """Tests for CorrectionStore."""
+
+    def _make_correction(
+        self,
+        title: str = "Test finding",
+        action: str = "dismiss",
+        new_severity: str | None = None,
+        subject: str = "acme_corp",
+        finding_id: str = "forensic-dd_legal_acme_corp_0001",
+    ) -> Any:
+        from dd_agents.chat.corrections import CorrectionAction, FindingCorrection, generate_correction_id
+
+        return FindingCorrection(
+            id=generate_correction_id(),
+            timestamp="2026-04-14T12:00:00+00:00",
+            session_id="chat_20260414_120000",
+            finding_id=finding_id,
+            finding_title=title,
+            action=CorrectionAction(action),
+            original_severity="P1",
+            new_severity=new_severity,
+            reason="No supporting evidence in source documents",
+            subject=subject,
+            match_score=95.0,
+        )
+
+    def test_save_correction_creates_file(self, tmp_path: Path) -> None:
+        from dd_agents.chat.corrections import CorrectionStore
+
+        store = CorrectionStore(tmp_path / "chat")
+        corr = self._make_correction()
+        store.save_correction(corr)
+        assert (tmp_path / "chat" / "corrections.jsonl").exists()
+
+    def test_save_and_load_correction(self, tmp_path: Path) -> None:
+        from dd_agents.chat.corrections import CorrectionStore
+
+        store = CorrectionStore(tmp_path / "chat")
+        corr = self._make_correction("Broadridge exclusivity clause")
+        store.save_correction(corr)
+        loaded = store.load_corrections()
+        assert len(loaded) == 1
+        assert loaded[0].finding_title == "Broadridge exclusivity clause"
+        assert loaded[0].action == "dismiss"
+
+    def test_load_corrections_filter_by_subject(self, tmp_path: Path) -> None:
+        from dd_agents.chat.corrections import CorrectionStore
+
+        store = CorrectionStore(tmp_path / "chat")
+        store.save_correction(self._make_correction("Finding A", subject="acme_corp"))
+        store.save_correction(self._make_correction("Finding B", subject="beta_inc"))
+        store.save_correction(self._make_correction("Finding C", subject="acme_corp"))
+
+        acme = store.load_corrections(subject="acme_corp")
+        assert len(acme) == 2
+        beta = store.load_corrections(subject="beta_inc")
+        assert len(beta) == 1
+
+    def test_corrections_by_finding_id_last_wins(self, tmp_path: Path) -> None:
+        from dd_agents.chat.corrections import CorrectionStore
+
+        store = CorrectionStore(tmp_path / "chat")
+        fid = "forensic-dd_legal_acme_corp_0001"
+        store.save_correction(self._make_correction("First", action="dismiss", finding_id=fid))
+        store.save_correction(self._make_correction("Second", action="downgrade", new_severity="P2", finding_id=fid))
+
+        by_id = store.corrections_by_finding_id()
+        assert fid in by_id
+        assert by_id[fid].action == "downgrade"
+
+    def test_match_finding_exact(self, tmp_path: Path) -> None:
+        from dd_agents.chat.corrections import CorrectionStore
+
+        findings = [
+            {"title": "Change of control termination risk", "id": "f1"},
+            {"title": "Revenue recognition concern", "id": "f2"},
+        ]
+        matched, score = CorrectionStore.match_finding("Change of control termination risk", findings)
+        assert matched is not None
+        assert matched["id"] == "f1"
+        assert score >= 95.0
+
+    def test_match_finding_fuzzy(self, tmp_path: Path) -> None:
+        from dd_agents.chat.corrections import CorrectionStore
+
+        findings = [
+            {"title": "Change of control termination risk", "id": "f1"},
+            {"title": "Revenue recognition concern", "id": "f2"},
+        ]
+        matched, score = CorrectionStore.match_finding("change of control termination", findings)
+        assert matched is not None
+        assert matched["id"] == "f1"
+        assert score >= 65.0
+
+    def test_match_finding_no_match(self, tmp_path: Path) -> None:
+        from dd_agents.chat.corrections import CorrectionStore
+
+        findings = [{"title": "Some unrelated finding", "id": "f1"}]
+        matched, score = CorrectionStore.match_finding("xyz completely different", findings)
+        assert matched is None
+        assert score == 0.0
+
+    def test_correction_count(self, tmp_path: Path) -> None:
+        from dd_agents.chat.corrections import CorrectionStore
+
+        store = CorrectionStore(tmp_path / "chat")
+        assert store.correction_count == 0
+        store.save_correction(self._make_correction())
+        assert store.correction_count == 1
+        store.save_correction(self._make_correction("Second"))
+        assert store.correction_count == 2
+
+    def test_cache_invalidation(self, tmp_path: Path) -> None:
+        from dd_agents.chat.corrections import CorrectionStore
+
+        store = CorrectionStore(tmp_path / "chat")
+        store.save_correction(self._make_correction("First"))
+        assert store.correction_count == 1
+
+        # Write directly to the file to simulate external modification
+        import time
+
+        time.sleep(0.05)  # ensure mtime changes
+        corrections_path = tmp_path / "chat" / "corrections.jsonl"
+        from dd_agents.chat.corrections import FindingCorrection, generate_correction_id
+
+        extra = FindingCorrection(
+            id=generate_correction_id(),
+            timestamp="2026-04-14T13:00:00+00:00",
+            session_id="chat_external",
+            finding_id="ext_001",
+            finding_title="External correction",
+            action="dismiss",
+            original_severity="P0",
+            reason="External",
+            subject="acme_corp",
+            match_score=100.0,
+        )
+        with corrections_path.open("a", encoding="utf-8") as f:
+            f.write(extra.model_dump_json() + "\n")
+
+        # Store should detect the mtime change and reload
+        assert store.correction_count == 2
+
+
+# ===================================================================
+# CorrectionContext
+# ===================================================================
+
+
+class TestCorrectionContext:
+    """Tests for correction integration in ChatContextBuilder."""
+
+    @pytest.fixture()
+    def mock_index(self) -> Any:
+        """Create a minimal FindingIndex-like object."""
+        findings = [
+            {
+                "severity": "P0",
+                "agent": "legal",
+                "_subject_safe_name": "acme_corp",
+                "title": "Change of control termination",
+                "citations": [{"source_path": "MSA.pdf", "page_number": 15}],
+                "category": "change_of_control",
+                "id": "forensic-dd_legal_acme_corp_0001",
+            },
+            {
+                "severity": "P1",
+                "agent": "finance",
+                "_subject_safe_name": "beta_inc",
+                "title": "Revenue recognition concern",
+                "citations": [{"source_path": "LOI.pdf", "page_number": 3}],
+                "category": "revenue",
+                "id": "forensic-dd_finance_beta_inc_0001",
+            },
+        ]
+        from dd_agents.query.indexer import FindingIndexer
+
+        return FindingIndexer().index_findings(findings)
+
+    def test_system_prompt_includes_corrections_section(self, mock_index: Any, tmp_path: Path) -> None:
+        from dd_agents.chat.context import ChatContextBuilder
+        from dd_agents.chat.corrections import (
+            CorrectionAction,
+            CorrectionStore,
+            FindingCorrection,
+            generate_correction_id,
+        )
+
+        store = CorrectionStore(tmp_path / "chat")
+        store.save_correction(
+            FindingCorrection(
+                id=generate_correction_id(),
+                timestamp="2026-04-14T12:00:00+00:00",
+                session_id="chat_test",
+                finding_id="forensic-dd_legal_acme_corp_0001",
+                finding_title="Change of control termination",
+                action=CorrectionAction.DISMISS,
+                original_severity="P0",
+                reason="No evidence in source docs",
+                subject="acme_corp",
+                match_score=100.0,
+            )
+        )
+
+        builder = ChatContextBuilder(finding_index=mock_index, correction_store=store)
+        prompt = builder.build_system_prompt()
+        assert "ACTIVE FINDING CORRECTIONS" in prompt
+        assert "[DISMISSED]" in prompt
+        assert "No evidence in source docs" in prompt
+
+    def test_digest_marks_dismissed_finding(self, mock_index: Any, tmp_path: Path) -> None:
+        from dd_agents.chat.context import ChatContextBuilder
+        from dd_agents.chat.corrections import (
+            CorrectionAction,
+            CorrectionStore,
+            FindingCorrection,
+            generate_correction_id,
+        )
+
+        store = CorrectionStore(tmp_path / "chat")
+        store.save_correction(
+            FindingCorrection(
+                id=generate_correction_id(),
+                timestamp="2026-04-14T12:00:00+00:00",
+                session_id="chat_test",
+                finding_id="forensic-dd_legal_acme_corp_0001",
+                finding_title="Change of control termination",
+                action=CorrectionAction.DISMISS,
+                original_severity="P0",
+                reason="Unsupported",
+                subject="acme_corp",
+                match_score=100.0,
+            )
+        )
+
+        builder = ChatContextBuilder(finding_index=mock_index, correction_store=store)
+        digest = builder.build_findings_digest()
+        assert "[DISMISSED]" in digest
+
+    def test_digest_marks_severity_change(self, mock_index: Any, tmp_path: Path) -> None:
+        from dd_agents.chat.context import ChatContextBuilder
+        from dd_agents.chat.corrections import (
+            CorrectionAction,
+            CorrectionStore,
+            FindingCorrection,
+            generate_correction_id,
+        )
+
+        store = CorrectionStore(tmp_path / "chat")
+        store.save_correction(
+            FindingCorrection(
+                id=generate_correction_id(),
+                timestamp="2026-04-14T12:00:00+00:00",
+                session_id="chat_test",
+                finding_id="forensic-dd_finance_beta_inc_0001",
+                finding_title="Revenue recognition concern",
+                action=CorrectionAction.DOWNGRADE,
+                original_severity="P1",
+                new_severity="P2",
+                reason="Overstated risk",
+                subject="beta_inc",
+                match_score=100.0,
+            )
+        )
+
+        builder = ChatContextBuilder(finding_index=mock_index, correction_store=store)
+        digest = builder.build_findings_digest()
+        assert "P1" in digest
+        assert "P2" in digest
+
+
+# ===================================================================
+# Chat tool includes corrections
+# ===================================================================
+
+
+class TestToolServerChatCorrections:
+    """Tests for correction tools in chat tool configuration."""
+
+    def test_chat_tools_include_corrections(self) -> None:
+        from dd_agents.tools.server import get_tools_for_agent
+
+        tools = get_tools_for_agent("chat")
+        assert "flag_finding" in tools
+        assert "list_corrections" in tools
 
 
 # ===================================================================

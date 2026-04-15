@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from dd_agents.chat.corrections import CorrectionStore
     from dd_agents.chat.history import ConversationHistory
     from dd_agents.chat.memory import ChatMemoryStore
     from dd_agents.knowledge.base import DealKnowledgeBase
@@ -32,6 +33,7 @@ _BUDGET_P0P1_DIGEST: int = 5_000
 _BUDGET_P2_SAMPLE: int = 2_000
 _BUDGET_SUBJECTS: int = 1_500
 _BUDGET_MEMORIES: int = 2_000
+_BUDGET_CORRECTIONS: int = 500
 _BUDGET_KB_TIMELINE: int = 500
 
 # ---------------------------------------------------------------------------
@@ -57,6 +59,10 @@ save_memory tool. Save concise, actionable memories (1-3 sentences) — \
 not conversation summaries.
 7. Use search_chat_memory to recall prior conclusions when relevant to \
 the current question.
+8. When you discover a pipeline finding that is incorrect, unsupported by \
+source documents, or has the wrong severity, use the flag_finding tool to \
+record a correction. Corrections persist across sessions and are applied \
+during the next pipeline run. Use list_corrections to review existing ones.
 """
 
 
@@ -73,6 +79,8 @@ class ChatContextBuilder:
         Analysis chronicle (optional).
     memory_store:
         Persistent chat memory store (optional).
+    correction_store:
+        Persistent finding correction store (optional).
     run_dir:
         Path to the pipeline run directory (for loading metadata).
     """
@@ -83,12 +91,14 @@ class ChatContextBuilder:
         knowledge_base: DealKnowledgeBase | None = None,
         chronicle: AnalysisChronicle | None = None,
         memory_store: ChatMemoryStore | None = None,
+        correction_store: CorrectionStore | None = None,
         run_dir: Path | None = None,
     ) -> None:
         self._index = finding_index
         self._kb = knowledge_base
         self._chronicle = chronicle
         self._memory_store = memory_store
+        self._correction_store = correction_store
         self._run_dir = run_dir
 
     def build_system_prompt(self) -> str:
@@ -122,7 +132,12 @@ class ChatContextBuilder:
         if memories_section:
             parts.append(f"\n{memories_section}")
 
-        # 7. KB timeline
+        # 7. Active corrections from prior chat sessions
+        corrections_section = self._build_corrections_section()
+        if corrections_section:
+            parts.append(f"\n{corrections_section}")
+
+        # 8. KB timeline
         timeline = self._build_timeline()
         if timeline:
             parts.append(f"\n{timeline}")
@@ -152,15 +167,21 @@ class ChatContextBuilder:
         """Build a compact digest of findings ordered by severity.
 
         P0 and P1 findings are listed first, followed by a sample of P2.
-        Each finding is formatted as a one-liner.
+        Each finding is formatted as a one-liner.  Findings that have been
+        corrected are annotated with ``[DISMISSED]`` or ``[was P1->P2]``.
         """
+        # Build correction lookup for annotation
+        corrections_by_id: dict[str, Any] = {}
+        if self._correction_store is not None:
+            corrections_by_id = self._correction_store.corrections_by_finding_id()
+
         parts: list[str] = []
         chars_used = 0
 
         severity_labels = {
             "P0": "CRITICAL FINDINGS (P0):",
             "P1": "HIGH FINDINGS (P1):",
-            "P2": "MEDIUM FINDINGS (P2 — sample):",
+            "P2": "MEDIUM FINDINGS (P2 \u2014 sample):",
         }
 
         for sev in ("P0", "P1", "P2"):
@@ -175,6 +196,14 @@ class ChatContextBuilder:
             for idx in indices[:max_items]:
                 f = self._index.findings[idx]
                 line = self._format_finding_oneliner(f)
+                # Annotate corrected findings
+                fid = f.get("id", f.get("_id", ""))
+                corr = corrections_by_id.get(str(fid))
+                if corr is not None:
+                    if corr.action == "dismiss":
+                        line = f"[DISMISSED] {line}"
+                    elif corr.new_severity and corr.original_severity:
+                        line = f"[was {corr.original_severity}\u2192{corr.new_severity}] {line}"
                 if chars_used + len(line) + len(label) > max_chars:
                     break
                 section_lines.append(f"- {line}")
@@ -264,6 +293,35 @@ class ChatContextBuilder:
                 break
             lines.append(line)
             chars += len(line) + 1  # newline
+
+        return "\n".join(lines) if len(lines) > 1 else ""
+
+    def _build_corrections_section(self) -> str:
+        """Build a section listing active finding corrections."""
+        if self._correction_store is None:
+            return ""
+        corrections = self._correction_store.load_corrections()
+        if not corrections:
+            return ""
+
+        lines = ["ACTIVE FINDING CORRECTIONS:"]
+        chars = len(lines[0])
+        for c in corrections:
+            if c.action == "dismiss":
+                tag = "[DISMISSED]"
+            elif c.new_severity and c.original_severity:
+                tag = f"[{c.original_severity}\u2192{c.new_severity}]"
+            elif c.action == "upgrade":
+                tag = "[UPGRADED]"
+            elif c.action == "downgrade":
+                tag = "[DOWNGRADED]"
+            else:
+                tag = f"[{c.action.upper()}]"
+            line = f"- {tag} {c.finding_title} \u2014 {c.reason}"
+            if chars + len(line) > _BUDGET_CORRECTIONS:
+                break
+            lines.append(line)
+            chars += len(line) + 1
 
         return "\n".join(lines) if len(lines) > 1 else ""
 

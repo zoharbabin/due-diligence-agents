@@ -376,7 +376,7 @@ JUDGE_CUSTOM_TOOLS: list[str] = [
     "batch_verify_citations",
 ]
 
-# Chat: read-only document tools + persistent memory (custom tools only)
+# Chat: read-only document tools + persistent memory + corrections (custom tools only)
 CHAT_CUSTOM_TOOLS: list[str] = [
     "verify_citation",
     "get_subject_files",
@@ -388,6 +388,8 @@ CHAT_CUSTOM_TOOLS: list[str] = [
     "batch_verify_citations",
     "save_memory",
     "search_chat_memory",
+    "flag_finding",
+    "list_corrections",
 ]
 
 

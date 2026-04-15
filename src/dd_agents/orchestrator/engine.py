@@ -2601,6 +2601,11 @@ class PipelineEngine:
             expected_subjects=state.subject_safe_names or None,
         )
 
+        # Apply chat-originated corrections (if any)
+        correction_count = merger.apply_corrections(merged, self.project_dir)
+        if correction_count:
+            logger.info("Applied %d chat corrections before writing merged output", correction_count)
+
         # Write merged files
         merged_dir = findings_dir / "merged"
         merger.write_merged(merged, merged_dir)

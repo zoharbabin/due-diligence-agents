@@ -35,6 +35,8 @@ def build_mcp_server(
     file_precedence: dict[str, float] | None = None,
     memory_store: Any | None = None,
     session_id: str = "",
+    correction_store: Any | None = None,
+    finding_index: Any | None = None,
 ) -> Any | None:
     """Build an in-process MCP server with DD tools for the given agent type.
 
@@ -559,6 +561,149 @@ def build_mcp_server(
             }
 
         tools.append(search_chat_memory_tool)
+
+    # ------------------------------------------------------------------
+    # Finding correction tools (only for agent_type="chat")
+    # ------------------------------------------------------------------
+
+    if "flag_finding" in allowed_tool_names and correction_store is not None and finding_index is not None:
+        from dd_agents.chat.corrections import CorrectionAction, FindingCorrection, generate_correction_id
+
+        _flag_corr_store = correction_store
+        _flag_finding_index = finding_index
+        _flag_session_id = session_id
+
+        @tool(
+            "flag_finding",
+            "Flag a pipeline finding as incorrect — dismiss it, upgrade/downgrade its severity, "
+            "or adjust its content. The correction is persisted and applied on the next pipeline run.",
+            {
+                "type": "object",
+                "properties": {
+                    "finding_title": {
+                        "type": "string",
+                        "description": "Title (or close match) of the finding to correct",
+                    },
+                    "action": {
+                        "type": "string",
+                        "enum": ["dismiss", "downgrade", "upgrade", "adjust"],
+                        "description": "Correction action: dismiss, downgrade, upgrade, or adjust",
+                    },
+                    "new_severity": {
+                        "type": "string",
+                        "enum": ["P0", "P1", "P2", "P3"],
+                        "description": "New severity level (required for downgrade/upgrade)",
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "Justification for the correction",
+                    },
+                },
+                "required": ["finding_title", "action", "reason"],
+            },
+        )
+        async def flag_finding_tool(input_data: dict[str, Any]) -> dict[str, Any]:
+            from datetime import datetime
+
+            title = input_data["finding_title"]
+            action = input_data["action"]
+            new_severity = input_data.get("new_severity")
+            reason = input_data["reason"]
+
+            # Validate action
+            try:
+                action_enum = CorrectionAction(action)
+            except ValueError:
+                return {"error": f"Invalid action: {action}. Use: dismiss, downgrade, upgrade, adjust"}
+
+            # Severity changes require new_severity
+            if action_enum in (CorrectionAction.DOWNGRADE, CorrectionAction.UPGRADE) and not new_severity:
+                return {"error": f"Action '{action}' requires new_severity (P0-P3)"}
+
+            # Fuzzy-match against indexed findings
+            matched, score = _flag_corr_store.match_finding(title, _flag_finding_index.findings, threshold=65)
+            if matched is None:
+                return {
+                    "error": f"No finding matched '{title}' (best score below threshold). "
+                    "Try using the exact finding title from the digest.",
+                }
+
+            matched_id = matched.get("id", matched.get("_id", ""))
+            matched_title = matched.get("title", "")
+            matched_severity = matched.get("severity", "")
+            matched_subject = matched.get("_subject_safe_name", matched.get("analysis_unit", ""))
+
+            correction = FindingCorrection(
+                id=generate_correction_id(),
+                timestamp=datetime.now(tz=UTC).isoformat(),
+                session_id=_flag_session_id,
+                finding_id=str(matched_id),
+                finding_title=matched_title,
+                action=action_enum,
+                original_severity=str(matched_severity),
+                new_severity=new_severity,
+                reason=reason,
+                subject=str(matched_subject),
+                match_score=score,
+            )
+            _flag_corr_store.save_correction(correction)
+
+            result: dict[str, Any] = {
+                "status": "correction_saved",
+                "correction_id": correction.id,
+                "matched_finding": matched_title,
+                "match_score": round(score, 1),
+                "action": action,
+                "original_severity": matched_severity,
+            }
+            if new_severity:
+                result["new_severity"] = new_severity
+            return result
+
+        tools.append(flag_finding_tool)
+
+    if "list_corrections" in allowed_tool_names and correction_store is not None:
+        _list_corr_store = correction_store
+
+        @tool(
+            "list_corrections",
+            "List all finding corrections that have been flagged in chat sessions.",
+            {
+                "type": "object",
+                "properties": {
+                    "subject": {
+                        "type": "string",
+                        "description": "Filter by subject safe name (optional)",
+                    },
+                },
+                "required": [],
+            },
+        )
+        async def list_corrections_tool(input_data: dict[str, Any]) -> dict[str, Any]:
+            subject = input_data.get("subject")
+            corrections = _list_corr_store.load_corrections(subject=subject)
+            items = []
+            for c in corrections:
+                item: dict[str, Any] = {
+                    "id": c.id,
+                    "finding_title": c.finding_title,
+                    "action": c.action,
+                    "reason": c.reason,
+                    "timestamp": c.timestamp,
+                }
+                if c.original_severity:
+                    item["original_severity"] = c.original_severity
+                if c.new_severity:
+                    item["new_severity"] = c.new_severity
+                if c.subject:
+                    item["subject"] = c.subject
+                items.append(item)
+            return {
+                "corrections": items,
+                "total": len(items),
+            }
+
+        tools.append(list_corrections_tool)
 
     if not tools:
         logger.debug("No tools registered for agent_type=%r", agent_type)

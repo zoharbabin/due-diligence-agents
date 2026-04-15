@@ -1542,6 +1542,80 @@ class FindingMerger:
         return gaps
 
     # ------------------------------------------------------------------
+    # Chat-to-pipeline corrections overlay
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def apply_corrections(
+        merged: dict[str, MergedSubjectOutput],
+        project_dir: Path,
+    ) -> int:
+        """Apply chat-originated finding corrections to merged output.
+
+        Loads corrections from the chat directory and applies them
+        non-destructively to the merged findings.  Original severity is
+        preserved in ``metadata["_original_severity"]`` for audit trail.
+
+        Returns the number of corrections applied.
+        """
+        chat_dir = project_dir / "_dd" / "forensic-dd" / "chat"
+        corrections_path = chat_dir / "corrections.jsonl"
+        if not corrections_path.exists():
+            return 0
+
+        from dd_agents.chat.corrections import CorrectionStore
+
+        store = CorrectionStore(chat_dir)
+        corrections = store.corrections_by_finding_id()
+        if not corrections:
+            return 0
+
+        applied = 0
+        for _subject, mco in merged.items():
+            for finding in mco.findings:
+                fid = finding.id
+                corr = corrections.get(fid)
+
+                # Fallback: fuzzy title match for cross-run stability
+                if corr is None:
+                    all_corrections = store.load_corrections()
+                    for c in all_corrections:
+                        from rapidfuzz import fuzz
+
+                        score = fuzz.token_sort_ratio(finding.title.lower(), c.finding_title.lower())
+                        if score >= 80:
+                            corr = c
+                            break
+
+                if corr is None:
+                    continue
+
+                meta = finding.metadata or {}
+                if corr.action == "dismiss":
+                    meta["_dismissed"] = True
+                    meta["_original_severity"] = finding.severity.value
+                    meta["_correction_id"] = corr.id
+                    meta["_correction_reason"] = corr.reason
+                    finding.metadata = meta
+                    applied += 1
+                elif corr.action in ("downgrade", "upgrade") and corr.new_severity:
+                    meta["_original_severity"] = finding.severity.value
+                    meta["_correction_id"] = corr.id
+                    meta["_correction_reason"] = corr.reason
+                    finding.severity = Severity(corr.new_severity)
+                    finding.metadata = meta
+                    applied += 1
+                elif corr.action == "adjust":
+                    meta["_correction_id"] = corr.id
+                    meta["_correction_reason"] = corr.reason
+                    finding.metadata = meta
+                    applied += 1
+
+        if applied:
+            logger.info("Applied %d chat corrections to merged findings", applied)
+        return applied
+
+    # ------------------------------------------------------------------
     # Pre-generation citation validation (Issue #48)
     # ------------------------------------------------------------------
 

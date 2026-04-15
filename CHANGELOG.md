@@ -8,6 +8,15 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 > The first public release was **v0.4.0** (2026-03-30). Tagged releases on PyPI and
 > GitHub begin at **v0.4.1**.
 
+## [1.3.0] — 2026-04-14
+
+### Added
+
+- **Finding Corrections** — Chat mode can now flag incorrect pipeline findings. When the model discovers a hallucinated or mis-severity finding, it uses the `flag_finding` tool to record a correction. Corrections persist across sessions and are applied during the next pipeline run's merge step.
+- **Correction MCP Tools** — Two new chat tools: `flag_finding` (fuzzy-match a finding by title, dismiss/downgrade/upgrade/adjust with justification) and `list_corrections` (view all active corrections, filterable by subject).
+- **Pipeline Integration** — `FindingMerger.apply_corrections()` loads corrections from JSONL and applies them non-destructively during step 24 (merge/dedup). Original severity preserved in metadata for audit trail.
+- **Corrections in System Prompt** — Active corrections shown in chat context as `[DISMISSED]` or `[P1->P2]` annotations, so future sessions see prior corrections immediately.
+
 ## [1.2.1] — 2026-04-14
 
 ### Fixed
