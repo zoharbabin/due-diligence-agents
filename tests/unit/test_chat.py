@@ -430,7 +430,7 @@ class TestChatEngine:
         config = ChatConfig(enable_tools=True)
         engine = ChatEngine(run_dir=run_dir, project_dir=project_dir, config=config)
         tools = engine._get_allowed_tools()
-        assert "Read" in tools
+        assert "Read" not in tools  # Read disabled to prevent buffer overflow
         assert "Glob" in tools
         assert "Grep" in tools
         for t in CHAT_MCP_TOOL_NAMES:
@@ -459,6 +459,55 @@ class TestChatEngine:
         engine = ChatEngine(run_dir=run_dir, project_dir=project_dir)
         assert engine._memory_store is not None
         assert (project_dir / "_dd" / "forensic-dd" / "chat").is_dir()
+
+    def test_default_max_turns_high_enough_for_document_analysis(self) -> None:
+        """Default max_turns_per_query must be >= 50 for complex document analysis."""
+        from dd_agents.chat.engine import ChatConfig
+
+        config = ChatConfig()
+        assert config.max_turns_per_query >= 50
+
+    @pytest.mark.skipif(
+        not _sdk_available(),
+        reason="claude-agent-sdk not installed",
+    )
+    def test_ask_handles_max_turns_gracefully(self, run_dir: Path, project_dir: Path) -> None:
+        """Engine should use collected text (not show an error) when max_turns is hit."""
+        import asyncio
+        from unittest.mock import MagicMock, patch
+
+        from dd_agents.chat.engine import ChatConfig, ChatEngine
+
+        config = ChatConfig(enable_tools=False, max_turns_per_query=5)
+        engine = ChatEngine(run_dir=run_dir, project_dir=project_dir, config=config)
+
+        # Simulate the SDK yielding text then a max_turns ResultMessage,
+        # then raising ProcessError (exit code 1).
+        from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
+
+        text_block = TextBlock(text="Here is a partial analysis of the findings.")
+        assistant_msg = MagicMock(spec=AssistantMessage)
+        assistant_msg.content = [text_block]
+
+        result_msg = MagicMock(spec=ResultMessage)
+        result_msg.is_error = True
+        result_msg.subtype = "error_max_turns"
+        result_msg.result = None
+
+        class _FakeProcessError(Exception):
+            pass
+
+        async def _fake_query(**kwargs: Any) -> Any:
+            yield assistant_msg
+            yield result_msg
+            raise _FakeProcessError("Command failed with exit code 1 (exit code: 1)")
+
+        with patch("dd_agents.chat.engine._query", side_effect=_fake_query):
+            response = asyncio.run(engine.ask("What are the findings?"))
+
+        # The error should be suppressed; the partial text should be returned.
+        assert "partial analysis" in response.text
+        assert "encountered an error" not in response.text
 
 
 # ===================================================================

@@ -1248,6 +1248,25 @@ def _print_query_result(question: str, result: Any) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _print_stderr_log() -> None:
+    """Print the contents of the stderr log file for verbose diagnostics."""
+    import os
+
+    log_path = os.path.join(os.path.expanduser("~"), ".dd-agents-chat-stderr.log")
+    try:
+        with open(log_path, encoding="utf-8", errors="replace") as f:
+            content = f.read().strip()
+        if content:
+            console.print("\n[bold dim]── stderr log ──[/bold dim]")
+            for line in content.splitlines()[-30:]:
+                console.print(f"[dim]{line}[/dim]")
+            console.print("[bold dim]── end stderr ──[/bold dim]")
+        else:
+            console.print("[dim]stderr log: (empty)[/dim]")
+    except OSError:
+        console.print("[dim]stderr log: (not found)[/dim]")
+
+
 def _run_chat_query(
     engine: Any,
     user_input: str,
@@ -1260,12 +1279,20 @@ def _run_chat_query(
         ChatResponse on success, ``None`` if cancelled by Esc,
         or an error message string on failure.
     """
+    import os
     import select
     import sys
     import threading
 
     result: dict[str, Any] = {"response": None, "error": None}
     done = threading.Event()
+
+    # Redirect fd 2 to a log file so the SDK subprocess's stderr is
+    # captured for diagnosis instead of corrupting the terminal.
+    _stderr_log_path = os.path.join(os.path.expanduser("~"), ".dd-agents-chat-stderr.log")
+    _original_stderr_fd = os.dup(2)
+    _stderr_log_fd = os.open(_stderr_log_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+    os.dup2(_stderr_log_fd, 2)
 
     def _query() -> None:
         try:
@@ -1307,16 +1334,24 @@ def _run_chat_query(
         # Not a terminal (piped input, Windows, etc.) — just wait.
         done.wait()
 
+    # Restore stderr.
+    os.dup2(_original_stderr_fd, 2)
+    os.close(_original_stderr_fd)
+    os.close(_stderr_log_fd)
+
     if cancelled:
         spinner.stop()
         return None
 
-    # Wait for the thread to finish if it hasn't already
-    thread.join(timeout=30)
+    # Wait for the thread to finish — if the SDK hangs, time out.
+    thread.join(timeout=60)
 
     if result["error"]:
         return result["error"]
-    return result["response"]
+    if result["response"] is not None:
+        return result["response"]
+    # Thread timed out or produced nothing — treat as error
+    return "The agent timed out. Try a simpler question or restart the session."
 
 
 # ---------------------------------------------------------------------------
@@ -1553,7 +1588,8 @@ def chat(
             err_msg = response
             if "exit code" in err_msg or "Fatal error" in err_msg:
                 console.print("\n[yellow]The agent encountered an error processing this request.[/yellow]")
-                console.print("[dim]Try rephrasing your question or use --verbose for details.[/dim]")
+                if not verbose:
+                    console.print("[dim]Try rephrasing your question or use --verbose for details.[/dim]")
             elif "budget exhausted" in err_msg.lower():
                 console.print(
                     f"\n[bold yellow]Session budget exhausted (${max_cost:.2f}).[/bold yellow]\n"
@@ -1563,14 +1599,24 @@ def chat(
             else:
                 console.print(f"\n[red]Error: {err_msg}[/red]")
             if verbose:
-                console.print(f"[dim]{err_msg}[/dim]")
+                console.print(f"\n[dim]{err_msg}[/dim]")
+                _print_stderr_log()
             continue
 
-        # Render the complete response as markdown.
-        # width - 2 prevents terminal hard-wrap when Rich miscalculates
-        # the visual width of Unicode characters (em dashes, curly quotes).
-        console.print()
-        console.print(Markdown(response.text), width=console.width - 2)
+        # Check if the response text contains an error (engine caught it)
+        is_error_response = "encountered an error" in response.text and "Technical:" in response.text
+
+        if is_error_response:
+            console.print()
+            console.print(Markdown(response.text), width=console.width - 2)
+            if verbose:
+                _print_stderr_log()
+        else:
+            # Render the complete response as markdown.
+            # width - 2 prevents terminal hard-wrap when Rich miscalculates
+            # the visual width of Unicode characters (em dashes, curly quotes).
+            console.print()
+            console.print(Markdown(response.text), width=console.width - 2)
 
         # Footer: tools, memory, cost
         footer_parts: list[str] = []

@@ -75,9 +75,9 @@ class ChatConfig(BaseModel):
 
     model: str | None = Field(default=None, description="Model override (None = SDK default)")
     max_turns_per_query: int = Field(
-        default=20,
+        default=50,
         ge=1,
-        le=50,
+        le=200,
         description="Max tool-use turns per query() call",
     )
     max_cost_per_turn: float = Field(default=0.50, description="Per-turn budget in USD")
@@ -103,8 +103,11 @@ class ChatResponse(BaseModel):
 # Chat-mode tools
 # ---------------------------------------------------------------------------
 
-# MCP tools available in chat mode
-CHAT_READ_TOOLS: list[str] = ["Read", "Glob", "Grep"]
+# Built-in SDK tools available in chat mode.
+# Read is intentionally excluded — it returns entire files with no size
+# cap, which can overflow the SDK message buffer on large documents.
+# The model must use search_in_file + get_page_content instead.
+CHAT_READ_TOOLS: list[str] = ["Glob", "Grep"]
 
 # Custom MCP tools (document + memory + corrections)
 CHAT_MCP_TOOL_NAMES: list[str] = [
@@ -126,7 +129,7 @@ CHAT_MCP_TOOL_NAMES: list[str] = [
 _CHARS_PER_TOKEN = 4
 _INPUT_COST_PER_MTOK = 3.0  # Claude Sonnet 4
 _OUTPUT_COST_PER_MTOK = 15.0
-_MIN_BUFFER_BYTES = 5 * 1024 * 1024
+_MIN_BUFFER_BYTES = 5 * 1024 * 1024  # 5 MB
 
 
 # ---------------------------------------------------------------------------
@@ -310,6 +313,8 @@ class ChatEngine:
         msg_count = 0
         memories_this_turn = 0
         sdk_error: str | None = None
+        hit_max_turns = False
+        result_subtype: str | None = None
 
         try:
             async for message in _query(prompt=turn_prompt, options=options):
@@ -337,26 +342,77 @@ class ChatEngine:
                             if on_tool_status is not None:
                                 on_tool_status(tool_name)
 
-                elif isinstance(message, _ResultMessage) and message.is_error:
-                    if message.result:
-                        logger.debug("SDK error result: %s", message.result)
+                elif isinstance(message, _ResultMessage):
+                    result_subtype = getattr(message, "subtype", None)
+                    logger.debug(
+                        "ResultMessage: subtype=%s is_error=%s num_turns=%s result=%s",
+                        result_subtype,
+                        message.is_error,
+                        getattr(message, "num_turns", "?"),
+                        str(message.result)[:200] if message.result else None,
+                    )
+                    if result_subtype == "error_max_turns":
+                        hit_max_turns = True
+                        logger.debug("Hit max turns limit (%d turns)", self._config.max_turns_per_query)
+                    elif message.is_error:
+                        if message.result:
+                            logger.debug("SDK error result: %s", message.result)
         except Exception as exc:
             sdk_error = str(exc)
-            logger.debug("SDK query failed: %s", exc)
+            # Log captured stderr from the CLI subprocess
+            stderr_lines = getattr(self, "_last_stderr_lines", [])
+            stderr_summary = "\n".join(stderr_lines[-20:]) if stderr_lines else "(empty)"
+            logger.warning(
+                "SDK query failed after %d messages, %d tools (%s), "
+                "result_subtype=%s, text_parts=%d, final_text=%d. "
+                "Error: %s. CLI stderr: %s",
+                msg_count,
+                len(tools_used),
+                ", ".join(tools_used) if tools_used else "none",
+                result_subtype,
+                len(text_parts),
+                len(final_text_parts),
+                exc,
+                stderr_summary,
+            )
+
+        # When the agent hits max_turns or an API error, the CLI exits
+        # with code 1 and the SDK raises ProcessError.  If we received
+        # a ResultMessage we know the conversation completed (possibly
+        # truncated), so use the collected text rather than an error.
+        if hit_max_turns:
+            sdk_error = None
+        elif sdk_error and result_subtype is not None:
+            # We got a ResultMessage before the crash — the conversation
+            # ended (possibly with an error like max_turns or API error).
+            # Return the text we have rather than a generic error.
+            logger.debug("Clearing sdk_error: got ResultMessage subtype=%s", result_subtype)
+            sdk_error = None
 
         # Prefer text from pure-text messages (the final answer).
-        # When the SDK crashes mid-query, text_parts may contain only
-        # intermediate reasoning from tool-use messages — not a real
-        # answer.  Don't fall back to reasoning fragments if there was
-        # an SDK error; show the error instead.
-        if final_text_parts:
-            full_text = "\n".join(final_text_parts)
-        elif sdk_error:
+        # When the SDK crashes mid-query, both text_parts AND
+        # final_text_parts may contain intermediate reasoning — the
+        # model sends reasoning in messages without tool_use blocks
+        # between tool calls.  If the SDK errored, the agent never
+        # finished, so ALL collected text is incomplete.  Discard it
+        # and show the error.
+        if sdk_error:
+            # Include diagnostic info for verbose mode
+            stderr_lines = getattr(self, "_last_stderr_lines", [])
+            stderr_info = "\n".join(stderr_lines[-10:]) if stderr_lines else ""
+            diag_parts = [f"Messages processed: {msg_count}", f"Tools used: {', '.join(tools_used) or 'none'}"]
+            if text_parts:
+                diag_parts.append(f"Partial text collected: {len(text_parts)} fragments")
+            if stderr_info:
+                diag_parts.append(f"CLI stderr: {stderr_info}")
+            diag = "\n".join(diag_parts)
             full_text = (
                 "The analysis encountered an error. "
                 "Please try rephrasing your question or use "
-                f"`--verbose` for details.\n\nTechnical: {sdk_error}"
+                f"`--verbose` for details.\n\nTechnical: {sdk_error}\n\nDiagnostics:\n{diag}"
             )
+        elif final_text_parts:
+            full_text = "\n".join(final_text_parts)
         elif text_parts:
             full_text = "\n".join(text_parts)
         else:
@@ -458,6 +514,17 @@ class ChatEngine:
         """Build ClaudeAgentOptions for a chat turn."""
         from dd_agents.utils import resolve_sdk_cli_path
 
+        # Capture SDK subprocess stderr so we can log it on failure
+        # instead of letting it corrupt the terminal.  The list is
+        # shared with _last_stderr_lines so ask() can include it in
+        # error diagnostics.
+        self._last_stderr_lines: list[str] = []
+        stderr_lines = self._last_stderr_lines
+
+        def _stderr_handler(line: str) -> None:
+            stderr_lines.append(line)
+            logger.debug("SDK stderr: %s", line.rstrip())
+
         options_kwargs: dict[str, Any] = {
             "system_prompt": self._system_prompt,
             "max_turns": self._config.max_turns_per_query,
@@ -465,7 +532,18 @@ class ChatEngine:
             "permission_mode": "bypassPermissions",
             "cwd": str(self._project_dir),
             "allowed_tools": self._get_allowed_tools(),
+            "disallowed_tools": [
+                "Bash",
+                "Read",
+                "Write",
+                "Edit",
+                "Agent",
+                "NotebookEdit",
+                "TodoWrite",
+                "TodoRead",
+            ],
             "max_buffer_size": self._compute_buffer_size(),
+            "stderr": _stderr_handler,
         }
 
         cli_path = resolve_sdk_cli_path()

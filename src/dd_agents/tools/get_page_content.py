@@ -92,27 +92,48 @@ def get_page_content(
     # Check for actual page markers (keys > 0; key 0 is just preamble).
     has_page_markers = any(k > 0 for k in all_pages)
 
+    # Hard cap: never return more than ~100 KB to avoid blowing up the
+    # SDK message buffer.  Callers should use search_in_file first to
+    # identify the right pages, then request small ranges.
+    max_result_chars = 100_000
+
     if not has_page_markers:
-        # No page markers — return entire text as page 1.
-        return {
+        # No page markers — return a truncated version as page 1.
+        page_text = text[:max_result_chars]
+        truncated = len(text) > max_result_chars
+        result: dict[str, Any] = {
             "source_path": source_path,
-            "pages": {"1": text},
+            "pages": {"1": page_text},
             "total_pages": 1,
             "has_page_markers": False,
         }
+        if truncated:
+            result["truncated"] = True
+            result["hint"] = (
+                f"Document is {len(text):,} chars — only first {max_result_chars:,} returned. "
+                "Use search_in_file to locate specific sections."
+            )
+        return result
 
     total_pages = max(all_pages.keys()) if all_pages else 0
     if end_page is None:
         end_page = start_page
 
-    # Clamp range to valid pages.
+    # Clamp range to valid pages.  Cap at 5 pages per call.
     start_page = max(0, start_page)
     end_page = min(end_page, total_pages)
+    if end_page - start_page > 4:
+        end_page = start_page + 4
 
     result_pages: dict[str, str] = {}
+    chars_used = 0
     for p in range(start_page, end_page + 1):
         if p in all_pages:
-            result_pages[str(p)] = all_pages[p]
+            page_text = all_pages[p]
+            if chars_used + len(page_text) > max_result_chars:
+                break
+            result_pages[str(p)] = page_text
+            chars_used += len(page_text)
 
     return {
         "source_path": source_path,
