@@ -345,17 +345,20 @@ class ChatEngine:
             logger.debug("SDK query failed: %s", exc)
 
         # Prefer text from pure-text messages (the final answer).
-        # Fall back to all collected text, then to an error message.
+        # When the SDK crashes mid-query, text_parts may contain only
+        # intermediate reasoning from tool-use messages — not a real
+        # answer.  Don't fall back to reasoning fragments if there was
+        # an SDK error; show the error instead.
         if final_text_parts:
             full_text = "\n".join(final_text_parts)
-        elif text_parts:
-            full_text = "\n".join(text_parts)
         elif sdk_error:
             full_text = (
                 "The analysis encountered an error. "
                 "Please try rephrasing your question or use "
                 f"`--verbose` for details.\n\nTechnical: {sdk_error}"
             )
+        elif text_parts:
+            full_text = "\n".join(text_parts)
         else:
             full_text = "I wasn't able to generate a response. Try rephrasing your question."
         self._turn_count += 1
