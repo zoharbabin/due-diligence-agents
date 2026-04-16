@@ -467,6 +467,61 @@ class TestChatEngine:
         config = ChatConfig()
         assert config.max_turns_per_query >= 50
 
+    def test_buffer_size_has_hard_cap(self, run_dir: Path, project_dir: Path) -> None:
+        """Buffer size must be capped to prevent multi-GB allocations."""
+        from dd_agents.chat.engine import _MAX_BUFFER_BYTES, ChatConfig, ChatEngine
+
+        config = ChatConfig(enable_tools=False)
+        engine = ChatEngine(run_dir=run_dir, project_dir=project_dir, config=config)
+        # Even with no text files, buffer should not exceed cap
+        buf_size = engine._compute_buffer_size()
+        assert buf_size <= _MAX_BUFFER_BYTES
+
+    def test_buffer_size_capped_with_large_files(self, run_dir: Path, project_dir: Path) -> None:
+        """Buffer size must be capped even when text dir has huge files."""
+        from dd_agents.chat.engine import _MAX_BUFFER_BYTES, ChatConfig, ChatEngine
+
+        config = ChatConfig(enable_tools=False)
+        engine = ChatEngine(run_dir=run_dir, project_dir=project_dir, config=config)
+
+        # Create a sparse file that reports 20 MB without writing actual data.
+        # _compute_buffer_size only checks stat().st_size, not content.
+        text_dir = project_dir / "_dd" / "forensic-dd" / "index" / "text"
+        text_dir.mkdir(parents=True, exist_ok=True)
+        big_file = text_dir / "huge_doc.txt"
+        big_file.touch()
+        import os
+
+        os.truncate(big_file, 20 * 1024 * 1024)  # 20 MB sparse file
+
+        buf_size = engine._compute_buffer_size()
+        assert buf_size == _MAX_BUFFER_BYTES
+
+    @pytest.mark.skipif(
+        not _sdk_available(),
+        reason="claude-agent-sdk not installed",
+    )
+    def test_stderr_lines_are_capped(self, run_dir: Path, project_dir: Path) -> None:
+        """_build_options creates a stderr handler that caps accumulated lines."""
+        from unittest.mock import patch
+
+        from dd_agents.chat.engine import _MAX_STDERR_LINES, ChatConfig, ChatEngine
+
+        config = ChatConfig(enable_tools=False)
+        engine = ChatEngine(run_dir=run_dir, project_dir=project_dir, config=config)
+
+        # Build options to create the stderr handler closure.
+        with patch("dd_agents.utils.resolve_sdk_cli_path", return_value=None):
+            options = engine._build_options(1.0)
+
+        # The options object has a stderr callback.  Pump more lines than
+        # the cap through it and verify the list stays bounded.
+        handler = options.stderr
+        assert handler is not None
+        for i in range(_MAX_STDERR_LINES + 500):
+            handler(f"line {i}\n")
+        assert len(engine._last_stderr_lines) == _MAX_STDERR_LINES
+
     @pytest.mark.skipif(
         not _sdk_available(),
         reason="claude-agent-sdk not installed",

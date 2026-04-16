@@ -34,26 +34,51 @@ err_console = Console(stderr=True)
 
 
 def _terminate_child_processes() -> None:
-    """Send SIGTERM to all child processes of the current PID.
+    """Send SIGTERM to all descendant processes of the current PID.
 
     SDK JS (Bun) subprocesses survive ``os._exit()`` and keep printing
-    "Stream closed" errors.  This kills them before we exit.
+    "Stream closed" errors.  Also kills grandchildren — the claude CLI
+    subprocess spawns Bun.js workers that become orphans (reparented to
+    PID 1) if the parent dies first.
+
+    Uses ``pkill -P`` recursively: first kill grandchildren (children of
+    our children), then kill direct children.  This bottom-up order
+    avoids creating new orphans.
     """
     import os
     import signal
     import subprocess
 
+    my_pid = str(os.getpid())
     try:
+        # Find direct children.
         result = subprocess.run(
-            ["pgrep", "-P", str(os.getpid())],
+            ["pgrep", "-P", my_pid],
             capture_output=True,
             text=True,
         )
-        for line in result.stdout.strip().splitlines():
-            pid_str = line.strip()
-            if pid_str:
-                with contextlib.suppress(OSError):
-                    os.kill(int(pid_str), signal.SIGTERM)
+        child_pids = [line.strip() for line in result.stdout.strip().splitlines() if line.strip()]
+
+        # Kill grandchildren first (bottom-up).
+        for cpid in child_pids:
+            try:
+                gc_result = subprocess.run(
+                    ["pgrep", "-P", cpid],
+                    capture_output=True,
+                    text=True,
+                )
+                for gc_line in gc_result.stdout.strip().splitlines():
+                    gc_pid = gc_line.strip()
+                    if gc_pid:
+                        with contextlib.suppress(OSError):
+                            os.kill(int(gc_pid), signal.SIGTERM)
+            except Exception:  # noqa: BLE001
+                pass
+
+        # Kill direct children.
+        for cpid in child_pids:
+            with contextlib.suppress(OSError):
+                os.kill(int(cpid), signal.SIGTERM)
     except Exception:  # noqa: BLE001
         pass
 
@@ -1290,9 +1315,16 @@ def _run_chat_query(
     # Redirect fd 2 to a log file so the SDK subprocess's stderr is
     # captured for diagnosis instead of corrupting the terminal.
     _stderr_log_path = os.path.join(os.path.expanduser("~"), ".dd-agents-chat-stderr.log")
-    _original_stderr_fd = os.dup(2)
-    _stderr_log_fd = os.open(_stderr_log_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
-    os.dup2(_stderr_log_fd, 2)
+    _original_stderr_fd: int | None = None
+    _stderr_log_fd: int | None = None
+    try:
+        _original_stderr_fd = os.dup(2)
+        _stderr_log_fd = os.open(_stderr_log_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+        os.dup2(_stderr_log_fd, 2)
+    except OSError:
+        # If stderr redirect fails, continue without it — the worst
+        # that happens is some SDK noise on the terminal.
+        pass
 
     def _query() -> None:
         try:
@@ -1334,17 +1366,26 @@ def _run_chat_query(
         # Not a terminal (piped input, Windows, etc.) — just wait.
         done.wait()
 
-    # Restore stderr.
-    os.dup2(_original_stderr_fd, 2)
-    os.close(_original_stderr_fd)
-    os.close(_stderr_log_fd)
+    # Restore stderr — always clean up fds, even on cancel/error.
+    if _original_stderr_fd is not None:
+        os.dup2(_original_stderr_fd, 2)
+        os.close(_original_stderr_fd)
+    if _stderr_log_fd is not None:
+        os.close(_stderr_log_fd)
 
     if cancelled:
         spinner.stop()
+        # Kill orphaned SDK subprocess so the daemon thread can exit.
+        _terminate_child_processes()
+        thread.join(timeout=5)
         return None
 
     # Wait for the thread to finish — if the SDK hangs, time out.
     thread.join(timeout=60)
+    if not done.is_set():
+        # Thread timed out — kill the subprocess so the thread can exit.
+        _terminate_child_processes()
+        thread.join(timeout=5)
 
     if result["error"]:
         return result["error"]
@@ -1576,6 +1617,12 @@ def chat(
 
         response = _run_chat_query(engine, user_input, _on_tool_status, spinner)
         spinner.stop()
+
+        # Clean up any lingering SDK subprocesses between queries.
+        # Each query spawns a claude CLI process; if it doesn't exit
+        # cleanly (crash, timeout, or Bun.js hang), it accumulates
+        # memory.  Kill orphans now rather than at session end.
+        _terminate_child_processes()
 
         if response is None:
             # Esc was pressed — preserve message for editing

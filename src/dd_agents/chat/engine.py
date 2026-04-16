@@ -129,7 +129,12 @@ CHAT_MCP_TOOL_NAMES: list[str] = [
 _CHARS_PER_TOKEN = 4
 _INPUT_COST_PER_MTOK = 3.0  # Claude Sonnet 4
 _OUTPUT_COST_PER_MTOK = 15.0
-_MIN_BUFFER_BYTES = 5 * 1024 * 1024  # 5 MB
+
+# Memory-management constants — prevent unbounded growth during long sessions
+_MIN_BUFFER_BYTES = 5 * 1024 * 1024  # 5 MB floor for SDK message buffer
+_MAX_BUFFER_BYTES = 25 * 1024 * 1024  # 25 MB cap (large corpus can request GBs)
+_MAX_STDERR_LINES = 200  # Cap stderr capture per query
+_MAX_TEXT_PARTS_CHARS = 500_000  # Cap intermediate reasoning text (~500 KB)
 
 
 # ---------------------------------------------------------------------------
@@ -309,6 +314,7 @@ class ChatEngine:
         # kill the session.  We return whatever text was collected.
         text_parts: list[str] = []
         final_text_parts: list[str] = []
+        text_chars_accumulated = 0
         tools_used: list[str] = []
         msg_count = 0
         memories_this_turn = 0
@@ -328,7 +334,15 @@ class ChatEngine:
 
                     for block in message.content:
                         if isinstance(block, _TextBlock):
-                            text_parts.append(block.text)
+                            # text_parts = ALL text (intermediate reasoning
+                            # + final).  Capped to prevent unbounded memory
+                            # growth during long tool-use chains.
+                            if text_chars_accumulated < _MAX_TEXT_PARTS_CHARS:
+                                text_parts.append(block.text)
+                                text_chars_accumulated += len(block.text)
+                            # final_text_parts = only text from messages
+                            # without tool-use (the actual answer).  NOT
+                            # capped — this is what we return to the user.
                             if not has_tool_use:
                                 final_text_parts.append(block.text)
                                 if on_text is not None:
@@ -435,6 +449,10 @@ class ChatEngine:
         # Log to chronicle
         self._log_to_chronicle(question, full_text, tools_used, turn_cost)
 
+        # Eagerly truncate history to prevent large responses from
+        # sitting in memory until the next query.
+        self._history.truncate_to_budget(self._config.max_history_chars)
+
         return ChatResponse(
             text=full_text,
             tools_used=tools_used,
@@ -522,7 +540,8 @@ class ChatEngine:
         stderr_lines = self._last_stderr_lines
 
         def _stderr_handler(line: str) -> None:
-            stderr_lines.append(line)
+            if len(stderr_lines) < _MAX_STDERR_LINES:
+                stderr_lines.append(line)
             logger.debug("SDK stderr: %s", line.rstrip())
 
         options_kwargs: dict[str, Any] = {
@@ -647,7 +666,7 @@ class ChatEngine:
                         continue
         except OSError:
             pass
-        return max(max_size * 3, _MIN_BUFFER_BYTES)
+        return min(max(max_size * 3, _MIN_BUFFER_BYTES), _MAX_BUFFER_BYTES)
 
     # ------------------------------------------------------------------
     # Chronicle logging

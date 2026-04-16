@@ -77,9 +77,10 @@ class BaseAgentRunner(ABC):
     max_subjects_per_batch: int = 20
     max_tokens_per_batch: int = 40_000
 
-    # Minimum SDK message buffer (bytes).  The actual value is computed
+    # SDK message buffer bounds (bytes).  The actual value is computed
     # dynamically from the largest extracted-text file in the data room.
     _MIN_BUFFER_BYTES: int = 5 * 1024 * 1024  # 5 MB floor
+    _MAX_BUFFER_BYTES: int = 25 * 1024 * 1024  # 25 MB cap
 
     def __init__(
         self,
@@ -131,8 +132,8 @@ class BaseAgentRunner(ABC):
         inside a single JSON message.  The buffer must be large enough to
         hold that message (file bytes + JSON/base64 encoding overhead).
 
-        Returns 3× the largest ``.txt`` file in the text directory, with
-        a floor of :attr:`_MIN_BUFFER_BYTES`.
+        Returns 3× the largest ``.txt`` file in the text directory, clamped
+        between :attr:`_MIN_BUFFER_BYTES` and :attr:`_MAX_BUFFER_BYTES`.
         """
         text_dir = Path(self.project_dir) / "_dd" / "forensic-dd" / "index" / "text"
         if not text_dir.is_dir():
@@ -150,7 +151,7 @@ class BaseAgentRunner(ABC):
 
         # 3× for JSON encoding overhead (escaping, base64, wrapper)
         computed = max_size * 3
-        return max(computed, self._MIN_BUFFER_BYTES)
+        return min(max(computed, self._MIN_BUFFER_BYTES), self._MAX_BUFFER_BYTES)
 
     @staticmethod
     def _resolve_cli_path() -> str | None:

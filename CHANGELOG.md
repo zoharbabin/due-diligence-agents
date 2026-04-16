@@ -8,6 +8,19 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 > The first public release was **v0.4.0** (2026-03-30). Tagged releases on PyPI and
 > GitHub begin at **v0.4.1**.
 
+## [1.3.3] — 2026-04-16
+
+### Fixed
+
+- **Chat: memory leak — unbounded process accumulation** — SDK subprocesses (claude CLI + Bun.js workers) now killed between every query, not just at session exit. Grandchild processes killed bottom-up to prevent orphan reparenting.
+- **Chat: memory leak — unbounded buffer allocation** — `_compute_buffer_size()` capped at 25 MB (was unbounded — large document corpuses could request multi-GB buffers). Applied to both chat engine and pipeline agent runner.
+- **Chat: memory leak — intermediate text accumulation** — Intermediate reasoning text during long tool-use chains (50+ turns) capped at 500 KB. Final answer text (returned to user) remains uncapped.
+- **Chat: memory leak — stderr capture growth** — SDK stderr handler now caps at 200 lines per query instead of growing without limit.
+- **Chat: memory leak — delayed history truncation** — Conversation history now truncated eagerly after each response instead of waiting until the next query.
+- **Chat: fd leak on stderr redirect failure** — File descriptor cleanup in `_run_chat_query` now wrapped in try/finally with null-safe guards.
+- **Chat: Esc cancel leaves zombie processes** — Pressing Esc now kills the orphaned SDK subprocess before returning, instead of leaving it running.
+- **Chat: thread timeout leaves zombie processes** — Query thread timeout (60s) now kills the SDK subprocess so the daemon thread can exit.
+
 ## [1.3.1] — 2026-04-14
 
 ### Improved
