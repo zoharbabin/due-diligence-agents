@@ -14,7 +14,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from dd_agents.utils.constants import ALL_SPECIALIST_AGENTS, NON_SUBJECT_STEMS, SEVERITY_ORDER, SEVERITY_P0, SEVERITY_P1
+from dd_agents.agents.registry import AgentRegistry
+from dd_agents.utils.constants import NON_SUBJECT_STEMS, SEVERITY_ORDER, SEVERITY_P0, SEVERITY_P1
 
 logger = logging.getLogger(__name__)
 
@@ -82,11 +83,13 @@ class PreMergeValidator:
         findings_dir: Path,
         subject_safe_names: list[str],
         file_inventory: list[str],
+        active_agents: list[str] | None = None,
     ) -> None:
         self.run_dir = Path(run_dir)
         self.findings_dir = Path(findings_dir)
         self.subject_safe_names = subject_safe_names
         self.file_inventory_set = frozenset(file_inventory)
+        self._active_agents = active_agents if active_agents is not None else AgentRegistry.all_specialist_names()
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -105,7 +108,7 @@ class PreMergeValidator:
         # Compute totals
         total_findings = 0
         findings_per_agent: dict[str, int] = {}
-        for agent in ALL_SPECIALIST_AGENTS:
+        for agent in self._active_agents:
             agent_count = 0
             for subject in self.subject_safe_names:
                 key = f"{agent}/{subject}"
@@ -140,11 +143,11 @@ class PreMergeValidator:
     # ------------------------------------------------------------------
 
     def _check_file_completeness(self) -> list[dict[str, Any]]:
-        """Verify 4 agent files per subject."""
+        """Verify all specialist agent files exist per subject."""
         issues: list[dict[str, Any]] = []
         for subject in self.subject_safe_names:
             missing_agents: list[str] = []
-            for agent in ALL_SPECIALIST_AGENTS:
+            for agent in self._active_agents:
                 fpath = self.findings_dir / agent / f"{subject}.json"
                 if not fpath.exists():
                     missing_agents.append(agent)
@@ -173,7 +176,7 @@ class PreMergeValidator:
         parsed: dict[str, list[dict[str, Any]]] = {}
         issues: list[dict[str, Any]] = []
 
-        for agent in ALL_SPECIALIST_AGENTS:
+        for agent in self._active_agents:
             agent_dir = self.findings_dir / agent
             if not agent_dir.is_dir():
                 continue
@@ -292,7 +295,7 @@ class PreMergeValidator:
         for subject in self.subject_safe_names:
             agents_with_high: list[str] = []
             agents_with_zero: list[str] = []
-            for agent in ALL_SPECIALIST_AGENTS:
+            for agent in self._active_agents:
                 key = f"{agent}/{subject}"
                 findings = parsed.get(key, [])
                 has_high = any(
@@ -326,7 +329,7 @@ class PreMergeValidator:
         for subject in self.subject_safe_names:
             # Build category -> agent -> min severity rank
             category_agent_severity: dict[str, dict[str, int]] = {}
-            for agent in ALL_SPECIALIST_AGENTS:
+            for agent in self._active_agents:
                 key = f"{agent}/{subject}"
                 for finding in parsed.get(key, []):
                     if not isinstance(finding, dict):
@@ -371,7 +374,7 @@ class PreMergeValidator:
         matrix: dict[str, dict[str, int]] = {}
         for subject in self.subject_safe_names:
             matrix[subject] = {}
-            for agent in ALL_SPECIALIST_AGENTS:
+            for agent in self._active_agents:
                 key = f"{agent}/{subject}"
                 matrix[subject][agent] = len(parsed.get(key, []))
         return matrix

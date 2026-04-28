@@ -15,9 +15,9 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from dd_agents.agents.registry import AgentRegistry
 from dd_agents.utils.constants import (
     AGENT_JUDGE,
-    ALL_SPECIALIST_AGENTS,
     COVERAGE_MANIFEST_JSON,
 )
 
@@ -118,7 +118,7 @@ class AgentTeam:
         configs = agent_configs or {}
         tasks: dict[str, asyncio.Task[dict[str, Any]]] = {}
 
-        agent_names = agents if agents is not None else list(ALL_SPECIALIST_AGENTS)
+        agent_names = agents if agents is not None else AgentRegistry.all_specialist_names()
 
         # Adaptive timeout (Issue #42).  Account for batch count and
         # concurrency: with parallel batches, effective sequential waves

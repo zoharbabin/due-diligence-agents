@@ -31,7 +31,6 @@ from dd_agents.orchestrator.state import PipelineError, PipelineState, StepResul
 from dd_agents.orchestrator.steps import PipelineStep
 from dd_agents.orchestrator.team import AgentTeam
 from dd_agents.utils.constants import (
-    ALL_SPECIALIST_AGENTS,
     COVERAGE_MANIFEST_JSON,
     FILES_TXT,
     JUDGE_DIR,
@@ -98,8 +97,12 @@ class PipelineEngine:
         self._run_options: dict[str, Any] = {}
 
         from dd_agents.agents.cost_tracker import CostTracker
+        from dd_agents.agents.registry import AgentRegistry
 
         self.cost_tracker = CostTracker()
+
+        AgentRegistry.discover_entry_points()
+        self._active_agents: list[str] = AgentRegistry.resolve_active()
 
         # Build the ordered mapping of PipelineStep -> async method
         self._step_registry: dict[PipelineStep, StepFn] = self._build_step_registry()
@@ -181,6 +184,24 @@ class PipelineEngine:
                 tier_mgr = TierManager(self.project_dir)
                 tier_mgr.wipe_fresh()
                 logger.info("Wiped FRESH tier for resumed run (prevents stale inventory)")
+
+            # Re-resolve active agents from deal config on resume.  Step 1
+            # normally applies ``specialists.disabled`` but is skipped when
+            # resuming from step 2+, leaving ``_active_agents`` as the
+            # default all-agents list.
+            if self.deal_config_path and self.deal_config_path.exists():
+                try:
+                    import json as _json_ckpt
+
+                    from dd_agents.agents.registry import AgentRegistry as _AgentRegistry
+                    from dd_agents.models.config import DealConfig
+
+                    _raw_cfg = _json_ckpt.loads(self.deal_config_path.read_text())
+                    _deal_cfg = DealConfig.model_validate(_raw_cfg)
+                    self._active_agents = _AgentRegistry.resolve_active(_deal_cfg)
+                    logger.info("Re-resolved active agents from deal config on resume: %s", self._active_agents)
+                except Exception:
+                    pass  # Keep default if config can't be loaded
 
         ordered_steps = list(PipelineStep)
 
@@ -637,10 +658,21 @@ class PipelineEngine:
             state.execution_mode = mode_override
             logger.info("Execution mode overridden by CLI: %s", mode_override)
 
+        # Refine active agents now that the typed config is available.
+        try:
+            from dd_agents.agents.registry import AgentRegistry
+            from dd_agents.config import load_deal_config
+
+            deal_cfg = load_deal_config(self.deal_config_path)
+            self._active_agents = AgentRegistry.resolve_active(deal_cfg)
+        except Exception as exc:
+            logger.debug("Could not refine active agents from config: %s", exc)
+
         logger.info(
-            "Config validated: mode=%s, judge=%s",
+            "Config validated: mode=%s, judge=%s, active_agents=%s",
             state.execution_mode,
             state.judge_enabled,
+            self._active_agents,
         )
         return state
 
@@ -1188,7 +1220,7 @@ class PipelineEngine:
             ", ".join(f"{s.subject_safe_name}({s.tier}:{s.score:.1f})" for s in scored),
         )
 
-        for agent_name in ALL_SPECIALIST_AGENTS:
+        for agent_name in self._active_agents:
             agent_cls = SPECIALIST_CLASSES.get(AgentType(agent_name))
             max_per_batch = getattr(agent_cls, "max_subjects_per_batch", 20) if agent_cls else 20
             max_tokens = getattr(agent_cls, "max_tokens_per_batch", 40_000) if agent_cls else 40_000
@@ -1221,7 +1253,7 @@ class PipelineEngine:
 
         logger.info(
             "Prepared prompts for %d agents with batching (1-based naming)",
-            len(ALL_SPECIALIST_AGENTS),
+            len(self._active_agents),
         )
         return state
 
@@ -1298,7 +1330,7 @@ class PipelineEngine:
             if ref.assigned_to_agents is not None and len(ref.assigned_to_agents) == 0:
                 logger.debug("Skipping buyer work product (not routed to agents): %s", ref.file_path)
                 continue
-            agents_routed: list[str] = ref.assigned_to_agents or list(ALL_SPECIALIST_AGENTS)
+            agents_routed: list[str] = ref.assigned_to_agents or list(self._active_agents)
 
             for agent_name in agents_routed:
                 agent_ref_dir = findings_dir / agent_name / "_references"
@@ -1335,17 +1367,16 @@ class PipelineEngine:
         """Spawn 4 specialist agents in parallel with sub-checkpoint resume."""
         # Pre-create findings directories so agents can write immediately.
         from dd_agents.orchestrator.checkpoints import load_sub_checkpoints, save_sub_checkpoint
-        from dd_agents.utils.constants import ALL_SPECIALIST_AGENTS
 
         findings_dir = state.run_dir / "findings"
-        for agent_name in ALL_SPECIALIST_AGENTS:
+        for agent_name in self._active_agents:
             (findings_dir / agent_name).mkdir(parents=True, exist_ok=True)
 
         # Load sub-checkpoints to find already-completed agents (Issue #51)
         checkpoint_dir = state.run_dir / "checkpoints"
         sub_checkpoints = load_sub_checkpoints(checkpoint_dir, "step_16")
         completed_agents = [key for key, data in sub_checkpoints.items() if data.get("status") == "success"]
-        agents_to_run = [a for a in ALL_SPECIALIST_AGENTS if a not in completed_agents]
+        agents_to_run = [a for a in self._active_agents if a not in completed_agents]
 
         if completed_agents:
             logger.info(
@@ -1427,7 +1458,7 @@ class PipelineEngine:
         if zero_file_names:
             zf_gaps: list[dict[str, Any]] = []
             for subj in zero_file_names:
-                for agent in ALL_SPECIALIST_AGENTS:
+                for agent in self._active_agents:
                     zf_gaps.append(
                         self._generate_coverage_gap_finding(
                             subject_safe_name=subj,
@@ -1483,7 +1514,7 @@ class PipelineEngine:
         # Agents sometimes write files with entity names (e.g. fidelity.json)
         # instead of subject_safe_names (e.g. commercial.json).  Reconcile
         # by reading the subject_safe_name field from file content.
-        for agent in ALL_SPECIALIST_AGENTS:
+        for agent in self._active_agents:
             self._reconcile_agent_output_filenames(
                 findings_dir / agent,
                 state.subject_safe_names,
@@ -1491,7 +1522,7 @@ class PipelineEngine:
 
         # --- First pass: per-agent coverage ---------------------------------
         per_agent_missing: dict[str, list[str]] = {}
-        for agent in ALL_SPECIALIST_AGENTS:
+        for agent in self._active_agents:
             missing: list[str] = []
             for subj in routed_subjects:
                 path = findings_dir / agent / f"{subj}.json"
@@ -1539,7 +1570,7 @@ class PipelineEngine:
                 break
 
             # Reconcile after each respawn attempt
-            for agent in ALL_SPECIALIST_AGENTS:
+            for agent in self._active_agents:
                 self._reconcile_agent_output_filenames(
                     findings_dir / agent,
                     state.subject_safe_names,
@@ -1548,7 +1579,7 @@ class PipelineEngine:
             # Re-check which subjects are still missing for next attempt
             if attempt == 1:
                 per_agent_missing = {}
-                for agent in ALL_SPECIALIST_AGENTS:
+                for agent in self._active_agents:
                     still_missing: list[str] = []
                     for subj in routed_subjects:
                         path = findings_dir / agent / f"{subj}.json"
@@ -1562,7 +1593,7 @@ class PipelineEngine:
         worst_coverage: float = 1.0
         worst_agent: str = ""
 
-        for agent in ALL_SPECIALIST_AGENTS:
+        for agent in self._active_agents:
             remaining_missing: list[str] = []
             for subj in routed_subjects:
                 path = findings_dir / agent / f"{subj}.json"
@@ -1661,8 +1692,8 @@ class PipelineEngine:
     # Output structure validation
     # ------------------------------------------------------------------
 
-    @staticmethod
     def _validate_agent_output_structure(
+        self,
         findings_dir: Any,
         subject_safe_names: list[str],
     ) -> dict[str, Any]:
@@ -1677,7 +1708,7 @@ class PipelineEngine:
         summary: dict[str, Any] = {}
         findings_path = Path(findings_dir)
 
-        for agent in ALL_SPECIALIST_AGENTS:
+        for agent in self._active_agents:
             agent_dir = findings_path / agent
             if not agent_dir.is_dir():
                 continue
@@ -2315,7 +2346,7 @@ class PipelineEngine:
 
         # Re-spawn only the failing specialist agents
         for agent_name in failing_agents:
-            if agent_name not in ALL_SPECIALIST_AGENTS:
+            if agent_name not in self._active_agents:
                 continue
 
             try:
@@ -2438,7 +2469,7 @@ class PipelineEngine:
         total_verified = 0
         total_adjusted = 0
 
-        for agent_name in ALL_SPECIALIST_AGENTS:
+        for agent_name in self._active_agents:
             agent_dir = findings_dir / agent_name
             if not agent_dir.is_dir():
                 continue
@@ -2624,7 +2655,7 @@ class PipelineEngine:
         # Collect gaps from agent directories
         for subj in state.subject_safe_names:
             all_gaps: list[dict[str, Any]] = []
-            for agent in ALL_SPECIALIST_AGENTS:
+            for agent in self._active_agents:
                 gap_file = findings_dir / agent / "gaps" / f"{subj}.json"
                 if gap_file.exists():
                     try:

@@ -1,0 +1,48 @@
+{
+  "contract": "ip_assignment.md",
+  "agent": "legal",
+  "tags": [
+    "golden_path"
+  ],
+  "expected_findings": [
+    {
+      "category": "ip_ownership",
+      "min_severity": "P2",
+      "max_severity": "P0",
+      "must_contain_keywords": [
+        "assign"
+      ],
+      "keyword_synonyms": {
+        "assign": ["assignment", "retain", "license", "intellectual property", "IP", "ownership"]
+      },
+      "citation_must_reference": {
+        "file": "ip_assignment.md"
+      },
+      "required": true
+    },
+    {
+      "category": "ip_ownership",
+      "min_severity": "P2",
+      "max_severity": "P0",
+      "must_contain_keywords": [
+        "open-source"
+      ],
+      "keyword_synonyms": {
+        "open-source": ["open source", "OSS", "Exhibit B", "copyleft", "GPL"]
+      },
+      "citation_must_reference": {
+        "file": "ip_assignment.md"
+      },
+      "required": true
+    }
+  ],
+  "expected_gaps": [
+    "Missing_Doc"
+  ],
+  "must_not_find": [
+    {
+      "category": "change_of_control",
+      "reason": "No change of control clause in IP assignment agreement"
+    }
+  ]
+}

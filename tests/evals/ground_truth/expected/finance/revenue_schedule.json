@@ -1,0 +1,61 @@
+{
+  "contract": "revenue_schedule.md",
+  "agent": "finance",
+  "tags": [
+    "golden_path"
+  ],
+  "expected_findings": [
+    {
+      "category": "financial_discrepancy",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": [
+        "fee"
+      ],
+      "keyword_synonyms": {
+        "fee": ["implementation", "setup", "total", "discrepancy", "inconsistency", "not reflected", "$75,000", "understate", "contract value", "discount", "charge", "cost", "$1,725,000", "$1,650,000", "excluded", "misclassification"]
+      },
+      "citation_must_reference": {
+        "file": "revenue_schedule.md"
+      },
+      "required": true
+    },
+    {
+      "category": "revenue_recognition",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": [
+        "ratable"
+      ],
+      "keyword_synonyms": {
+        "ratable": ["ratably", "quarterly", "recognition", "ASC 606", "milestone", "over each"]
+      },
+      "citation_must_reference": {
+        "file": "revenue_schedule.md"
+      },
+      "required": false
+    },
+    {
+      "category": "payment_terms",
+      "min_severity": "P3",
+      "max_severity": "P2",
+      "must_contain_keywords": [
+        "interest"
+      ],
+      "keyword_synonyms": {
+        "interest": ["late", "18%", "1.5%", "payment", "overdue", "penalty", "net 45"]
+      },
+      "citation_must_reference": {
+        "file": "revenue_schedule.md"
+      },
+      "required": false
+    }
+  ],
+  "expected_gaps": [],
+  "must_not_find": [
+    {
+      "category": "ip_ownership",
+      "reason": "No IP clauses in a revenue schedule"
+    }
+  ]
+}

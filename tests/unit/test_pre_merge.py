@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 # Helpers
 # ---------------------------------------------------------------------------
 
-AGENTS = ["legal", "finance", "commercial", "producttech"]
+AGENTS = ["legal", "finance", "commercial", "producttech", "cybersecurity"]
 SUBJECTS = ["subject_a", "subject_b"]
 
 

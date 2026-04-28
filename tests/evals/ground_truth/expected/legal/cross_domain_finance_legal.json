@@ -1,0 +1,42 @@
+{
+  "contract": "cross_domain_finance_legal.md",
+  "agent": "legal",
+  "tags": ["cross_domain"],
+  "ambiguity_zone": 0.1,
+  "max_expected_findings": 6,
+  "expected_findings": [
+    {
+      "category": "change_of_control",
+      "min_severity": "P2",
+      "max_severity": "P0",
+      "must_contain_keywords": ["change of control"],
+      "keyword_synonyms": {
+        "change of control": ["acquisition", "merger", "voting shares", "coc", "ownership"]
+      },
+      "citation_must_reference": {
+        "file": "cross_domain_finance_legal.md"
+      },
+      "required": true
+    },
+    {
+      "category": "termination",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": ["terminat"],
+      "keyword_synonyms": {
+        "terminat": ["terminate", "termination", "cancel", "discontinue", "end", "opt out"]
+      },
+      "citation_must_reference": {
+        "file": "cross_domain_finance_legal.md"
+      },
+      "required": false
+    }
+  ],
+  "expected_gaps": [],
+  "must_not_find": [
+    {
+      "category": "data_privacy",
+      "reason": "No data privacy provisions in a license fee schedule"
+    }
+  ]
+}

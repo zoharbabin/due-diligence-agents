@@ -1,4 +1,4 @@
-"""Specialist agent runners -- Legal, Finance, Commercial, ProductTech.
+"""Specialist agent runners -- Legal, Finance, Commercial, ProductTech, Cybersecurity.
 
 Each specialist analyses ALL subjects through its domain-specific lens.
 Specialists run in parallel during pipeline step 16.
@@ -85,6 +85,17 @@ PRODUCTTECH_FOCUS_AREAS: list[str] = [
     "scalability",
     "migration_complexity",
     "architecture_risk",
+]
+
+CYBERSECURITY_FOCUS_AREAS: list[str] = [
+    "data_breach_history",
+    "access_controls",
+    "encryption_standards",
+    "incident_response",
+    "vulnerability_management",
+    "network_security",
+    "compliance_certifications",
+    "third_party_risk",
 ]
 
 # ---------------------------------------------------------------------------
@@ -445,6 +456,106 @@ class ProductTechAgent(BaseAgentRunner):
         return list(SPECIALIST_TOOLS)
 
 
+class CybersecurityAgent(BaseAgentRunner):
+    """Cybersecurity specialist -- security posture, breach history, compliance."""
+
+    focus_areas: list[str] = CYBERSECURITY_FOCUS_AREAS
+
+    reference_categories: list[str] = ["compliance", "operational"]
+
+    # Cybersecurity documents (pentest reports, SOC 2, incident logs) are
+    # dense and citation-heavy, similar to ProductTech.
+    max_subjects_per_batch: int = 15
+    max_tokens_per_batch: int = 30_000
+
+    def get_agent_name(self) -> str:
+        return "cybersecurity"
+
+    def get_system_prompt(self) -> str:
+        return (
+            "You are the Cybersecurity specialist agent for forensic M&A due diligence. "
+            "Focus on data breach history, access control policies, encryption standards, "
+            "incident response plans, vulnerability management, penetration testing results, "
+            "SOC 2/ISO 27001 compliance, third-party vendor security reviews, network "
+            "segmentation, and security governance frameworks. " + SEVERITY_PREAMBLE
+        )
+
+    @staticmethod
+    def domain_robustness() -> str:
+        """Cybersecurity-specific robustness mitigations."""
+        return (
+            "## CYBERSECURITY-SPECIFIC EXTRACTION GUIDANCE\n\n"
+            #
+            "### Data Breach History\n\n"
+            "KEYWORDS: data breach, security incident, unauthorized access, data exposure, "
+            "notification, breach disclosure, compromised records, PII exposure\n"
+            "WHAT TO EXTRACT:\n"
+            "- Date and scope of any disclosed breaches\n"
+            "- Type of data compromised (PII, financial, health, credentials)\n"
+            "- Notification timeline and regulatory filings\n"
+            "- Remediation actions taken\n"
+            "- Ongoing litigation or regulatory actions from breaches\n"
+            f"{GAP_NOT_FOUND}\n\n"
+            #
+            "### Access Controls & Identity Management\n\n"
+            "KEYWORDS: multi-factor authentication, MFA, SSO, RBAC, role-based access, "
+            "privileged access management, PAM, identity governance, least privilege\n"
+            "WHAT TO EXTRACT:\n"
+            "- MFA enforcement status (all users, admins only, not implemented)\n"
+            "- Access review frequency and process\n"
+            "- Privileged account management approach\n"
+            "- SSO integration and identity provider\n"
+            f"{GAP_NOT_FOUND}\n\n"
+            #
+            "### Encryption Standards\n\n"
+            "KEYWORDS: encryption at rest, encryption in transit, TLS, AES-256, "
+            "key management, HSM, certificate management, data classification\n"
+            "WHAT TO EXTRACT:\n"
+            "- Encryption algorithms for data at rest and in transit\n"
+            "- Key management practices and rotation schedule\n"
+            "- Certificate management and expiry tracking\n"
+            "- Data classification policy and handling requirements\n"
+            f"{GAP_NOT_FOUND}\n\n"
+            #
+            "### Incident Response\n\n"
+            "KEYWORDS: incident response plan, IRP, security operations center, SOC, "
+            "SIEM, detection, response time, tabletop exercise, playbook\n"
+            "WHAT TO EXTRACT:\n"
+            "- Documented incident response plan and last review date\n"
+            "- Mean time to detect (MTTD) and mean time to respond (MTTR)\n"
+            "- Tabletop exercise frequency and findings\n"
+            "- SOC coverage (24/7, business hours, outsourced)\n"
+            f"{GAP_NOT_FOUND}\n\n"
+            #
+            "### Compliance Certifications\n\n"
+            "KEYWORDS: SOC 2, SOC2, ISO 27001, ISO 27701, PCI DSS, HIPAA, "
+            "FedRAMP, NIST CSF, compliance audit, certification expiry\n"
+            "WHAT TO EXTRACT:\n"
+            "- Current certifications and validity dates\n"
+            "- Scope of each certification (which systems/services covered)\n"
+            "- Exceptions or qualifications noted in audit reports\n"
+            "- Planned certifications and timeline\n"
+            f"{GAP_NOT_FOUND} Expired or missing certifications "
+            "are a material risk for regulated customers.\n\n"
+            #
+            "### Cybersecurity Citation Enforcement\n\n"
+            "Security documents (pentest reports, audit certifications, incident logs, "
+            "security policies) ARE quotable — they contain specific text you can cite.\n\n"
+            "**How to cite cybersecurity documents:**\n"
+            "- Pentest reports: quote finding ID, CVSS score, and remediation status\n"
+            "- SOC 2/ISO reports: quote control ID, test description, or exception text\n"
+            "- Security policies: quote policy name, version, effective date, and key clause\n"
+            "- Incident reports: quote incident ID, timeline, impact assessment\n"
+            "- Compliance matrices: quote requirement ID, status, and evidence reference\n\n"
+            "**STRICT RULE: Every Cybersecurity finding MUST have a citation.**\n"
+            "If you cannot copy verbatim text from a specific document, you do NOT "
+            "have evidence for the finding. Write a GAP instead.\n\n" + build_citation_mandate("cybersecurity")
+        )
+
+    def get_tools(self) -> list[str]:
+        return list(SPECIALIST_TOOLS)
+
+
 # ---------------------------------------------------------------------------
 # Registry for convenient iteration
 # ---------------------------------------------------------------------------
@@ -454,6 +565,7 @@ SPECIALIST_TYPES: list[AgentType] = [
     AgentType.FINANCE,
     AgentType.COMMERCIAL,
     AgentType.PRODUCTTECH,
+    AgentType.CYBERSECURITY,
 ]
 
 SPECIALIST_CLASSES: dict[AgentType, type[BaseAgentRunner]] = {
@@ -461,4 +573,68 @@ SPECIALIST_CLASSES: dict[AgentType, type[BaseAgentRunner]] = {
     AgentType.FINANCE: FinanceAgent,
     AgentType.COMMERCIAL: CommercialAgent,
     AgentType.PRODUCTTECH: ProductTechAgent,
+    AgentType.CYBERSECURITY: CybersecurityAgent,
 }
+
+
+# ---------------------------------------------------------------------------
+# Self-register built-in agents with the AgentRegistry
+# ---------------------------------------------------------------------------
+
+
+def _register_builtins() -> None:
+    """Register the 5 built-in specialist agents with the AgentRegistry."""
+    from dd_agents.agents.descriptor import DEFAULT_AGENT_COLORS, AgentDescriptor
+    from dd_agents.agents.prompt_builder import SPECIALIST_FOCUS
+    from dd_agents.agents.prompt_constants import build_citation_mandate
+    from dd_agents.agents.registry import AgentRegistry
+
+    agents_to_register: list[tuple[str, str, type[BaseAgentRunner], list[str], list[str], int, int]] = [
+        ("legal", "Legal", LegalAgent, LEGAL_FOCUS_AREAS, ["corporate_legal", "compliance"], 20, 40_000),
+        ("finance", "Finance", FinanceAgent, FINANCE_FOCUS_AREAS, ["financial", "pricing"], 7, 20_000),
+        (
+            "commercial",
+            "Commercial",
+            CommercialAgent,
+            COMMERCIAL_FOCUS_AREAS,
+            ["pricing", "sales", "operational"],
+            20,
+            40_000,
+        ),
+        (
+            "producttech",
+            "Product & Tech",
+            ProductTechAgent,
+            PRODUCTTECH_FOCUS_AREAS,
+            ["operational", "compliance"],
+            7,
+            20_000,
+        ),
+        (
+            "cybersecurity",
+            "Cybersecurity",
+            CybersecurityAgent,
+            CYBERSECURITY_FOCUS_AREAS,
+            ["compliance", "operational"],
+            15,
+            30_000,
+        ),
+    ]
+
+    for name, display, cls, areas, ref_cats, batch_size, batch_tokens in agents_to_register:
+        agent_type = AgentType(name)
+        AgentRegistry.register(
+            AgentDescriptor(
+                name=name,
+                display_name=display,
+                color=DEFAULT_AGENT_COLORS.get(name, "#666666"),
+                focus_areas=tuple(areas),
+                reference_categories=tuple(ref_cats),
+                agent_class=cls,
+                specialist_focus=SPECIALIST_FOCUS.get(agent_type, ""),
+                citation_examples=build_citation_mandate(name),
+                max_subjects_per_batch=batch_size,
+                max_tokens_per_batch=batch_tokens,
+                domain_robustness=cls.domain_robustness() if hasattr(cls, "domain_robustness") else "",
+            )
+        )

@@ -22,7 +22,7 @@ from dd_agents.utils.constants import SEVERITY_P0, SEVERITY_P1
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from dd_agents.models.config import DealConfig
+    from dd_agents.models.config import AgentCustomization, DealConfig
     from dd_agents.models.inventory import ReferenceFile, SubjectEntry
 
 # ---------------------------------------------------------------------------
@@ -181,7 +181,116 @@ SPECIALIST_FOCUS: dict[AgentType, str] = {
         "- Team/org findings must cite the org chart, HR doc, or employment agreement.\n"
         "- If evidence is absent (e.g., no SOC2 report in data room), produce a GAP, not a finding."
     ),
+    AgentType.CYBERSECURITY: (
+        "Cybersecurity posture assessment: data breach history, access control policies, "
+        "encryption standards, incident response plans, vulnerability management, penetration "
+        "testing results, SOC 2/ISO 27001 compliance, third-party vendor security reviews, "
+        "network segmentation, and security governance frameworks. "
+        "IMPORTANT: You MUST analyze ALL subjects, not just those with dedicated security "
+        "documents. For every subject's contracts, extract security-related obligations and "
+        "requirements. Gap detection: Check for missing security policies, missing pentest "
+        "reports, missing compliance certifications, missing incident response plans. "
+        "Write gap files.\n\n"
+        "SEVERITY CALIBRATION (Cybersecurity):\n"
+        "- Undisclosed data breach affecting customer data = P0\n"
+        "- Expired SOC 2 or ISO 27001 certification = P1\n"
+        "- No MFA enforcement for privileged accounts = P1\n"
+        "- Unencrypted data at rest for sensitive data = P1\n"
+        "- Missing incident response plan = P1\n"
+        "- Outdated vulnerability scan (>6 months) = P2\n"
+        "- Minor policy documentation gaps = P3\n"
+        "- Third-party vendor without security assessment = P2\n\n"
+        "SECURITY GOVERNANCE FRAMEWORK:\n"
+        "- Identify which framework is adopted (NIST CSF, ISO 27001, CIS, SOC 2)\n"
+        "- Map coverage: which controls are implemented vs planned vs missing\n"
+        "- Assess maturity: ad-hoc, defined, managed, optimized\n"
+        "- Flag framework gaps that would block enterprise customer acquisition\n\n"
+        "THIRD-PARTY RISK:\n"
+        "- Identify critical third-party vendors and subprocessors\n"
+        "- Assess vendor security review process and frequency\n"
+        "- Flag vendors without security certifications handling sensitive data\n"
+        "- Check for vendor concentration risk in security-critical services\n\n"
+        "CITATION ENFORCEMENT (Cybersecurity):\n"
+        "- Pentest findings must cite the report with finding ID and remediation status.\n"
+        "- Certification findings must cite the certificate or audit report with dates.\n"
+        "- Policy findings must cite the specific policy document section.\n"
+        "- Breach history findings must cite disclosure documents or regulatory filings.\n"
+        "- If evidence is absent (e.g., no pentest report in data room), produce a GAP, not a finding."
+    ),
 }
+
+
+# ---------------------------------------------------------------------------
+# Deal-config customization helper
+# ---------------------------------------------------------------------------
+
+
+def _get_agent_customization(
+    deal_config: DealConfig | None,
+    agent_name: str,
+) -> AgentCustomization | None:
+    """Retrieve per-agent customization from the deal config, if any.
+
+    Returns ``None`` when no customization is configured for *agent_name*.
+    """
+    if deal_config is None:
+        return None
+    forensic_dd = getattr(deal_config, "forensic_dd", None)
+    specialists_cfg = getattr(forensic_dd, "specialists", None)
+    customizations: dict[str, Any] = getattr(specialists_cfg, "customizations", {}) or {}
+    cust: object = customizations.get(agent_name)
+    if cust is None:
+        return None
+    # If the value is already an AgentCustomization, return directly.
+    from dd_agents.models.config import AgentCustomization as _AgentCustomization
+
+    if isinstance(cust, _AgentCustomization):
+        return cust
+    return None
+
+
+def apply_deal_config_customizations(
+    base_prompt: str,
+    deal_config: DealConfig | None,
+    agent_name: str,
+) -> str:
+    """Apply deal-config customizations to a specialist prompt.
+
+    Customizations are read from
+    ``deal_config.forensic_dd.specialists.customizations[agent_name]``.
+
+    - ``extra_focus_areas``: appended as a bullet list under a new heading.
+    - ``extra_instructions``: appended verbatim after the focus areas.
+    - ``severity_overrides``: injected as calibration rules.
+
+    Returns *base_prompt* unchanged when no customizations exist.
+    """
+    cust = _get_agent_customization(deal_config, agent_name)
+    if cust is None:
+        return base_prompt
+
+    additions: list[str] = []
+
+    if cust.extra_focus_areas:
+        lines = [f"## ADDITIONAL FOCUS AREAS ({agent_name})\n"]
+        for area in cust.extra_focus_areas:
+            lines.append(f"- {area}")
+        additions.append("\n".join(lines))
+
+    if cust.extra_instructions:
+        additions.append(f"## ADDITIONAL INSTRUCTIONS ({agent_name})\n\n{cust.extra_instructions}")
+
+    if cust.severity_overrides:
+        lines = [f"## SEVERITY OVERRIDES ({agent_name})\n"]
+        lines.append("Apply these severity calibration overrides for this deal:")
+        for category, severity in cust.severity_overrides.items():
+            lines.append(f"- {category}: {severity}")
+        additions.append("\n".join(lines))
+
+    if not additions:
+        return base_prompt
+
+    return base_prompt + "\n\n---\n\n" + "\n\n---\n\n".join(additions)
 
 
 # ---------------------------------------------------------------------------
@@ -439,13 +548,26 @@ class PromptBuilder:
         # 4. Reference files
         sections.append(self._build_reference_section(reference_files or []))
 
-        # 5. Specialist focus
+        # 5. Specialist focus (hardcoded SPECIALIST_FOCUS dict is primary;
+        #    registry descriptor fields supplement when available)
         try:
             agent_type = AgentType(agent_name)
         except ValueError:
             agent_type = None
         if agent_type and agent_type in SPECIALIST_FOCUS:
             sections.append(f"## YOUR SPECIALIST FOCUS\n\n{SPECIALIST_FOCUS[agent_type]}")
+
+        # 5a. Supplement from AgentRegistry descriptor (if fields are non-empty)
+        try:
+            from dd_agents.agents.registry import AgentRegistry
+
+            descriptor = AgentRegistry.get(agent_name)
+            # Append registry specialist_focus only when it adds content
+            # beyond what SPECIALIST_FOCUS already provides.
+            if descriptor.citation_examples:
+                sections.append(f"## CITATION EXAMPLES ({agent_name})\n\n{descriptor.citation_examples}")
+        except KeyError:
+            pass  # Unknown agent — no descriptor supplement
 
         # 5b. Severity calibration rubric (accepts both DealConfig and raw dict)
         sections.append(self._build_severity_rubric(deal_config or raw_deal_config))
@@ -479,6 +601,10 @@ class PromptBuilder:
             self.max_listed_files = max(50, self.max_listed_files // 2)
             sections[1] = self._build_subject_list(agent_name, subjects, file_precedence)
             prompt = "\n\n---\n\n".join(sections)
+
+        # Apply deal-config customizations (extra focus areas, instructions,
+        # severity overrides) as a final pass over the assembled prompt.
+        prompt = apply_deal_config_customizations(prompt, deal_config, agent_name)
 
         return prompt
 

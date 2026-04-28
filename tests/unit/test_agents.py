@@ -428,6 +428,7 @@ class TestPromptBuilder:
             AgentType.FINANCE,
             AgentType.COMMERCIAL,
             AgentType.PRODUCTTECH,
+            AgentType.CYBERSECURITY,
         ]
         for agent_type in specialist_types:
             assert agent_type in SPECIALIST_FOCUS
@@ -691,14 +692,15 @@ class TestProductTechAgent:
 class TestSpecialistRegistry:
     """Tests for the specialist type/class registries."""
 
-    def test_specialist_types_has_four(self) -> None:
-        assert len(SPECIALIST_TYPES) == 4
+    def test_specialist_types_has_five(self) -> None:
+        assert len(SPECIALIST_TYPES) == 5
 
     def test_specialist_classes_keys(self) -> None:
         assert AgentType.LEGAL in SPECIALIST_CLASSES
         assert AgentType.FINANCE in SPECIALIST_CLASSES
         assert AgentType.COMMERCIAL in SPECIALIST_CLASSES
         assert AgentType.PRODUCTTECH in SPECIALIST_CLASSES
+        assert AgentType.CYBERSECURITY in SPECIALIST_CLASSES
 
     def test_specialist_classes_are_subclasses(self) -> None:
         for cls in SPECIALIST_CLASSES.values():

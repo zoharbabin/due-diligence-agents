@@ -18,7 +18,6 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from dd_agents.utils.constants import (
-    ALL_SPECIALIST_AGENTS,
     SEVERITY_ORDER,
     SEVERITY_P0,
     SEVERITY_P1,
@@ -1044,11 +1043,17 @@ class ReportDataComputer:
         # data is a ReportComputedData instance consumed by all renderers
     """
 
-    @staticmethod
-    def _agent_to_domain(agent: str) -> str:
-        """Map agent name to one of the 4 domains."""
+    def __init__(self, active_agents: list[str] | None = None) -> None:
+        from dd_agents.agents.registry import AgentRegistry
+
+        self._active_agents: list[str] = (
+            active_agents if active_agents is not None else AgentRegistry.all_specialist_names()
+        )
+
+    def _agent_to_domain(self, agent: str) -> str:
+        """Map agent name to one of the registered specialist domains."""
         agent = agent.lower().strip()
-        if agent in ALL_SPECIALIST_AGENTS:
+        if agent in self._active_agents:
             return agent
         if "legal" in agent:
             return "legal"
@@ -1056,9 +1061,11 @@ class ReportDataComputer:
             return "finance"
         if "commerc" in agent:
             return "commercial"
+        if "cyber" in agent or "security" in agent:
+            return "cybersecurity"
         if "product" in agent or "tech" in agent:
             return "producttech"
-        return "legal"
+        return self._active_agents[0] if self._active_agents else "legal"
 
     @staticmethod
     def _recalibrate_severity(finding: dict[str, Any]) -> dict[str, Any]:
@@ -1187,9 +1194,9 @@ class ReportDataComputer:
         total_gaps = 0
         severity_counts: dict[str, int] = _sev_count_init()
         domain_findings_count: dict[str, int] = defaultdict(int)
-        domain_severity: dict[str, dict[str, int]] = {d: _sev_count_init() for d in ALL_SPECIALIST_AGENTS}
+        domain_severity: dict[str, dict[str, int]] = {d: _sev_count_init() for d in self._active_agents}
         category_groups: dict[str, dict[str, list[dict[str, Any]]]] = {
-            d: defaultdict(list) for d in ALL_SPECIALIST_AGENTS
+            d: defaultdict(list) for d in self._active_agents
         }
         findings_by_category: dict[str, list[dict[str, Any]]] = defaultdict(list)
         wolf_pack: list[dict[str, Any]] = []
@@ -1309,7 +1316,7 @@ class ReportDataComputer:
 
         domain_risk_scores: dict[str, float] = {}
         domain_risk_labels: dict[str, str] = {}
-        for d in ALL_SPECIALIST_AGENTS:
+        for d in self._active_agents:
             domain_risk_scores[d] = self._compute_risk_score(domain_severity.get(d, {}))
             domain_risk_labels[d] = self._compute_risk_label(domain_severity.get(d, {}))
 
@@ -1352,7 +1359,7 @@ class ReportDataComputer:
 
         # Top 10 material findings per domain (sorted by severity weight desc)
         top_by_domain: dict[str, list[dict[str, Any]]] = {}
-        for d in ALL_SPECIALIST_AGENTS:
+        for d in self._active_agents:
             domain_material = [f for f in material_findings if self._agent_to_domain(str(f.get("agent", ""))) == d]
             domain_material.sort(key=lambda f: -_SEVERITY_WEIGHTS.get(str(f.get("severity", SEVERITY_P3)), 0))
             top_by_domain[d] = domain_material[:10]
@@ -2259,8 +2266,8 @@ class ReportDataComputer:
 
     # --- Issue #145: Provenance statistics ---
 
-    @staticmethod
     def _compute_provenance_stats(
+        self,
         all_findings: list[dict[str, Any]],
         recalibrated_count: int,
     ) -> dict[str, Any]:
@@ -2280,7 +2287,7 @@ class ReportDataComputer:
         for f in all_findings:
             agent = str(f.get("agent", "unknown")).lower()
             agent_counts[agent] += 1
-            domain = ReportDataComputer._agent_to_domain(agent)
+            domain = self._agent_to_domain(agent)
             domains.add(domain)
             if str(f.get("confidence", "medium")).lower() == "high":
                 high_conf += 1

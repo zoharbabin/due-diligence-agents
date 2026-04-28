@@ -67,6 +67,11 @@ Changelog = "https://github.com/zoharbabin/due-diligence-agents/releases"
 [project.scripts]
 dd-agents = "dd_agents.cli:main"
 
+[project.entry-points."dd_agents.specialists"]
+# External agent packages register here. Each entry point must be a callable
+# that returns an AgentDescriptor instance. Example:
+#   my_agent = "my_package.agents:create_esg_descriptor"
+
 [tool.ruff]
 target-version = "py312"
 line-length = 120
@@ -79,6 +84,7 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
     "e2e: end-to-end tests (require API key, slow)",
+    "eval: agent quality evaluation tests (require API key)",
     "slow: tests that take more than 1 minute",
     "local: deep validation tests, local-only (not for CI)",
 ]

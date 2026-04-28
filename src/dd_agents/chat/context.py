@@ -35,6 +35,10 @@ _BUDGET_SUBJECTS: int = 1_500
 _BUDGET_MEMORIES: int = 2_000
 _BUDGET_CORRECTIONS: int = 500
 _BUDGET_KB_TIMELINE: int = 500
+_BUDGET_AGENT_DESCRIPTIONS: int = 800
+
+# Threshold above which findings are grouped by domain in the digest
+_DOMAIN_GROUPING_THRESHOLD: int = 20
 
 # ---------------------------------------------------------------------------
 # System prompt template parts
@@ -102,6 +106,47 @@ document before moving to the next. Do not open 10 files in parallel.
 """
 
 
+def _build_agent_descriptions(active_agents: list[str]) -> str:
+    """Generate a section describing each active agent's domain expertise.
+
+    Uses :class:`AgentRegistry` to look up descriptors.  Falls back to
+    a capitalized agent name when the descriptor is unavailable.
+
+    Returns an empty string when *active_agents* is empty.
+    """
+    if not active_agents:
+        return ""
+
+    try:
+        from dd_agents.agents.registry import AgentRegistry
+    except ImportError:
+        return ""
+
+    lines: list[str] = [
+        "## Analysis Domains",
+        "This analysis was conducted by the following specialist agents:",
+    ]
+    chars = sum(len(ln) for ln in lines)
+
+    for name in active_agents:
+        try:
+            descriptor = AgentRegistry.get(name)
+            display = descriptor.display_name
+            areas = ", ".join(descriptor.focus_areas[:5])
+        except KeyError:
+            display = name.capitalize()
+            areas = ""
+
+        line = f"- **{display}**: {areas}" if areas else f"- **{display}**"
+
+        if chars + len(line) > _BUDGET_AGENT_DESCRIPTIONS:
+            break
+        lines.append(line)
+        chars += len(line) + 1  # newline
+
+    return "\n".join(lines) if len(lines) > 2 else ""
+
+
 class ChatContextBuilder:
     """Assembles system prompts and per-turn user prompts for chat sessions.
 
@@ -129,6 +174,7 @@ class ChatContextBuilder:
         memory_store: ChatMemoryStore | None = None,
         correction_store: CorrectionStore | None = None,
         run_dir: Path | None = None,
+        active_agents: list[str] | None = None,
     ) -> None:
         self._index = finding_index
         self._kb = knowledge_base
@@ -136,6 +182,7 @@ class ChatContextBuilder:
         self._memory_store = memory_store
         self._correction_store = correction_store
         self._run_dir = run_dir
+        self._active_agents = active_agents or []
 
     def build_system_prompt(self) -> str:
         """Assemble the full system prompt (~14K chars)."""
@@ -149,31 +196,36 @@ class ChatContextBuilder:
         if deal_ctx:
             parts.append(f"\nDEAL CONTEXT:\n{deal_ctx}")
 
-        # 3. Findings stats
+        # 3. Agent descriptions
+        agent_desc = _build_agent_descriptions(self._active_agents)
+        if agent_desc:
+            parts.append(f"\n{agent_desc}")
+
+        # 4. Findings stats
         parts.append(f"\nFINDINGS OVERVIEW:\n{self._index.summary}")
         parts.append(f"Subjects: {len(self._index.by_subject)} entities analyzed.")
 
-        # 4. P0+P1 digest
+        # 5. P0+P1 digest
         digest = self.build_findings_digest(max_chars=_BUDGET_P0P1_DIGEST + _BUDGET_P2_SAMPLE)
         if digest:
             parts.append(f"\n{digest}")
 
-        # 5. Subject index
+        # 6. Subject index
         subject_section = self._build_subject_index()
         if subject_section:
             parts.append(f"\n{subject_section}")
 
-        # 6. Prior memories from past sessions
+        # 7. Prior memories from past sessions
         memories_section = self._build_memories_section()
         if memories_section:
             parts.append(f"\n{memories_section}")
 
-        # 7. Active corrections from prior chat sessions
+        # 8. Active corrections from prior chat sessions
         corrections_section = self._build_corrections_section()
         if corrections_section:
             parts.append(f"\n{corrections_section}")
 
-        # 8. KB timeline
+        # 9. KB timeline
         timeline = self._build_timeline()
         if timeline:
             parts.append(f"\n{timeline}")
@@ -205,11 +257,16 @@ class ChatContextBuilder:
         P0 and P1 findings are listed first, followed by a sample of P2.
         Each finding is formatted as a one-liner.  Findings that have been
         corrected are annotated with ``[DISMISSED]`` or ``[was P1->P2]``.
+
+        When total findings exceed :data:`_DOMAIN_GROUPING_THRESHOLD`,
+        findings are grouped by agent/domain within each severity level.
         """
         # Build correction lookup for annotation
         corrections_by_id: dict[str, Any] = {}
         if self._correction_store is not None:
             corrections_by_id = self._correction_store.corrections_by_finding_id()
+
+        use_domain_grouping = self._index.total_findings > _DOMAIN_GROUPING_THRESHOLD
 
         parts: list[str] = []
         chars_used = 0
@@ -229,21 +286,40 @@ class ChatContextBuilder:
             section_lines: list[str] = [label]
 
             max_items = 50 if sev in ("P0", "P1") else 20
-            for idx in indices[:max_items]:
-                f = self._index.findings[idx]
-                line = self._format_finding_oneliner(f)
-                # Annotate corrected findings
-                fid = f.get("id", f.get("_id", ""))
-                corr = corrections_by_id.get(str(fid))
-                if corr is not None:
-                    if corr.action == "dismiss":
-                        line = f"[DISMISSED] {line}"
-                    elif corr.new_severity and corr.original_severity:
-                        line = f"[was {corr.original_severity}\u2192{corr.new_severity}] {line}"
-                if chars_used + len(line) + len(label) > max_chars:
-                    break
-                section_lines.append(f"- {line}")
-                chars_used += len(line) + 3  # "- " + newline
+            limited_indices = indices[:max_items]
+
+            if use_domain_grouping:
+                # Group by domain within this severity level
+                domain_groups: dict[str, list[int]] = {}
+                for idx in limited_indices:
+                    f = self._index.findings[idx]
+                    domain = f.get("agent", f.get("domain", "unknown"))
+                    domain_groups.setdefault(domain, []).append(idx)
+
+                for domain_name, group_indices in sorted(domain_groups.items()):
+                    header = f"### {domain_name.capitalize()} ({len(group_indices)} findings)"
+                    if chars_used + len(header) > max_chars:
+                        break
+                    section_lines.append(header)
+                    chars_used += len(header) + 1
+
+                    for idx in group_indices:
+                        f = self._index.findings[idx]
+                        line = self._format_finding_oneliner(f)
+                        line = self._annotate_correction(line, f, corrections_by_id)
+                        if chars_used + len(line) + 3 > max_chars:
+                            break
+                        section_lines.append(f"- {line}")
+                        chars_used += len(line) + 3
+            else:
+                for idx in limited_indices:
+                    f = self._index.findings[idx]
+                    line = self._format_finding_oneliner(f)
+                    line = self._annotate_correction(line, f, corrections_by_id)
+                    if chars_used + len(line) + len(label) > max_chars:
+                        break
+                    section_lines.append(f"- {line}")
+                    chars_used += len(line) + 3  # "- " + newline
 
             if len(section_lines) > 1:
                 parts.append("\n".join(section_lines))
@@ -253,6 +329,22 @@ class ChatContextBuilder:
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _annotate_correction(
+        line: str,
+        f: dict[str, Any],
+        corrections_by_id: dict[str, Any],
+    ) -> str:
+        """Annotate a finding line with correction info if applicable."""
+        fid = f.get("id", f.get("_id", ""))
+        corr = corrections_by_id.get(str(fid))
+        if corr is not None:
+            if corr.action == "dismiss":
+                return f"[DISMISSED] {line}"
+            if corr.new_severity and corr.original_severity:
+                return f"[was {corr.original_severity}→{corr.new_severity}] {line}"
+        return line
 
     @staticmethod
     def _format_finding_oneliner(f: dict[str, Any]) -> str:

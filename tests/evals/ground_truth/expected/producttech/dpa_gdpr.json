@@ -1,0 +1,61 @@
+{
+  "contract": "dpa_gdpr.md",
+  "agent": "producttech",
+  "tags": [
+    "golden_path"
+  ],
+  "expected_findings": [
+    {
+      "category": "data_transfer",
+      "min_severity": "P2",
+      "max_severity": "P0",
+      "must_contain_keywords": [
+        "transfer"
+      ],
+      "keyword_synonyms": {
+        "transfer": ["US", "United States", "cross-border", "SCC", "adequacy", "international", "Analytics Platform"]
+      },
+      "citation_must_reference": {
+        "file": "dpa_gdpr.md"
+      },
+      "required": true
+    },
+    {
+      "category": "sub_processor",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": [
+        "sub-processor"
+      ],
+      "keyword_synonyms": {
+        "sub-processor": ["sub processor", "subprocessor", "Analytics Platform", "third-party processor", "vendor", "sub-process"]
+      },
+      "citation_must_reference": {
+        "file": "dpa_gdpr.md"
+      },
+      "required": false
+    },
+    {
+      "category": "data_retention",
+      "min_severity": "P3",
+      "max_severity": "P2",
+      "must_contain_keywords": [
+        "delet"
+      ],
+      "keyword_synonyms": {
+        "delet": ["delete", "deletion", "retain", "retention", "60 days", "erasure"]
+      },
+      "citation_must_reference": {
+        "file": "dpa_gdpr.md"
+      },
+      "required": false
+    }
+  ],
+  "expected_gaps": [],
+  "must_not_find": [
+    {
+      "category": "change_of_control",
+      "reason": "No change of control clause in a DPA"
+    }
+  ]
+}

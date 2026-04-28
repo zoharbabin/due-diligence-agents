@@ -1,0 +1,139 @@
+{
+  "contract": "security_assessment.md",
+  "agent": "cybersecurity",
+  "tags": [
+    "golden_path"
+  ],
+  "expected_findings": [
+    {
+      "category": "compliance_certifications",
+      "min_severity": "P2",
+      "max_severity": "P0",
+      "must_contain_keywords": [
+        "SOC 2"
+      ],
+      "keyword_synonyms": {
+        "SOC 2": ["SOC2", "SOC-2", "SOC 2 Type II", "SOC2 Type II"]
+      },
+      "citation_must_reference": {
+        "file": "security_assessment.md"
+      },
+      "required": true
+    },
+    {
+      "category": "access_controls",
+      "min_severity": "P2",
+      "max_severity": "P0",
+      "must_contain_keywords": [
+        "MFA"
+      ],
+      "citation_must_reference": {
+        "file": "security_assessment.md"
+      },
+      "required": true
+    },
+    {
+      "category": "encryption_standards",
+      "min_severity": "P2",
+      "max_severity": "P0",
+      "must_contain_keywords": [
+        "encrypt"
+      ],
+      "keyword_synonyms": {
+        "encrypt": ["encryption", "encrypted", "unencrypted", "plaintext", "data at rest"]
+      },
+      "citation_must_reference": {
+        "file": "security_assessment.md"
+      },
+      "required": true
+    },
+    {
+      "category": "vulnerability_management",
+      "min_severity": "P2",
+      "max_severity": "P0",
+      "must_contain_keywords": [
+        "vulnerabilit"
+      ],
+      "keyword_synonyms": {
+        "vulnerabilit": ["vulnerability", "vulnerabilities", "unpatched", "CVE", "critical"]
+      },
+      "citation_must_reference": {
+        "file": "security_assessment.md"
+      },
+      "required": true
+    },
+    {
+      "category": "data_breach_history",
+      "min_severity": "P2",
+      "max_severity": "P0",
+      "must_contain_keywords": [
+        "breach"
+      ],
+      "keyword_synonyms": {
+        "breach": ["unauthorized access", "incident", "compromised", "customer records"]
+      },
+      "citation_must_reference": {
+        "file": "security_assessment.md"
+      },
+      "required": true
+    },
+    {
+      "category": "incident_response",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": [
+        "incident"
+      ],
+      "keyword_synonyms": {
+        "incident": ["incident response", "IRP", "security monitoring", "SOC"]
+      },
+      "citation_must_reference": {
+        "file": "security_assessment.md"
+      },
+      "required": true
+    },
+    {
+      "category": "third_party_risk",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": [
+        "vendor"
+      ],
+      "keyword_synonyms": {
+        "vendor": ["third-party", "third party", "supplier", "security assessment"]
+      },
+      "citation_must_reference": {
+        "file": "security_assessment.md"
+      },
+      "required": true
+    },
+    {
+      "category": "network_security",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": [
+        "network"
+      ],
+      "keyword_synonyms": {
+        "network": ["segmentation", "firewall", "development", "production"]
+      },
+      "citation_must_reference": {
+        "file": "security_assessment.md"
+      },
+      "required": false
+    }
+  ],
+  "expected_gaps": [
+    "Missing_Doc"
+  ],
+  "must_not_find": [
+    {
+      "category": "change_of_control",
+      "reason": "No change of control provisions in a security assessment report"
+    },
+    {
+      "category": "pricing",
+      "reason": "No pricing terms in a security assessment report"
+    }
+  ]
+}

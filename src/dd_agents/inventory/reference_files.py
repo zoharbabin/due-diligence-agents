@@ -17,10 +17,10 @@ from dd_agents.models.inventory import FileEntry, ReferenceFile
 from dd_agents.utils.constants import (
     AGENT_ACQUIRER_INTELLIGENCE,
     AGENT_COMMERCIAL,
+    AGENT_CYBERSECURITY,
     AGENT_FINANCE,
     AGENT_LEGAL,
     AGENT_PRODUCTTECH,
-    ALL_SPECIALIST_AGENTS,
 )
 
 logger = logging.getLogger(__name__)
@@ -91,13 +91,12 @@ _ROUTING_TABLE: dict[ReferenceFileCategory, list[str]] = {
     ReferenceFileCategory.FINANCIAL: [AGENT_FINANCE, AGENT_COMMERCIAL],
     ReferenceFileCategory.PRICING: [AGENT_FINANCE, AGENT_COMMERCIAL],
     ReferenceFileCategory.CORPORATE_LEGAL: [AGENT_LEGAL],
-    ReferenceFileCategory.OPERATIONAL: [AGENT_PRODUCTTECH],
+    ReferenceFileCategory.OPERATIONAL: [AGENT_PRODUCTTECH, AGENT_CYBERSECURITY],
     ReferenceFileCategory.SALES: [AGENT_COMMERCIAL, AGENT_FINANCE],
-    ReferenceFileCategory.COMPLIANCE: [AGENT_LEGAL, AGENT_PRODUCTTECH],
+    ReferenceFileCategory.COMPLIANCE: [AGENT_LEGAL, AGENT_PRODUCTTECH, AGENT_CYBERSECURITY],
     ReferenceFileCategory.HR: [AGENT_FINANCE, AGENT_LEGAL],
     ReferenceFileCategory.BUYER_CONTEXT: [AGENT_ACQUIRER_INTELLIGENCE],
     ReferenceFileCategory.DD_OUTPUT: [],
-    ReferenceFileCategory.OTHER: list(ALL_SPECIALIST_AGENTS),
 }
 
 
@@ -168,12 +167,15 @@ class ReferenceFileClassifier:
         list[str]
             Agent names that should receive this file.
         """
+        from dd_agents.agents.registry import AgentRegistry
+
+        all_agents = AgentRegistry.all_specialist_names()
         if isinstance(category, str):
             try:
                 category = ReferenceFileCategory(category)
             except ValueError:
-                return list(ALL_SPECIALIST_AGENTS)
-        return list(_ROUTING_TABLE.get(category, ALL_SPECIALIST_AGENTS))
+                return list(all_agents)
+        return list(_ROUTING_TABLE.get(category, all_agents))
 
     def write_json(self, ref_files: list[ReferenceFile], output_path: Path) -> None:
         """Write reference files to ``reference_files.json``.

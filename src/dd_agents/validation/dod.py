@@ -13,7 +13,7 @@ The pipeline uses two complementary validation tiers:
 
 **Tier 2 — Step 35 (NON-BLOCKING): Definition of Done**
     This module runs 31 substantive checks (1-30 + 12b) that evaluate *completeness and
-    quality* of the analysis: every subject has all 4 agents' output, gaps
+    quality* of the analysis: every subject has all specialist agents' output, gaps
     are tracked, cross-references reconciled, Judge scores meet thresholds,
     etc.  These run during shutdown and produce ``dod_results.json``.
     Failures are logged and set the pipeline exit status (via
@@ -42,9 +42,9 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from dd_agents.agents.registry import AgentRegistry
 from dd_agents.models.audit import AuditCheck
 from dd_agents.utils.constants import (
-    ALL_SPECIALIST_AGENTS,
     COVERAGE_MANIFEST_JSON,
     FILES_TXT,
     JUDGE_DIR,
@@ -69,6 +69,9 @@ class DefinitionOfDoneChecker:
         Expected subject safe name.
     deal_config:
         Parsed deal configuration dictionary.
+    active_agents:
+        Specialist agent names to validate against.  Defaults to all
+        registered specialists via :class:`AgentRegistry`.
     """
 
     # Check group boundaries
@@ -86,11 +89,13 @@ class DefinitionOfDoneChecker:
         inventory_dir: Path,
         subject_safe_names: list[str],
         deal_config: dict[str, Any] | None = None,
+        active_agents: list[str] | None = None,
     ) -> None:
         self.run_dir = run_dir
         self.inventory_dir = inventory_dir
         self.subject_safe_names = subject_safe_names
         self.deal_config = deal_config or {}
+        self._active_agents = active_agents if active_agents is not None else AgentRegistry.all_specialist_names()
 
     # ------------------------------------------------------------------ #
     # public API
@@ -155,10 +160,10 @@ class DefinitionOfDoneChecker:
     # ------------------------------------------------------------------ #
 
     def check_1_subject_outputs_complete(self) -> AuditCheck:
-        """Every subject has output from ALL 4 agents."""
+        """Every subject has output from all specialist agents."""
         missing: list[str] = []
         for subject in self.subject_safe_names:
-            for agent in ALL_SPECIALIST_AGENTS:
+            for agent in self._active_agents:
                 path = self.run_dir / "findings" / agent / f"{subject}.json"
                 if not path.exists():
                     missing.append(f"{subject}/{agent}")
@@ -189,7 +194,7 @@ class DefinitionOfDoneChecker:
         # Check that every file is covered by at least one agent manifest.
         covered: set[str] = set()
         findings_dir = self.run_dir / "findings"
-        for agent in ALL_SPECIALIST_AGENTS:
+        for agent in self._active_agents:
             manifest_path = findings_dir / agent / COVERAGE_MANIFEST_JSON
             if not manifest_path.exists():
                 continue
@@ -220,7 +225,7 @@ class DefinitionOfDoneChecker:
         coverage_ratio = len(covered & all_basenames) / total if total else 0.0
         if coverage_ratio < 0.10:
             has_subject_data = any(
-                (findings_dir / agent / COVERAGE_MANIFEST_JSON).exists() for agent in ALL_SPECIALIST_AGENTS
+                (findings_dir / agent / COVERAGE_MANIFEST_JSON).exists() for agent in self._active_agents
             )
             if has_subject_data:
                 return AuditCheck(
@@ -245,10 +250,10 @@ class DefinitionOfDoneChecker:
         )
 
     def check_3_agent_manifests_valid(self) -> AuditCheck:
-        """All 4 agent manifests exist with consistent counts."""
+        """All specialist agent manifests exist with consistent counts."""
         missing: list[str] = []
         invalid: list[str] = []
-        for agent in ALL_SPECIALIST_AGENTS:
+        for agent in self._active_agents:
             manifest_path = self.run_dir / "findings" / agent / COVERAGE_MANIFEST_JSON
             if not manifest_path.exists():
                 missing.append(agent)
@@ -494,7 +499,7 @@ class DefinitionOfDoneChecker:
         # Search per-agent directories for processed reference files.
         # Manifests may live at findings/{agent}/ or findings/agents/{agent}/.
         findings_dir = self.run_dir / "findings"
-        for agent in ALL_SPECIALIST_AGENTS:
+        for agent in self._active_agents:
             for agent_dir in (findings_dir / agent, findings_dir / "agents" / agent):
                 if not agent_dir.exists():
                     continue
@@ -516,14 +521,14 @@ class DefinitionOfDoneChecker:
         )
 
     def check_11_audit_logs_exist(self) -> AuditCheck:
-        """All 4 specialist audit logs exist.
+        """All specialist audit logs exist.
 
         When audit log directories do not exist (common with SDK-based agents
         that don't write traditional audit logs), fall back to checking whether
         the QA audit completed successfully — a passing audit.json proves the
         pipeline ran to completion with auditable output.
         """
-        required = [*ALL_SPECIALIST_AGENTS]
+        required = [*self._active_agents]
         missing = []
         for agent in required:
             log_path = self.run_dir / "audit" / agent / "audit_log.jsonl"
@@ -589,7 +594,7 @@ class DefinitionOfDoneChecker:
             )
 
         # Load per-subject agent assignments from metadata if available.
-        # Falls back to expecting all 4 agents when metadata is absent.
+        # Falls back to expecting all specialist agents when metadata is absent.
         subject_assignments: dict[str, list[str]] = {}
         metadata_path = self.run_dir / "metadata.json"
         try:
@@ -598,7 +603,7 @@ class DefinitionOfDoneChecker:
         except (ValueError, OSError):
             pass
 
-        default_agents = set(ALL_SPECIALIST_AGENTS)
+        default_agents = set(self._active_agents)
         missing_coverage: list[str] = []
 
         for jf in sorted(merged_dir.glob("*.json")):
@@ -606,7 +611,7 @@ class DefinitionOfDoneChecker:
                 data = json.loads(jf.read_text(encoding="utf-8"))
             except (ValueError, OSError):
                 continue
-            # Use the actual assignment for this subject, or all 4 as fallback
+            # Use the actual assignment for this subject, or all specialists as fallback
             expected_agents = set(subject_assignments.get(jf.stem, default_agents))
             actual_agents: set[str] = set()
             for f in data.get("findings", []):
@@ -637,7 +642,7 @@ class DefinitionOfDoneChecker:
     # ------------------------------------------------------------------ #
 
     def check_13_merge_dedup_complete(self) -> AuditCheck:
-        """Merge step deduplicated findings from all 4 agents per subject."""
+        """Merge step deduplicated findings from all specialist agents per subject."""
         merged_dir = self.run_dir / "findings" / "merged"
         if not merged_dir.exists():
             return AuditCheck(
@@ -953,7 +958,7 @@ class DefinitionOfDoneChecker:
     # ------------------------------------------------------------------ #
 
     def check_20_quality_scores_exist(self) -> AuditCheck:
-        """quality_scores.json exists with valid scores for all 4 agents."""
+        """quality_scores.json exists with valid scores for all specialist agents."""
         path = self.run_dir / JUDGE_DIR / QUALITY_SCORES_JSON
         if not path.exists():
             return AuditCheck(
@@ -964,7 +969,7 @@ class DefinitionOfDoneChecker:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             agents_scored = set(data.get("agent_scores", {}).keys())
-            all_scored = agents_scored >= set(ALL_SPECIALIST_AGENTS)
+            all_scored = agents_scored >= set(self._active_agents)
             return AuditCheck(
                 passed=all_scored,
                 dod_checks=[20],

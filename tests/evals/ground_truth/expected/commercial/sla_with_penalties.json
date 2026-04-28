@@ -1,0 +1,61 @@
+{
+  "contract": "sla_with_penalties.md",
+  "agent": "commercial",
+  "tags": [
+    "golden_path"
+  ],
+  "expected_findings": [
+    {
+      "category": "termination",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": [
+        "terminate"
+      ],
+      "keyword_synonyms": {
+        "terminate": ["termination", "cancel", "MSA", "notice", "30 days"]
+      },
+      "citation_must_reference": {
+        "file": "sla_with_penalties.md"
+      },
+      "required": true
+    },
+    {
+      "category": "sla_risk",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": [
+        "service"
+      ],
+      "keyword_synonyms": {
+        "service": ["SLA", "uptime", "availability", "service credit", "service level", "penalty", "response", "breach"]
+      },
+      "citation_must_reference": {
+        "file": "sla_with_penalties.md"
+      },
+      "required": true
+    },
+    {
+      "category": "pricing_risk",
+      "min_severity": "P3",
+      "max_severity": "P2",
+      "must_contain_keywords": [
+        "fee"
+      ],
+      "keyword_synonyms": {
+        "fee": ["fee reduction", "15%", "pricing", "cost", "credit", "penalty"]
+      },
+      "citation_must_reference": {
+        "file": "sla_with_penalties.md"
+      },
+      "required": false
+    }
+  ],
+  "expected_gaps": [],
+  "must_not_find": [
+    {
+      "category": "data_privacy",
+      "reason": "No data privacy provisions in an SLA"
+    }
+  ]
+}

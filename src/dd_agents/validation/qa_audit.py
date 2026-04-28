@@ -13,9 +13,9 @@ import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from dd_agents.agents.registry import AgentRegistry
 from dd_agents.models.audit import AuditCheck, AuditReport, AuditSummary
 from dd_agents.utils.constants import (
-    ALL_SPECIALIST_AGENTS,
     COVERAGE_MANIFEST_JSON,
     FILES_TXT,
     NUMERICAL_MANIFEST_JSON,
@@ -30,9 +30,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Required audit log agents (4 specialists)
-_REQUIRED_LOG_AGENTS = [*ALL_SPECIALIST_AGENTS]
-
 # Required Excel sheets
 _REQUIRED_SHEETS = [
     "Summary",
@@ -43,7 +40,7 @@ _REQUIRED_SHEETS = [
 
 # Minimum domain coverage ratio for the domain_coverage check to pass.
 # Set conservatively low because agents may return findings that fail merge
-# validation, leaving some subjects without representation from all 4 agents.
+# validation, leaving some subjects without representation from all specialist agents.
 _DOMAIN_COVERAGE_THRESHOLD = 0.20
 
 # Minimum merge ratio (merged / expected) for the merge_dedup check to pass.
@@ -77,6 +74,9 @@ class QAAuditor:
         List of expected subject safe name.
     deal_config:
         Parsed deal configuration dictionary.
+    active_agents:
+        Specialist agent names to validate against.  Defaults to all
+        registered specialists via :class:`AgentRegistry`.
     """
 
     def __init__(
@@ -85,11 +85,13 @@ class QAAuditor:
         inventory_dir: Path,
         subject_safe_names: list[str],
         deal_config: dict[str, Any] | None = None,
+        active_agents: list[str] | None = None,
     ) -> None:
         self.run_dir = run_dir
         self.inventory_dir = inventory_dir
         self.subject_safe_names = subject_safe_names
         self.deal_config = deal_config or {}
+        self._active_agents = active_agents if active_agents is not None else AgentRegistry.all_specialist_names()
 
     # ------------------------------------------------------------------ #
     # public API
@@ -149,7 +151,7 @@ class QAAuditor:
         all_match = True
         any_manifest_exists = False
         expected = len(self.subject_safe_names)
-        for agent in ALL_SPECIALIST_AGENTS:
+        for agent in self._active_agents:
             manifest_path = self.run_dir / "findings" / agent / COVERAGE_MANIFEST_JSON
             if not manifest_path.exists():
                 # Manifest missing — check actual files as fallback.
@@ -227,7 +229,7 @@ class QAAuditor:
         file_to_agents: dict[str, list[str]] = {f: [] for f in all_files}
 
         agents_with_file_data = 0
-        for agent in ALL_SPECIALIST_AGENTS:
+        for agent in self._active_agents:
             manifest_path = self.run_dir / "findings" / agent / COVERAGE_MANIFEST_JSON
             if not manifest_path.exists():
                 continue
@@ -250,7 +252,7 @@ class QAAuditor:
         # file-level coverage cannot be meaningfully verified.  Agent
         # manifests may only contain subject-level summaries.  Defer to
         # subject_coverage.
-        if agents_with_file_data < len(ALL_SPECIALIST_AGENTS):
+        if agents_with_file_data < len(self._active_agents):
             return "file_coverage", AuditCheck(
                 passed=True,
                 dod_checks=[2, 10],
@@ -282,7 +284,7 @@ class QAAuditor:
         agents_with_logs: list[str] = []
         missing_logs: list[str] = []
 
-        for agent in _REQUIRED_LOG_AGENTS:
+        for agent in self._active_agents:
             log_path = self.run_dir / "audit" / agent / "audit_log.jsonl"
             if log_path.exists() and log_path.stat().st_size > 0:
                 agents_with_logs.append(agent)
@@ -298,7 +300,7 @@ class QAAuditor:
                     "agents_with_logs": [],
                     "missing_logs": missing_logs,
                 },
-                rule="ALL 4 specialist agents MUST have non-empty audit_log.jsonl.",
+                rule="ALL specialist agents MUST have non-empty audit_log.jsonl.",
             )
 
         return "audit_logs", AuditCheck(
@@ -308,7 +310,7 @@ class QAAuditor:
                 "agents_with_logs": agents_with_logs,
                 "missing_logs": missing_logs,
             },
-            rule="ALL 4 specialist agents MUST have non-empty audit_log.jsonl.",
+            rule="ALL specialist agents MUST have non-empty audit_log.jsonl.",
         )
 
     # ------------------------------------------------------------------ #
@@ -318,14 +320,14 @@ class QAAuditor:
     def check_subject_coverage(self) -> tuple[str, AuditCheck]:
         missing_outputs: list[dict[str, str]] = []
         for subject in self.subject_safe_names:
-            for agent in ALL_SPECIALIST_AGENTS:
+            for agent in self._active_agents:
                 path = self.run_dir / "findings" / agent / f"{subject}.json"
                 if not path.exists():
                     missing_outputs.append({"subject": subject, "agent": agent})
 
         subjects_missing = {m["subject"] for m in missing_outputs}
         total = len(self.subject_safe_names)
-        total_expected = total * len(ALL_SPECIALIST_AGENTS)
+        total_expected = total * len(self._active_agents)
         coverage_ratio = (total_expected - len(missing_outputs)) / max(total_expected, 1)
 
         # Coverage gate (step 17) already respawns agents and generates
@@ -341,12 +343,12 @@ class QAAuditor:
             dod_checks=[1],
             details={
                 "total_subjects": total,
-                "subjects_with_all_4_agents": total - len(subjects_missing),
+                "subjects_with_all_agents": total - len(subjects_missing),
                 "missing_outputs": missing_outputs[:100],
                 "coverage_ratio": round(coverage_ratio, 4),
                 "coverage_gaps_recorded": has_gap_findings,
             },
-            rule="ALL subjects MUST have output from ALL 4 agents. "
+            rule="ALL subjects MUST have output from all specialist agents. "
             "Tolerance: >= 95% when coverage gate has already generated gap findings for missing outputs.",
         )
 
@@ -627,7 +629,7 @@ class QAAuditor:
     # ------------------------------------------------------------------ #
 
     def check_domain_coverage(self) -> tuple[str, AuditCheck]:
-        enabled_domains = set(ALL_SPECIALIST_AGENTS)
+        enabled_domains = set(self._active_agents)
         subjects_missing: list[dict[str, Any]] = []
         category_warnings: list[str] = []
         merged_dir = self.run_dir / "findings" / "merged"
@@ -680,7 +682,7 @@ class QAAuditor:
         coverage = 1.0 - (len(subjects_missing) / total)
 
         # In production, some subjects may legitimately lack findings from all
-        # 4 agents (e.g. a subject with a single image file won't have finance
+        # all agents (e.g. a subject with a single image file won't have finance
         # findings).  Use small epsilon to avoid floating-point boundary failures
         # (e.g. 12/15 = 0.19999…96 vs threshold 0.20).
         passed = coverage >= _DOMAIN_COVERAGE_THRESHOLD - 1e-9

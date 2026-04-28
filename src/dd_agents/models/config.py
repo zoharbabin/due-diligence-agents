@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from dd_agents.models.enums import AgentName, DealType, ExecutionMode
+from dd_agents.models.enums import DealType, ExecutionMode
 
 
 class BuyerInfo(BaseModel):
@@ -210,25 +210,36 @@ class ReportingConfig(BaseModel):
     include_metadata_sheet: bool = Field(default=True, description="Include metadata sheet in Excel report")
 
 
-class CustomDomain(BaseModel):
-    """Custom analysis domain definition."""
+class AgentCustomization(BaseModel):
+    """Per-agent customization applied via deal-config.json.
 
-    id: str = Field(pattern=r"^[a-z_]+$", description="Unique domain identifier (lowercase with underscores)")
-    name: str = Field(description="Human-readable domain name")
-    description: str = Field(default="", description="Description of what this domain analyzes")
-    agent_assignment: AgentName = Field(description="Agent responsible for analyzing this domain")
-    expected_finding_categories: list[str] = Field(
-        default_factory=list, description="Expected finding categories for this domain"
+    Business users add focus areas, instructions, or severity overrides
+    without touching Python code.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    extra_focus_areas: list[str] = Field(
+        default_factory=list, description="Additional focus areas appended to the agent's defaults"
     )
-    key_terms: list[str] = Field(default_factory=list, description="Domain-specific key terms to search for")
-    weight: int = Field(default=3, ge=1, le=3, description="Domain importance weight (1=low, 3=high)")
+    extra_instructions: str = Field(
+        default="", description="Additional instructions appended to the agent's specialist focus"
+    )
+    severity_overrides: dict[str, str] = Field(
+        default_factory=dict,
+        description="Category-to-severity overrides, e.g. {'change_of_control': 'P2'}",
+    )
 
 
-class DomainConfig(BaseModel):
-    """Analysis domain configuration for forensic-dd."""
+class SpecialistsConfig(BaseModel):
+    """Specialist agent enablement and customization."""
 
-    disabled: list[str] = Field(default_factory=list, description="Domain IDs to disable")
-    custom: list[CustomDomain] = Field(default_factory=list, description="Custom domain definitions")
+    model_config = ConfigDict(extra="allow")
+
+    disabled: list[str] = Field(default_factory=list, description="Agent names to disable for this run")
+    customizations: dict[str, AgentCustomization] = Field(
+        default_factory=dict, description="Per-agent customization keyed by agent name"
+    )
 
 
 class ForensicDDConfig(BaseModel):
@@ -237,7 +248,9 @@ class ForensicDDConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     enabled: bool = Field(default=True, description="Whether forensic-dd skill is enabled")
-    domains: DomainConfig = Field(default_factory=DomainConfig, description="Domain configuration")
+    specialists: SpecialistsConfig = Field(
+        default_factory=SpecialistsConfig, description="Specialist agent configuration"
+    )
 
 
 class BuyerStrategy(BaseModel):

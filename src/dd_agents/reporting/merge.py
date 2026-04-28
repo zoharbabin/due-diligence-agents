@@ -27,7 +27,7 @@ from dd_agents.models.finding import (
     MergedSubjectOutput,
 )
 from dd_agents.models.governance import GovernanceEdge, GovernanceGraph
-from dd_agents.utils.constants import ALL_SPECIALIST_AGENTS, NON_SUBJECT_STEMS, SEVERITY_ORDER, SEVERITY_P3
+from dd_agents.utils.constants import NON_SUBJECT_STEMS, SEVERITY_ORDER, SEVERITY_P3
 from dd_agents.utils.naming import subject_safe_name as compute_safe_name
 
 if TYPE_CHECKING:
@@ -256,6 +256,7 @@ class FindingMerger:
         findings_dir: Path,
         *,
         expected_subjects: list[str] | None = None,
+        active_agents: list[str] | None = None,
     ) -> dict[str, MergedSubjectOutput]:
         """Process all subjects found under *findings_dir*.
 
@@ -275,12 +276,19 @@ class FindingMerger:
             If provided, discovered stems are validated against this
             canonical list.  Unknown stems are mapped to the closest
             expected name (via fuzzy match) and a warning is logged.
+        active_agents:
+            Specialist agent names to consider.  Defaults to all
+            registered specialists via ``AgentRegistry``.
 
         Returns ``{subject_safe_name: MergedSubjectOutput}``.
         """
+        from dd_agents.agents.registry import AgentRegistry
+
+        agents = active_agents if active_agents is not None else AgentRegistry.all_specialist_names()
+
         # Discover all subject safe name across agents
         subject_names: set[str] = set()
-        for agent in ALL_SPECIALIST_AGENTS:
+        for agent in agents:
             agent_dir = findings_dir / agent
             if agent_dir.is_dir():
                 for fp in agent_dir.glob("*.json"):
@@ -311,7 +319,7 @@ class FindingMerger:
                             best_match,
                         )
                         # Rename agent files from unknown stem to canonical name
-                        for agent in ALL_SPECIALIST_AGENTS:
+                        for agent in agents:
                             src = findings_dir / agent / f"{stem}.json"
                             dst = findings_dir / agent / f"{best_match}.json"
                             if src.exists() and not dst.exists():
@@ -336,7 +344,7 @@ class FindingMerger:
         failed_subjects: list[dict[str, Any]] = []
         for csn in sorted(subject_names):
             agent_outputs: dict[str, dict[str, Any]] = {}
-            for agent in ALL_SPECIALIST_AGENTS:
+            for agent in agents:
                 fp = findings_dir / agent / f"{csn}.json"
                 if fp.exists():
                     try:
@@ -436,8 +444,9 @@ class FindingMerger:
     def check_agent_coverage(
         merged: dict[str, MergedSubjectOutput],
         findings_dir: Path | None = None,
+        active_agents: list[str] | None = None,
     ) -> list[dict[str, Any]]:
-        """Verify every subject has findings or gaps from all 4 specialist agents.
+        """Verify every subject has findings or gaps from all specialist agents.
 
         Distinguishes two failure modes when *findings_dir* is provided:
 
@@ -454,7 +463,9 @@ class FindingMerger:
               "missing_output": [str],       # no JSON file on disk
               "no_findings": [str]}]         # file exists, empty content
         """
-        expected_agents = set(ALL_SPECIALIST_AGENTS)
+        from dd_agents.agents.registry import AgentRegistry
+
+        expected_agents = set(active_agents if active_agents is not None else AgentRegistry.all_specialist_names())
         gaps: list[dict[str, Any]] = []
         for csn, mco in merged.items():
             actual_agents: set[str] = set()

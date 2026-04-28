@@ -1,0 +1,32 @@
+{
+  "contract": "false_positive_trap.md",
+  "agent": "legal",
+  "tags": ["adversarial"],
+  "ambiguity_zone": 0.1,
+  "max_expected_findings": 3,
+  "min_expected_findings": 0,
+  "expected_findings": [],
+  "expected_gaps": ["Missing_Doc"],
+  "must_not_find": [
+    {
+      "category": "termination",
+      "reason": "Document discusses employee termination (HR), not contract termination — agent must not conflate these"
+    },
+    {
+      "category": "change_of_control",
+      "reason": "No change of control provisions exist in an employee handbook"
+    },
+    {
+      "category": "data_privacy",
+      "reason": "Document mentions data classification tiers but has no contractual privacy obligations or DPA provisions"
+    },
+    {
+      "category": "pricing_risk",
+      "reason": "No pricing or payment terms in an employee handbook"
+    },
+    {
+      "category": "sla_risk",
+      "reason": "No service level commitments in an employee handbook"
+    }
+  ]
+}

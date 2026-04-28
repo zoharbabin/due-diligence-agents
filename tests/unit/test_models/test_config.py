@@ -8,8 +8,8 @@ from pydantic import ValidationError
 from dd_agents.models.config import (
     AcquiredEntity,
     ActiveFilter,
+    AgentCustomization,
     BuyerInfo,
-    CustomDomain,
     DealConfig,
     EntityAliases,
     ExecutionConfig,
@@ -18,11 +18,12 @@ from dd_agents.models.config import (
     ReportingConfig,
     SamplingRates,
     SourceOfTruth,
+    SpecialistsConfig,
     SubjectDatabase,
     SubjectDatabaseColumns,
     TargetInfo,
 )
-from dd_agents.models.enums import AgentName, DealType, ExecutionMode
+from dd_agents.models.enums import DealType, ExecutionMode
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -135,19 +136,15 @@ def _full_deal_config_data() -> dict:
         },
         "forensic_dd": {
             "enabled": True,
-            "domains": {
+            "specialists": {
                 "disabled": ["hr_compliance"],
-                "custom": [
-                    {
-                        "id": "data_privacy",
-                        "name": "Data Privacy Review",
-                        "description": "GDPR and CCPA compliance check",
-                        "agent_assignment": "legal",
-                        "expected_finding_categories": ["privacy_violation", "consent_gap"],
-                        "key_terms": ["GDPR", "CCPA", "data processing agreement"],
-                        "weight": 2,
+                "customizations": {
+                    "legal": {
+                        "extra_focus_areas": ["privacy_violation", "consent_gap"],
+                        "extra_instructions": "Focus on GDPR and CCPA compliance.",
+                        "severity_overrides": {"data_privacy": "P1"},
                     }
-                ],
+                },
             },
         },
     }
@@ -184,10 +181,11 @@ class TestDealConfigValid:
         assert config.execution.execution_mode == ExecutionMode.FULL
         assert config.execution.staleness_threshold == 5
         assert config.forensic_dd.enabled is True
-        assert len(config.forensic_dd.domains.disabled) == 1
-        assert len(config.forensic_dd.domains.custom) == 1
-        assert config.forensic_dd.domains.custom[0].id == "data_privacy"
-        assert config.forensic_dd.domains.custom[0].agent_assignment == AgentName.LEGAL
+        assert len(config.forensic_dd.specialists.disabled) == 1
+        assert "legal" in config.forensic_dd.specialists.customizations
+        cust = config.forensic_dd.specialists.customizations["legal"]
+        assert cust.extra_focus_areas == ["privacy_violation", "consent_gap"]
+        assert cust.severity_overrides == {"data_privacy": "P1"}
 
     def test_minimal_config(self):
         """Minimal config with only required fields should use correct defaults."""
@@ -232,8 +230,8 @@ class TestDealConfigValid:
         assert config.reporting.include_metadata_sheet is True
         # Forensic DD defaults
         assert config.forensic_dd.enabled is True
-        assert config.forensic_dd.domains.disabled == []
-        assert config.forensic_dd.domains.custom == []
+        assert config.forensic_dd.specialists.disabled == []
+        assert config.forensic_dd.specialists.customizations == {}
 
     def test_serialization_round_trip(self):
         """Config should survive a serialization round-trip."""
@@ -425,40 +423,31 @@ class TestDealConfigInvalid:
         with pytest.raises(ValidationError):
             DealConfig.model_validate(data)
 
-    def test_custom_domain_invalid_id_pattern(self):
-        """Custom domain id with invalid pattern should raise ValidationError."""
+    def test_specialists_disabled_accepts_list(self):
+        """specialists.disabled should accept a list of agent names."""
         data = _minimal_deal_config_data()
-        data["forensic_dd"] = {
-            "domains": {
-                "custom": [
-                    {
-                        "id": "Invalid-ID",  # must be ^[a-z_]+$
-                        "name": "Test",
-                        "agent_assignment": "legal",
-                    }
-                ]
-            }
-        }
-        with pytest.raises(ValidationError):
-            DealConfig.model_validate(data)
+        data["forensic_dd"] = {"specialists": {"disabled": ["legal", "finance"]}}
+        config = DealConfig.model_validate(data)
+        assert config.forensic_dd.specialists.disabled == ["legal", "finance"]
 
-    def test_custom_domain_weight_out_of_range(self):
-        """Custom domain weight outside 1-3 range should raise ValidationError."""
+    def test_specialists_customizations_with_extra_fields(self):
+        """Agent customization with extra_focus_areas should validate."""
         data = _minimal_deal_config_data()
         data["forensic_dd"] = {
-            "domains": {
-                "custom": [
-                    {
-                        "id": "test_domain",
-                        "name": "Test",
-                        "agent_assignment": "legal",
-                        "weight": 5,
+            "specialists": {
+                "customizations": {
+                    "finance": {
+                        "extra_focus_areas": ["pension_analysis"],
+                        "extra_instructions": "Focus on ASC 606.",
                     }
-                ]
+                }
             }
         }
-        with pytest.raises(ValidationError):
-            DealConfig.model_validate(data)
+        config = DealConfig.model_validate(data)
+        cust = config.forensic_dd.specialists.customizations["finance"]
+        assert cust.extra_focus_areas == ["pension_analysis"]
+        assert cust.extra_instructions == "Focus on ASC 606."
+        assert cust.severity_overrides == {}
 
     def test_acquired_entity_bad_date(self):
         """Invalid acquisition_date format should raise ValidationError."""
@@ -548,8 +537,8 @@ class TestDealConfigDefaults:
         """ForensicDDConfig should have correct defaults."""
         fdd = ForensicDDConfig()
         assert fdd.enabled is True
-        assert fdd.domains.disabled == []
-        assert fdd.domains.custom == []
+        assert fdd.specialists.disabled == []
+        assert fdd.specialists.customizations == {}
 
     def test_entity_aliases_defaults(self):
         """EntityAliases should have correct defaults."""
@@ -580,13 +569,40 @@ class TestDealConfigDefaults:
         assert target.entity_name_variants_for_contract_matching == []
         assert target.notes == ""
 
-    def test_custom_domain_defaults(self):
-        """CustomDomain should have correct defaults for optional fields."""
-        domain = CustomDomain(id="test", name="Test", agent_assignment=AgentName.LEGAL)
-        assert domain.description == ""
-        assert domain.expected_finding_categories == []
-        assert domain.key_terms == []
-        assert domain.weight == 3
+    def test_agent_customization_defaults(self):
+        """AgentCustomization should have correct defaults for optional fields."""
+        cust = AgentCustomization()
+        assert cust.extra_focus_areas == []
+        assert cust.extra_instructions == ""
+        assert cust.severity_overrides == {}
+
+    def test_specialists_config_defaults(self):
+        """SpecialistsConfig should have correct defaults."""
+        cfg = SpecialistsConfig()
+        assert cfg.disabled == []
+        assert cfg.customizations == {}
+
+    def test_specialists_config_with_values(self):
+        """SpecialistsConfig should accept values."""
+        cfg = SpecialistsConfig(
+            disabled=["producttech"],
+            customizations={
+                "finance": AgentCustomization(
+                    extra_focus_areas=["insurance"],
+                    extra_instructions="Focus on ASC 606.",
+                    severity_overrides={"change_of_control": "P2"},
+                )
+            },
+        )
+        assert cfg.disabled == ["producttech"]
+        assert "finance" in cfg.customizations
+        assert cfg.customizations["finance"].extra_focus_areas == ["insurance"]
+
+    def test_forensic_dd_config_has_specialists(self):
+        """ForensicDDConfig should have specialists field."""
+        fdd = ForensicDDConfig()
+        assert isinstance(fdd.specialists, SpecialistsConfig)
+        assert fdd.specialists.disabled == []
 
 
 # ---------------------------------------------------------------------------

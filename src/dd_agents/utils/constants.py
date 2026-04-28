@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import os  # noqa: TCH003 - used at module level for env var reads
+from typing import TYPE_CHECKING
 
 from dd_agents.extraction._constants import IMAGE_EXTENSIONS, MEDIA_EXTENSIONS
+
+if TYPE_CHECKING:
+    from dd_agents.models.config import DealConfig
 
 # ---------------------------------------------------------------------------
 # Directory structure constants
@@ -38,6 +42,7 @@ AGENT_LEGAL = "legal"
 AGENT_FINANCE = "finance"
 AGENT_COMMERCIAL = "commercial"
 AGENT_PRODUCTTECH = "producttech"
+AGENT_CYBERSECURITY = "cybersecurity"
 AGENT_JUDGE = "judge"
 AGENT_ACQUIRER_INTELLIGENCE = "acquirer_intelligence"
 
@@ -46,7 +51,20 @@ ALL_SPECIALIST_AGENTS: list[str] = [
     AGENT_FINANCE,
     AGENT_COMMERCIAL,
     AGENT_PRODUCTTECH,
+    AGENT_CYBERSECURITY,
 ]
+
+
+def get_active_agents(deal_config: DealConfig | None = None) -> list[str]:
+    """Return the list of active specialist agents, respecting config disablement.
+
+    Delegates to :class:`~dd_agents.agents.registry.AgentRegistry` so that
+    callers don't need to import the registry directly.
+    """
+    from dd_agents.agents.registry import AgentRegistry
+
+    return AgentRegistry.resolve_active(deal_config)
+
 
 # ---------------------------------------------------------------------------
 # Severity labels

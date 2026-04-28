@@ -1,0 +1,42 @@
+{
+  "contract": "sparse_minimal.md",
+  "agent": "legal",
+  "tags": ["edge_case"],
+  "ambiguity_zone": 0.2,
+  "max_expected_findings": 2,
+  "min_expected_findings": 0,
+  "expected_findings": [
+    {
+      "category": "confidentiality",
+      "min_severity": "P3",
+      "max_severity": "P2",
+      "must_contain_keywords": ["confidentiality"],
+      "keyword_synonyms": {
+        "confidentiality": ["non-disclosure", "NDA", "confidential", "disclose"]
+      },
+      "citation_must_reference": {
+        "file": "sparse_minimal.md"
+      },
+      "required": false
+    }
+  ],
+  "expected_gaps": ["Missing_Doc"],
+  "must_not_find": [
+    {
+      "category": "change_of_control",
+      "reason": "No change of control clause in a non-binding LOI"
+    },
+    {
+      "category": "termination",
+      "reason": "No termination clause — LOI is non-binding"
+    },
+    {
+      "category": "ip_ownership",
+      "reason": "No IP provisions in a brief LOI"
+    },
+    {
+      "category": "pricing_risk",
+      "reason": "No pricing or payment terms in an LOI"
+    }
+  ]
+}

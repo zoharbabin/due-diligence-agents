@@ -209,6 +209,15 @@ class ChatEngine:
         self._correction_store = CorrectionStore(chat_dir)
         self._correction_store.ensure_dirs()
 
+        # Resolve active agents for domain-aware context
+        active_agents: list[str] = []
+        try:
+            from dd_agents.agents.registry import AgentRegistry
+
+            active_agents = AgentRegistry.resolve_active()
+        except Exception:
+            logger.debug("Could not resolve active agents for chat context")
+
         # Build context and cache system prompt
         self._context_builder = ChatContextBuilder(
             finding_index=self._index,
@@ -217,6 +226,7 @@ class ChatEngine:
             memory_store=self._memory_store,
             correction_store=self._correction_store,
             run_dir=run_dir,
+            active_agents=active_agents,
         )
         self._system_prompt = self._context_builder.build_system_prompt()
 

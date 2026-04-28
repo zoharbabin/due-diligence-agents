@@ -227,7 +227,9 @@ class JudgeAgent(BaseAgentRunner):
         """
         import re as _re
 
-        agent_names = ("legal", "finance", "commercial", "producttech")
+        from dd_agents.agents.registry import AgentRegistry
+
+        agent_names = tuple(AgentRegistry.all_specialist_names())
         dimension_names = (
             "citation_verification",
             "contextual_validation",

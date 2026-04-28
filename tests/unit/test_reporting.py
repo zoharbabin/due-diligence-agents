@@ -3230,7 +3230,7 @@ class TestAgentCoverage:
         from dd_agents.models.finding import Citation, Finding, MergedSubjectOutput
 
         findings = []
-        for agent in ("legal", "finance", "commercial", "producttech"):
+        for agent in ("legal", "finance", "commercial", "producttech", "cybersecurity"):
             findings.append(
                 Finding(
                     id=f"forensic-dd_{agent}_test_0001",

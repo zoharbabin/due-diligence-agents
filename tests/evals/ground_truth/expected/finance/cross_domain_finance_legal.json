@@ -1,0 +1,60 @@
+{
+  "contract": "cross_domain_finance_legal.md",
+  "agent": "finance",
+  "tags": ["cross_domain"],
+  "max_expected_findings": 8,
+  "expected_findings": [
+    {
+      "category": "revenue_recognition",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": [
+        "ratable"
+      ],
+      "keyword_synonyms": {
+        "ratable": ["ratably", "quarterly", "recognition", "ASC 606", "over each"]
+      },
+      "citation_must_reference": {
+        "file": "cross_domain_finance_legal.md"
+      },
+      "required": false
+    },
+    {
+      "category": "financial_discrepancy",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": [
+        "fee"
+      ],
+      "keyword_synonyms": {
+        "fee": ["setup", "implementation", "total", "discrepancy", "inconsistency", "one-time", "$50,000", "understate", "contract value", "discount", "not reflected", "charge", "cost"]
+      },
+      "citation_must_reference": {
+        "file": "cross_domain_finance_legal.md"
+      },
+      "required": true
+    },
+    {
+      "category": "payment_terms",
+      "min_severity": "P3",
+      "max_severity": "P2",
+      "must_contain_keywords": [
+        "interest"
+      ],
+      "keyword_synonyms": {
+        "interest": ["late", "24%", "2%", "penalty", "overdue", "payment", "net 30"]
+      },
+      "citation_must_reference": {
+        "file": "cross_domain_finance_legal.md"
+      },
+      "required": false
+    }
+  ],
+  "expected_gaps": [],
+  "must_not_find": [
+    {
+      "category": "ip_ownership",
+      "reason": "No IP clauses in a revenue schedule"
+    }
+  ]
+}

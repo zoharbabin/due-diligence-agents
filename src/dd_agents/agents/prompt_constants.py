@@ -140,6 +140,16 @@ _CITATION_EXAMPLES: dict[str, str] = {
         "- SLA commitments: cite the exact uptime percentage and response time from the doc\n"
         "- Pen test reports: cite the finding ID, severity, and remediation status text"
     ),
+    "cybersecurity": (
+        "Examples of good Cybersecurity citations:\n"
+        "- Pentest reports: cite the finding ID, CVSS score, severity, and remediation status\n"
+        "- SOC 2/ISO 27001 reports: cite the control ID, test description, and exception text\n"
+        "- Security policies: cite the policy name, version, effective date, and key clause text\n"
+        "- Incident reports: cite the incident ID, date, impact scope, and root cause text\n"
+        "- Compliance matrices: cite the requirement ID, compliance status, and evidence reference\n"
+        "- Vulnerability scans: cite the CVE ID, affected system, severity, and patch status\n"
+        "- Access control documentation: cite the policy section and specific control description"
+    ),
 }
 
 

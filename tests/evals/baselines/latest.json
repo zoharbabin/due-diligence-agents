@@ -1,0 +1,56 @@
+{
+  "timestamp": "2026-04-28T20:55:10.753706+00:00",
+  "commit": "cdefd907e4550b5504d3e2f4ddcf2d4f1c18ea8c",
+  "metrics": {
+    "commercial": {
+      "agent_name": "commercial",
+      "finding_recall": 1.0,
+      "finding_precision": 1.0,
+      "citation_accuracy": 1.0,
+      "severity_accuracy": 1.0,
+      "false_positive_rate": 0.0,
+      "f1_score": 1.0,
+      "finding_count": 4
+    },
+    "cybersecurity": {
+      "agent_name": "cybersecurity",
+      "finding_recall": 0.8571428571428571,
+      "finding_precision": 0.7272727272727273,
+      "citation_accuracy": 1.0,
+      "severity_accuracy": 1.0,
+      "false_positive_rate": 0.0,
+      "f1_score": 0.7868852459016394,
+      "finding_count": 11
+    },
+    "finance": {
+      "agent_name": "finance",
+      "finding_recall": 1.0,
+      "finding_precision": 0.775,
+      "citation_accuracy": 1.0,
+      "severity_accuracy": 1.0,
+      "false_positive_rate": 0.0,
+      "f1_score": 0.873015873015873,
+      "finding_count": 9
+    },
+    "legal": {
+      "agent_name": "legal",
+      "finding_recall": 0.9166666666666666,
+      "finding_precision": 0.7222222222222222,
+      "citation_accuracy": 1.0,
+      "severity_accuracy": 1.0,
+      "false_positive_rate": 0.0,
+      "f1_score": 0.7373015873015873,
+      "finding_count": 16
+    },
+    "producttech": {
+      "agent_name": "producttech",
+      "finding_recall": 1.0,
+      "finding_precision": 0.6666666666666666,
+      "citation_accuracy": 1.0,
+      "severity_accuracy": 1.0,
+      "false_positive_rate": 0.0,
+      "f1_score": 0.8,
+      "finding_count": 3
+    }
+  }
+}

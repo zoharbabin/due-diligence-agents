@@ -17,9 +17,9 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
+from dd_agents.agents.registry import AgentRegistry
 from dd_agents.utils.constants import (
     ALL_SEVERITIES,
-    ALL_SPECIALIST_AGENTS,
     SEVERITY_P0,
     SEVERITY_P1,
     SEVERITY_P2,
@@ -56,13 +56,31 @@ SEVERITY_LABELS: dict[str, str] = {
     "P3": "Low",
 }
 
-DOMAIN_AGENTS: list[str] = list(ALL_SPECIALIST_AGENTS)
+
+def _get_domain_agents() -> list[str]:
+    """Return specialist agent names from the registry.
+
+    Always queries the registry so that external agents registered via
+    entry_points after initial import are included.
+    """
+    return AgentRegistry.all_specialist_names()
+
+
+def get_domain_agents() -> list[str]:
+    """Public API — return current specialist agent names from the registry."""
+    return _get_domain_agents()
+
+
+# Backward-compatible module-level snapshot.  New code should call
+# ``get_domain_agents()`` to pick up late-registered external agents.
+DOMAIN_AGENTS: list[str] = _get_domain_agents()
 
 DOMAIN_DISPLAY: dict[str, str] = {
     "legal": "Legal",
     "finance": "Finance",
     "commercial": "Commercial",
     "producttech": "Product & Tech",
+    "cybersecurity": "Cybersecurity",
 }
 
 DOMAIN_COLORS: dict[str, str] = {
@@ -70,6 +88,7 @@ DOMAIN_COLORS: dict[str, str] = {
     "finance": "#2d8a4e",
     "commercial": "#7c3aed",
     "producttech": "#d97706",
+    "cybersecurity": "#8B5CF6",
 }
 
 RAG_COLORS: dict[str, str] = {
@@ -179,9 +198,9 @@ class SectionRenderer(ABC):
 
     @staticmethod
     def agent_to_domain(agent: str) -> str:
-        """Map an agent name to one of the 4 domains."""
+        """Map an agent name to one of the registered domains."""
         agent = agent.lower().strip()
-        if agent in DOMAIN_AGENTS:
+        if agent in get_domain_agents():
             return agent
         if "legal" in agent:
             return "legal"
@@ -189,6 +208,8 @@ class SectionRenderer(ABC):
             return "finance"
         if "commerc" in agent:
             return "commercial"
+        if "cyber" in agent or "security" in agent:
+            return "cybersecurity"
         if "product" in agent or "tech" in agent:
             return "producttech"
         return "legal"
@@ -535,7 +556,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
                           border-radius: 4px; font-style: italic; color: #555; font-size: 0.9em; }
 
 /* Heatmap */
-.heatmap { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+.heatmap { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+           gap: 16px; margin-bottom: 24px; }
 .heatmap-cell { background: var(--bg-secondary); border-radius: 8px; padding: 20px;
                 text-align: center; box-shadow: var(--shadow-sm); cursor: pointer;
                 transition: transform 0.15s, box-shadow 0.15s; border-top: 4px solid; }

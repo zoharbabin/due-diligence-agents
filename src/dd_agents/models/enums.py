@@ -39,6 +39,7 @@ class AgentName(StrEnum):
     FINANCE = "finance"
     COMMERCIAL = "commercial"
     PRODUCTTECH = "producttech"
+    CYBERSECURITY = "cybersecurity"
     JUDGE = "judge"
     EXECUTIVE_SYNTHESIS = "executive_synthesis"
     RED_FLAG_SCANNER = "red_flag_scanner"

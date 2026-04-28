@@ -10,11 +10,11 @@ from __future__ import annotations
 from typing import Any
 
 from dd_agents.reporting.html_base import (
-    DOMAIN_AGENTS,
     DOMAIN_COLORS,
     DOMAIN_DISPLAY,
     SEVERITY_COLORS,
     SectionRenderer,
+    get_domain_agents,
 )
 from dd_agents.utils.constants import ALL_SEVERITIES, SEVERITY_P0
 
@@ -146,7 +146,7 @@ class ExecutiveSummaryRenderer(SectionRenderer):
             parts.append(f"<th scope='col' style='color:{SEVERITY_COLORS[sev]}'>{sev}</th>")
         parts.append("<th scope='col'>Risk</th></tr></thead><tbody>")
 
-        for domain in DOMAIN_AGENTS:
+        for domain in get_domain_agents():
             display = DOMAIN_DISPLAY.get(domain, domain)
             sev_counts = self.data.domain_severity.get(domain, {})
             risk_label = self.data.domain_risk_labels.get(domain, "Clean")

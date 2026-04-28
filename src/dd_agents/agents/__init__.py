@@ -8,6 +8,7 @@ from dd_agents.agents.acquirer_intelligence import (
     AcquirerIntelligenceOutput,
 )
 from dd_agents.agents.base import BaseAgentRunner
+from dd_agents.agents.descriptor import AgentDescriptor
 from dd_agents.agents.executive_synthesis import (
     EXECUTIVE_SYNTHESIS_TOOLS,
     ExecutiveSynthesisAgent,
@@ -33,6 +34,7 @@ from dd_agents.agents.red_flag_scanner import (
     RedFlagScannerOutput,
     classify_signal,
 )
+from dd_agents.agents.registry import AgentRegistry
 from dd_agents.agents.specialists import (
     COMMERCIAL_FOCUS_AREAS,
     FINANCE_FOCUS_AREAS,
@@ -49,6 +51,9 @@ from dd_agents.agents.specialists import (
 __all__ = [
     # Base
     "BaseAgentRunner",
+    # Registry
+    "AgentDescriptor",
+    "AgentRegistry",
     # Prompt builder
     "AgentType",
     "PromptBuilder",

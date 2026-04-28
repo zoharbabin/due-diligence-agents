@@ -1609,9 +1609,9 @@ class TestAgentTeamSpawnSpecialistsAdaptive:
 
         # With placeholder agents, this should complete quickly.
         results = await team.spawn_specialists(num_subjects=10)
-        # All 4 specialists should have results.
-        assert len(results) == 4
-        for name in ("legal", "finance", "commercial", "producttech"):
+        # All 5 specialists should have results.
+        assert len(results) == 5
+        for name in ("legal", "finance", "commercial", "producttech", "cybersecurity"):
             assert name in results
 
 
@@ -1679,14 +1679,15 @@ class TestStep14PreparePrompts:
         ) as mock_batch:
             result = await engine._step_14_prepare_prompts(state)
 
-        # batch_subjects should have been called (once per agent = 4 times)
-        assert mock_batch.call_count == 4
+        # batch_subjects should have been called (once per agent = 5 times)
+        assert mock_batch.call_count == 5
 
-        # All 4 specialist agents should have prompts
+        # All 5 specialist agents should have prompts
         assert "legal" in result.agent_prompts
         assert "finance" in result.agent_prompts
         assert "commercial" in result.agent_prompts
         assert "producttech" in result.agent_prompts
+        assert "cybersecurity" in result.agent_prompts
 
         # Each agent should have at least 1 prompt string
         for agent_name in ["legal", "finance", "commercial", "producttech"]:
@@ -1756,7 +1757,7 @@ class TestStep17CoverageGate:
         findings_dir = state.run_dir / "findings"
 
         # Create output for all subjects for all agents
-        for agent in ["legal", "finance", "commercial", "producttech"]:
+        for agent in ["legal", "finance", "commercial", "producttech", "cybersecurity"]:
             for subject in state.subject_safe_names:
                 self._create_finding(findings_dir, agent, subject)
 
@@ -1772,9 +1773,9 @@ class TestStep17CoverageGate:
         state = self._make_state(tmp_path, subjects=subjects)
         findings_dir = state.run_dir / "findings"
 
-        # Create output for only 4 of 10 subjects for legal agent
+        # Create output for only 4 of 10 subjects for each agent
         # (40% coverage < 50%)
-        for agent in ["legal", "finance", "commercial", "producttech"]:
+        for agent in ["legal", "finance", "commercial", "producttech", "cybersecurity"]:
             for subject in subjects[:4]:
                 self._create_finding(findings_dir, agent, subject)
 
@@ -1789,7 +1790,7 @@ class TestStep17CoverageGate:
         findings_dir = state.run_dir / "findings"
 
         # Create output for subject_a only across all agents
-        for agent in ["legal", "finance", "commercial", "producttech"]:
+        for agent in ["legal", "finance", "commercial", "producttech", "cybersecurity"]:
             self._create_finding(findings_dir, agent, "subject_a")
         # subject_b is missing from all agents
 
@@ -1801,7 +1802,7 @@ class TestStep17CoverageGate:
         assert gap_path.exists(), "coverage_gap_findings.json should be generated"
 
         gaps = json.loads(gap_path.read_text())
-        assert len(gaps) == 4  # 4 agents x 1 missing subject
+        assert len(gaps) == 5  # 5 agents x 1 missing subject
 
         # Each gap finding should be P1 severity
         for gap in gaps:
@@ -1812,7 +1813,7 @@ class TestStep17CoverageGate:
 
         # Gap findings should also be written as agent output files so
         # the merge step picks them up for domain_coverage in QA audit.
-        for agent in ["legal", "finance", "commercial", "producttech"]:
+        for agent in ["legal", "finance", "commercial", "producttech", "cybersecurity"]:
             agent_file = findings_dir / agent / "subject_b.json"
             assert agent_file.exists(), f"Gap finding should create {agent}/subject_b.json"
             data = json.loads(agent_file.read_text())
@@ -2838,7 +2839,7 @@ class TestStep15ErrorHandlingMissingReferenceFiles:
 
     @pytest.mark.asyncio
     async def test_step_15_routes_to_all_agents_when_assigned_to_is_none(self, tmp_path: Path) -> None:
-        """When assigned_to_agents is empty/None, routes to all 4 specialists."""
+        """When assigned_to_agents is empty/None, routes to all 5 specialists."""
         from unittest.mock import MagicMock
 
         engine = self._make_engine(tmp_path)
@@ -2861,7 +2862,7 @@ class TestStep15ErrorHandlingMissingReferenceFiles:
         manifest_path = state.run_dir / "reference_routing.json"
         manifest = json.loads(manifest_path.read_text())
         assert len(manifest) == 1
-        assert len(manifest[0]["agents"]) == 4
+        assert len(manifest[0]["agents"]) == 5
         assert result is state
 
     @pytest.mark.asyncio
@@ -3319,8 +3320,15 @@ class TestStep16SubCheckpoints:
 class TestValidateAgentOutputStructure:
     """Tests for PipelineEngine._validate_agent_output_structure."""
 
+    @staticmethod
+    def _make_engine(tmp_path: Path) -> PipelineEngine:
+        config_path = tmp_path / "deal-config.json"
+        config_path.write_text("{}")
+        return PipelineEngine(tmp_path, config_path)
+
     def test_all_structured_reports_clean(self, tmp_path: Path) -> None:
         """No warnings when all cross_references and gaps are dicts."""
+        engine = self._make_engine(tmp_path)
         findings_dir = tmp_path / "findings"
         legal_dir = findings_dir / "legal"
         legal_dir.mkdir(parents=True)
@@ -3333,7 +3341,7 @@ class TestValidateAgentOutputStructure:
         }
         (legal_dir / "acme_corp.json").write_text(json.dumps(data))
 
-        summary = PipelineEngine._validate_agent_output_structure(findings_dir, ["acme_corp"])
+        summary = engine._validate_agent_output_structure(findings_dir, ["acme_corp"])
         assert summary["legal"]["string_cross_refs"] == 0
         assert summary["legal"]["string_gaps"] == 0
         assert summary["legal"]["total_cross_refs"] == 1
@@ -3341,6 +3349,7 @@ class TestValidateAgentOutputStructure:
 
     def test_detects_string_cross_references(self, tmp_path: Path) -> None:
         """String cross-references are counted in the summary."""
+        engine = self._make_engine(tmp_path)
         findings_dir = tmp_path / "findings"
         finance_dir = findings_dir / "finance"
         finance_dir.mkdir(parents=True)
@@ -3357,12 +3366,13 @@ class TestValidateAgentOutputStructure:
         }
         (finance_dir / "beta_inc.json").write_text(json.dumps(data))
 
-        summary = PipelineEngine._validate_agent_output_structure(findings_dir, ["beta_inc"])
+        summary = engine._validate_agent_output_structure(findings_dir, ["beta_inc"])
         assert summary["finance"]["string_cross_refs"] == 2
         assert summary["finance"]["total_cross_refs"] == 3
 
     def test_detects_string_gaps(self, tmp_path: Path) -> None:
         """String gaps are counted in the summary."""
+        engine = self._make_engine(tmp_path)
         findings_dir = tmp_path / "findings"
         legal_dir = findings_dir / "legal"
         legal_dir.mkdir(parents=True)
@@ -3375,12 +3385,13 @@ class TestValidateAgentOutputStructure:
         }
         (legal_dir / "gamma_llc.json").write_text(json.dumps(data))
 
-        summary = PipelineEngine._validate_agent_output_structure(findings_dir, ["gamma_llc"])
+        summary = engine._validate_agent_output_structure(findings_dir, ["gamma_llc"])
         assert summary["legal"]["string_gaps"] == 2
         assert summary["legal"]["total_gaps"] == 2
 
     def test_skips_coverage_manifest(self, tmp_path: Path) -> None:
         """coverage_manifest.json should not be checked."""
+        engine = self._make_engine(tmp_path)
         findings_dir = tmp_path / "findings"
         legal_dir = findings_dir / "legal"
         legal_dir.mkdir(parents=True)
@@ -3389,15 +3400,16 @@ class TestValidateAgentOutputStructure:
         manifest = {"subjects_covered": 5, "coverage_pct": 1.0}
         (legal_dir / "coverage_manifest.json").write_text(json.dumps(manifest))
 
-        summary = PipelineEngine._validate_agent_output_structure(findings_dir, [])
+        summary = engine._validate_agent_output_structure(findings_dir, [])
         assert summary["legal"]["files_checked"] == 0
 
     def test_empty_findings_dir(self, tmp_path: Path) -> None:
         """Empty findings directory should produce an empty summary."""
+        engine = self._make_engine(tmp_path)
         findings_dir = tmp_path / "findings"
         findings_dir.mkdir(parents=True)
 
-        summary = PipelineEngine._validate_agent_output_structure(findings_dir, ["acme_corp"])
+        summary = engine._validate_agent_output_structure(findings_dir, ["acme_corp"])
         # No agent directories exist — summary is empty
         assert summary == {}
 

@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 # ===================================================================== #
 
 SUBJECTS = ["acme_corp", "globex", "initech"]
-AGENTS = ["legal", "finance", "commercial", "producttech"]
+AGENTS = ["legal", "finance", "commercial", "producttech", "cybersecurity"]
 
 
 def _make_subject_json(subject: str, agent: str) -> dict:
@@ -253,8 +253,8 @@ class TestCoverageValidator:
         validator = CoverageValidator()
         results = validator.validate(agent_dirs, SUBJECTS)
 
-        # 4 per-agent checks + 1 aggregate = 5
-        assert len(results) == 5
+        # 5 per-agent checks + 1 aggregate = 6
+        assert len(results) == 6
         for check in results:
             assert isinstance(check, AuditCheck)
             assert check.passed is True
@@ -924,7 +924,7 @@ class TestQAAuditorDeferredChecks:
         auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
         name, check = auditor.check_audit_logs()
         assert check.passed is False
-        assert len(check.details["missing_logs"]) == 4
+        assert len(check.details["missing_logs"]) == 5
 
     def test_deferred_report_consistency(self, tmp_path: Path) -> None:
         """report_consistency passes when report_schema.json doesn't exist."""

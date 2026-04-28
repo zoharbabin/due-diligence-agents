@@ -1,0 +1,62 @@
+{
+  "contract": "coc_basic.md",
+  "agent": "legal",
+  "tags": [
+    "golden_path"
+  ],
+  "expected_findings": [
+    {
+      "category": "change_of_control",
+      "min_severity": "P2",
+      "max_severity": "P0",
+      "must_contain_keywords": [
+        "change of control"
+      ],
+      "citation_must_reference": {
+        "file": "coc_basic.md"
+      },
+      "required": true
+    },
+    {
+      "category": "termination",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": [
+        "terminat"
+      ],
+      "keyword_synonyms": {
+        "terminat": ["termination", "terminate", "cure", "breach", "material breach"]
+      },
+      "citation_must_reference": {
+        "file": "coc_basic.md"
+      },
+      "required": true
+    },
+    {
+      "category": "liability",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": [
+        "liabilit"
+      ],
+      "keyword_synonyms": {
+        "liabilit": ["liability", "limitation", "damages", "consequential", "aggregate"]
+      },
+      "citation_must_reference": {
+        "file": "coc_basic.md"
+      },
+      "required": false
+    }
+  ],
+  "expected_gaps": [],
+  "must_not_find": [
+    {
+      "category": "data_privacy",
+      "reason": "No data privacy provisions in this MSA — finding would be false positive"
+    },
+    {
+      "category": "ip_ownership",
+      "reason": "No IP clauses in this MSA"
+    }
+  ]
+}

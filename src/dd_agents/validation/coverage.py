@@ -11,8 +11,8 @@ import json
 import logging
 from typing import TYPE_CHECKING
 
+from dd_agents.agents.registry import AgentRegistry
 from dd_agents.models.audit import AuditCheck
-from dd_agents.utils.constants import ALL_SPECIALIST_AGENTS
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -31,6 +31,7 @@ class CoverageValidator:
         self,
         agent_output_dirs: dict[str, Path],
         expected_subjects: list[str],
+        active_agents: list[str] | None = None,
     ) -> list[AuditCheck]:
         """Run coverage checks for every specialist agent.
 
@@ -42,16 +43,20 @@ class CoverageValidator:
         expected_subjects:
             List of ``subject_safe_name`` strings that each agent is
             expected to produce output for.
+        active_agents:
+            Specialist agent names to validate against.  Defaults to all
+            registered specialists via :class:`AgentRegistry`.
 
         Returns
         -------
         list[AuditCheck]
             One :class:`AuditCheck` per agent, plus an aggregate check.
         """
+        agents = active_agents if active_agents is not None else AgentRegistry.all_specialist_names()
         results: list[AuditCheck] = []
         expected_set = set(expected_subjects)
 
-        for agent in ALL_SPECIALIST_AGENTS:
+        for agent in agents:
             agent_dir = agent_output_dirs.get(agent)
             check = self._check_agent(agent, agent_dir, expected_set)
             results.append(check)

@@ -487,7 +487,7 @@ class TestReferenceFileClassifier:
         """Other files should route to all specialist agents."""
         classifier = ReferenceFileClassifier()
         agents = classifier.route_to_agents("Other")
-        assert len(agents) == 4
+        assert len(agents) == 5
 
     def test_classify_assigns_agents(self) -> None:
         """Every classified reference file should have at least one agent assigned."""
