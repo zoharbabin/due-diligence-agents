@@ -138,7 +138,7 @@ class TestBuildRuntimeContext:
         ctx = _build_runtime_context(project_dir, run_dir)
         assert ctx["text_dir"] == text_dir
         assert ctx["cache_path"] == cache_path
-        assert ctx["allowed_dir"] == dd_dir
+        assert ctx["allowed_dir"] == project_dir
 
     def test_reads_inventory_csv(self, tmp_path: Path) -> None:
         """Should populate files_list from master_inventory.csv."""

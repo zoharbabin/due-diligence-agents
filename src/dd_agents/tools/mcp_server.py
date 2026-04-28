@@ -705,6 +705,53 @@ def build_mcp_server(
 
         tools.append(list_corrections_tool)
 
+    # ------------------------------------------------------------------
+    # Document extraction tool (only for agent_type="chat")
+    # ------------------------------------------------------------------
+
+    # text_dir may be None if the directory doesn't exist yet — for
+    # extract_document that's fine: it creates the directory on first use.
+    # Fall back to the standard location under _dd/ so the tool can bootstrap.
+    _ed_resolved_text_dir = text_dir
+    if _ed_resolved_text_dir is None and data_room_path is not None:
+        import os
+
+        _ed_resolved_text_dir = os.path.join(str(data_room_path), "_dd", "forensic-dd", "index", "text")
+
+    if "extract_document" in allowed_tool_names and data_room_path is not None and _ed_resolved_text_dir is not None:
+        from dd_agents.tools.extract_document import extract_document as _extract_document
+
+        _ed_data_room = str(data_room_path)
+        _ed_text_dir = str(_ed_resolved_text_dir)
+        _ed_allowed_dir = str(allowed_dir) if allowed_dir else None
+
+        @tool(
+            "extract_document",
+            "Extract text from a document file and add it to the search index. "
+            "Use this when you encounter a file that hasn't been indexed yet "
+            "(e.g., search_in_file returns 'not found' for a known file). "
+            "After extraction, the file becomes searchable via search_in_file and get_page_content.",
+            {
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "Path to the document (absolute or relative to the data room)",
+                    },
+                },
+                "required": ["file_path"],
+            },
+        )
+        async def extract_document_tool(input_data: dict[str, Any]) -> dict[str, Any]:
+            return _extract_document(
+                file_path=input_data["file_path"],
+                data_room_path=_ed_data_room,
+                text_dir=_ed_text_dir,
+                allowed_dir=_ed_allowed_dir,
+            )
+
+        tools.append(extract_document_tool)
+
     if not tools:
         logger.debug("No tools registered for agent_type=%r", agent_type)
         return None
@@ -753,9 +800,10 @@ def _build_runtime_context(
         "files_list": files_list or None,
         "subjects_csv": subjects_csv,
         "cache_path": cache_path if cache_path.exists() else None,
-        # Always set allowed_dir to the project dir for path containment.
-        # Even if _dd/ doesn't exist yet, agents should not read outside it.
-        "allowed_dir": dd_dir if dd_dir.is_dir() else project_dir,
+        # Set allowed_dir to the project dir (data room root).  Tools like
+        # read_office and extract_document need to read original files in
+        # the data room, not just under _dd/.
+        "allowed_dir": project_dir,
         "data_room_path": project_dir,
         "file_precedence": file_precedence,
     }

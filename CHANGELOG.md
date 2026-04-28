@@ -8,6 +8,19 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 > The first public release was **v0.4.0** (2026-03-30). Tagged releases on PyPI and
 > GitHub begin at **v0.4.1**.
 
+## [1.3.4] — 2026-04-27
+
+### Added
+
+- **Chat: extract_document tool** — Chat agent can now index new or updated files on the fly. When `search_in_file` or `get_page_content` can't find a document, the agent calls `extract_document` to run the extraction pipeline and add it to the search index. Supports all formats (PDF, docx, xlsx, images, etc.) with 100 MB size limit and path containment security.
+- **Chat: system prompt rule for unindexed files** — New rule 9 instructs the model to use `extract_document` when encountering files added after the pipeline run completed, then retry the search.
+
+### Fixed
+
+- **Chat: document tools blocked by path guard** — `read_office`, `extract_document`, `verify_citation`, and other tools that read original data room files were silently returning empty results because `allowed_dir` was set to `_dd/forensic-dd/` instead of the project root. All document reads outside `_dd/` were blocked as "path traversal". Fixed by setting `allowed_dir` to the project directory (data room root).
+- **Chat: extract_document output not findable by search tools** — Extracted text files were named using the absolute path, but `search_in_file` looked them up using relative paths. Now writes copies under all plausible path variants (absolute, relative, ./relative) so any lookup succeeds.
+- **Chat: extract_document not registered when text_dir missing** — The tool silently failed to register when no prior pipeline run had created the text index directory. Now falls back to the standard `_dd/forensic-dd/index/text/` path and creates it on first use.
+
 ## [1.3.3] — 2026-04-16
 
 ### Fixed

@@ -577,7 +577,7 @@ class TestToolServerChat:
         from dd_agents.tools.server import get_tools_for_agent
 
         tools = get_tools_for_agent("chat")
-        assert len(tools) == 12
+        assert len(tools) == 13
 
     def test_chat_tools_include_memory(self) -> None:
         from dd_agents.tools.server import get_tools_for_agent
@@ -916,6 +916,110 @@ class TestToolServerChatCorrections:
         tools = get_tools_for_agent("chat")
         assert "flag_finding" in tools
         assert "list_corrections" in tools
+
+    def test_chat_tools_include_extract_document(self) -> None:
+        from dd_agents.tools.server import get_tools_for_agent
+
+        tools = get_tools_for_agent("chat")
+        assert "extract_document" in tools
+
+
+# ===================================================================
+# extract_document tool
+# ===================================================================
+
+
+class TestExtractDocument:
+    """Tests for the extract_document MCP tool."""
+
+    def test_empty_file_path(self) -> None:
+        from dd_agents.tools.extract_document import extract_document
+
+        result = extract_document(file_path="", data_room_path="/tmp", text_dir="/tmp/text")
+        assert result["error"] == "invalid_input"
+
+    def test_file_not_found(self, tmp_path: Path) -> None:
+        from dd_agents.tools.extract_document import extract_document
+
+        result = extract_document(
+            file_path="nonexistent.pdf",
+            data_room_path=str(tmp_path),
+            text_dir=str(tmp_path / "text"),
+        )
+        assert result["error"] == "not_found"
+
+    def test_empty_file_rejected(self, tmp_path: Path) -> None:
+        from dd_agents.tools.extract_document import extract_document
+
+        empty = tmp_path / "empty.txt"
+        empty.touch()
+        result = extract_document(
+            file_path=str(empty),
+            data_room_path=str(tmp_path),
+            text_dir=str(tmp_path / "text"),
+        )
+        assert result["error"] == "empty_file"
+
+    def test_directory_rejected(self, tmp_path: Path) -> None:
+        from dd_agents.tools.extract_document import extract_document
+
+        sub = tmp_path / "subdir"
+        sub.mkdir()
+        result = extract_document(
+            file_path=str(sub),
+            data_room_path=str(tmp_path),
+            text_dir=str(tmp_path / "text"),
+        )
+        assert result["error"] == "invalid_input"
+
+    def test_path_outside_allowed_dir(self, tmp_path: Path) -> None:
+        from dd_agents.tools.extract_document import extract_document
+
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        secret = outside / "secret.txt"
+        secret.write_text("secret data")
+
+        data_room = tmp_path / "data_room"
+        data_room.mkdir()
+
+        result = extract_document(
+            file_path=str(secret),
+            data_room_path=str(data_room),
+            text_dir=str(tmp_path / "text"),
+            allowed_dir=str(data_room),
+        )
+        assert result["error"] == "blocked"
+
+    def test_relative_path_resolved_to_data_room(self, tmp_path: Path) -> None:
+        from dd_agents.tools.extract_document import extract_document
+
+        data_room = tmp_path / "data_room"
+        data_room.mkdir()
+        doc = data_room / "doc.txt"
+        doc.write_text("Hello world content for extraction test")
+
+        result = extract_document(
+            file_path="doc.txt",
+            data_room_path=str(data_room),
+            text_dir=str(tmp_path / "text"),
+        )
+        # Either succeeds or fails at extraction (no pipeline in tests),
+        # but should NOT be "not_found"
+        assert result.get("error") != "not_found"
+
+    def test_system_prompt_includes_extract_document_rule(self) -> None:
+        from dd_agents.chat.context import ChatContextBuilder
+        from dd_agents.query.indexer import FindingIndexer
+
+        findings = [
+            {"severity": "P1", "agent": "legal", "_subject_safe_name": "acme", "title": "Test", "citations": []},
+        ]
+        index = FindingIndexer().index_findings(findings)
+        builder = ChatContextBuilder(finding_index=index)
+        prompt = builder.build_system_prompt()
+        assert "extract_document" in prompt
+        assert "index it first" in prompt
 
 
 # ===================================================================

@@ -123,6 +123,7 @@ CHAT_MCP_TOOL_NAMES: list[str] = [
     "search_chat_memory",
     "flag_finding",
     "list_corrections",
+    "extract_document",
 ]
 
 # Cost estimation constants

@@ -65,6 +65,12 @@ the current question.
 source documents, or has the wrong severity, use the flag_finding tool to \
 record a correction. Corrections persist across sessions and are applied \
 during the next pipeline run. Use list_corrections to review existing ones.
+9. When a document file exists in the data room but search_in_file or \
+get_page_content cannot find it (returns "not found"), use the \
+extract_document tool to index it first. This extracts text from the \
+file and adds it to the search index. After extraction succeeds, retry \
+your search or page read. This is common for files added after the \
+pipeline run completed.
 
 DOCUMENT ANALYSIS STRATEGY — CRITICAL:
 You are working within a limited context window. Reading entire documents \

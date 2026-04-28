@@ -390,6 +390,7 @@ CHAT_CUSTOM_TOOLS: list[str] = [
     "search_chat_memory",
     "flag_finding",
     "list_corrections",
+    "extract_document",
 ]
 
 
