@@ -14,7 +14,8 @@ We will acknowledge receipt within 48 hours and aim to provide a fix or mitigati
 
 | Version | Supported |
 |---------|-----------|
-| 0.4.x   | Yes       |
+| 1.x     | Yes       |
+| 0.4.x   | Security fixes only |
 | < 0.4   | No        |
 
 ## Security Considerations

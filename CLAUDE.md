@@ -110,14 +110,7 @@ IMPORTANT: Follow these steps for every module:
 
 ## Implementation Plan
 
-Follow `IMPLEMENTATION_PLAN.md` in the project root. Execute ONE phase at a time. Each phase has:
-- Specific files to create
-- Spec docs to read for each file
-- Test files to write
-- Acceptance criteria to verify
-- Status tracking
-
-Update the phase status in IMPLEMENTATION_PLAN.md after completing each phase.
+All 8 original phases are complete. See `docs/history/IMPLEMENTATION_PLAN.md` for the build history. New features follow the same process (spec → tests → implement → quality gates) but are tracked via GitHub issues and CHANGELOG.md.
 
 ## Key Spec References
 
@@ -223,7 +216,7 @@ Optional: `pymupdf>=1.23` (PDF extraction, AGPL-3.0), `chromadb>=0.4` (vector se
 | `CODE_OF_CONDUCT.md` | Contributor Covenant v2.0 |
 | `SECURITY.md` | Vulnerability reporting policy |
 | `CHANGELOG.md` | Version history |
-| `IMPLEMENTATION_PLAN.md` | Phased build plan with status tracking |
+| `docs/history/IMPLEMENTATION_PLAN.md` | Phased build plan (archived — all 8 phases complete) |
 | `.github/workflows/ci.yml` | CI pipeline (lint, types, tests, build) |
 | `.github/workflows/release.yml` | Release pipeline (PyPI, Docker, GitHub Release) |
 | `.github/FUNDING.yml` | GitHub Sponsors configuration |

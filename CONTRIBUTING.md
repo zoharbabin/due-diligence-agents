@@ -35,7 +35,7 @@ make test-unit         # Unit tests only (fast, no API calls)
 pytest tests/e2e/ -x   # End-to-end tests (requires API key, slow)
 ```
 
-The project has ~3,300 unit tests, 17 integration tests, and 24 E2E tests (some skipped without API key). Unit and integration tests require no API key.
+The project has ~3,549 unit tests, 17 integration tests, and 24 E2E tests (some skipped without API key). Unit and integration tests require no API key.
 
 ## Quality Gates
 
@@ -78,14 +78,14 @@ Configuration lives in `pyproject.toml` under `[tool.ruff]`, `[tool.mypy]`, and 
 1. Read [`docs/plan/PLAN.md`](docs/plan/PLAN.md) for the executive overview.
 2. Read [`docs/plan/01-architecture-decisions.md`](docs/plan/01-architecture-decisions.md) for key architectural choices.
 3. Read [`docs/plan/18-implementation-order.md`](docs/plan/18-implementation-order.md) for the build sequence.
-4. Follow [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) phase by phase for implementation history.
+4. See [`docs/history/IMPLEMENTATION_PLAN.md`](docs/history/IMPLEMENTATION_PLAN.md) for the build sequence history (all 8 phases complete).
 
 ### Autonomous Implementation (Claude Code)
 
 This project is structured for autonomous implementation by Claude Code:
 
 - **`CLAUDE.md`** — Project instructions loaded automatically at session start
-- **`IMPLEMENTATION_PLAN.md`** — Phased execution plan with TDD workflow and status tracking
+- **`docs/history/IMPLEMENTATION_PLAN.md`** — Phased build history (all 8 phases complete)
 - **`.claude/settings.json`** — Tool permissions and quality gate hooks
 - **`.claude/agents/`** — Custom subagents (code-reviewer, test-runner)
 - **`scripts/`** — Quality gate scripts (lint, test, type check, pre-commit gate)
@@ -95,7 +95,7 @@ To start autonomous implementation:
 ```bash
 cd due-diligence-agents
 pip install -e ".[dev,pdf]"
-claude    # Claude Code reads CLAUDE.md + IMPLEMENTATION_PLAN.md automatically
+claude    # Claude Code reads CLAUDE.md automatically
 ```
 
 ## License

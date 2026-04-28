@@ -11,7 +11,7 @@ due-diligence-agents/
 ├── CLAUDE.md                         # Claude Code instructions
 ├── CONTRIBUTING.md                   # Development setup, code style, PR process
 ├── CHANGELOG.md                      # Version history
-├── IMPLEMENTATION_PLAN.md            # Phased build plan with status tracking
+├── docs/history/                     # Archived planning docs (build complete)
 ├── Dockerfile                        # Multi-stage Docker build
 ├── .github/workflows/
 │   ├── ci.yml                        # CI pipeline (lint, types, tests, build)
