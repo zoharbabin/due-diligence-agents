@@ -36,7 +36,17 @@ from dd_agents.models.enums import AgentName, DealType
 # Fixtures
 # ---------------------------------------------------------------------------
 
-EXPECTED_BUILTIN_AGENTS = ["legal", "finance", "commercial", "producttech", "cybersecurity"]
+EXPECTED_BUILTIN_AGENTS = [
+    "legal",
+    "finance",
+    "commercial",
+    "producttech",
+    "cybersecurity",
+    "hr",
+    "tax",
+    "regulatory",
+    "esg",
+]
 
 
 @pytest.fixture(autouse=True)
@@ -95,7 +105,9 @@ class TestRegistryEndToEnd:
         """Disabled agents are excluded from resolve_active."""
         cfg = _make_deal_config(disabled=["producttech", "cybersecurity"])
         active = AgentRegistry.resolve_active(cfg)
-        assert active == ["legal", "finance", "commercial"]
+        assert "producttech" not in active
+        assert "cybersecurity" not in active
+        assert len(active) == len(EXPECTED_BUILTIN_AGENTS) - 2
 
     def test_disable_all_agents(self):
         """Disabling all agents returns empty list (pipeline should refuse to start)."""
@@ -124,17 +136,17 @@ class TestRegistryEndToEnd:
             pass
 
         external = AgentDescriptor(
-            name="esg",
-            display_name="ESG & Sustainability",
+            name="custom_esg_plus",
+            display_name="ESG Plus",
             color="#10B981",
             focus_areas=("carbon_footprint", "dei_metrics"),
             reference_categories=("compliance",),
             agent_class=FakeAgent,  # type: ignore[arg-type]
-            specialist_focus="ESG analysis focus.",
+            specialist_focus="Extended ESG analysis.",
         )
         AgentRegistry.register(external)
         names = AgentRegistry.all_specialist_names()
-        assert "esg" in names
+        assert "custom_esg_plus" in names
         assert len(names) == len(EXPECTED_BUILTIN_AGENTS) + 1
 
     def test_external_agent_can_be_disabled(self):
@@ -146,18 +158,19 @@ class TestRegistryEndToEnd:
 
         AgentRegistry.register(
             AgentDescriptor(
-                name="esg",
-                display_name="ESG",
+                name="custom_ext",
+                display_name="Custom External",
                 color="#10B981",
                 focus_areas=("carbon",),
                 reference_categories=(),
                 agent_class=FakeAgent,  # type: ignore[arg-type]
-                specialist_focus="ESG.",
+                specialist_focus="Custom analysis.",
             )
         )
-        cfg = _make_deal_config(disabled=["esg"])
+        assert "custom_ext" in AgentRegistry.all_specialist_names()
+        cfg = _make_deal_config(disabled=["custom_ext"])
         active = AgentRegistry.resolve_active(cfg)
-        assert "esg" not in active
+        assert "custom_ext" not in active
         assert len(active) == len(EXPECTED_BUILTIN_AGENTS)
 
 
@@ -420,7 +433,7 @@ class TestMergeHeterogeneousAgents:
         merger = FindingMerger()
         merged = merger.merge_all(findings_dir, active_agents=EXPECTED_BUILTIN_AGENTS)
         assert "acme" in merged
-        assert len(merged["acme"].findings) == 5  # one from each agent
+        assert len(merged["acme"].findings) == len(EXPECTED_BUILTIN_AGENTS)
 
     def test_merge_with_3_agents_active(self, tmp_path: Path):
         from dd_agents.reporting.merge import FindingMerger
@@ -702,7 +715,7 @@ class TestThreadSafety:
             t.join()
 
         assert not errors, f"Thread safety violation: {errors}"
-        # All 10 thread agents plus 5 builtins should be registered
+        # All 10 thread agents plus builtins should be registered
         final_names = AgentRegistry.all_specialist_names()
         assert len(final_names) >= 10 + len(EXPECTED_BUILTIN_AGENTS)
 
@@ -754,11 +767,15 @@ class TestBackwardCompatibility:
         assert config.forensic_dd.specialists.disabled == []
 
     def test_all_specialist_agents_constant_still_works(self):
-        """The backward-compat ALL_SPECIALIST_AGENTS constant includes cybersecurity."""
+        """The backward-compat ALL_SPECIALIST_AGENTS constant includes all 9 agents."""
         from dd_agents.utils.constants import ALL_SPECIALIST_AGENTS
 
-        assert len(ALL_SPECIALIST_AGENTS) == 5
+        assert len(ALL_SPECIALIST_AGENTS) == 9
         assert "cybersecurity" in ALL_SPECIALIST_AGENTS
+        assert "hr" in ALL_SPECIALIST_AGENTS
+        assert "tax" in ALL_SPECIALIST_AGENTS
+        assert "regulatory" in ALL_SPECIALIST_AGENTS
+        assert "esg" in ALL_SPECIALIST_AGENTS
 
     def test_get_active_agents_function(self):
         """The convenience function delegates to registry."""
@@ -770,4 +787,4 @@ class TestBackwardCompatibility:
         cfg = _make_deal_config(disabled=["cybersecurity"])
         active = get_active_agents(cfg)
         assert "cybersecurity" not in active
-        assert len(active) == 4
+        assert len(active) == 8

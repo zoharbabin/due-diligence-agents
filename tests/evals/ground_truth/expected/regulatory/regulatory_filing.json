@@ -1,0 +1,76 @@
+{
+  "contract": "regulatory_filing.md",
+  "agent": "regulatory",
+  "tags": [
+    "golden_path"
+  ],
+  "expected_findings": [
+    {
+      "category": "license_renewal",
+      "min_severity": "P2",
+      "max_severity": "P0",
+      "must_contain_keywords": [
+        "license"
+      ],
+      "keyword_synonyms": {
+        "license": ["Payment Facilitator", "permit", "registration", "license renewal", "DFS"]
+      },
+      "citation_must_reference": {
+        "file": "regulatory_filing.md"
+      },
+      "required": true
+    },
+    {
+      "category": "enforcement_action",
+      "min_severity": "P1",
+      "max_severity": "P0",
+      "must_contain_keywords": [
+        "consent order"
+      ],
+      "keyword_synonyms": {
+        "consent order": ["enforcement", "remediation", "DFS", "consent order", "deficienc"]
+      },
+      "citation_must_reference": {
+        "file": "regulatory_filing.md"
+      },
+      "required": true
+    },
+    {
+      "category": "coc_regulatory_approval",
+      "min_severity": "P2",
+      "max_severity": "P0",
+      "must_contain_keywords": [
+        "change of control"
+      ],
+      "keyword_synonyms": {
+        "change of control": ["prior written approval", "change of control", "90-120 days", "regulatory approval"]
+      },
+      "citation_must_reference": {
+        "file": "regulatory_filing.md"
+      },
+      "required": true
+    },
+    {
+      "category": "compliance_gap",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": [
+        "PSD2"
+      ],
+      "keyword_synonyms": {
+        "PSD2": ["PSD2", "EU registration", "payment services", "German market"]
+      },
+      "citation_must_reference": {
+        "file": "regulatory_filing.md"
+      },
+      "required": true
+    }
+  ],
+  "expected_gaps": [],
+  "must_not_find": [
+    {
+      "category": "revenue_recognition",
+      "reason": "No revenue recognition terms in a regulatory compliance summary"
+    }
+  ]
+}

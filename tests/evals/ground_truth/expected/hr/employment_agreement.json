@@ -1,0 +1,76 @@
+{
+  "contract": "employment_agreement.md",
+  "agent": "hr",
+  "tags": [
+    "golden_path"
+  ],
+  "expected_findings": [
+    {
+      "category": "non_compete",
+      "min_severity": "P2",
+      "max_severity": "P0",
+      "must_contain_keywords": [
+        "non-compet"
+      ],
+      "keyword_synonyms": {
+        "non-compet": ["non-competition", "non-compete", "restrictive covenant", "24 months"]
+      },
+      "citation_must_reference": {
+        "file": "employment_agreement.md"
+      },
+      "required": true
+    },
+    {
+      "category": "change_of_control",
+      "min_severity": "P2",
+      "max_severity": "P0",
+      "must_contain_keywords": [
+        "accelerat"
+      ],
+      "keyword_synonyms": {
+        "accelerat": ["acceleration", "single-trigger", "double-trigger", "severance", "change of control"]
+      },
+      "citation_must_reference": {
+        "file": "employment_agreement.md"
+      },
+      "required": true
+    },
+    {
+      "category": "compensation_structure",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": [
+        "salary"
+      ],
+      "keyword_synonyms": {
+        "salary": ["compensation", "bonus", "equity", "stock option", "vesting"]
+      },
+      "citation_must_reference": {
+        "file": "employment_agreement.md"
+      },
+      "required": true
+    },
+    {
+      "category": "termination_provisions",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": [
+        "terminat"
+      ],
+      "keyword_synonyms": {
+        "terminat": ["termination", "without cause", "notice period", "severance", "pay in lieu"]
+      },
+      "citation_must_reference": {
+        "file": "employment_agreement.md"
+      },
+      "required": true
+    }
+  ],
+  "expected_gaps": [],
+  "must_not_find": [
+    {
+      "category": "revenue_recognition",
+      "reason": "No revenue terms in an employment agreement"
+    }
+  ]
+}

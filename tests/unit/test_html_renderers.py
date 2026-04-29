@@ -300,13 +300,13 @@ class TestDashboardRenderer:
 
 
 class TestRiskRenderer:
-    def test_heatmap_five_domains(self) -> None:
+    def test_heatmap_all_domains(self) -> None:
         computed = _compute()
         r = RiskRenderer(computed, _make_merged_data())
         html_out = r.render()
         assert "id='sec-heatmap'" in html_out
         assert "Domain Risk Heatmap" in html_out
-        assert html_out.count("class='heatmap-cell'") == 5
+        assert html_out.count("class='heatmap-cell'") == 9
         assert "Legal" in html_out
         assert "Finance" in html_out
         assert "Commercial" in html_out

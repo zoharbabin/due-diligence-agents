@@ -547,7 +547,7 @@ class TestLegalAgent:
         assert "regulatory_compliance" in LEGAL_FOCUS_AREAS
         assert "legal_entity" in LEGAL_FOCUS_AREAS
         assert "contract_timeline" in LEGAL_FOCUS_AREAS
-        assert len(LEGAL_FOCUS_AREAS) == 17
+        assert len(LEGAL_FOCUS_AREAS) == 19
 
     def test_tools_include_specialist_tools(self, tmp_project: Path, tmp_run_dir: Path, run_id: str) -> None:
         agent = LegalAgent(tmp_project, tmp_run_dir, run_id)
@@ -591,7 +591,7 @@ class TestFinanceAgent:
         assert "financial_commitments" in FINANCE_FOCUS_AREAS
         assert "penalties" in FINANCE_FOCUS_AREAS
         assert "insurance" in FINANCE_FOCUS_AREAS
-        assert len(FINANCE_FOCUS_AREAS) == 10
+        assert len(FINANCE_FOCUS_AREAS) == 11
 
     def test_finance_focus_areas_expanded(self) -> None:
         """Finance should include 4 new analytical focus areas."""
@@ -630,7 +630,7 @@ class TestCommercialAgent:
         assert "exclusivity" in COMMERCIAL_FOCUS_AREAS
         assert "territory" in COMMERCIAL_FOCUS_AREAS
         assert "customer_satisfaction" in COMMERCIAL_FOCUS_AREAS
-        assert len(COMMERCIAL_FOCUS_AREAS) == 10
+        assert len(COMMERCIAL_FOCUS_AREAS) == 12
 
     def test_commercial_focus_areas_expanded(self) -> None:
         """Commercial should include 4 new analytical focus areas."""
@@ -692,8 +692,8 @@ class TestProductTechAgent:
 class TestSpecialistRegistry:
     """Tests for the specialist type/class registries."""
 
-    def test_specialist_types_has_five(self) -> None:
-        assert len(SPECIALIST_TYPES) == 5
+    def test_specialist_types_has_nine(self) -> None:
+        assert len(SPECIALIST_TYPES) == 9
 
     def test_specialist_classes_keys(self) -> None:
         assert AgentType.LEGAL in SPECIALIST_CLASSES
@@ -701,6 +701,10 @@ class TestSpecialistRegistry:
         assert AgentType.COMMERCIAL in SPECIALIST_CLASSES
         assert AgentType.PRODUCTTECH in SPECIALIST_CLASSES
         assert AgentType.CYBERSECURITY in SPECIALIST_CLASSES
+        assert AgentType.HR in SPECIALIST_CLASSES
+        assert AgentType.TAX in SPECIALIST_CLASSES
+        assert AgentType.REGULATORY in SPECIALIST_CLASSES
+        assert AgentType.ESG in SPECIALIST_CLASSES
 
     def test_specialist_classes_are_subclasses(self) -> None:
         for cls in SPECIALIST_CLASSES.values():

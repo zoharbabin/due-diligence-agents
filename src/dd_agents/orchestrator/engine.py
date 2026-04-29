@@ -198,7 +198,25 @@ class PipelineEngine:
 
                     _raw_cfg = _json_ckpt.loads(self.deal_config_path.read_text())
                     _deal_cfg = DealConfig.model_validate(_raw_cfg)
-                    self._active_agents = _AgentRegistry.resolve_active(_deal_cfg)
+                    new_active = _AgentRegistry.resolve_active(_deal_cfg)
+
+                    # Validate agent set hasn't changed since checkpoint
+                    checkpoint_agents = getattr(self.state, "active_agents", None)
+                    if checkpoint_agents and set(checkpoint_agents) != set(new_active):
+                        added = set(new_active) - set(checkpoint_agents)
+                        removed = set(checkpoint_agents) - set(new_active)
+                        parts: list[str] = []
+                        if added:
+                            parts.append(f"added={sorted(added)}")
+                        if removed:
+                            parts.append(f"removed={sorted(removed)}")
+                        logger.warning(
+                            "Agent set changed since checkpoint: %s. "
+                            "New agents will not have findings from prior steps.",
+                            ", ".join(parts),
+                        )
+
+                    self._active_agents = new_active
                     logger.info("Re-resolved active agents from deal config on resume: %s", self._active_agents)
                 except Exception:
                     pass  # Keep default if config can't be loaded
@@ -668,6 +686,8 @@ class PipelineEngine:
         except Exception as exc:
             logger.debug("Could not refine active agents from config: %s", exc)
 
+        state.active_agents = list(self._active_agents)
+
         logger.info(
             "Config validated: mode=%s, judge=%s, active_agents=%s",
             state.execution_mode,
@@ -1131,6 +1151,7 @@ class PipelineEngine:
         prompt strings) and ``state.batch_counts`` (agent_name -> int).
         """
         from dd_agents.agents.prompt_builder import PromptBuilder
+        from dd_agents.agents.registry import AgentRegistry as _AgentRegistry
 
         self._ensure_team(state)
 
@@ -1175,8 +1196,6 @@ class PipelineEngine:
         )
 
         # Per-agent batch sizing (Issue #92): look up class-level overrides.
-        from dd_agents.agents.prompt_builder import AgentType
-        from dd_agents.agents.specialists import SPECIALIST_CLASSES
 
         file_prec_entries = self._build_file_precedence_index(state)
 
@@ -1221,9 +1240,13 @@ class PipelineEngine:
         )
 
         for agent_name in self._active_agents:
-            agent_cls = SPECIALIST_CLASSES.get(AgentType(agent_name))
-            max_per_batch = getattr(agent_cls, "max_subjects_per_batch", 20) if agent_cls else 20
-            max_tokens = getattr(agent_cls, "max_tokens_per_batch", 40_000) if agent_cls else 40_000
+            try:
+                _desc = _AgentRegistry.get(agent_name)
+                max_per_batch = _desc.max_subjects_per_batch
+                max_tokens = _desc.max_tokens_per_batch
+            except KeyError:
+                max_per_batch = 20
+                max_tokens = 40_000
             batches = PromptBuilder.batch_subjects(
                 subjects_sorted,
                 max_tokens=max_tokens,
@@ -2174,6 +2197,7 @@ class PipelineEngine:
             unchanged_subjects=unchanged_subjects,
             prior_findings_dir=prior_findings_dir,
             current_findings_dir=current_findings_dir,
+            active_agents=list(self._active_agents),
         )
 
         logger.info(

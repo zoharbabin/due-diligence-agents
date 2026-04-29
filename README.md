@@ -193,12 +193,17 @@ Supports PDFs, Word, Excel, PowerPoint, and images. Scanned PDFs are handled via
     ┌────────────┼────────────┐
     │            │            │
     ▼            ▼            ▼
- ┌──────┐  ┌────────┐  ┌──────────┐  ┌──────────┐
- │Legal │  │Finance │  │Commercial│  │ProductTech│
- │Agent │  │ Agent  │  │  Agent   │  │  Agent   │
- └──┬───┘  └───┬────┘  └────┬─────┘  └────┬─────┘
-    │          │             │             │
-    └──────────┴──────┬──────┴─────────────┘
+ ┌──────┐  ┌────────┐  ┌──────────┐  ┌──────────┐  ┌─────────────┐
+ │Legal │  │Finance │  │Commercial│  │ProductTech│  │Cybersecurity│
+ │Agent │  │ Agent  │  │  Agent   │  │  Agent   │  │   Agent     │
+ └──┬───┘  └───┬────┘  └────┬─────┘  └────┬─────┘  └──────┬──────┘
+    │          │             │             │               │
+ ┌──┴──┐  ┌───┴────┐  ┌─────┴──────┐  ┌──┴──┐    ┌───────┴─────┐
+ │ HR  │  │  Tax   │  │ Regulatory │  │ ESG │    │  + External │
+ │Agent│  │ Agent  │  │   Agent    │  │Agent│    │   Agents    │
+ └──┬──┘  └───┬────┘  └─────┬──────┘  └──┬──┘    └───────┬─────┘
+    │         │              │            │               │
+    └─────────┴──────┬───────┴────────────┴───────────────┘
                       │
               ┌───────▼────────┐
               │  Judge Agent   │  ← Validates findings
@@ -219,7 +224,7 @@ Supports PDFs, Word, Excel, PowerPoint, and images. Scanned PDFs are handled via
             HTML + Excel + JSON
 ```
 
-**4 domain specialists** analyze every document in parallel. A **Judge** spot-checks findings. **Executive Synthesis** calibrates severity and the Go/No-Go signal. **Red Flag Scanner** provides quick triage. **Acquirer Intelligence** maps findings to the buyer's thesis (when configured).
+**9 domain specialists** (Legal, Finance, Commercial, ProductTech, Cybersecurity, HR, Tax, Regulatory, ESG) analyze every document in parallel. Agents are config-driven — enable/disable per deal via `deal-config.json`. A **Judge** spot-checks findings. **Executive Synthesis** calibrates severity and the Go/No-Go signal. **Red Flag Scanner** provides quick triage. **Acquirer Intelligence** maps findings to the buyer's thesis (when configured). External agents can be added via pip entry-points without modifying core code.
 
 The pipeline **halts on quality failures** rather than producing unreliable output. Runs can be resumed from any step.
 
@@ -227,10 +232,15 @@ The pipeline **halts on quality failures** rather than producing unreliable outp
 
 | Domain | Focus Areas |
 |-------|-------------|
-| **Legal** | Change of control (5 subtypes), anti-assignment, termination clauses, IP ownership, data privacy, indemnification, liability caps, warranty, dispute resolution, governance graph construction |
-| **Finance** | Revenue cross-referencing (flags >5% ARR mismatch), revenue decomposition, unit economics (CAC/LTV/NRR/GRR), pricing compliance, cost structure, financial projections |
-| **Commercial** | Renewal mechanics, churn risk, SLA commitments, volume commitments, customer segmentation (flags >30% concentration), pricing models, MFN clauses, competitive positioning |
+| **Legal** | Change of control (5 subtypes), anti-assignment, termination clauses, IP ownership, IP portfolio strength, freedom to operate, data privacy, indemnification, liability caps, warranty, dispute resolution, governance graph construction |
+| **Finance** | Revenue cross-referencing (flags >5% ARR mismatch), revenue decomposition, unit economics (CAC/LTV/NRR/GRR), pricing compliance, cost structure, financial projections, insurance program analysis |
+| **Commercial** | Renewal mechanics, churn risk, SLA commitments, volume commitments, customer segmentation (flags >30% concentration), pricing models, MFN clauses, competitive positioning, supply chain risk, operational capacity |
 | **ProductTech** | DPA analysis, security certifications (SOC2/ISO27001), technical SLAs, integration requirements, data portability, migration complexity, technical debt, vendor lock-in |
+| **Cybersecurity** | Security governance, incident history, vulnerability management, identity & access, network infrastructure, data protection, third-party risk, disaster recovery, compliance certifications, cyber insurance |
+| **HR** | Workforce composition, compensation analysis, benefits liabilities, key talent retention, organizational structure, labor compliance, union/collective bargaining, culture integration, succession planning, workforce classification |
+| **Tax** | Income tax compliance, transfer pricing, NOL/tax attributes, sales & use tax, international tax, deal structure tax, tax provisions, tax controversy, employee tax, indirect tax |
+| **Regulatory** | License transferability, antitrust/competition, data privacy regulation, financial regulation, healthcare regulation, AML/sanctions, government contracts, environmental regulation, consumer protection |
+| **ESG** | Environmental contamination, environmental permits, climate/carbon risk, hazardous materials, supply chain sustainability, ESG governance, social impact, ESG disclosure, biodiversity/land use, circular economy |
 
 ## Pipeline Output
 

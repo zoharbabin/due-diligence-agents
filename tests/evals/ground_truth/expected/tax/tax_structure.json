@@ -1,0 +1,91 @@
+{
+  "contract": "tax_structure.md",
+  "agent": "tax",
+  "tags": [
+    "golden_path"
+  ],
+  "expected_findings": [
+    {
+      "category": "transfer_pricing",
+      "min_severity": "P2",
+      "max_severity": "P0",
+      "must_contain_keywords": [
+        "transfer pric"
+      ],
+      "keyword_synonyms": {
+        "transfer pric": ["transfer pricing", "intercompany", "cost-plus", "royalty", "arm's length"]
+      },
+      "citation_must_reference": {
+        "file": "tax_structure.md"
+      },
+      "required": true
+    },
+    {
+      "category": "nol_limitation",
+      "min_severity": "P2",
+      "max_severity": "P0",
+      "must_contain_keywords": [
+        "NOL"
+      ],
+      "keyword_synonyms": {
+        "NOL": ["net operating loss", "Section 382", "NOL limitation", "loss carryforward"]
+      },
+      "citation_must_reference": {
+        "file": "tax_structure.md"
+      },
+      "required": true
+    },
+    {
+      "category": "tax_credit_risk",
+      "min_severity": "P2",
+      "max_severity": "P1",
+      "must_contain_keywords": [
+        "SR&ED"
+      ],
+      "keyword_synonyms": {
+        "SR&ED": ["R&D tax credit", "SR&ED", "SRED", "CRA audit", "research credit"]
+      },
+      "citation_must_reference": {
+        "file": "tax_structure.md"
+      },
+      "required": true
+    },
+    {
+      "category": "nexus_exposure",
+      "min_severity": "P2",
+      "max_severity": "P1",
+      "must_contain_keywords": [
+        "nexus"
+      ],
+      "keyword_synonyms": {
+        "nexus": ["sales tax", "Wayfair", "nexus", "remote employees", "indirect tax"]
+      },
+      "citation_must_reference": {
+        "file": "tax_structure.md"
+      },
+      "required": true
+    },
+    {
+      "category": "concessionary_rate_risk",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": [
+        "Pioneer"
+      ],
+      "keyword_synonyms": {
+        "Pioneer": ["Pioneer Certificate", "concessionary", "tax incentive", "Singapore", "headcount"]
+      },
+      "citation_must_reference": {
+        "file": "tax_structure.md"
+      },
+      "required": true
+    }
+  ],
+  "expected_gaps": [],
+  "must_not_find": [
+    {
+      "category": "cybersecurity",
+      "reason": "No cybersecurity provisions in a tax memorandum"
+    }
+  ]
+}

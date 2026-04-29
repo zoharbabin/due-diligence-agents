@@ -178,6 +178,7 @@ class IncrementalClassifier:
         unchanged_subjects: list[str],
         prior_findings_dir: Path,
         current_findings_dir: Path,
+        active_agents: list[str] | None = None,
     ) -> int:
         """Copy findings for UNCHANGED subjects from prior run with carry-forward metadata.
 
@@ -189,6 +190,10 @@ class IncrementalClassifier:
             Path to the prior run's ``findings/`` directory.
         current_findings_dir:
             Path to the current run's ``findings/`` directory.
+        active_agents:
+            If provided, only carry forward findings from these agents.
+            Findings from agents not in this list (e.g. disabled between
+            runs) are skipped.
 
         Returns
         -------
@@ -196,10 +201,13 @@ class IncrementalClassifier:
             Number of subject findings files carried forward.
         """
         carried = 0
+        active_set = set(active_agents) if active_agents is not None else None
 
         for subj in unchanged_subjects:
             for agent_dir in prior_findings_dir.iterdir():
                 if not agent_dir.is_dir():
+                    continue
+                if active_set is not None and agent_dir.name not in active_set:
                     continue
 
                 source_file = agent_dir / f"{subj}.json"

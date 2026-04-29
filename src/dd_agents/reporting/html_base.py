@@ -81,6 +81,10 @@ DOMAIN_DISPLAY: dict[str, str] = {
     "commercial": "Commercial",
     "producttech": "Product & Tech",
     "cybersecurity": "Cybersecurity",
+    "hr": "HR / People",
+    "tax": "Tax",
+    "regulatory": "Regulatory",
+    "esg": "ESG",
 }
 
 DOMAIN_COLORS: dict[str, str] = {
@@ -89,6 +93,10 @@ DOMAIN_COLORS: dict[str, str] = {
     "commercial": "#7c3aed",
     "producttech": "#d97706",
     "cybersecurity": "#8B5CF6",
+    "hr": "#c2185b",
+    "tax": "#00838f",
+    "regulatory": "#6a1b9a",
+    "esg": "#2d6a4f",
 }
 
 RAG_COLORS: dict[str, str] = {

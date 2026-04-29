@@ -251,10 +251,10 @@ class TestCoverageValidator:
             agent_dirs[agent] = d
 
         validator = CoverageValidator()
-        results = validator.validate(agent_dirs, SUBJECTS)
+        results = validator.validate(agent_dirs, SUBJECTS, active_agents=list(AGENTS))
 
-        # 5 per-agent checks + 1 aggregate = 6
-        assert len(results) == 6
+        # len(AGENTS) per-agent checks + 1 aggregate
+        assert len(results) == len(AGENTS) + 1
         for check in results:
             assert isinstance(check, AuditCheck)
             assert check.passed is True
@@ -272,7 +272,7 @@ class TestCoverageValidator:
             agent_dirs[agent] = d
 
         validator = CoverageValidator()
-        results = validator.validate(agent_dirs, SUBJECTS)
+        results = validator.validate(agent_dirs, SUBJECTS, active_agents=list(AGENTS))
 
         # The legal agent check should fail
         legal_check = next(r for r in results if r.details.get("agent") == "legal")
@@ -293,7 +293,7 @@ class TestCoverageValidator:
             agent_dirs[agent] = d
 
         validator = CoverageValidator()
-        results = validator.validate(agent_dirs, SUBJECTS)
+        results = validator.validate(agent_dirs, SUBJECTS, active_agents=list(AGENTS))
 
         for check in results:
             if check.details.get("aggregate"):
@@ -316,7 +316,7 @@ class TestCoverageValidator:
                 agent_dirs[agent] = d
 
         validator = CoverageValidator()
-        results = validator.validate(agent_dirs, SUBJECTS)
+        results = validator.validate(agent_dirs, SUBJECTS, active_agents=list(AGENTS))
 
         finance_check = next(r for r in results if r.details.get("agent") == "finance")
         assert finance_check.passed is False
@@ -331,9 +331,8 @@ class TestCoverageValidator:
             (d / f"{subject}.json").write_text(json.dumps(data))
 
         agent_dirs = {"legal": d}
-        # Only check legal to isolate the test
         validator = CoverageValidator()
-        results = validator.validate(agent_dirs, SUBJECTS)
+        results = validator.validate(agent_dirs, SUBJECTS, active_agents=["legal"])
 
         legal_check = next(r for r in results if r.details.get("agent") == "legal")
         assert len(legal_check.details["empty_files"]) == len(SUBJECTS)
@@ -744,6 +743,7 @@ class TestQAAuditor:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         report = auditor.run_full_audit(run_id="test_run")
 
@@ -765,6 +765,7 @@ class TestQAAuditor:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         report = auditor.run_full_audit()
 
@@ -785,6 +786,7 @@ class TestQAAuditor:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         report = auditor.run_full_audit(run_id="test_run")
 
@@ -810,6 +812,7 @@ class TestQAAuditor:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         report = auditor.run_full_audit()
 
@@ -895,7 +898,9 @@ class TestQAAuditorDeferredChecks:
         inventory_dir = tmp_path / "inventory"
         self._populate_minimal(run_dir, inventory_dir)
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
+        auditor = QAAuditor(
+            run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS, active_agents=list(AGENTS)
+        )
         name, check = auditor.check_agent_manifest_reconciliation()
         assert check.passed is True
         # No manifests, but file-counting fallback finds all subject files.
@@ -909,7 +914,9 @@ class TestQAAuditorDeferredChecks:
         inventory_dir = tmp_path / "inventory"
         self._populate_minimal(run_dir, inventory_dir)
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
+        auditor = QAAuditor(
+            run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS, active_agents=list(AGENTS)
+        )
         name, check = auditor.check_file_coverage()
         assert check.passed is True
         assert "deferred" in check.details.get("note", "").lower()
@@ -921,10 +928,12 @@ class TestQAAuditorDeferredChecks:
         inventory_dir = tmp_path / "inventory"
         inventory_dir.mkdir(parents=True, exist_ok=True)
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
+        auditor = QAAuditor(
+            run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS, active_agents=list(AGENTS)
+        )
         name, check = auditor.check_audit_logs()
         assert check.passed is False
-        assert len(check.details["missing_logs"]) == 5
+        assert len(check.details["missing_logs"]) == len(AGENTS)
 
     def test_deferred_report_consistency(self, tmp_path: Path) -> None:
         """report_consistency passes when report_schema.json doesn't exist."""
@@ -932,7 +941,9 @@ class TestQAAuditorDeferredChecks:
         inventory_dir = tmp_path / "inventory"
         self._populate_minimal(run_dir, inventory_dir)
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
+        auditor = QAAuditor(
+            run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS, active_agents=list(AGENTS)
+        )
         name, check = auditor.check_report_consistency()
         assert check.passed is True
         assert "deferred" in check.details.get("note", "").lower()
@@ -970,7 +981,9 @@ class TestQAAuditorDeferredChecks:
         }
         (merged_dir / "acme_corp.json").write_text(json.dumps(merged))
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
+        auditor = QAAuditor(
+            run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS, active_agents=list(AGENTS)
+        )
         name, check = auditor.check_citation_integrity()
         assert check.passed is True
 
@@ -1006,7 +1019,9 @@ class TestQAAuditorDeferredChecks:
         }
         (merged_dir / "acme_corp.json").write_text(json.dumps(merged))
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
+        auditor = QAAuditor(
+            run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS, active_agents=list(AGENTS)
+        )
         name, check = auditor.check_citation_integrity()
         assert check.passed is True
 
@@ -1052,7 +1067,9 @@ class TestQAAuditorDeferredChecks:
         }
         (merged_dir / "acme_corp.json").write_text(json.dumps(merged))
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
+        auditor = QAAuditor(
+            run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS, active_agents=list(AGENTS)
+        )
         name, check = auditor.check_citation_integrity()
         assert check.passed is True
 
@@ -1065,7 +1082,9 @@ class TestQAAuditorDeferredChecks:
         # Remove one merged file (simulating a skipped subject)
         (run_dir / "findings" / "merged" / "initech.json").unlink()
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
+        auditor = QAAuditor(
+            run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS, active_agents=list(AGENTS)
+        )
         name, check = auditor.check_merge_dedup()
         # 2/3 = 0.667 < 0.90 threshold, so this should fail
         assert check.passed is False
@@ -1076,7 +1095,9 @@ class TestQAAuditorDeferredChecks:
         inventory_dir = tmp_path / "inventory"
         self._populate_minimal(run_dir, inventory_dir)
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
+        auditor = QAAuditor(
+            run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS, active_agents=list(AGENTS)
+        )
         name, check = auditor.check_merge_dedup()
         assert check.passed is True
 
@@ -1090,7 +1111,9 @@ class TestQAAuditorDeferredChecks:
         for jf in (run_dir / "findings" / "merged").glob("*.json"):
             jf.unlink()
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
+        auditor = QAAuditor(
+            run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS, active_agents=list(AGENTS)
+        )
         name, check = auditor.check_domain_coverage()
         assert check.passed is False
 
@@ -1100,7 +1123,9 @@ class TestQAAuditorDeferredChecks:
         inventory_dir = tmp_path / "inventory"
         self._populate_minimal(run_dir, inventory_dir)
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
+        auditor = QAAuditor(
+            run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS, active_agents=list(AGENTS)
+        )
         report = auditor.run_full_audit(run_id="test_minimal")
 
         failed = [name for name, check in report.checks.items() if not check.passed]
@@ -1121,7 +1146,9 @@ class TestQAAuditorDeferredChecks:
         }
         (agent_dir / "coverage_manifest.json").write_text(json.dumps(manifest))
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
+        auditor = QAAuditor(
+            run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS, active_agents=list(AGENTS)
+        )
         name, check = auditor.check_agent_manifest_reconciliation()
         # File-counting fallback finds all subject files → passes
         assert check.passed is True
@@ -1181,7 +1208,9 @@ class TestQAAuditorDeferredChecks:
         }
         (merged_dir / "acme_corp.json").write_text(json.dumps(merged))
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
+        auditor = QAAuditor(
+            run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS, active_agents=list(AGENTS)
+        )
         name, check = auditor.check_citation_integrity()
         assert check.passed is True
         assert check.details.get("failure_ratio", 1.0) <= 0.10
@@ -1202,7 +1231,9 @@ class TestQAAuditorDeferredChecks:
         report_dir.mkdir(parents=True, exist_ok=True)
         wb.save(report_dir / "stale_report.xlsx")
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
+        auditor = QAAuditor(
+            run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS, active_agents=list(AGENTS)
+        )
         name, check = auditor.check_report_sheets()
         assert check.passed is True
         assert "deferred" in check.details.get("note", "").lower()
@@ -1262,7 +1293,9 @@ class TestQAAuditorDeferredChecks:
         }
         (merged_dir / "acme_corp.json").write_text(json.dumps(merged))
 
-        auditor = QAAuditor(run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS)
+        auditor = QAAuditor(
+            run_dir=run_dir, inventory_dir=inventory_dir, subject_safe_names=SUBJECTS, active_agents=list(AGENTS)
+        )
         name, check = auditor.check_p0_p1_citation_quality()
         assert check.passed is True
         assert check.details.get("violation_ratio", 1.0) <= 0.10
@@ -1287,6 +1320,7 @@ class TestDefinitionOfDoneChecker:
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
             deal_config={},
+            active_agents=list(AGENTS),
         )
         results = checker.check_all()
 
@@ -1305,6 +1339,7 @@ class TestDefinitionOfDoneChecker:
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
             deal_config={"judge": {"enabled": True, "threshold": 70}},
+            active_agents=list(AGENTS),
         )
         results = checker.check_all()
         assert len(results) == 27  # 23 + 4 judge
@@ -1320,6 +1355,7 @@ class TestDefinitionOfDoneChecker:
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
             deal_config={"execution": {"execution_mode": "incremental"}},
+            active_agents=list(AGENTS),
         )
         results = checker.check_all()
         assert len(results) == 27  # 23 + 4 incremental
@@ -1338,6 +1374,7 @@ class TestDefinitionOfDoneChecker:
                 "judge": {"enabled": True, "threshold": 70},
                 "execution": {"execution_mode": "incremental"},
             },
+            active_agents=list(AGENTS),
         )
         results = checker.check_all()
         assert len(results) == 31
@@ -1352,6 +1389,7 @@ class TestDefinitionOfDoneChecker:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         results = checker.check_all()
         for check in results:
@@ -1369,6 +1407,7 @@ class TestDefinitionOfDoneChecker:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_1_subject_outputs_complete()
         assert check.passed is True
@@ -1385,6 +1424,7 @@ class TestDefinitionOfDoneChecker:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_1_subject_outputs_complete()
         assert check.passed is False
@@ -1762,6 +1802,7 @@ class TestDoDHardcodedPassesRemoved:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_4_governance_resolved()
         assert check.passed is False
@@ -1777,6 +1818,7 @@ class TestDoDHardcodedPassesRemoved:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_5_citations_valid()
         assert check.passed is False
@@ -1792,6 +1834,7 @@ class TestDoDHardcodedPassesRemoved:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_6_gaps_tracked()
         assert check.passed is False
@@ -1809,6 +1852,7 @@ class TestDoDHardcodedPassesRemoved:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_10_reference_files_processed()
         assert check.passed is False
@@ -1824,6 +1868,7 @@ class TestDoDHardcodedPassesRemoved:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_10_reference_files_processed()
         assert check.passed is True
@@ -1839,6 +1884,7 @@ class TestDoDHardcodedPassesRemoved:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_16_entity_resolution_log()
         assert check.passed is False
@@ -1931,6 +1977,7 @@ class TestDoDHardcodedPassesRemoved:
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
             deal_config={"execution": {"execution_mode": "incremental"}},
+            active_agents=list(AGENTS),
         )
         check = checker.check_25_carried_forward_metadata()
         assert check.passed is True
@@ -1963,6 +2010,7 @@ class TestDoDHardcodedPassesRemoved:
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
             deal_config={},
+            active_agents=list(AGENTS),
         )
         check = checker.check_30_report_diff()
         assert check.passed is True
@@ -1993,6 +2041,7 @@ class TestP0P1CitationQuality:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         _name, check = auditor.check_p0_p1_citation_quality()
         assert check.passed is True
@@ -2019,6 +2068,7 @@ class TestP0P1CitationQuality:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         _name, check = auditor.check_p0_p1_citation_quality()
         assert check.passed is False
@@ -2046,6 +2096,7 @@ class TestP0P1CitationQuality:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         _name, check = auditor.check_p0_p1_citation_quality()
         assert check.passed is False
@@ -2214,6 +2265,7 @@ class TestDoDCheck7CrossSubjectPatterns:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_7_cross_subject_patterns()
         assert check.passed is True
@@ -2230,6 +2282,7 @@ class TestDoDCheck7CrossSubjectPatterns:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_7_cross_subject_patterns()
         assert check.passed is False
@@ -2253,6 +2306,7 @@ class TestDoDCheck7CrossSubjectPatterns:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_7_cross_subject_patterns()
         assert check.passed is False
@@ -2270,6 +2324,7 @@ class TestDoDCheck7CrossSubjectPatterns:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_7_cross_subject_patterns()
         assert check.passed is False
@@ -2299,6 +2354,7 @@ class TestDoDCheck8CrossReferenceReconciliation:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_8_cross_reference_reconciliation()
         assert check.passed is True
@@ -2315,6 +2371,7 @@ class TestDoDCheck8CrossReferenceReconciliation:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_8_cross_reference_reconciliation()
         assert check.passed is False
@@ -2341,6 +2398,7 @@ class TestDoDCheck8CrossReferenceReconciliation:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_8_cross_reference_reconciliation()
         assert check.passed is True
@@ -2364,6 +2422,7 @@ class TestDoDCheck8CrossReferenceReconciliation:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_8_cross_reference_reconciliation()
         assert check.passed is False
@@ -2390,6 +2449,7 @@ class TestDoDCheck9GhostSubjects:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_9_ghost_subjects()
         assert check.passed is True
@@ -2406,6 +2466,7 @@ class TestDoDCheck9GhostSubjects:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_9_ghost_subjects()
         assert check.passed is False
@@ -2429,6 +2490,7 @@ class TestDoDCheck9GhostSubjects:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_9_ghost_subjects()
         assert check.passed is False
@@ -2455,6 +2517,7 @@ class TestDoDCheck12DomainCoverage:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_12_domain_coverage()
         assert check.passed is True
@@ -2471,6 +2534,7 @@ class TestDoDCheck12DomainCoverage:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_12_domain_coverage()
         assert check.passed is False
@@ -2494,6 +2558,7 @@ class TestDoDCheck12DomainCoverage:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_12_domain_coverage()
         assert check.passed is False
@@ -2649,6 +2714,7 @@ class TestDoDCheck30ReportDiff:
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
             deal_config={},
+            active_agents=list(AGENTS),
         )
         check = checker.check_30_report_diff()
         assert check.passed is True
@@ -2693,6 +2759,7 @@ class TestDoDCheck30ReportDiff:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_13_merge_dedup_complete()
         assert check.passed is True
@@ -2714,6 +2781,7 @@ class TestDoDCheck30ReportDiff:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_13_merge_dedup_complete()
         assert check.passed is False
@@ -2737,6 +2805,7 @@ class TestDoDCheck30ReportDiff:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_11_audit_logs_exist()
         assert check.passed is True
@@ -2753,6 +2822,7 @@ class TestDoDCheck30ReportDiff:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_11_audit_logs_exist()
         assert check.passed is False
@@ -2778,6 +2848,7 @@ class TestDoDCheck30ReportDiff:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_19_extraction_quality()
         assert check.passed is True
@@ -2816,6 +2887,7 @@ class TestDoDCheck30ReportDiff:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_19_extraction_quality()
         assert check.passed is True
@@ -2845,6 +2917,7 @@ class TestDoDCheck30ReportDiff:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_10_reference_files_processed()
         assert check.passed is True
@@ -2866,6 +2939,7 @@ class TestDoDCheck30ReportDiff:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_16_entity_resolution_log()
         assert check.passed is True
@@ -2883,6 +2957,7 @@ class TestDoDCheck30ReportDiff:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=SUBJECTS,
+            active_agents=list(AGENTS),
         )
         check = checker.check_16_entity_resolution_log()
         assert check.passed is True
@@ -3317,6 +3392,7 @@ class TestDoDCheck12bAgentCoverage:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=["acme"],
+            active_agents=list(AGENTS),
         )
         result = checker.check_12b_agent_coverage_in_merged()
         assert result.passed is True
@@ -3333,6 +3409,7 @@ class TestDoDCheck12bAgentCoverage:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=["acme"],
+            active_agents=list(AGENTS),
         )
         result = checker.check_12b_agent_coverage_in_merged()
         assert result.passed is False
@@ -3348,6 +3425,7 @@ class TestDoDCheck12bAgentCoverage:
             run_dir=run_dir,
             inventory_dir=inventory_dir,
             subject_safe_names=["acme"],
+            active_agents=list(AGENTS),
         )
         result = checker.check_12b_agent_coverage_in_merged()
         assert result.passed is False

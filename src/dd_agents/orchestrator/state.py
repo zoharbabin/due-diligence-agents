@@ -110,6 +110,7 @@ class PipelineState:
     errors: list[dict[str, Any]] = field(default_factory=list)
 
     # --- Agent tracking -----------------------------------------------------
+    active_agents: list[str] = field(default_factory=list)
     agent_handles: dict[str, Any] = field(default_factory=dict)
     agent_sessions: dict[str, str] = field(default_factory=dict)
     agent_results: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -197,6 +198,7 @@ class PipelineState:
             "completed_steps": [s.value for s in self.completed_steps],
             "step_results": step_results_ser,
             "errors": self.errors,
+            "active_agents": self.active_agents,
             "agent_sessions": self.agent_sessions,
             "agent_results": self.agent_results,
             "agent_costs": self.agent_costs,
@@ -259,6 +261,7 @@ class PipelineState:
             completed_steps=[PipelineStep(cls._migrate_step_value(v)) for v in data.get("completed_steps", [])],
             step_results=step_results,
             errors=data.get("errors", []),
+            active_agents=data.get("active_agents", []),
             agent_sessions=data.get("agent_sessions", {}),
             agent_results=data.get("agent_results", {}),
             agent_costs=data.get("agent_costs", {}),

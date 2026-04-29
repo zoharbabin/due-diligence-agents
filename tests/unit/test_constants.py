@@ -31,13 +31,17 @@ class TestConstants:
         assert SKILL_DIR.startswith(DD_DIR)
         assert SKILL_NAME in SKILL_DIR
 
-    def test_five_specialist_agents(self) -> None:
-        assert len(ALL_SPECIALIST_AGENTS) == 5
+    def test_nine_specialist_agents(self) -> None:
+        assert len(ALL_SPECIALIST_AGENTS) == 9
         assert "legal" in ALL_SPECIALIST_AGENTS
         assert "finance" in ALL_SPECIALIST_AGENTS
         assert "commercial" in ALL_SPECIALIST_AGENTS
         assert "producttech" in ALL_SPECIALIST_AGENTS
         assert "cybersecurity" in ALL_SPECIALIST_AGENTS
+        assert "hr" in ALL_SPECIALIST_AGENTS
+        assert "tax" in ALL_SPECIALIST_AGENTS
+        assert "regulatory" in ALL_SPECIALIST_AGENTS
+        assert "esg" in ALL_SPECIALIST_AGENTS
 
     def test_severity_order(self) -> None:
         assert SEVERITY_ORDER["P0"] < SEVERITY_ORDER["P1"]

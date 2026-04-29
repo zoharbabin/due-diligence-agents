@@ -33,13 +33,17 @@ class SourceType(StrEnum):
 
 
 class AgentName(StrEnum):
-    """All agent identifiers (4 specialists + 4 synthesis/validation)."""
+    """All agent identifiers (9 specialists + 4 synthesis/validation)."""
 
     LEGAL = "legal"
     FINANCE = "finance"
     COMMERCIAL = "commercial"
     PRODUCTTECH = "producttech"
     CYBERSECURITY = "cybersecurity"
+    HR = "hr"
+    TAX = "tax"
+    REGULATORY = "regulatory"
+    ESG = "esg"
     JUDGE = "judge"
     EXECUTIVE_SYNTHESIS = "executive_synthesis"
     RED_FLAG_SCANNER = "red_flag_scanner"

@@ -1609,9 +1609,11 @@ class TestAgentTeamSpawnSpecialistsAdaptive:
 
         # With placeholder agents, this should complete quickly.
         results = await team.spawn_specialists(num_subjects=10)
-        # All 5 specialists should have results.
-        assert len(results) == 5
-        for name in ("legal", "finance", "commercial", "producttech", "cybersecurity"):
+        from dd_agents.agents.registry import AgentRegistry
+
+        all_names = AgentRegistry.all_specialist_names()
+        assert len(results) == len(all_names)
+        for name in all_names:
             assert name in results
 
 
@@ -1679,18 +1681,19 @@ class TestStep14PreparePrompts:
         ) as mock_batch:
             result = await engine._step_14_prepare_prompts(state)
 
-        # batch_subjects should have been called (once per agent = 5 times)
-        assert mock_batch.call_count == 5
+        from dd_agents.agents.registry import AgentRegistry
 
-        # All 5 specialist agents should have prompts
-        assert "legal" in result.agent_prompts
-        assert "finance" in result.agent_prompts
-        assert "commercial" in result.agent_prompts
-        assert "producttech" in result.agent_prompts
-        assert "cybersecurity" in result.agent_prompts
+        all_names = AgentRegistry.all_specialist_names()
+
+        # batch_subjects should have been called once per active agent
+        assert mock_batch.call_count == len(all_names)
+
+        # All specialist agents should have prompts
+        for name in all_names:
+            assert name in result.agent_prompts
 
         # Each agent should have at least 1 prompt string
-        for agent_name in ["legal", "finance", "commercial", "producttech"]:
+        for agent_name in all_names:
             prompts = result.agent_prompts[agent_name]
             assert len(prompts) >= 1
             assert isinstance(prompts[0], str)
@@ -1752,12 +1755,14 @@ class TestStep17CoverageGate:
     @pytest.mark.asyncio
     async def test_coverage_gate_passes_with_full_coverage(self, tmp_path: Path) -> None:
         """Coverage gate passes when all subjects have output for all agents."""
+        from dd_agents.agents.registry import AgentRegistry
+
         engine = self._make_engine(tmp_path)
         state = self._make_state(tmp_path)
         findings_dir = state.run_dir / "findings"
 
         # Create output for all subjects for all agents
-        for agent in ["legal", "finance", "commercial", "producttech", "cybersecurity"]:
+        for agent in AgentRegistry.all_specialist_names():
             for subject in state.subject_safe_names:
                 self._create_finding(findings_dir, agent, subject)
 
@@ -1767,6 +1772,8 @@ class TestStep17CoverageGate:
     @pytest.mark.asyncio
     async def test_coverage_gate_blocks_below_50_percent(self, tmp_path: Path) -> None:
         """Coverage gate raises BlockingGateError when coverage < 50%."""
+        from dd_agents.agents.registry import AgentRegistry
+
         engine = self._make_engine(tmp_path)
         # Use 10 subjects so we can create < 50% coverage
         subjects = [f"subject_{i}" for i in range(10)]
@@ -1775,7 +1782,7 @@ class TestStep17CoverageGate:
 
         # Create output for only 4 of 10 subjects for each agent
         # (40% coverage < 50%)
-        for agent in ["legal", "finance", "commercial", "producttech", "cybersecurity"]:
+        for agent in AgentRegistry.all_specialist_names():
             for subject in subjects[:4]:
                 self._create_finding(findings_dir, agent, subject)
 
@@ -1785,12 +1792,14 @@ class TestStep17CoverageGate:
     @pytest.mark.asyncio
     async def test_coverage_gate_generates_gap_findings(self, tmp_path: Path) -> None:
         """Coverage gate generates P1 gap findings for missing subjects."""
+        from dd_agents.agents.registry import AgentRegistry
+
         engine = self._make_engine(tmp_path)
         state = self._make_state(tmp_path, subjects=["subject_a", "subject_b"])
         findings_dir = state.run_dir / "findings"
 
         # Create output for subject_a only across all agents
-        for agent in ["legal", "finance", "commercial", "producttech", "cybersecurity"]:
+        for agent in AgentRegistry.all_specialist_names():
             self._create_finding(findings_dir, agent, "subject_a")
         # subject_b is missing from all agents
 
@@ -1802,7 +1811,9 @@ class TestStep17CoverageGate:
         assert gap_path.exists(), "coverage_gap_findings.json should be generated"
 
         gaps = json.loads(gap_path.read_text())
-        assert len(gaps) == 5  # 5 agents x 1 missing subject
+        from dd_agents.agents.registry import AgentRegistry
+
+        assert len(gaps) == len(AgentRegistry.all_specialist_names())  # N agents x 1 missing subject
 
         # Each gap finding should be P1 severity
         for gap in gaps:
@@ -1813,7 +1824,7 @@ class TestStep17CoverageGate:
 
         # Gap findings should also be written as agent output files so
         # the merge step picks them up for domain_coverage in QA audit.
-        for agent in ["legal", "finance", "commercial", "producttech", "cybersecurity"]:
+        for agent in AgentRegistry.all_specialist_names():
             agent_file = findings_dir / agent / "subject_b.json"
             assert agent_file.exists(), f"Gap finding should create {agent}/subject_b.json"
             data = json.loads(agent_file.read_text())
@@ -2839,7 +2850,7 @@ class TestStep15ErrorHandlingMissingReferenceFiles:
 
     @pytest.mark.asyncio
     async def test_step_15_routes_to_all_agents_when_assigned_to_is_none(self, tmp_path: Path) -> None:
-        """When assigned_to_agents is empty/None, routes to all 5 specialists."""
+        """When assigned_to_agents is empty/None, routes to all specialists."""
         from unittest.mock import MagicMock
 
         engine = self._make_engine(tmp_path)
@@ -2862,7 +2873,9 @@ class TestStep15ErrorHandlingMissingReferenceFiles:
         manifest_path = state.run_dir / "reference_routing.json"
         manifest = json.loads(manifest_path.read_text())
         assert len(manifest) == 1
-        assert len(manifest[0]["agents"]) == 5
+        from dd_agents.agents.registry import AgentRegistry
+
+        assert len(manifest[0]["agents"]) == len(AgentRegistry.all_specialist_names())
         assert result is state
 
     @pytest.mark.asyncio

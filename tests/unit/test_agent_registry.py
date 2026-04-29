@@ -263,7 +263,11 @@ class TestBuiltinLazyLoading:
         assert "commercial" in names
         assert "producttech" in names
         assert "cybersecurity" in names
-        assert len(names) == 5
+        assert "hr" in names
+        assert "tax" in names
+        assert "regulatory" in names
+        assert "esg" in names
+        assert len(names) == 9
 
     def test_get_builtin_agent(self) -> None:
         d = AgentRegistry.get("legal")
@@ -273,25 +277,65 @@ class TestBuiltinLazyLoading:
 
     def test_resolve_active_triggers_builtin_load(self) -> None:
         result = AgentRegistry.resolve_active(None)
-        assert len(result) == 5
+        assert len(result) == 9
 
     def test_builtin_descriptors_have_focus_areas(self) -> None:
-        for name in ("legal", "finance", "commercial", "producttech", "cybersecurity"):
+        for name in (
+            "legal",
+            "finance",
+            "commercial",
+            "producttech",
+            "cybersecurity",
+            "hr",
+            "tax",
+            "regulatory",
+            "esg",
+        ):
             d = AgentRegistry.get(name)
             assert len(d.focus_areas) >= 8, f"{name} should have at least 8 focus areas"
 
     def test_builtin_descriptors_have_colors(self) -> None:
-        for name in ("legal", "finance", "commercial", "producttech", "cybersecurity"):
+        for name in (
+            "legal",
+            "finance",
+            "commercial",
+            "producttech",
+            "cybersecurity",
+            "hr",
+            "tax",
+            "regulatory",
+            "esg",
+        ):
             d = AgentRegistry.get(name)
             assert d.color.startswith("#")
 
     def test_builtin_descriptors_have_specialist_focus(self) -> None:
-        for name in ("legal", "finance", "commercial", "producttech", "cybersecurity"):
+        for name in (
+            "legal",
+            "finance",
+            "commercial",
+            "producttech",
+            "cybersecurity",
+            "hr",
+            "tax",
+            "regulatory",
+            "esg",
+        ):
             d = AgentRegistry.get(name)
             assert len(d.specialist_focus) > 100, f"{name} specialist_focus should be substantial"
 
     def test_builtin_descriptors_have_citation_examples(self) -> None:
-        for name in ("legal", "finance", "commercial", "producttech", "cybersecurity"):
+        for name in (
+            "legal",
+            "finance",
+            "commercial",
+            "producttech",
+            "cybersecurity",
+            "hr",
+            "tax",
+            "regulatory",
+            "esg",
+        ):
             d = AgentRegistry.get(name)
             assert len(d.citation_examples) > 50, f"{name} should have citation examples"
 

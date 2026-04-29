@@ -70,7 +70,7 @@ def _write_agent_file(
 
 
 def _setup_complete(findings_dir: Path, file_inventory: list[str] | None = None) -> PreMergeValidator:
-    """Create a validator with all 4 agents x 2 subjects populated."""
+    """Create a validator with all test agents x 2 subjects populated."""
     for agent in AGENTS:
         for subject in SUBJECTS:
             _write_agent_file(findings_dir, agent, subject)
@@ -80,6 +80,7 @@ def _setup_complete(findings_dir: Path, file_inventory: list[str] | None = None)
         findings_dir=findings_dir,
         subject_safe_names=SUBJECTS,
         file_inventory=inv,
+        active_agents=list(AGENTS),
     )
 
 
@@ -103,6 +104,7 @@ class TestFileCompleteness:
             findings_dir=findings_dir,
             subject_safe_names=SUBJECTS,
             file_inventory=["1. Due Diligence/doc.pdf"],
+            active_agents=list(AGENTS),
         )
         report = validator.validate()
         assert len(report.file_completeness_issues) > 0
@@ -139,6 +141,7 @@ class TestJsonIntegrity:
             findings_dir=findings_dir,
             subject_safe_names=SUBJECTS,
             file_inventory=["1. Due Diligence/doc.pdf"],
+            active_agents=list(AGENTS),
         )
         report = validator.validate()
         assert len(report.json_integrity_issues) > 0
@@ -180,6 +183,7 @@ class TestSchemaCompliance:
             findings_dir=findings_dir,
             subject_safe_names=SUBJECTS,
             file_inventory=["1. Due Diligence/doc.pdf"],
+            active_agents=list(AGENTS),
         )
         report = validator.validate()
         assert len(report.schema_issues) > 0
@@ -210,6 +214,7 @@ class TestCitationPaths:
             findings_dir=findings_dir,
             subject_safe_names=SUBJECTS,
             file_inventory=["1. Due Diligence/doc.pdf"],
+            active_agents=list(AGENTS),
         )
         report = validator.validate()
         assert len(report.citation_path_issues) > 0
@@ -243,6 +248,7 @@ class TestAsymmetricRisk:
             findings_dir=findings_dir,
             subject_safe_names=SUBJECTS,
             file_inventory=["1. Due Diligence/doc.pdf"],
+            active_agents=list(AGENTS),
         )
         report = validator.validate()
         assert len(report.asymmetric_risk_anomalies) > 0
@@ -291,6 +297,7 @@ class TestSeverityDisagreement:
             findings_dir=findings_dir,
             subject_safe_names=SUBJECTS,
             file_inventory=["1. Due Diligence/doc.pdf"],
+            active_agents=list(AGENTS),
         )
         report = validator.validate()
         assert len(report.severity_disagreements) > 0
@@ -325,6 +332,7 @@ class TestSeverityDisagreement:
             findings_dir=findings_dir,
             subject_safe_names=SUBJECTS,
             file_inventory=["1. Due Diligence/doc.pdf"],
+            active_agents=list(AGENTS),
         )
         report = validator.validate()
         assert report.severity_disagreements == []
@@ -356,6 +364,7 @@ class TestSummaryMatrix:
             findings_dir=findings_dir,
             subject_safe_names=SUBJECTS,
             file_inventory=["1. Due Diligence/doc.pdf"],
+            active_agents=list(AGENTS),
         )
         report = validator.validate()
         assert report.summary_matrix["subject_a"]["legal"] == 2
@@ -403,6 +412,7 @@ class TestNonSubjectExclusion:
             findings_dir=findings_dir,
             subject_safe_names=SUBJECTS,
             file_inventory=["1. Due Diligence/doc.pdf"],
+            active_agents=list(AGENTS),
         )
         report = validator.validate()
         # coverage_manifest should not appear in any issues as a subject
@@ -437,6 +447,7 @@ class TestEmptyFindings:
             findings_dir=findings_dir,
             subject_safe_names=SUBJECTS,
             file_inventory=["1. Due Diligence/doc.pdf"],
+            active_agents=list(AGENTS),
         )
         report = validator.validate()
         assert report.passed is True

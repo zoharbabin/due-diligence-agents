@@ -397,8 +397,8 @@ class TestHTMLReportGenerator:
         # Wolf-cards are only P0 (P1 moved to summary table)
         assert content.count("class='wolf-card'") == 1
 
-    def test_domain_heatmap_shows_five_domains(self, tmp_path: Path) -> None:
-        """The heatmap grid shows all 5 domains."""
+    def test_domain_heatmap_shows_all_domains(self, tmp_path: Path) -> None:
+        """The heatmap grid shows all registered domains."""
         merged = _make_merged_data_rich()
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
@@ -410,15 +410,17 @@ class TestHTMLReportGenerator:
         assert "Domain Risk Heatmap" in content
         assert "heatmap-cell" in content
 
-        # All 5 domains present
+        # Core domains present
         assert "Legal" in content
         assert "Finance" in content
         assert "Commercial" in content
         assert "Product &amp; Tech" in content
         assert "Cybersecurity" in content
 
-        # There should be 5 heatmap cells
-        assert content.count("class='heatmap-cell'") == 5
+        # One heatmap cell per registered agent
+        from dd_agents.agents.registry import AgentRegistry
+
+        assert content.count("class='heatmap-cell'") == len(AgentRegistry.all_specialist_names())
 
     def test_category_grouping_within_domains(self, tmp_path: Path) -> None:
         """Findings are grouped by category within each domain section."""

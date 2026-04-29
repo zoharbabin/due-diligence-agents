@@ -1,0 +1,91 @@
+{
+  "contract": "esg_report.md",
+  "agent": "esg",
+  "tags": [
+    "golden_path"
+  ],
+  "expected_findings": [
+    {
+      "category": "carbon_emissions",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": [
+        "emission"
+      ],
+      "keyword_synonyms": {
+        "emission": ["Scope 1", "Scope 2", "Scope 3", "CO2", "emissions", "carbon", "net-zero"]
+      },
+      "citation_must_reference": {
+        "file": "esg_report.md"
+      },
+      "required": true
+    },
+    {
+      "category": "diversity_inclusion",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": [
+        "diversity"
+      ],
+      "keyword_synonyms": {
+        "diversity": ["DEI", "gender", "diversity", "inclusion", "board composition", "women"]
+      },
+      "citation_must_reference": {
+        "file": "esg_report.md"
+      },
+      "required": true
+    },
+    {
+      "category": "governance_structure",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": [
+        "independent"
+      ],
+      "keyword_synonyms": {
+        "independent": ["board independence", "independent director", "governance", "ESG committee"]
+      },
+      "citation_must_reference": {
+        "file": "esg_report.md"
+      },
+      "required": true
+    },
+    {
+      "category": "esg_reporting",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": [
+        "framework"
+      ],
+      "keyword_synonyms": {
+        "framework": ["GRI", "SASB", "TCFD", "CDP", "ESG framework", "reporting standard"]
+      },
+      "citation_must_reference": {
+        "file": "esg_report.md"
+      },
+      "required": true
+    },
+    {
+      "category": "supply_chain_risk",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": [
+        "supplier"
+      ],
+      "keyword_synonyms": {
+        "supplier": ["supply chain", "supplier code", "labor", "audit", "vendor"]
+      },
+      "citation_must_reference": {
+        "file": "esg_report.md"
+      },
+      "required": false
+    }
+  ],
+  "expected_gaps": [],
+  "must_not_find": [
+    {
+      "category": "transfer_pricing",
+      "reason": "No transfer pricing provisions in an ESG report"
+    }
+  ]
+}

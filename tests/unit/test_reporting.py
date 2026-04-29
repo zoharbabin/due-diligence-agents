@@ -3258,7 +3258,8 @@ class TestAgentCoverage:
             subject_safe_name="test",
             findings=findings,
         )
-        gaps = FindingMerger.check_agent_coverage({"test": mco})
+        test_agents = ["legal", "finance", "commercial", "producttech", "cybersecurity"]
+        gaps = FindingMerger.check_agent_coverage({"test": mco}, active_agents=test_agents)
         assert len(gaps) == 0
 
     def test_missing_agent_detected(self) -> None:

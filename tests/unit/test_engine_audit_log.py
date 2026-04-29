@@ -152,8 +152,10 @@ class TestQAAuditLogValidation:
         from dd_agents.validation.qa_audit import QAAuditor
 
         run_dir = tmp_path / "run_001"
-        # Write audit logs for all 5 specialist agents
-        for agent in ("legal", "finance", "commercial", "producttech", "cybersecurity"):
+        # Write audit logs for all specialist agents
+        from dd_agents.agents.registry import AgentRegistry
+
+        for agent in AgentRegistry.all_specialist_names():
             PipelineEngine._write_audit_log(
                 run_dir,
                 agent,
@@ -166,14 +168,15 @@ class TestQAAuditLogValidation:
 
         assert name == "audit_logs"
         assert check.passed is True
-        assert len(check.details["agents_with_logs"]) == 5
+        assert len(check.details["agents_with_logs"]) == 9
         assert len(check.details["missing_logs"]) == 0
 
     def test_partial_logs_fails_qa_check(self, tmp_path: Path) -> None:
+        from dd_agents.agents.registry import AgentRegistry
         from dd_agents.validation.qa_audit import QAAuditor
 
         run_dir = tmp_path / "run_001"
-        # Only write for 2 out of 5 agents
+        # Only write for 2 out of 9 agents
         for agent in ("legal", "finance"):
             PipelineEngine._write_audit_log(
                 run_dir,
@@ -187,7 +190,8 @@ class TestQAAuditLogValidation:
 
         assert name == "audit_logs"
         assert check.passed is False
-        assert len(check.details["missing_logs"]) == 3
+        total_agents = len(AgentRegistry.all_specialist_names())
+        assert len(check.details["missing_logs"]) == total_agents - 2
 
 
 # ---------------------------------------------------------------------------

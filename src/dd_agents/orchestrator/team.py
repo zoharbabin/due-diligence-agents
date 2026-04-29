@@ -223,12 +223,7 @@ class AgentTeam:
         from dd_agents.agents.prompt_builder import AgentType
         from dd_agents.agents.specialists import SPECIALIST_CLASSES
 
-        agent_type_map: dict[str, AgentType] = {
-            "legal": AgentType.LEGAL,
-            "finance": AgentType.FINANCE,
-            "commercial": AgentType.COMMERCIAL,
-            "producttech": AgentType.PRODUCTTECH,
-        }
+        agent_type_map: dict[str, AgentType] = {at.value: at for at in AgentType if at.value in SPECIALIST_CLASSES}
 
         agent_type = agent_type_map.get(agent_name)
         if agent_type is None or agent_type not in SPECIALIST_CLASSES:

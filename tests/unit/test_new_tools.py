@@ -574,6 +574,7 @@ class TestMergeCoverageGapDifferentiation:
 
     def test_missing_output_detected(self, tmp_path: Path) -> None:
         findings_dir = tmp_path / "findings"
+        test_agents = ["legal", "finance", "commercial", "producttech", "cybersecurity"]
         # Create dirs for some agents but not all
         for agent in ["legal", "finance", "commercial"]:
             agent_dir = findings_dir / agent
@@ -582,7 +583,7 @@ class TestMergeCoverageGapDifferentiation:
 
         # producttech and cybersecurity dirs don't exist at all
         merged = {"test_subject": self._make_merged(["legal", "finance", "commercial"])}
-        gaps = FindingMerger.check_agent_coverage(merged, findings_dir=findings_dir)
+        gaps = FindingMerger.check_agent_coverage(merged, findings_dir=findings_dir, active_agents=test_agents)
 
         assert len(gaps) == 1
         assert gaps[0]["missing_output"] == ["cybersecurity", "producttech"]
@@ -590,15 +591,16 @@ class TestMergeCoverageGapDifferentiation:
 
     def test_no_findings_detected(self, tmp_path: Path) -> None:
         findings_dir = tmp_path / "findings"
+        test_agents = ["legal", "finance", "commercial", "producttech", "cybersecurity"]
         # All agent dirs exist, all have the subject file
-        for agent in ["legal", "finance", "commercial", "producttech", "cybersecurity"]:
+        for agent in test_agents:
             agent_dir = findings_dir / agent
             agent_dir.mkdir(parents=True)
             (agent_dir / "test_subject.json").write_text('{"findings": [], "gaps": []}')
 
         # But only legal and finance produced actual findings in merged output
         merged = {"test_subject": self._make_merged(["legal", "finance"])}
-        gaps = FindingMerger.check_agent_coverage(merged, findings_dir=findings_dir)
+        gaps = FindingMerger.check_agent_coverage(merged, findings_dir=findings_dir, active_agents=test_agents)
 
         assert len(gaps) == 1
         assert sorted(gaps[0]["no_findings"]) == ["commercial", "cybersecurity", "producttech"]
@@ -606,6 +608,7 @@ class TestMergeCoverageGapDifferentiation:
 
     def test_mixed_missing_and_no_findings(self, tmp_path: Path) -> None:
         findings_dir = tmp_path / "findings"
+        test_agents = ["legal", "finance", "commercial", "producttech", "cybersecurity"]
         # legal and finance have dirs and files
         for agent in ["legal", "finance"]:
             agent_dir = findings_dir / agent
@@ -618,15 +621,16 @@ class TestMergeCoverageGapDifferentiation:
         # producttech and cybersecurity have no dir at all
 
         merged = {"test_subject": self._make_merged(["legal", "finance"])}
-        gaps = FindingMerger.check_agent_coverage(merged, findings_dir=findings_dir)
+        gaps = FindingMerger.check_agent_coverage(merged, findings_dir=findings_dir, active_agents=test_agents)
 
         assert len(gaps) == 1
         assert gaps[0]["missing_output"] == ["cybersecurity", "producttech"]
         assert gaps[0]["no_findings"] == ["commercial"]
 
     def test_without_findings_dir_all_undifferentiated(self) -> None:
+        test_agents = ["legal", "finance", "commercial", "producttech", "cybersecurity"]
         merged = {"test_subject": self._make_merged(["legal", "finance"])}
-        gaps = FindingMerger.check_agent_coverage(merged)
+        gaps = FindingMerger.check_agent_coverage(merged, active_agents=test_agents)
 
         assert len(gaps) == 1
         # Without findings_dir, all missing go to missing_output
@@ -634,12 +638,9 @@ class TestMergeCoverageGapDifferentiation:
         assert gaps[0]["no_findings"] == []
 
     def test_full_coverage_no_gaps(self) -> None:
-        merged = {
-            "test_subject": self._make_merged(
-                ["legal", "finance", "commercial", "producttech", "cybersecurity"],
-            )
-        }
-        gaps = FindingMerger.check_agent_coverage(merged)
+        test_agents = ["legal", "finance", "commercial", "producttech", "cybersecurity"]
+        merged = {"test_subject": self._make_merged(test_agents)}
+        gaps = FindingMerger.check_agent_coverage(merged, active_agents=test_agents)
         assert gaps == []
 
 

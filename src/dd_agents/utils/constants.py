@@ -43,6 +43,10 @@ AGENT_FINANCE = "finance"
 AGENT_COMMERCIAL = "commercial"
 AGENT_PRODUCTTECH = "producttech"
 AGENT_CYBERSECURITY = "cybersecurity"
+AGENT_HR = "hr"
+AGENT_TAX = "tax"
+AGENT_REGULATORY = "regulatory"
+AGENT_ESG = "esg"
 AGENT_JUDGE = "judge"
 AGENT_ACQUIRER_INTELLIGENCE = "acquirer_intelligence"
 
@@ -52,6 +56,10 @@ ALL_SPECIALIST_AGENTS: list[str] = [
     AGENT_COMMERCIAL,
     AGENT_PRODUCTTECH,
     AGENT_CYBERSECURITY,
+    AGENT_HR,
+    AGENT_TAX,
+    AGENT_REGULATORY,
+    AGENT_ESG,
 ]
 
 

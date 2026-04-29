@@ -1,4 +1,7 @@
-"""Specialist agent runners -- Legal, Finance, Commercial, ProductTech, Cybersecurity.
+"""Specialist agent runners — 9 domain specialists for forensic M&A due diligence.
+
+Core specialists: Legal, Finance, Commercial, ProductTech, Cybersecurity.
+Extended specialists: HR, Tax, Regulatory, ESG.
 
 Each specialist analyses ALL subjects through its domain-specific lens.
 Specialists run in parallel during pipeline step 16.
@@ -39,11 +42,12 @@ LEGAL_FOCUS_AREAS: list[str] = [
     "regulatory_compliance",
     "legal_entity",
     "contract_timeline",
-    # Issue #131: Key Employee & Organizational Risk
     "key_person_dependency",
     "employment_agreements",
     "retention_risk",
     "non_compete_enforcement",
+    "ip_portfolio_strength",
+    "freedom_to_operate",
 ]
 
 FINANCE_FOCUS_AREAS: list[str] = [
@@ -57,6 +61,7 @@ FINANCE_FOCUS_AREAS: list[str] = [
     "unit_economics",
     "financial_projections",
     "cost_structure",
+    "insurance_program",
 ]
 
 COMMERCIAL_FOCUS_AREAS: list[str] = [
@@ -70,6 +75,8 @@ COMMERCIAL_FOCUS_AREAS: list[str] = [
     "pricing_model",
     "expansion_contraction",
     "competitive_positioning",
+    "supply_chain_risk",
+    "operational_capacity",
 ]
 
 PRODUCTTECH_FOCUS_AREAS: list[str] = [
@@ -96,6 +103,58 @@ CYBERSECURITY_FOCUS_AREAS: list[str] = [
     "network_security",
     "compliance_certifications",
     "third_party_risk",
+]
+
+HR_FOCUS_AREAS: list[str] = [
+    "workforce_composition",
+    "compensation_analysis",
+    "benefits_liabilities",
+    "key_talent_retention",
+    "organizational_structure",
+    "labor_compliance",
+    "union_collective_bargaining",
+    "culture_integration",
+    "succession_planning",
+    "workforce_classification",
+]
+
+TAX_FOCUS_AREAS: list[str] = [
+    "income_tax_compliance",
+    "transfer_pricing",
+    "nol_tax_attributes",
+    "sales_use_tax",
+    "international_tax",
+    "deal_structure_tax",
+    "tax_provisions",
+    "tax_controversy",
+    "employee_tax",
+    "indirect_tax",
+]
+
+REGULATORY_FOCUS_AREAS: list[str] = [
+    "license_transferability",
+    "antitrust_competition",
+    "data_privacy_regulation",
+    "financial_regulation",
+    "healthcare_regulation",
+    "aml_sanctions",
+    "government_contracts",
+    "environmental_regulation",
+    "consumer_protection",
+    "industry_specific",
+]
+
+ESG_FOCUS_AREAS: list[str] = [
+    "environmental_contamination",
+    "environmental_permits",
+    "climate_carbon_risk",
+    "hazardous_materials",
+    "supply_chain_sustainability",
+    "esg_governance",
+    "social_impact",
+    "esg_disclosure",
+    "biodiversity_land_use",
+    "circular_economy",
 ]
 
 # ---------------------------------------------------------------------------
@@ -556,6 +615,233 @@ class CybersecurityAgent(BaseAgentRunner):
         return list(SPECIALIST_TOOLS)
 
 
+class HRAgent(BaseAgentRunner):
+    """HR / People specialist — workforce composition, talent retention, labor compliance."""
+
+    focus_areas: list[str] = HR_FOCUS_AREAS
+
+    reference_categories: list[str] = ["hr", "compliance"]
+
+    def get_agent_name(self) -> str:
+        return "hr"
+
+    def get_system_prompt(self) -> str:
+        return (
+            "You are the HR / People specialist agent for forensic M&A due diligence. "
+            "Focus on workforce composition, compensation structures, benefits liabilities, "
+            "key talent retention, organizational structure, labor compliance, collective "
+            "bargaining agreements, and succession planning. " + SEVERITY_PREAMBLE
+        )
+
+    @staticmethod
+    def domain_robustness() -> str:
+        """HR-specific robustness mitigations."""
+        return (
+            "## HR-SPECIFIC EXTRACTION GUIDANCE\n\n"
+            "### Compensation & Benefits\n\n"
+            "KEYWORDS: compensation, salary, bonus, equity, stock options, RSU, ESOP, "
+            "pension, 401k, benefits, golden parachute, severance, deferred compensation\n"
+            "WHAT TO EXTRACT:\n"
+            "- Executive compensation packages (base, bonus, equity, perks)\n"
+            "- Pension and post-retirement benefit obligations (funded status)\n"
+            "- CoC-triggered acceleration clauses and golden parachutes\n"
+            "- Deferred compensation arrangements and vesting schedules\n"
+            f"{GAP_NOT_FOUND}\n\n"
+            "### Key Talent & Retention Risk\n\n"
+            "KEYWORDS: key person, key employee, retention, non-compete, non-solicit, "
+            "flight risk, succession, notice period, garden leave, earn-out\n"
+            "WHAT TO EXTRACT:\n"
+            "- Key personnel identified in agreements or org charts\n"
+            "- Non-compete/non-solicit scope and enforceability\n"
+            "- Retention mechanisms: unvested equity, earn-outs, stay bonuses\n"
+            "- Single-point-of-failure roles without succession plans\n"
+            f"{GAP_NOT_FOUND}\n\n"
+            "### Labor Compliance\n\n"
+            "KEYWORDS: contractor, independent contractor, 1099, W-2, misclassification, "
+            "WARN Act, collective bargaining, union, labor board, wage, overtime\n"
+            "WHAT TO EXTRACT:\n"
+            "- Worker classification methodology and potential misclassification\n"
+            "- Union/CBA exposure and upcoming negotiations\n"
+            "- Outstanding labor claims or proceedings\n"
+            "- Multi-jurisdiction compliance status\n"
+            f"{GAP_NOT_FOUND}\n\n" + build_citation_mandate("hr")
+        )
+
+    def get_tools(self) -> list[str]:
+        return list(SPECIALIST_TOOLS)
+
+
+class TaxAgent(BaseAgentRunner):
+    """Tax specialist — income tax, transfer pricing, NOLs, deal structure tax."""
+
+    focus_areas: list[str] = TAX_FOCUS_AREAS
+
+    reference_categories: list[str] = ["financial", "compliance"]
+
+    max_subjects_per_batch: int = 7
+    max_tokens_per_batch: int = 20_000
+
+    def get_agent_name(self) -> str:
+        return "tax"
+
+    def get_system_prompt(self) -> str:
+        return (
+            "You are the Tax specialist agent for forensic M&A due diligence. "
+            "Focus on income tax compliance, transfer pricing, NOL and tax attributes, "
+            "sales/use tax exposure, international tax structures, deal structure tax "
+            "implications, tax provisions and reserves, and tax controversy. " + SEVERITY_PREAMBLE
+        )
+
+    @staticmethod
+    def domain_robustness() -> str:
+        """Tax-specific robustness mitigations."""
+        return (
+            "## TAX-SPECIFIC EXTRACTION GUIDANCE\n\n"
+            "### Tax Attributes & NOLs\n\n"
+            "KEYWORDS: net operating loss, NOL, tax credit, carryforward, carryback, "
+            "Section 382, Section 383, ownership change, built-in gain, tax attribute\n"
+            "WHAT TO EXTRACT:\n"
+            "- NOL carryforward amounts by jurisdiction and expiration\n"
+            "- Section 382 limitation calculations or risk factors\n"
+            "- R&D credits and other carryforward tax attributes\n"
+            "- Built-in gain/loss positions from prior acquisitions\n"
+            f"{GAP_NOT_FOUND}\n\n"
+            "### Transfer Pricing\n\n"
+            "KEYWORDS: transfer pricing, intercompany, arm's length, OECD guidelines, "
+            "advance pricing agreement, APA, thin capitalization, BEPS, Country-by-Country\n"
+            "WHAT TO EXTRACT:\n"
+            "- Intercompany transaction types and values\n"
+            "- Transfer pricing methodology and documentation\n"
+            "- APA status and remaining term\n"
+            "- Permanent establishment risk factors\n"
+            f"{GAP_NOT_FOUND}\n\n"
+            "### Indirect Tax & Sales Tax\n\n"
+            "KEYWORDS: sales tax, use tax, VAT, GST, nexus, economic nexus, Wayfair, "
+            "tax exemption, tax-exempt, marketplace facilitator\n"
+            "WHAT TO EXTRACT:\n"
+            "- Jurisdictions with established nexus (physical and economic)\n"
+            "- Sales tax collection and remittance compliance\n"
+            "- Exposure estimates for uncollected tax\n"
+            "- Voluntary disclosure agreements or amnesty participation\n"
+            f"{GAP_NOT_FOUND}\n\n" + build_citation_mandate("tax")
+        )
+
+    def get_tools(self) -> list[str]:
+        return list(SPECIALIST_TOOLS)
+
+
+class RegulatoryAgent(BaseAgentRunner):
+    """Regulatory specialist — licenses, antitrust, sector-specific compliance."""
+
+    focus_areas: list[str] = REGULATORY_FOCUS_AREAS
+
+    reference_categories: list[str] = ["compliance", "corporate_legal"]
+
+    def get_agent_name(self) -> str:
+        return "regulatory"
+
+    def get_system_prompt(self) -> str:
+        return (
+            "You are the Regulatory specialist agent for forensic M&A due diligence. "
+            "Focus on license transferability, antitrust/competition analysis, data privacy "
+            "regulation, financial regulation, healthcare regulation, AML/sanctions "
+            "compliance, government contracts, and industry-specific regulatory requirements. " + SEVERITY_PREAMBLE
+        )
+
+    @staticmethod
+    def domain_robustness() -> str:
+        """Regulatory-specific robustness mitigations."""
+        return (
+            "## REGULATORY-SPECIFIC EXTRACTION GUIDANCE\n\n"
+            "### License & Permit Transferability\n\n"
+            "KEYWORDS: license, permit, authorization, approval, consent, novation, "
+            "transferability, regulatory approval, change of control, assignability\n"
+            "WHAT TO EXTRACT:\n"
+            "- All material licenses, permits, and regulatory approvals\n"
+            "- Transfer mechanisms (automatic, consent required, re-application)\n"
+            "- Timeline and cost estimates for transfer\n"
+            "- Consequences of non-transferability on operations\n"
+            f"{GAP_NOT_FOUND}\n\n"
+            "### Antitrust & Competition\n\n"
+            "KEYWORDS: HSR, Hart-Scott-Rodino, merger control, market concentration, "
+            "HHI, competition authority, antitrust, second request, waiting period\n"
+            "WHAT TO EXTRACT:\n"
+            "- Filing requirements by jurisdiction (HSR, EU, other)\n"
+            "- Market share and concentration analysis\n"
+            "- Potential remedies or divestiture requirements\n"
+            "- Timeline impact on deal closing\n"
+            f"{GAP_NOT_FOUND}\n\n"
+            "### Sector-Specific Regulation\n\n"
+            "KEYWORDS: HIPAA, PCI-DSS, GLBA, FCC, FDA, SEC, FINRA, OCC, "
+            "AML, BSA, OFAC, sanctions, export control, ITAR, EAR\n"
+            "WHAT TO EXTRACT:\n"
+            "- Applicable sector-specific regulatory frameworks\n"
+            "- Compliance program status and gaps\n"
+            "- Outstanding investigations or enforcement actions\n"
+            "- Consent decrees or settlement obligations\n"
+            f"{GAP_NOT_FOUND}\n\n" + build_citation_mandate("regulatory")
+        )
+
+    def get_tools(self) -> list[str]:
+        return list(SPECIALIST_TOOLS)
+
+
+class ESGAgent(BaseAgentRunner):
+    """ESG specialist — environmental contamination, climate risk, ESG governance."""
+
+    focus_areas: list[str] = ESG_FOCUS_AREAS
+
+    reference_categories: list[str] = ["compliance", "operational"]
+
+    def get_agent_name(self) -> str:
+        return "esg"
+
+    def get_system_prompt(self) -> str:
+        return (
+            "You are the ESG specialist agent for forensic M&A due diligence. "
+            "Focus on environmental contamination, environmental permits, climate and "
+            "carbon risk, hazardous materials, supply chain sustainability, ESG governance, "
+            "social impact, ESG disclosure obligations, and biodiversity/land use. " + SEVERITY_PREAMBLE
+        )
+
+    @staticmethod
+    def domain_robustness() -> str:
+        """ESG-specific robustness mitigations."""
+        return (
+            "## ESG-SPECIFIC EXTRACTION GUIDANCE\n\n"
+            "### Environmental Contamination\n\n"
+            "KEYWORDS: contamination, remediation, Superfund, CERCLA, Phase I, Phase II, "
+            "environmental site assessment, ESA, brownfield, PFAS, PCB, asbestos\n"
+            "WHAT TO EXTRACT:\n"
+            "- Known contamination sites and remediation status\n"
+            "- Phase I/II ESA findings and recommendations\n"
+            "- CERCLA/Superfund PRP exposure and allocation\n"
+            "- Environmental insurance coverage and adequacy\n"
+            f"{GAP_NOT_FOUND}\n\n"
+            "### Climate & Carbon Risk\n\n"
+            "KEYWORDS: carbon, emissions, Scope 1, Scope 2, Scope 3, carbon pricing, "
+            "net zero, climate risk, TCFD, transition risk, physical risk, stranded assets\n"
+            "WHAT TO EXTRACT:\n"
+            "- Carbon emissions profile (Scope 1, 2, 3)\n"
+            "- Exposure to carbon pricing or emissions trading\n"
+            "- Climate-related financial risks (physical and transition)\n"
+            "- Net zero commitments and progress\n"
+            f"{GAP_NOT_FOUND}\n\n"
+            "### ESG Governance & Disclosure\n\n"
+            "KEYWORDS: CSRD, SASB, GRI, TCFD, ESG report, sustainability report, "
+            "ESG governance, board oversight, materiality assessment, double materiality\n"
+            "WHAT TO EXTRACT:\n"
+            "- Mandatory ESG reporting obligations by jurisdiction\n"
+            "- Current disclosure practices and framework alignment\n"
+            "- Board-level ESG oversight structures\n"
+            "- Material ESG risks not currently disclosed\n"
+            f"{GAP_NOT_FOUND}\n\n" + build_citation_mandate("esg")
+        )
+
+    def get_tools(self) -> list[str]:
+        return list(SPECIALIST_TOOLS)
+
+
 # ---------------------------------------------------------------------------
 # Registry for convenient iteration
 # ---------------------------------------------------------------------------
@@ -566,6 +852,10 @@ SPECIALIST_TYPES: list[AgentType] = [
     AgentType.COMMERCIAL,
     AgentType.PRODUCTTECH,
     AgentType.CYBERSECURITY,
+    AgentType.HR,
+    AgentType.TAX,
+    AgentType.REGULATORY,
+    AgentType.ESG,
 ]
 
 SPECIALIST_CLASSES: dict[AgentType, type[BaseAgentRunner]] = {
@@ -574,6 +864,10 @@ SPECIALIST_CLASSES: dict[AgentType, type[BaseAgentRunner]] = {
     AgentType.COMMERCIAL: CommercialAgent,
     AgentType.PRODUCTTECH: ProductTechAgent,
     AgentType.CYBERSECURITY: CybersecurityAgent,
+    AgentType.HR: HRAgent,
+    AgentType.TAX: TaxAgent,
+    AgentType.REGULATORY: RegulatoryAgent,
+    AgentType.ESG: ESGAgent,
 }
 
 
@@ -583,7 +877,7 @@ SPECIALIST_CLASSES: dict[AgentType, type[BaseAgentRunner]] = {
 
 
 def _register_builtins() -> None:
-    """Register the 5 built-in specialist agents with the AgentRegistry."""
+    """Register the 9 built-in specialist agents with the AgentRegistry."""
     from dd_agents.agents.descriptor import DEFAULT_AGENT_COLORS, AgentDescriptor
     from dd_agents.agents.prompt_builder import SPECIALIST_FOCUS
     from dd_agents.agents.prompt_constants import build_citation_mandate
@@ -619,6 +913,18 @@ def _register_builtins() -> None:
             15,
             30_000,
         ),
+        ("hr", "HR / People", HRAgent, HR_FOCUS_AREAS, ["hr", "compliance"], 20, 40_000),
+        ("tax", "Tax", TaxAgent, TAX_FOCUS_AREAS, ["financial", "compliance"], 7, 20_000),
+        (
+            "regulatory",
+            "Regulatory",
+            RegulatoryAgent,
+            REGULATORY_FOCUS_AREAS,
+            ["compliance", "corporate_legal"],
+            20,
+            40_000,
+        ),
+        ("esg", "ESG", ESGAgent, ESG_FOCUS_AREAS, ["compliance", "operational"], 20, 40_000),
     ]
 
     for name, display, cls, areas, ref_cats, batch_size, batch_tokens in agents_to_register:
