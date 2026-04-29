@@ -8,6 +8,23 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 > The first public release was **v0.4.0** (2026-03-30). Tagged releases on PyPI and
 > GitHub begin at **v0.4.1**.
 
+## [1.4.0] — 2026-04-28
+
+### Added
+
+- **Extensible Agent Architecture** (Issue #188) — AgentRegistry singleton with descriptor-based metadata enables dynamic agent resolution throughout the pipeline. Built-in agents self-register at import; external agents register via `dd_agents.specialists` entry-points.
+- **5 new specialist agents** — Cybersecurity, HR, Tax, Regulatory, and ESG join the existing Legal, Finance, Commercial, and ProductTech specialists (9 total). Each has domain-specific prompts, keyword sets, and extraction instructions.
+- **Config-driven agent customization** — Disable agents per-deal via `deal-config.json` `forensic_dd.specialists.disabled`. Pipeline, validation, merge, and reporting all resolve active agents dynamically.
+- **Eval ground truth for all 9 agents** — Contracts and expected findings for Cybersecurity, HR, Tax, Regulatory, and ESG added to `tests/evals/ground_truth/`. 15 new CATEGORY_SYNONYMS entries for eval matching.
+
+### Improved
+
+- **Documentation audit** — Comprehensive review and update across 21 files. All agent counts, domain references, CLI signatures, and test counts updated. Historical spec docs marked with disclaimer banners. Stale content removed.
+
+### Fixed
+
+- **Integration test agent naming** — `test_external_agent_can_be_disabled` no longer collides with built-in ESG agent.
+
 ## [1.3.4] — 2026-04-27
 
 ### Added
