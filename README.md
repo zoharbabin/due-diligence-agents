@@ -17,13 +17,7 @@
 
 ---
 
-<p align="center">
-  <a href="https://github.com/zoharbabin/due-diligence-agents/raw/main/docs/demo.mp4">
-    <img src="docs/demo-poster.jpg" alt="Watch the CLI demo — real M&A analysis with natural-language queries" width="960">
-  </a>
-  <br>
-  <em>Click to watch: scanning a data room, querying findings, getting citation-backed answers</em>
-</p>
+https://github.com/user-attachments/assets/44322675-2f3e-4401-9e6b-e248c68c08f6
 
 **[See a sample report](https://zoharbabin.github.io/due-diligence-agents/)** — interactive HTML output from a synthetic 4-subject deal, no install required.
 
