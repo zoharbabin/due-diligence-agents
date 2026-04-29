@@ -18,9 +18,11 @@
 ---
 
 <p align="center">
-  <video src="https://github.com/zoharbabin/due-diligence-agents/raw/main/docs/demo.mp4" width="960" autoplay loop muted playsinline>
-    Your browser does not support the video tag. <a href="docs/demo.mp4">Watch the demo</a>.
-  </video>
+  <a href="https://github.com/zoharbabin/due-diligence-agents/raw/main/docs/demo.mp4">
+    <img src="docs/demo-poster.jpg" alt="Watch the CLI demo — real M&A analysis with natural-language queries" width="960">
+  </a>
+  <br>
+  <em>Click to watch: scanning a data room, querying findings, getting citation-backed answers</em>
 </p>
 
 **[See a sample report](https://zoharbabin.github.io/due-diligence-agents/)** — interactive HTML output from a synthetic 4-subject deal, no install required.
