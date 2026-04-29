@@ -1,4 +1,4 @@
-"""PipelineEngine -- the 35-step forensic due-diligence pipeline.
+"""PipelineEngine -- the 38-step forensic due-diligence pipeline.
 
 Each step is an ``async`` method on the engine class.  The ``run()`` entry
 point walks through the canonical step list, executing each method in order.
@@ -66,7 +66,7 @@ StepFn = Callable[[PipelineState], Awaitable[PipelineState]]
 
 
 class PipelineEngine:
-    """Drives the 35-step forensic DD pipeline.
+    """Drives the 38-step forensic DD pipeline.
 
     Parameters
     ----------
@@ -78,7 +78,7 @@ class PipelineEngine:
         Maximum number of retries per step on recoverable errors.
     """
 
-    TOTAL_STEPS: int = 35
+    TOTAL_STEPS: int = 38
 
     def __init__(
         self,
@@ -122,7 +122,7 @@ class PipelineEngine:
         Parameters
         ----------
         resume_from_step:
-            Step number (1-35) to resume from.  ``0`` means start fresh.
+            Step number (1-38) to resume from.  ``0`` means start fresh.
             The checkpoint for the preceding step is loaded automatically.
         options:
             Optional runtime overrides.  Supported keys:
@@ -319,24 +319,27 @@ class PipelineEngine:
             PipelineStep.ROUTE_REFERENCES: self._step_15_route_references,
             PipelineStep.SPAWN_SPECIALISTS: self._step_16_spawn_specialists,
             PipelineStep.COVERAGE_GATE: self._step_17_coverage_gate,
-            PipelineStep.INCREMENTAL_MERGE: self._step_18_incremental_merge,
-            PipelineStep.SPAWN_JUDGE: self._step_19_spawn_judge,
-            PipelineStep.JUDGE_REVIEW: self._step_20_judge_review,
-            PipelineStep.JUDGE_RESPAWN: self._step_21_judge_respawn,
-            PipelineStep.JUDGE_ROUND2: self._step_22_judge_round2,
-            PipelineStep.SPAWN_REPORTING_LEAD: self._step_23_spawn_reporting_lead,
-            PipelineStep.MERGE_DEDUP: self._step_24_merge_dedup,
-            PipelineStep.MERGE_GAPS: self._step_25_merge_gaps,
-            PipelineStep.BUILD_NUMERICAL_MANIFEST: self._step_26_build_numerical_manifest,
-            PipelineStep.NUMERICAL_AUDIT: self._step_27_numerical_audit,
-            PipelineStep.FULL_QA_AUDIT: self._step_28_full_qa_audit,
-            PipelineStep.BUILD_REPORT_DIFF: self._step_29_build_report_diff,
-            PipelineStep.GENERATE_REPORTS: self._step_30_generate_reports,
-            PipelineStep.POST_GENERATION_VALIDATION: self._step_31_post_generation_validation,
-            PipelineStep.FINALIZE_METADATA: self._step_32_finalize_metadata,
-            PipelineStep.UPDATE_RUN_HISTORY: self._step_33_update_run_history,
-            PipelineStep.SAVE_ENTITY_CACHE: self._step_34_save_entity_cache,
-            PipelineStep.SHUTDOWN: self._step_35_shutdown,
+            PipelineStep.CROSS_DOMAIN_ANALYSIS: self._step_18_cross_domain_analysis,
+            PipelineStep.TARGETED_RESPAWN: self._step_19_targeted_respawn,
+            PipelineStep.TARGETED_MERGE: self._step_20_targeted_merge,
+            PipelineStep.INCREMENTAL_MERGE: self._step_21_incremental_merge,
+            PipelineStep.SPAWN_JUDGE: self._step_22_spawn_judge,
+            PipelineStep.JUDGE_REVIEW: self._step_23_judge_review,
+            PipelineStep.JUDGE_RESPAWN: self._step_24_judge_respawn,
+            PipelineStep.JUDGE_ROUND2: self._step_25_judge_round2,
+            PipelineStep.PRE_MERGE_VALIDATION: self._step_26_pre_merge_validation,
+            PipelineStep.MERGE_DEDUP: self._step_27_merge_dedup,
+            PipelineStep.MERGE_GAPS: self._step_28_merge_gaps,
+            PipelineStep.BUILD_NUMERICAL_MANIFEST: self._step_29_build_numerical_manifest,
+            PipelineStep.NUMERICAL_AUDIT: self._step_30_numerical_audit,
+            PipelineStep.FULL_QA_AUDIT: self._step_31_full_qa_audit,
+            PipelineStep.BUILD_REPORT_DIFF: self._step_32_build_report_diff,
+            PipelineStep.GENERATE_REPORTS: self._step_33_generate_reports,
+            PipelineStep.POST_GENERATION_VALIDATION: self._step_34_post_generation_validation,
+            PipelineStep.FINALIZE_METADATA: self._step_35_finalize_metadata,
+            PipelineStep.UPDATE_RUN_HISTORY: self._step_36_update_run_history,
+            PipelineStep.SAVE_ENTITY_CACHE: self._step_37_save_entity_cache,
+            PipelineStep.SHUTDOWN: self._step_38_shutdown,
         }
 
     # ------------------------------------------------------------------
@@ -627,7 +630,7 @@ class PipelineEngine:
         return {f.path: f for f in discovered}
 
     # ==================================================================
-    # Step implementations  (35 steps)
+    # Step implementations  (38 steps)
     #
     # Each step receives and returns PipelineState.  Steps that interact
     # with downstream modules (extraction, inventory, validation, etc.)
@@ -2152,9 +2155,236 @@ class PipelineEngine:
             "auto_generated": True,
         }
 
+    # Phase 4b: Cross-Domain Analysis ----------------------------------------
+
+    async def _step_18_cross_domain_analysis(self, state: PipelineState) -> PipelineState:
+        """Evaluate cross-domain trigger rules against pass-1 findings.  CONDITIONAL.
+
+        Runs only when ``forensic_dd.cross_domain.enabled`` is true in the deal
+        config (default).  Scans all pass-1 findings and fires deterministic
+        trigger rules to identify findings that require verification or
+        quantification by another specialist domain.
+
+        This step is purely symbolic — no LLM calls.
+        """
+        from dd_agents.orchestrator.triggers import TriggerEngine
+
+        deal_cfg = state.deal_config or {}
+        engine = TriggerEngine.from_config(deal_cfg)
+        if not engine.enabled:
+            logger.info("Skipping step 18 -- cross-domain analysis disabled")
+            return state
+
+        findings_dir = state.run_dir / "findings"
+        findings_by_subject: dict[str, list[dict[str, Any]]] = {}
+        for agent_name in self._active_agents:
+            agent_dir = findings_dir / agent_name
+            if not agent_dir.is_dir():
+                continue
+            for json_file in sorted(agent_dir.glob("*.json")):
+                if json_file.name == "coverage_manifest.json":
+                    continue
+                try:
+                    data = json.loads(json_file.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    continue
+                subject = data.get("subject_safe_name", json_file.stem)
+                for finding in data.get("findings", []):
+                    finding.setdefault("agent", agent_name)
+                    finding.setdefault("_agent", agent_name)
+                    findings_by_subject.setdefault(subject, []).append(finding)
+
+        triggers = engine.evaluate(findings_by_subject, active_agents=self._active_agents)
+        state.cross_domain_triggers = [t.to_dict() for t in triggers]
+
+        if triggers:
+            logger.info(
+                "Cross-domain analysis: %d trigger(s) fired across %d subject(s)",
+                len(triggers),
+                len({t.subject for t in triggers}),
+            )
+        else:
+            logger.info("Cross-domain analysis: no triggers fired")
+
+        return state
+
+    async def _step_19_targeted_respawn(self, state: PipelineState) -> PipelineState:
+        """Run pass-2 specialists on cross-domain triggers.  CONDITIONAL.
+
+        For each trigger, builds a targeted prompt containing the source
+        finding context and specific verification instructions, then spawns
+        the target agent against only the cited contracts.
+
+        Skipped when no triggers fired in step 18.
+        """
+        from dd_agents.orchestrator.triggers import CrossDomainTrigger
+
+        triggers_raw = state.cross_domain_triggers
+        if not triggers_raw:
+            logger.info("Skipping step 19 -- no cross-domain triggers")
+            return state
+
+        triggers = [
+            CrossDomainTrigger(
+                trigger_id=t["trigger_id"],
+                source_agent=t["source_agent"],
+                target_agent=t["target_agent"],
+                trigger_type=t["trigger_type"],
+                source_finding_ids=tuple(t.get("source_finding_ids", [])),
+                subject=t["subject"],
+                contracts=tuple(t.get("contracts", [])),
+                instructions=t["instructions"],
+                priority=t["priority"],
+                estimated_cost=t.get("estimated_cost", 0.5),
+                created_at=t.get("created_at", ""),
+            )
+            for t in triggers_raw
+        ]
+
+        by_agent: dict[str, list[CrossDomainTrigger]] = {}
+        for t in triggers:
+            by_agent.setdefault(t.target_agent, []).append(t)
+
+        team = self._ensure_team(state)
+        findings_dir = state.run_dir / "findings"
+        audit_prompts_dir = state.run_dir / "audit" / "cross_domain_prompts"
+        audit_prompts_dir.mkdir(parents=True, exist_ok=True)
+
+        for agent_name, agent_triggers in by_agent.items():
+            pass2_dir = findings_dir / f"{agent_name}_pass2"
+            pass2_dir.mkdir(parents=True, exist_ok=True)
+
+            prompt = self._build_targeted_prompt(agent_name, agent_triggers)
+            prompt_path = audit_prompts_dir / f"{agent_name}_pass2_prompt.txt"
+            prompt_path.write_text(prompt, encoding="utf-8")
+
+            result = await team._run_specialist(
+                agent_name,
+                {},
+                prompt=prompt,
+            )
+
+            state.agent_results[f"{agent_name}_pass2"] = result
+            cost = result.get("cost_usd", 0.0)
+            state.pass2_costs[agent_name] = cost
+            state.pass2_agents.append(agent_name)
+
+            self.cost_tracker.record(
+                agent_name=f"{agent_name}_pass2",
+                step="19_targeted_respawn",
+                input_tokens=result.get("input_tokens_est", 0),
+                output_tokens=result.get("output_tokens_est", 0),
+                model=result.get("model", ""),
+            )
+
+            if result.get("is_error"):
+                logger.warning("Pass-2 agent %s completed with error: %s", agent_name, result.get("error"))
+            else:
+                logger.info(
+                    "Pass-2 agent %s completed: %d turns, $%.4f",
+                    agent_name,
+                    result.get("num_turns", 0),
+                    cost,
+                )
+
+        return state
+
+    def _build_targeted_prompt(
+        self,
+        agent_name: str,
+        triggers: list[Any],
+    ) -> str:
+        """Build a targeted pass-2 prompt from cross-domain triggers."""
+        from dd_agents.orchestrator.triggers import sanitize_for_prompt
+
+        parts: list[str] = [
+            f"You are the {agent_name} specialist performing a TARGETED follow-up review.",
+            "",
+            "## Cross-Domain Context",
+            "The following finding(s) from other specialist agents require your domain expertise to verify:",
+            "",
+        ]
+        all_contracts: list[str] = []
+        for t in triggers:
+            trigger_dict = t if isinstance(t, dict) else t.to_dict() if hasattr(t, "to_dict") else {}
+            source = trigger_dict.get("source_agent", "unknown")
+            ttype = trigger_dict.get("trigger_type", "unknown")
+            priority = trigger_dict.get("priority", "P2")
+            instructions = sanitize_for_prompt(trigger_dict.get("instructions", ""))
+            contracts = trigger_dict.get("contracts", [])
+            all_contracts.extend(contracts)
+
+            parts.append(f"### Trigger: {ttype}")
+            parts.append(f"- Source agent: {source}")
+            parts.append(f"- Priority: {priority}")
+            parts.append(f"- Task: {instructions}")
+            parts.append("")
+
+        unique_contracts = list(dict.fromkeys(all_contracts))
+        if unique_contracts:
+            parts.append("## Scope")
+            parts.append("Analyze ONLY the following contract(s):")
+            for c in unique_contracts:
+                parts.append(f"- {c}")
+            parts.append("")
+
+        parts.append("## Output Requirements")
+        parts.append('- Tag all findings with metadata: {"cross_domain": true}')
+        parts.append("- Reference the source finding in your analysis")
+        parts.append("- Use the same finding/gap JSON schema as your primary analysis")
+
+        return "\n".join(parts)
+
+    async def _step_20_targeted_merge(self, state: PipelineState) -> PipelineState:
+        """Merge pass-2 findings into main findings directories.  CONDITIONAL.
+
+        Pass-2 findings are written alongside pass-1 findings with a ``_pass2``
+        suffix.  The existing merge step (step 27) iterates all JSON files in
+        each agent directory and handles deduplication naturally.
+
+        This step never mutates pass-1 findings — it only adds.
+        """
+        if not state.pass2_agents:
+            logger.info("Skipping step 20 -- no pass-2 agents ran")
+            return state
+
+        findings_dir = state.run_dir / "findings"
+        merged_count = 0
+
+        for agent_name in state.pass2_agents:
+            pass2_dir = findings_dir / f"{agent_name}_pass2"
+            if not pass2_dir.is_dir():
+                continue
+            main_dir = findings_dir / agent_name
+            main_dir.mkdir(parents=True, exist_ok=True)
+
+            for json_file in sorted(pass2_dir.glob("*.json")):
+                if json_file.name == "coverage_manifest.json":
+                    continue
+                try:
+                    data = json.loads(json_file.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    continue
+
+                for finding in data.get("findings", []):
+                    finding.setdefault("metadata", {})["pass"] = 2
+                    finding["metadata"]["cross_domain"] = True
+
+                target = main_dir / f"{json_file.stem}_pass2.json"
+                target.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                merged_count += 1
+
+        audit_path = state.run_dir / "audit" / "cross_domain_triggers.json"
+        audit_path.parent.mkdir(parents=True, exist_ok=True)
+        audit_data = state.cross_domain_triggers
+        audit_path.write_text(json.dumps(audit_data, indent=2), encoding="utf-8")
+
+        logger.info("Cross-domain merge: %d pass-2 finding files merged", merged_count)
+        return state
+
     # Phase 5: Quality Review -----------------------------------------------
 
-    async def _step_18_incremental_merge(self, state: PipelineState) -> PipelineState:
+    async def _step_21_incremental_merge(self, state: PipelineState) -> PipelineState:
         """Merge new findings with carried-forward findings.  CONDITIONAL.
 
         For subjects classified as UNCHANGED in step 12, copies their findings
@@ -2163,11 +2393,11 @@ class PipelineEngine:
         and a valid prior run directory is available.
         """
         if state.execution_mode != "incremental":
-            logger.info("Skipping step 18 -- not incremental mode")
+            logger.info("Skipping step 24 -- not incremental mode")
             return state
 
         if not state.prior_run_dir or not state.prior_run_id:
-            logger.warning("Skipping step 18 -- no prior run available for incremental merge")
+            logger.warning("Skipping step 24 -- no prior run available for incremental merge")
             return state
 
         from dd_agents.persistence.incremental import IncrementalClassifier
@@ -2207,10 +2437,10 @@ class PipelineEngine:
         )
         return state
 
-    async def _step_19_spawn_judge(self, state: PipelineState) -> PipelineState:
+    async def _step_22_spawn_judge(self, state: PipelineState) -> PipelineState:
         """Spawn Judge agent for quality review.  CONDITIONAL."""
         if not state.judge_enabled:
-            logger.info("Skipping step 19 -- judge not enabled")
+            logger.info("Skipping step 25 -- judge not enabled")
             return state
 
         team = self._ensure_team(state)
@@ -2233,7 +2463,7 @@ class PipelineEngine:
         self._write_audit_log(state.run_dir, "judge", result, "19_spawn_judge")
         return state
 
-    async def _step_20_judge_review(self, state: PipelineState) -> PipelineState:
+    async def _step_23_judge_review(self, state: PipelineState) -> PipelineState:
         """Judge reviews, samples, spot-checks, scores.  CONDITIONAL.
 
         Runs the Judge agent's quality review on specialist findings.  The Judge
@@ -2246,7 +2476,7 @@ class PipelineEngine:
         Gracefully degrades if the Judge agent is not configured or fails.
         """
         if not state.judge_enabled:
-            logger.info("Skipping step 20 -- judge not enabled")
+            logger.info("Skipping step 23 -- judge not enabled")
             return state
 
         self._ensure_team(state)
@@ -2342,7 +2572,7 @@ class PipelineEngine:
 
         return state
 
-    async def _step_21_judge_respawn(self, state: PipelineState) -> PipelineState:
+    async def _step_24_judge_respawn(self, state: PipelineState) -> PipelineState:
         """Re-spawn agents below Judge threshold.  CONDITIONAL.
 
         Reads the Judge scores from step 20 and identifies agents scoring below
@@ -2351,14 +2581,14 @@ class PipelineEngine:
         data is unavailable.
         """
         if not state.judge_enabled:
-            logger.info("Skipping step 21 -- judge not enabled")
+            logger.info("Skipping step 24 -- judge not enabled")
             return state
 
         team = self._ensure_team(state)
 
         judge_data = state.judge_scores
         if not judge_data or judge_data.get("degraded"):
-            logger.info("Skipping step 21 -- no judge scores available (degraded)")
+            logger.info("Skipping step 24 -- no judge scores available (degraded)")
             return state
 
         failing_agents: list[str] = judge_data.get("agents_below_threshold", [])
@@ -2388,7 +2618,7 @@ class PipelineEngine:
 
         return state
 
-    async def _step_22_judge_round2(self, state: PipelineState) -> PipelineState:
+    async def _step_25_judge_round2(self, state: PipelineState) -> PipelineState:
         """Judge Round 2 review of re-analyzed findings.  CONDITIONAL.
 
         Merges round-2 findings with round-1 findings using the 70/30 blend
@@ -2396,14 +2626,14 @@ class PipelineEngine:
         final results.  Gracefully degrades if round-2 data is unavailable.
         """
         if not state.judge_enabled:
-            logger.info("Skipping step 22 -- judge not enabled")
+            logger.info("Skipping step 25 -- judge not enabled")
             return state
 
         self._ensure_team(state)
 
         judge_data = state.judge_scores
         if not judge_data or judge_data.get("degraded"):
-            logger.info("Skipping step 22 -- no judge scores available (degraded)")
+            logger.info("Skipping step 25 -- no judge scores available (degraded)")
             return state
 
         failing_agents: list[str] = judge_data.get("agents_below_threshold", [])
@@ -2441,7 +2671,7 @@ class PipelineEngine:
 
     # Phase 6: Reporting ----------------------------------------------------
 
-    async def _step_23_spawn_reporting_lead(self, state: PipelineState) -> PipelineState:
+    async def _step_26_pre_merge_validation(self, state: PipelineState) -> PipelineState:
         """Pre-merge validation, cross-agent anomaly detection, and P0/P1 follow-up.
 
         Performs deterministic validation of specialist outputs, plus
@@ -2634,7 +2864,7 @@ class PipelineEngine:
 
         return adjusted
 
-    async def _step_24_merge_dedup(self, state: PipelineState) -> PipelineState:
+    async def _step_27_merge_dedup(self, state: PipelineState) -> PipelineState:
         """Merge and deduplicate findings across agents."""
         from dd_agents.reporting.merge import FindingMerger
 
@@ -2668,7 +2898,7 @@ class PipelineEngine:
         logger.info("Merged findings for %d subjects", len(merged))
         return state
 
-    async def _step_25_merge_gaps(self, state: PipelineState) -> PipelineState:
+    async def _step_28_merge_gaps(self, state: PipelineState) -> PipelineState:
         """Merge gap files from all agents."""
         # Gaps are merged as part of the merged subject output in step 24.
         # This step handles any additional gap-specific processing.
@@ -2779,7 +3009,7 @@ class PipelineEngine:
             )
             logger.info("Rebuilt counts.json for audit traceability")
 
-    async def _step_26_build_numerical_manifest(self, state: PipelineState) -> PipelineState:
+    async def _step_29_build_numerical_manifest(self, state: PipelineState) -> PipelineState:
         """Build numerical_manifest.json for audit."""
         # Build a basic numerical manifest from inventory data
         inv_dir = self._inventory_dir(state)
@@ -2908,7 +3138,7 @@ class PipelineEngine:
         logger.info("Built numerical manifest with %d entries", len(manifest["numbers"]))
         return state
 
-    async def _step_27_numerical_audit(self, state: PipelineState) -> PipelineState:
+    async def _step_30_numerical_audit(self, state: PipelineState) -> PipelineState:
         """Five-layer numerical validation.  BLOCKING GATE."""
         from dd_agents.validation.numerical_audit import NumericalAuditor
 
@@ -2945,7 +3175,7 @@ class PipelineEngine:
         state.validation_results["numerical_audit"] = True
         return state
 
-    async def _step_28_full_qa_audit(self, state: PipelineState) -> PipelineState:
+    async def _step_31_full_qa_audit(self, state: PipelineState) -> PipelineState:
         """Full QA audit — 17 structural checks.  BLOCKING GATE.
 
         Tier 1 of the two-tier validation design.  Runs ``QAAuditor`` which
@@ -2979,10 +3209,10 @@ class PipelineEngine:
 
         return state
 
-    async def _step_29_build_report_diff(self, state: PipelineState) -> PipelineState:
+    async def _step_32_build_report_diff(self, state: PipelineState) -> PipelineState:
         """Build diff against prior run.  CONDITIONAL."""
         if not state.prior_run_id or not state.prior_run_dir:
-            logger.info("Skipping step 29 -- no prior run for diff comparison")
+            logger.info("Skipping step 32 -- no prior run for diff comparison")
             return state
 
         from dd_agents.reporting.diff import ReportDiffBuilder
@@ -3102,7 +3332,7 @@ class PipelineEngine:
 
         return run_metadata
 
-    async def _step_30_generate_reports(self, state: PipelineState) -> PipelineState:
+    async def _step_33_generate_reports(self, state: PipelineState) -> PipelineState:
         """Generate Excel and HTML reports from merged findings.
 
         Produces:
@@ -3294,7 +3524,7 @@ class PipelineEngine:
             # Record executive synthesis telemetry
             self.cost_tracker.record(
                 agent_name="executive_synthesis",
-                step="30_generate_reports",
+                step="33_generate_reports",
                 input_tokens=es_result.get("input_tokens_est", 0),
                 output_tokens=es_result.get("output_tokens_est", 0),
                 model=es_result.get("model", ""),
@@ -3345,7 +3575,7 @@ class PipelineEngine:
                 # Record acquirer intelligence telemetry
                 self.cost_tracker.record(
                     agent_name="acquirer_intelligence",
-                    step="30_generate_reports",
+                    step="33_generate_reports",
                     input_tokens=ai_result.get("input_tokens_est", 0),
                     output_tokens=ai_result.get("output_tokens_est", 0),
                     model=ai_result.get("model", ""),
@@ -3409,7 +3639,7 @@ class PipelineEngine:
 
         return state
 
-    async def _step_31_post_generation_validation(self, state: PipelineState) -> PipelineState:
+    async def _step_34_post_generation_validation(self, state: PipelineState) -> PipelineState:
         """Post-generation validation.  BLOCKING GATE."""
         from dd_agents.models.reporting import ReportSchema
         from dd_agents.validation.schema_validator import SchemaValidator
@@ -3460,7 +3690,7 @@ class PipelineEngine:
 
     # Phase 7: Finalization -------------------------------------------------
 
-    async def _step_32_finalize_metadata(self, state: PipelineState) -> PipelineState:
+    async def _step_35_finalize_metadata(self, state: PipelineState) -> PipelineState:
         """Write metadata.json, update 'latest' symlink.
 
         Populates all RunMetadata fields from pipeline state including
@@ -3596,13 +3826,13 @@ class PipelineEngine:
                 continue
         return assignments
 
-    async def _step_33_update_run_history(self, state: PipelineState) -> PipelineState:
+    async def _step_36_update_run_history(self, state: PipelineState) -> PipelineState:
         """Append entry to run_history.json."""
         # Already handled in step 32 by RunManager.finalize_run()
         logger.info("Run history updated (via finalize_run)")
         return state
 
-    async def _step_34_save_entity_cache(self, state: PipelineState) -> PipelineState:
+    async def _step_37_save_entity_cache(self, state: PipelineState) -> PipelineState:
         """Persist entity resolution cache to PERMANENT tier."""
         resolver = getattr(state, "_entity_resolver", None)
         if resolver is not None:
@@ -3619,7 +3849,7 @@ class PipelineEngine:
     # Failures in these checks cause a non-zero pipeline exit status.
     CRITICAL_DOD_CHECKS: frozenset[int] = frozenset({1, 2, 3, 11, 13, 14, 15, 17, 19})
 
-    async def _step_35_shutdown(self, state: PipelineState) -> PipelineState:
+    async def _step_38_shutdown(self, state: PipelineState) -> PipelineState:
         """Shutdown all agents, run 31 DoD checks, set exit status.
 
         Tier 2 of the two-tier validation design.  Runs

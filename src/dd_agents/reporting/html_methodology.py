@@ -25,7 +25,7 @@ class MethodologyRenderer(SectionRenderer):
         parts.append(
             "<p>This due diligence report was generated through automated analysis "
             "of the target company's data room documents using specialized AI agents. "
-            "The process follows a deterministic 35-step pipeline with 5 blocking "
+            "The process follows a deterministic 38-step pipeline with 5 blocking "
             "quality gates.</p>"
         )
 

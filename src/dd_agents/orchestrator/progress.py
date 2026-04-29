@@ -1,6 +1,6 @@
 """Pipeline progress tracking (Issue #120, Phase 1).
 
-Provides structured progress tracking for the 35-step pipeline,
+Provides structured progress tracking for the 38-step pipeline,
 including per-step timing, agent activity, finding counts, and ETA estimation.
 """
 
@@ -32,7 +32,7 @@ class PipelineProgressTracker:
     then estimates remaining time from historical step durations.
     """
 
-    def __init__(self, total_steps: int = 35) -> None:
+    def __init__(self, total_steps: int = 38) -> None:
         self.total_steps = total_steps
         self.current_step = 0
         self.current_step_name = ""

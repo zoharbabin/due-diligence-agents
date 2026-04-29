@@ -63,7 +63,7 @@ This means every finding traces to a specific file, page, and quote — not to a
 
 ## 3. The Five-Stage Pipeline
 
-The system runs as a 35-step async state machine organized into five stages. Each step receives pipeline state, performs work, checkpoints, and continues. Five steps are **blocking gates** that halt the pipeline on failure — the system produces nothing rather than something unreliable.
+The system runs as a 38-step async state machine organized into five stages. Each step receives pipeline state, performs work, checkpoints, and continues. Five steps are **blocking gates** that halt the pipeline on failure — the system produces nothing rather than something unreliable.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -472,4 +472,4 @@ Every major design decision maps to published research or production retrospecti
 
 ---
 
-*For implementation details, see the spec docs in `docs/plan/`. For the 35-step pipeline specification, see `docs/plan/05-orchestrator.md`. For search module details, see `docs/search-guide.md`.*
+*For implementation details, see the spec docs in `docs/plan/`. For the 38-step pipeline specification, see `docs/plan/05-orchestrator.md`. For search module details, see `docs/search-guide.md`.*

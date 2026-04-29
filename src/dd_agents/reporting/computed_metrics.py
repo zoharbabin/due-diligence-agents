@@ -993,6 +993,12 @@ class ReportComputedData(BaseModel):
         description="Compound risk cards for entities with findings across 3+ domains",
     )
 
+    # --- Issue #189: Cross-Domain Trigger Analysis ---
+    cross_domain_triggers: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Cross-domain triggers fired during pass-2 neurosymbolic analysis",
+    )
+
     # --- Issue #117: Post-Close Integration Playbook ---
     integration_playbook: dict[str, Any] = Field(
         default_factory=dict,

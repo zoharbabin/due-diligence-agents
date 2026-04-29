@@ -1,7 +1,9 @@
-"""Cross-Domain Risk Correlation renderer (Issue #103).
+"""Cross-Domain Risk Correlation renderer (Issues #103, #189).
 
 Renders compound risk analysis across multiple domains,
-highlighting entities with correlated risks.
+highlighting entities with correlated risks.  Also shows
+cross-domain trigger analysis results from the neurosymbolic
+pass-2 pipeline (Issue #189).
 """
 
 from __future__ import annotations
@@ -16,7 +18,8 @@ class CrossDomainRenderer(SectionRenderer):
 
     def render(self) -> str:
         risks: list[dict[str, Any]] = getattr(self.data, "cross_domain_risks", [])
-        if not risks:
+        triggers: list[dict[str, Any]] = getattr(self.data, "cross_domain_triggers", [])
+        if not risks and not triggers:
             return ""
 
         parts: list[str] = [
@@ -24,7 +27,17 @@ class CrossDomainRenderer(SectionRenderer):
             "<h2>Cross-Domain Risk Correlation</h2>",
         ]
 
-        # P0 alerts
+        if risks:
+            self._render_compound_risks(parts, risks)
+
+        if triggers:
+            self._render_trigger_analysis(parts, triggers)
+
+        parts.append("</section>")
+        return "\n".join(parts)
+
+    def _render_compound_risks(self, parts: list[str], risks: list[dict[str, Any]]) -> None:
+        """Render the compound risk correlation table."""
         for risk in risks:
             has_p0 = risk.get("has_p0", False)
             csn = str(risk.get("entity", ""))
@@ -39,7 +52,6 @@ class CrossDomainRenderer(SectionRenderer):
                     )
                 )
 
-        # Compound risk table
         parts.append("<h3>Compound Risk Summary</h3>")
         parts.append(
             "<table class='subject-table sortable'><thead><tr>"
@@ -61,5 +73,30 @@ class CrossDomainRenderer(SectionRenderer):
             )
         parts.append("</tbody></table>")
 
-        parts.append("</section>")
-        return "\n".join(parts)
+    def _render_trigger_analysis(self, parts: list[str], triggers: list[dict[str, Any]]) -> None:
+        """Render the cross-domain trigger analysis results (Issue #189)."""
+        parts.append("<h3>Cross-Domain Verification</h3>")
+        parts.append(
+            "<p>The following cross-domain verifications were automatically triggered "
+            "when specialist agents identified findings requiring validation by other domains.</p>"
+        )
+        parts.append(
+            "<table class='subject-table sortable'><thead><tr>"
+            "<th scope='col'>Entity</th>"
+            "<th scope='col'>Source</th>"
+            "<th scope='col'>Target</th>"
+            "<th scope='col'>Type</th>"
+            "<th scope='col'>Priority</th>"
+            "</tr></thead><tbody>"
+        )
+        for trigger in triggers[:20]:
+            subject = self.escape(str(trigger.get("subject", "")))
+            source = self.escape(str(trigger.get("source_agent", "")))
+            target = self.escape(str(trigger.get("target_agent", "")))
+            ttype = self.escape(str(trigger.get("trigger_type", "")))
+            priority = str(trigger.get("priority", ""))
+            badge = self.severity_badge(priority)
+            parts.append(
+                f"<tr><td>{subject}</td><td>{source}</td><td>{target}</td><td>{ttype}</td><td>{badge}</td></tr>"
+            )
+        parts.append("</tbody></table>")

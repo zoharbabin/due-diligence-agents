@@ -8,10 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import (
-    Any,
-    ClassVar,
-)
+from typing import Any
 
 from dd_agents.orchestrator.steps import PipelineStep
 
@@ -137,6 +134,11 @@ class PipelineState:
     # --- Judge scores -------------------------------------------------------
     judge_scores: dict[str, Any] = field(default_factory=dict)
 
+    # --- Cross-domain analysis (Issue #189) ----------------------------------
+    cross_domain_triggers: list[dict[str, Any]] = field(default_factory=list)
+    pass2_agents: list[str] = field(default_factory=list)
+    pass2_costs: dict[str, float] = field(default_factory=dict)
+
     # --- Exit status (Issue #56) --------------------------------------------
     exit_code: int = 0
 
@@ -212,20 +214,12 @@ class PipelineState:
             "judge_scores": self.judge_scores,
             "exit_code": self.exit_code,
             "file_precedence": self.file_precedence,
+            "cross_domain_triggers": self.cross_domain_triggers,
+            "pass2_agents": self.pass2_agents,
+            "pass2_costs": self.pass2_costs,
             "_discovered_files": discovered_files_ser,
             "_subject_entries": subject_entries_ser,
         }
-
-    # Step value migrations: old checkpoint string → current enum value.
-    # Keeps backward compatibility when loading checkpoints from prior versions.
-    _STEP_MIGRATIONS: ClassVar[dict[str, str]] = {
-        "30_generate_excel": "30_generate_reports",
-    }
-
-    @classmethod
-    def _migrate_step_value(cls, value: str) -> str:
-        """Map legacy checkpoint step values to current enum values."""
-        return cls._STEP_MIGRATIONS.get(value, value)
 
     @classmethod
     def from_checkpoint_dict(cls, data: dict[str, Any]) -> PipelineState:
@@ -234,7 +228,7 @@ class PipelineState:
         step_results: dict[str, StepResult] = {}
         for key, sr_dict in data.get("step_results", {}).items():
             step_results[key] = StepResult(
-                step=PipelineStep(cls._migrate_step_value(sr_dict["step"])),
+                step=PipelineStep(sr_dict["step"]),
                 status=sr_dict.get("status", "success"),
                 error=sr_dict.get("error"),
                 duration_ms=sr_dict.get("duration_ms", 0),
@@ -257,8 +251,8 @@ class PipelineState:
             total_subjects=data.get("total_subjects", 0),
             subject_safe_names=data.get("subject_safe_names", []),
             reference_file_count=data.get("reference_file_count", 0),
-            current_step=PipelineStep(cls._migrate_step_value(data["current_step"])),
-            completed_steps=[PipelineStep(cls._migrate_step_value(v)) for v in data.get("completed_steps", [])],
+            current_step=PipelineStep(data["current_step"]),
+            completed_steps=[PipelineStep(v) for v in data.get("completed_steps", [])],
             step_results=step_results,
             errors=data.get("errors", []),
             active_agents=data.get("active_agents", []),
@@ -275,6 +269,9 @@ class PipelineState:
             judge_scores=data.get("judge_scores", {}),
             exit_code=data.get("exit_code", 0),
             file_precedence=data.get("file_precedence", {}),
+            cross_domain_triggers=data.get("cross_domain_triggers", []),
+            pass2_agents=data.get("pass2_agents", []),
+            pass2_costs=data.get("pass2_costs", {}),
         )
 
         # Restore dynamic attribute ``_discovered_files`` so that steps

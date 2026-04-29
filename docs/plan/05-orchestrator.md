@@ -6,7 +6,7 @@
 
 ## Overview
 
-The orchestrator is a Python async state machine that drives the 35-step forensic DD pipeline. Each step is an async function that receives `PipelineState`, performs work, validates preconditions/postconditions, and returns the updated state. The orchestrator controls all flow -- agents are invoked at specific steps and their outputs are validated programmatically before proceeding. Five steps are **blocking gates** (steps 5, 17, 27, 28, 31) that halt the pipeline on failure. Step 1 (config validation) is the first step in the pipeline. While it is a precondition for all subsequent steps, it IS step 1 in the 35-step sequence. It raises `BlockingGateError` on failure (effectively blocking), but is not listed among the five formal gates because it guards pipeline entry rather than phase transitions.
+The orchestrator is a Python async state machine that drives the 38-step forensic DD pipeline. Each step is an async function that receives `PipelineState`, performs work, validates preconditions/postconditions, and returns the updated state. The orchestrator controls all flow -- agents are invoked at specific steps and their outputs are validated programmatically before proceeding. Five steps are **blocking gates** (steps 5, 17, 30, 31, 34) that halt the pipeline on failure. Step 1 (config validation) is the first step in the pipeline. While it is a precondition for all subsequent steps, it IS step 1 in the 38-step sequence. It raises `BlockingGateError` on failure (effectively blocking), but is not listed among the five formal gates because it guards pipeline entry rather than phase transitions.
 
 ---
 
@@ -264,7 +264,7 @@ class PipelineState:
 
 ## 3. Pipeline Engine
 
-The core engine that drives all 35 steps.
+The core engine that drives all 38 steps.
 
 ```python
 # src/dd_agents/orchestrator/engine.py
@@ -304,7 +304,7 @@ StepFn = Callable[[PipelineState], Awaitable[PipelineState]]
 
 
 class PipelineEngine:
-    """Drives the 35-step forensic DD pipeline.
+    """Drives the 38-step forensic DD pipeline.
 
     Each step is an async function: async def step_XX(state) -> state.
     Blocking gates raise BlockingGateError on failure.

@@ -96,14 +96,20 @@ class TestAgentDescriptor:
 
 
 class TestDefaultAgentColors:
-    def test_builtin_four_have_colors(self) -> None:
-        for name in ("legal", "finance", "commercial", "producttech"):
+    def test_all_builtin_agents_have_colors(self) -> None:
+        for name in (
+            "legal",
+            "finance",
+            "commercial",
+            "producttech",
+            "hr",
+            "tax",
+            "cybersecurity",
+            "regulatory",
+            "esg",
+        ):
             assert name in DEFAULT_AGENT_COLORS
             assert DEFAULT_AGENT_COLORS[name].startswith("#")
-
-    def test_future_agents_have_colors(self) -> None:
-        for name in ("hr", "tax", "cybersecurity", "regulatory", "esg"):
-            assert name in DEFAULT_AGENT_COLORS
 
     def test_all_colors_are_distinct(self) -> None:
         colors = list(DEFAULT_AGENT_COLORS.values())

@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Python application for forensic M&A due diligence. Analyzes contract data rooms across 9 specialist domains using 13 AI agents under a 35-step pipeline with 5 blocking gates. Produces a detailed cross-domain HTML report + 14-sheet Excel report with structured findings, citations, and audit trail. The reports provide granular analysis that deal teams use as the basis for their own deliverables — IC memos, advisor reports, negotiation checklists, or integration plans.
+Python application for forensic M&A due diligence. Analyzes contract data rooms across 9 specialist domains using 13 AI agents under a 38-step pipeline with 5 blocking gates. Produces a detailed cross-domain HTML report + 14-sheet Excel report with structured findings, citations, and audit trail. The reports provide granular analysis that deal teams use as the basis for their own deliverables — IC memos, advisor reports, negotiation checklists, or integration plans.
 
 **Package**: `dd-agents` on [PyPI](https://pypi.org/project/dd-agents/) / `dd_agents` under `src/dd_agents/`
 **Version**: see `pyproject.toml` (bump version there before tagging a release)
@@ -42,7 +42,7 @@ dd-agents run path/to/deal-config.json
 
 ## Architecture
 
-- **Orchestrator** (`orchestrator/engine.py`): 35 async steps as methods on `PipelineEngine`. State machine with checkpoint/resume.
+- **Orchestrator** (`orchestrator/engine.py`): 38 async steps as methods on `PipelineEngine`. State machine with checkpoint/resume. Includes neurosymbolic cross-domain analysis (steps 18-20): symbolic trigger rules detect inter-domain dependencies, targeted pass-2 agents verify findings across domains.
 - **Agents** (`agents/`): 9 specialists (Legal, Finance, Commercial, ProductTech, Cybersecurity, HR, Tax, Regulatory, ESG) + Judge + Executive Synthesis + Red Flag Scanner + Acquirer Intelligence. Agent set is extensible via `AgentRegistry` — built-in agents self-register at import; external agents register via `dd_agents.specialists` entry-points. Agents can be disabled per-deal via `deal-config.json` `forensic_dd.specialists.disabled`. Spawned via `claude-agent-sdk`.
 - **Persistence**: Three tiers — PERMANENT (never wiped), VERSIONED (archived per run), FRESH (rebuilt each run).
 - **Hooks** (`hooks/`): PreToolUse hooks return flat `{"decision": "block"|"allow", "reason": "..."}`. Stop hooks use SDK format `{"continue_": bool, "stopReason": "..."}`. Never nest under `hookSpecificOutput`. PreToolUse chain: (1) bash_guard, (2) path_guard, (3) file_size_guard, (4) aggregate_file_guard, (5) finding_schema_guard — validates finding JSON structure on Write to `findings/{agent}/*.json`, blocking wrong field names like `evidence` instead of `citations`. Stop hook: check_coverage + check_manifest (relaxed — allows stop when all subject JSONs are written; orchestrator backfills manifests post-session).

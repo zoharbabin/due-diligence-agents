@@ -186,7 +186,7 @@ Supports PDFs, Word, Excel, PowerPoint, and images. Scanned PDFs are handled via
        ▼
   ┌─────────────────────────────────────┐
   │        Python Orchestrator          │
-  │         35-step pipeline            │
+  │         38-step pipeline            │
   │       5 blocking quality gates      │
   └──────────────┬──────────────────────┘
                  │

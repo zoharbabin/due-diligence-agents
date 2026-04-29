@@ -242,6 +242,30 @@ class SpecialistsConfig(BaseModel):
     )
 
 
+class CrossDomainConfig(BaseModel):
+    """Cross-domain analysis configuration (Issue #189).
+
+    Controls the neurosymbolic trigger engine that fires pass-2
+    targeted specialist reviews when pass-1 findings have implications
+    for other domains.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    enabled: bool = Field(default=True, description="Enable cross-domain analysis between pass-1 and Judge review")
+    max_pass2_budget_usd: float = Field(
+        default=5.0, ge=0.0, le=50.0, description="Maximum budget for pass-2 cross-domain analysis"
+    )
+    min_trigger_severity: str = Field(
+        default="P2",
+        pattern=r"^P[0-4]$",
+        description="Minimum severity to trigger cross-domain analysis (P0=most severe)",
+    )
+    disabled_rules: list[str] = Field(
+        default_factory=list, description="Trigger rule names to disable (e.g. 'sla_financial_impact')"
+    )
+
+
 class ForensicDDConfig(BaseModel):
     """Forensic DD skill-specific configuration."""
 
@@ -250,6 +274,9 @@ class ForensicDDConfig(BaseModel):
     enabled: bool = Field(default=True, description="Whether forensic-dd skill is enabled")
     specialists: SpecialistsConfig = Field(
         default_factory=SpecialistsConfig, description="Specialist agent configuration"
+    )
+    cross_domain: CrossDomainConfig = Field(
+        default_factory=CrossDomainConfig, description="Cross-domain analysis configuration"
     )
 
 

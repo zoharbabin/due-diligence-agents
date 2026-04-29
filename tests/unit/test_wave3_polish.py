@@ -260,7 +260,7 @@ class TestProgressDashboard:
         tracker = PipelineProgressTracker()
         assert tracker.current_step == 0
         assert tracker.completed_steps == 0
-        assert tracker.total_steps == 35
+        assert tracker.total_steps == 38
 
     def test_start_complete_step(self) -> None:
         from dd_agents.orchestrator.progress import PipelineProgressTracker

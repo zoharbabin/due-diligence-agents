@@ -10,6 +10,7 @@ from dd_agents.models.config import (
     ActiveFilter,
     AgentCustomization,
     BuyerInfo,
+    CrossDomainConfig,
     DealConfig,
     EntityAliases,
     ExecutionConfig,
@@ -761,3 +762,69 @@ class TestSubjectDatabaseValidation:
         assert db.columns.subject_name == 1
         assert db.columns.parent_account is None
         assert db.active_filter is None
+
+
+# ---------------------------------------------------------------------------
+# CrossDomainConfig Tests (Issue #189)
+# ---------------------------------------------------------------------------
+
+
+class TestCrossDomainConfig:
+    def test_defaults(self) -> None:
+        cfg = CrossDomainConfig()
+        assert cfg.enabled is True
+        assert cfg.max_pass2_budget_usd == 5.0
+        assert cfg.min_trigger_severity == "P2"
+        assert cfg.disabled_rules == []
+
+    def test_custom_values(self) -> None:
+        cfg = CrossDomainConfig(
+            enabled=False,
+            max_pass2_budget_usd=10.0,
+            min_trigger_severity="P0",
+            disabled_rules=["sla_financial_impact"],
+        )
+        assert cfg.enabled is False
+        assert cfg.max_pass2_budget_usd == 10.0
+        assert cfg.min_trigger_severity == "P0"
+        assert cfg.disabled_rules == ["sla_financial_impact"]
+
+    def test_budget_bounds(self) -> None:
+        with pytest.raises(ValidationError):
+            CrossDomainConfig(max_pass2_budget_usd=-1.0)
+        with pytest.raises(ValidationError):
+            CrossDomainConfig(max_pass2_budget_usd=100.0)
+
+    def test_severity_pattern(self) -> None:
+        for valid in ("P0", "P1", "P2", "P3", "P4"):
+            cfg = CrossDomainConfig(min_trigger_severity=valid)
+            assert cfg.min_trigger_severity == valid
+        with pytest.raises(ValidationError):
+            CrossDomainConfig(min_trigger_severity="high")
+
+    def test_forensic_dd_has_cross_domain(self) -> None:
+        fdd = ForensicDDConfig()
+        assert isinstance(fdd.cross_domain, CrossDomainConfig)
+        assert fdd.cross_domain.enabled is True
+
+    def test_deal_config_cross_domain_roundtrip(self) -> None:
+        data = _minimal_deal_config_data()
+        data["forensic_dd"] = {
+            "cross_domain": {
+                "enabled": False,
+                "max_pass2_budget_usd": 2.5,
+                "min_trigger_severity": "P1",
+                "disabled_rules": ["coc_financial_impact"],
+            }
+        }
+        config = DealConfig.model_validate(data)
+        assert config.forensic_dd.cross_domain.enabled is False
+        assert config.forensic_dd.cross_domain.max_pass2_budget_usd == 2.5
+        assert config.forensic_dd.cross_domain.min_trigger_severity == "P1"
+        assert config.forensic_dd.cross_domain.disabled_rules == ["coc_financial_impact"]
+
+    def test_deal_config_defaults_cross_domain(self) -> None:
+        data = _minimal_deal_config_data()
+        config = DealConfig.model_validate(data)
+        assert config.forensic_dd.cross_domain.enabled is True
+        assert config.forensic_dd.cross_domain.max_pass2_budget_usd == 5.0

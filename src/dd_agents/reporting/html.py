@@ -19,7 +19,9 @@ Each renderer inherits SectionRenderer and consumes pre-computed ReportComputedD
 
 from __future__ import annotations
 
+import contextlib
 import html
+import json
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -158,6 +160,13 @@ class HTMLReportGenerator:
         # Inject red flag scan results if provided (Issue #125)
         if red_flag_scan and isinstance(red_flag_scan, dict):
             computed.red_flag_scan = red_flag_scan
+
+        # Inject cross-domain triggers from audit trail (Issue #189)
+        if run_dir is not None:
+            triggers_path = run_dir / "audit" / "cross_domain_triggers.json"
+            if triggers_path.exists():
+                with contextlib.suppress(json.JSONDecodeError, OSError):
+                    computed.cross_domain_triggers = json.loads(triggers_path.read_text(encoding="utf-8"))
 
         # Config dict passed to renderers for metadata they need
         renderer_config: dict[str, Any] = {

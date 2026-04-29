@@ -6,8 +6,8 @@ Covers:
 - Checkpoints: save and load via public functions
 - PipelineEngine: initialisation, step registry completeness
 - Step 15: Route reference files to subject dirs
-- Step 18: Incremental merge of prior findings for unchanged subjects
-- Steps 20-22: Judge review cycle
+- Step 21: Incremental merge of prior findings for unchanged subjects
+- Steps 23-25: Judge review cycle
 - Issue #45: prior_run_id population from run history
 - Issue #45: Idempotent run history (no double-append)
 """
@@ -58,20 +58,20 @@ from dd_agents.orchestrator.steps import (
 class TestPipelineStep:
     """Tests for the PipelineStep enum."""
 
-    def test_step_count_is_35(self) -> None:
-        """The enum must contain exactly 35 members."""
-        assert len(PipelineStep) == 35
+    def test_step_count_is_38(self) -> None:
+        """The enum must contain exactly 38 members."""
+        assert len(PipelineStep) == 38
 
     def test_step_number_property(self) -> None:
         """step_number should parse the leading digits from the value."""
         assert PipelineStep.VALIDATE_CONFIG.step_number == 1
-        assert PipelineStep.SHUTDOWN.step_number == 35
+        assert PipelineStep.SHUTDOWN.step_number == 38
         assert PipelineStep.COVERAGE_GATE.step_number == 17
 
     def test_step_numbers_are_sequential(self) -> None:
-        """Every step from 1..35 should appear exactly once."""
+        """Every step from 1..38 should appear exactly once."""
         numbers = sorted(s.step_number for s in PipelineStep)
-        assert numbers == list(range(1, 36))
+        assert numbers == list(range(1, 39))
 
     def test_blocking_gates_count(self) -> None:
         """Five formal blocking gates."""
@@ -93,13 +93,16 @@ class TestPipelineStep:
         assert PipelineStep.SHUTDOWN.is_blocking_gate is False
 
     def test_conditional_steps_count(self) -> None:
-        """Eight conditional steps."""
-        assert len(_CONDITIONAL_STEPS) == 8
+        """Eleven conditional steps."""
+        assert len(_CONDITIONAL_STEPS) == 11
 
     def test_conditional_step_members(self) -> None:
         expected = {
             PipelineStep.CONTRACT_DATE_RECONCILIATION,
             PipelineStep.INCREMENTAL_CLASSIFICATION,
+            PipelineStep.CROSS_DOMAIN_ANALYSIS,
+            PipelineStep.TARGETED_RESPAWN,
+            PipelineStep.TARGETED_MERGE,
             PipelineStep.INCREMENTAL_MERGE,
             PipelineStep.SPAWN_JUDGE,
             PipelineStep.JUDGE_REVIEW,
@@ -261,38 +264,6 @@ class TestPipelineState:
         assert state.current_step == PipelineStep.VALIDATE_CONFIG
         assert state.completed_steps == []
         assert state.execution_mode == "full"
-
-    def test_checkpoint_step_migration(self) -> None:
-        """Old checkpoint with legacy step values should deserialize correctly."""
-        legacy_data: dict[str, object] = {
-            "run_id": "migration_test",
-            "current_step": "30_generate_excel",  # old value
-            "completed_steps": [
-                "01_validate_config",
-                "30_generate_excel",  # old value in list
-            ],
-            "step_results": {
-                "30_generate_excel": {
-                    "step": "30_generate_excel",  # old value in step result
-                    "status": "success",
-                    "error": None,
-                    "duration_ms": 5000,
-                    "metadata": {},
-                }
-            },
-        }
-        state = PipelineState.from_checkpoint_dict(legacy_data)
-        assert state.current_step == PipelineStep.GENERATE_REPORTS
-        assert PipelineStep.GENERATE_REPORTS in state.completed_steps
-        sr = state.step_results["30_generate_excel"]
-        assert sr.step == PipelineStep.GENERATE_REPORTS
-        assert sr.status == "success"
-
-    def test_migrate_step_value_passthrough(self) -> None:
-        """Unknown step values should pass through unchanged."""
-        assert PipelineState._migrate_step_value("01_validate_config") == "01_validate_config"
-        assert PipelineState._migrate_step_value("30_generate_reports") == "30_generate_reports"
-        assert PipelineState._migrate_step_value("30_generate_excel") == "30_generate_reports"
 
     def test_state_roundtrip_with_deal_config(self, tmp_path: Path) -> None:
         """deal_config survives a to_checkpoint_dict / from_checkpoint_dict round-trip."""
@@ -602,7 +573,7 @@ class TestPipelineEngine:
     def test_init(self, tmp_path: Path) -> None:
         engine = self._make_engine(tmp_path)
         assert engine.project_dir == tmp_path.resolve()
-        assert engine.TOTAL_STEPS == 35
+        assert engine.TOTAL_STEPS == 38
 
     def test_step_registry_completeness(self, tmp_path: Path) -> None:
         """Every PipelineStep must have a handler in the registry."""
@@ -612,7 +583,7 @@ class TestPipelineEngine:
         for step in PipelineStep:
             assert step in registry, f"Missing handler for {step.value}"
 
-        assert len(registry) == 35
+        assert len(registry) == 38
 
     def test_step_registry_values_are_callable(self, tmp_path: Path) -> None:
         engine = self._make_engine(tmp_path)
@@ -661,8 +632,8 @@ class TestExceptions:
 # ======================================================================
 
 
-class TestStep27NumericalAudit:
-    """Tests for _step_27_numerical_audit blocking gate."""
+class TestStep30NumericalAudit:
+    """Tests for step 30: numerical audit blocking gate."""
 
     def _make_engine(self, tmp_path: Path) -> PipelineEngine:
         config_path = tmp_path / "deal-config.json"
@@ -681,16 +652,16 @@ class TestStep27NumericalAudit:
         )
 
     @pytest.mark.asyncio
-    async def test_step_27_raises_on_missing_manifest(self, tmp_path: Path) -> None:
+    async def test_step_30_raises_on_missing_manifest(self, tmp_path: Path) -> None:
         engine = self._make_engine(tmp_path)
         state = self._make_state(tmp_path)
         # No numerical_manifest.json exists
         with pytest.raises(BlockingGateError, match="Numerical manifest not found"):
-            await engine._step_27_numerical_audit(state)
+            await engine._step_30_numerical_audit(state)
         assert state.validation_results["numerical_audit"] is False
 
     @pytest.mark.asyncio
-    async def test_step_27_raises_on_audit_failure(self, tmp_path: Path) -> None:
+    async def test_step_30_raises_on_audit_failure(self, tmp_path: Path) -> None:
 
         from dd_agents.models.audit import AuditCheck
 
@@ -729,11 +700,11 @@ class TestStep27NumericalAudit:
             ),
             pytest.raises(BlockingGateError, match="Numerical audit failed"),
         ):
-            await engine._step_27_numerical_audit(state)
+            await engine._step_30_numerical_audit(state)
         assert state.validation_results["numerical_audit"] is False
 
     @pytest.mark.asyncio
-    async def test_step_27_passes_on_success(self, tmp_path: Path) -> None:
+    async def test_step_30_passes_on_success(self, tmp_path: Path) -> None:
 
         from dd_agents.models.audit import AuditCheck
 
@@ -769,7 +740,7 @@ class TestStep27NumericalAudit:
             "dd_agents.validation.numerical_audit.NumericalAuditor.run_full_audit",
             return_value=passing_checks,
         ):
-            result = await engine._step_27_numerical_audit(state)
+            result = await engine._step_30_numerical_audit(state)
         assert result.validation_results["numerical_audit"] is True
 
 
@@ -858,8 +829,8 @@ class TestRebuildMissingInventoryFiles:
         assert ref_path.read_text() == "[1, 2, 3]"
 
 
-class TestStep28FullQAAudit:
-    """Tests for _step_28_full_qa_audit blocking gate."""
+class TestStep31FullQAAudit:
+    """Tests for step 31: full QA audit blocking gate."""
 
     def _make_engine(self, tmp_path: Path) -> PipelineEngine:
         config_path = tmp_path / "deal-config.json"
@@ -879,7 +850,7 @@ class TestStep28FullQAAudit:
         )
 
     @pytest.mark.asyncio
-    async def test_step_28_raises_on_qa_failure(self, tmp_path: Path) -> None:
+    async def test_step_31_raises_on_qa_failure(self, tmp_path: Path) -> None:
 
         from dd_agents.models.audit import AuditCheck, AuditReport
 
@@ -906,12 +877,12 @@ class TestStep28FullQAAudit:
             ),
             pytest.raises(BlockingGateError, match="QA audit failed"),
         ):
-            await engine._step_28_full_qa_audit(state)
+            await engine._step_31_full_qa_audit(state)
         assert state.validation_results["qa_audit"] is False
         assert state.audit_passed is False
 
     @pytest.mark.asyncio
-    async def test_step_28_passes_on_success(self, tmp_path: Path) -> None:
+    async def test_step_31_passes_on_success(self, tmp_path: Path) -> None:
 
         from dd_agents.models.audit import AuditCheck, AuditReport
 
@@ -936,13 +907,13 @@ class TestStep28FullQAAudit:
                 "dd_agents.validation.qa_audit.QAAuditor.write_audit_json",
             ),
         ):
-            result = await engine._step_28_full_qa_audit(state)
+            result = await engine._step_31_full_qa_audit(state)
         assert result.validation_results["qa_audit"] is True
         assert result.audit_passed is True
 
 
-class TestStep35Shutdown:
-    """Tests for _step_35_shutdown DoD persistence and exit status (Issue #56)."""
+class TestStep38Shutdown:
+    """Tests for step 38: shutdown DoD persistence and exit status (Issue #56)."""
 
     def _make_engine(self, tmp_path: Path) -> PipelineEngine:
         config_path = tmp_path / "deal-config.json"
@@ -962,7 +933,7 @@ class TestStep35Shutdown:
         )
 
     @pytest.mark.asyncio
-    async def test_step_35_persists_dod_results(self, tmp_path: Path) -> None:
+    async def test_step_38_persists_dod_results(self, tmp_path: Path) -> None:
         from dd_agents.models.audit import AuditCheck
 
         engine = self._make_engine(tmp_path)
@@ -977,7 +948,7 @@ class TestStep35Shutdown:
             "dd_agents.validation.dod.DefinitionOfDoneChecker.check_all",
             return_value=mock_checks,
         ):
-            await engine._step_35_shutdown(state)
+            await engine._step_38_shutdown(state)
 
         dod_path = state.run_dir / "dod_results.json"
         assert dod_path.exists(), "dod_results.json must be written"
@@ -988,7 +959,7 @@ class TestStep35Shutdown:
         assert len(data["checks"]) == 3
 
     @pytest.mark.asyncio
-    async def test_step_35_stores_dod_in_validation_results(self, tmp_path: Path) -> None:
+    async def test_step_38_stores_dod_in_validation_results(self, tmp_path: Path) -> None:
         """Issue #56: DoD results must be stored in state.validation_results['dod']."""
         from dd_agents.models.audit import AuditCheck
 
@@ -1004,12 +975,12 @@ class TestStep35Shutdown:
             "dd_agents.validation.dod.DefinitionOfDoneChecker.check_all",
             return_value=mock_checks,
         ):
-            result = await engine._step_35_shutdown(state)
+            result = await engine._step_38_shutdown(state)
 
         assert result.validation_results["dod"] is True
 
     @pytest.mark.asyncio
-    async def test_step_35_critical_failure_sets_dod_false(self, tmp_path: Path) -> None:
+    async def test_step_38_critical_failure_sets_dod_false(self, tmp_path: Path) -> None:
         """Issue #56: Critical DoD failure sets validation_results['dod'] to False."""
         from dd_agents.models.audit import AuditCheck
 
@@ -1025,12 +996,12 @@ class TestStep35Shutdown:
             "dd_agents.validation.dod.DefinitionOfDoneChecker.check_all",
             return_value=mock_checks,
         ):
-            result = await engine._step_35_shutdown(state)
+            result = await engine._step_38_shutdown(state)
 
         assert result.validation_results["dod"] is False
 
     @pytest.mark.asyncio
-    async def test_step_35_non_critical_failure_keeps_dod_true(self, tmp_path: Path) -> None:
+    async def test_step_38_non_critical_failure_keeps_dod_true(self, tmp_path: Path) -> None:
         """Issue #56: Non-critical DoD failure should not set dod to False."""
         from dd_agents.models.audit import AuditCheck
 
@@ -1046,12 +1017,12 @@ class TestStep35Shutdown:
             "dd_agents.validation.dod.DefinitionOfDoneChecker.check_all",
             return_value=mock_checks,
         ):
-            result = await engine._step_35_shutdown(state)
+            result = await engine._step_38_shutdown(state)
 
         assert result.validation_results["dod"] is True
 
     @pytest.mark.asyncio
-    async def test_step_35_critical_failures_listed_in_output(self, tmp_path: Path) -> None:
+    async def test_step_38_critical_failures_listed_in_output(self, tmp_path: Path) -> None:
         """Issue #56: dod_results.json should list critical failures."""
         from dd_agents.models.audit import AuditCheck
 
@@ -1067,7 +1038,7 @@ class TestStep35Shutdown:
             "dd_agents.validation.dod.DefinitionOfDoneChecker.check_all",
             return_value=mock_checks,
         ):
-            await engine._step_35_shutdown(state)
+            await engine._step_38_shutdown(state)
 
         dod_path = state.run_dir / "dod_results.json"
         data = json.loads(dod_path.read_text())
@@ -2315,8 +2286,8 @@ class TestStep15RouteReferences:
 # ======================================================================
 
 
-class TestStep18IncrementalMerge:
-    """Tests for _step_18_incremental_merge."""
+class TestStep21IncrementalMerge:
+    """Tests for step 21: incremental merge."""
 
     def _make_engine(self, tmp_path: Path) -> PipelineEngine:
         config_path = tmp_path / "deal-config.json"
@@ -2361,12 +2332,12 @@ class TestStep18IncrementalMerge:
         return state, prior_run_dir
 
     @pytest.mark.asyncio
-    async def test_step_18_carries_forward_unchanged(self, tmp_path: Path) -> None:
+    async def test_step_21_carries_forward_unchanged(self, tmp_path: Path) -> None:
         """Unchanged subjects get findings from prior run."""
         engine = self._make_engine(tmp_path)
         state, _prior_run_dir = self._make_state(tmp_path)
 
-        result = await engine._step_18_incremental_merge(state)
+        result = await engine._step_21_incremental_merge(state)
 
         # Verify carry-forward: subject_a should have findings in current run
         carried = state.run_dir / "findings" / "legal" / "subject_a.json"
@@ -2377,34 +2348,34 @@ class TestStep18IncrementalMerge:
         assert result is state
 
     @pytest.mark.asyncio
-    async def test_step_18_skips_non_incremental(self, tmp_path: Path) -> None:
-        """Step 18 should skip when execution_mode is 'full'."""
+    async def test_step_21_skips_non_incremental(self, tmp_path: Path) -> None:
+        """Step 21 should skip when execution_mode is 'full'."""
         engine = self._make_engine(tmp_path)
         state, _ = self._make_state(tmp_path)
         state.execution_mode = "full"
 
-        result = await engine._step_18_incremental_merge(state)
+        result = await engine._step_21_incremental_merge(state)
         assert result is state
 
     @pytest.mark.asyncio
-    async def test_step_18_skips_without_prior_run(self, tmp_path: Path) -> None:
-        """Step 18 should skip when no prior run is available."""
+    async def test_step_21_skips_without_prior_run(self, tmp_path: Path) -> None:
+        """Step 21 should skip when no prior run is available."""
         engine = self._make_engine(tmp_path)
         state, _ = self._make_state(tmp_path)
         state.prior_run_id = None
         state.prior_run_dir = None
 
-        result = await engine._step_18_incremental_merge(state)
+        result = await engine._step_21_incremental_merge(state)
         assert result is state
 
 
 # ======================================================================
-# Steps 20-22: Judge Review Cycle (Issue #44)
+# Steps 23-25: Judge Review Cycle (Issue #44)
 # ======================================================================
 
 
-class TestStep20JudgeReview:
-    """Tests for _step_20_judge_review."""
+class TestStep23JudgeReview:
+    """Tests for step 23: judge review."""
 
     def _make_engine(self, tmp_path: Path) -> PipelineEngine:
         config_path = tmp_path / "deal-config.json"
@@ -2424,17 +2395,17 @@ class TestStep20JudgeReview:
         )
 
     @pytest.mark.asyncio
-    async def test_step_20_skips_when_judge_disabled(self, tmp_path: Path) -> None:
+    async def test_step_23_skips_when_judge_disabled(self, tmp_path: Path) -> None:
         engine = self._make_engine(tmp_path)
         state = self._make_state(tmp_path)
         state.judge_enabled = False
 
-        result = await engine._step_20_judge_review(state)
+        result = await engine._step_23_judge_review(state)
         assert result is state
         assert state.judge_scores == {}
 
     @pytest.mark.asyncio
-    async def test_step_20_runs_judge_and_stores_scores(self, tmp_path: Path) -> None:
+    async def test_step_23_runs_judge_and_stores_scores(self, tmp_path: Path) -> None:
         """Judge review should store scores in state and persist to disk."""
         from dd_agents.models.audit import AgentScore, QualityScores
 
@@ -2456,7 +2427,7 @@ class TestStep20JudgeReview:
             "dd_agents.agents.judge.JudgeAgent.run_with_iteration",
             return_value=mock_scores,
         ):
-            result = await engine._step_20_judge_review(state)
+            result = await engine._step_23_judge_review(state)
 
         assert result is state
         assert state.judge_scores["overall_quality"] == 85
@@ -2467,7 +2438,7 @@ class TestStep20JudgeReview:
         assert scores_path.exists()
 
     @pytest.mark.asyncio
-    async def test_step_20_graceful_degradation_on_error(self, tmp_path: Path) -> None:
+    async def test_step_23_graceful_degradation_on_error(self, tmp_path: Path) -> None:
         """Step 20 should degrade gracefully if judge fails."""
         engine = self._make_engine(tmp_path)
         state = self._make_state(tmp_path)
@@ -2476,15 +2447,15 @@ class TestStep20JudgeReview:
             "dd_agents.agents.judge.JudgeAgent.run_with_iteration",
             side_effect=RuntimeError("Judge agent crashed"),
         ):
-            result = await engine._step_20_judge_review(state)
+            result = await engine._step_23_judge_review(state)
 
         assert result is state
         assert state.judge_scores.get("degraded") is True
         assert "Judge agent crashed" in state.judge_scores.get("error", "")
 
 
-class TestStep21JudgeRespawn:
-    """Tests for _step_21_judge_respawn."""
+class TestStep24JudgeRespawn:
+    """Tests for step 24: judge respawn."""
 
     def _make_engine(self, tmp_path: Path) -> PipelineEngine:
         config_path = tmp_path / "deal-config.json"
@@ -2502,31 +2473,31 @@ class TestStep21JudgeRespawn:
         )
 
     @pytest.mark.asyncio
-    async def test_step_21_skips_when_judge_disabled(self, tmp_path: Path) -> None:
+    async def test_step_24_skips_when_judge_disabled(self, tmp_path: Path) -> None:
         engine = self._make_engine(tmp_path)
         state = self._make_state(tmp_path)
         state.judge_enabled = False
-        result = await engine._step_21_judge_respawn(state)
+        result = await engine._step_24_judge_respawn(state)
         assert result is state
 
     @pytest.mark.asyncio
-    async def test_step_21_skips_when_degraded(self, tmp_path: Path) -> None:
+    async def test_step_24_skips_when_degraded(self, tmp_path: Path) -> None:
         engine = self._make_engine(tmp_path)
         state = self._make_state(tmp_path)
         state.judge_scores = {"degraded": True, "error": "failed"}
-        result = await engine._step_21_judge_respawn(state)
+        result = await engine._step_24_judge_respawn(state)
         assert result is state
 
     @pytest.mark.asyncio
-    async def test_step_21_skips_when_all_pass(self, tmp_path: Path) -> None:
+    async def test_step_24_skips_when_all_pass(self, tmp_path: Path) -> None:
         engine = self._make_engine(tmp_path)
         state = self._make_state(tmp_path)
         state.judge_scores = {"agents_below_threshold": []}
-        result = await engine._step_21_judge_respawn(state)
+        result = await engine._step_24_judge_respawn(state)
         assert result is state
 
     @pytest.mark.asyncio
-    async def test_step_21_respawns_failing_agents(self, tmp_path: Path) -> None:
+    async def test_step_24_respawns_failing_agents(self, tmp_path: Path) -> None:
         """Agents below threshold should be re-spawned."""
         engine = self._make_engine(tmp_path)
         state = self._make_state(tmp_path)
@@ -2535,7 +2506,7 @@ class TestStep21JudgeRespawn:
             "agent_scores": {"legal": {"score": 50}},
         }
 
-        result = await engine._step_21_judge_respawn(state)
+        result = await engine._step_24_judge_respawn(state)
 
         assert result is state
         assert "legal_round2" in state.agent_results
@@ -2543,8 +2514,8 @@ class TestStep21JudgeRespawn:
         assert state.agent_results["legal_round2"]["status"] in ("completed", "failed")
 
 
-class TestStep22JudgeRound2:
-    """Tests for _step_22_judge_round2."""
+class TestStep25JudgeRound2:
+    """Tests for step 25: judge round 2."""
 
     def _make_engine(self, tmp_path: Path) -> PipelineEngine:
         config_path = tmp_path / "deal-config.json"
@@ -2562,15 +2533,15 @@ class TestStep22JudgeRound2:
         )
 
     @pytest.mark.asyncio
-    async def test_step_22_skips_when_judge_disabled(self, tmp_path: Path) -> None:
+    async def test_step_25_skips_when_judge_disabled(self, tmp_path: Path) -> None:
         engine = self._make_engine(tmp_path)
         state = self._make_state(tmp_path)
         state.judge_enabled = False
-        result = await engine._step_22_judge_round2(state)
+        result = await engine._step_25_judge_round2(state)
         assert result is state
 
     @pytest.mark.asyncio
-    async def test_step_22_blends_scores(self, tmp_path: Path) -> None:
+    async def test_step_25_blends_scores(self, tmp_path: Path) -> None:
         """Round-2 sets iteration_round and persists quality scores.
 
         Score blending is a placeholder (r2 == r1) until the Judge produces
@@ -2587,7 +2558,7 @@ class TestStep22JudgeRound2:
             "status": "completed",
         }
 
-        result = await engine._step_22_judge_round2(state)
+        result = await engine._step_25_judge_round2(state)
 
         assert result is state
         assert state.judge_scores["iteration_round"] == 2
@@ -2599,7 +2570,7 @@ class TestStep22JudgeRound2:
         assert scores_path.exists()
 
     @pytest.mark.asyncio
-    async def test_step_22_applies_caveats_when_no_round2(self, tmp_path: Path) -> None:
+    async def test_step_25_applies_caveats_when_no_round2(self, tmp_path: Path) -> None:
         """If no round-2 results, caveats should be applied."""
         engine = self._make_engine(tmp_path)
         state = self._make_state(tmp_path)
@@ -2609,7 +2580,7 @@ class TestStep22JudgeRound2:
         }
         # No round-2 results in agent_results
 
-        result = await engine._step_22_judge_round2(state)
+        result = await engine._step_25_judge_round2(state)
 
         assert result is state
         assert "quality_caveats" in state.judge_scores
@@ -2940,8 +2911,8 @@ class TestStep15ErrorHandlingMissingReferenceFiles:
         assert result is state
 
 
-class TestStep18WithEmptyUnchangedSubjects:
-    """Tests for step 18 when there are no unchanged subjects."""
+class TestStep21WithEmptyUnchangedSubjects:
+    """Tests for step 21 when there are no unchanged subjects."""
 
     def _make_engine(self, tmp_path: Path) -> PipelineEngine:
         config_path = tmp_path / "deal-config.json"
@@ -2949,8 +2920,8 @@ class TestStep18WithEmptyUnchangedSubjects:
         return PipelineEngine(tmp_path, config_path)
 
     @pytest.mark.asyncio
-    async def test_step_18_no_unchanged_subjects(self, tmp_path: Path) -> None:
-        """Step 18 should return state unchanged when all subjects are CHANGED."""
+    async def test_step_21_no_unchanged_subjects(self, tmp_path: Path) -> None:
+        """Step 21 should return state unchanged when all subjects are CHANGED."""
         engine = self._make_engine(tmp_path)
 
         prior_run_dir = tmp_path / "_dd" / "forensic-dd" / "runs" / "prior"
@@ -2973,12 +2944,12 @@ class TestStep18WithEmptyUnchangedSubjects:
             },
         )
 
-        result = await engine._step_18_incremental_merge(state)
+        result = await engine._step_21_incremental_merge(state)
         assert result is state
 
     @pytest.mark.asyncio
-    async def test_step_18_empty_classification_subjects(self, tmp_path: Path) -> None:
-        """Step 18 should handle empty classification subjects list."""
+    async def test_step_21_empty_classification_subjects(self, tmp_path: Path) -> None:
+        """Step 21 should handle empty classification subjects list."""
         engine = self._make_engine(tmp_path)
 
         prior_run_dir = tmp_path / "_dd" / "forensic-dd" / "runs" / "prior"
@@ -2996,12 +2967,12 @@ class TestStep18WithEmptyUnchangedSubjects:
             classification={"subjects": []},
         )
 
-        result = await engine._step_18_incremental_merge(state)
+        result = await engine._step_21_incremental_merge(state)
         assert result is state
 
     @pytest.mark.asyncio
-    async def test_step_18_none_classification(self, tmp_path: Path) -> None:
-        """Step 18 should handle None classification gracefully."""
+    async def test_step_21_none_classification(self, tmp_path: Path) -> None:
+        """Step 21 should handle None classification gracefully."""
         engine = self._make_engine(tmp_path)
 
         prior_run_dir = tmp_path / "_dd" / "forensic-dd" / "runs" / "prior"
@@ -3019,12 +2990,12 @@ class TestStep18WithEmptyUnchangedSubjects:
             classification=None,
         )
 
-        result = await engine._step_18_incremental_merge(state)
+        result = await engine._step_21_incremental_merge(state)
         assert result is state
 
 
-class TestStep20To22JudgeCycleDegradedMode:
-    """Tests for the judge cycle (steps 20-22) with degraded mode."""
+class TestStep23To25JudgeCycleDegradedMode:
+    """Tests for the judge cycle (steps 23-25) with degraded mode."""
 
     def _make_engine(self, tmp_path: Path) -> PipelineEngine:
         config_path = tmp_path / "deal-config.json"
@@ -3044,29 +3015,29 @@ class TestStep20To22JudgeCycleDegradedMode:
         )
 
     @pytest.mark.asyncio
-    async def test_step_20_degraded_then_step_21_skips(self, tmp_path: Path) -> None:
-        """When step 20 degrades, step 21 should skip due to degraded flag."""
+    async def test_step_23_degraded_then_step_24_skips(self, tmp_path: Path) -> None:
+        """When step 23 degrades, step 24 should skip due to degraded flag."""
         engine = self._make_engine(tmp_path)
         state = self._make_state(tmp_path)
 
-        # Simulate degraded step 20
+        # Simulate degraded step 23
         with patch(
             "dd_agents.agents.judge.JudgeAgent.run_with_iteration",
             side_effect=RuntimeError("Judge crashed"),
         ):
-            await engine._step_20_judge_review(state)
+            await engine._step_23_judge_review(state)
 
         assert state.judge_scores.get("degraded") is True
 
-        # Step 21 should skip
-        result = await engine._step_21_judge_respawn(state)
+        # Step 24 should skip
+        result = await engine._step_24_judge_respawn(state)
         assert result is state
         # No round2 agents should be added
         assert not any(k.endswith("_round2") for k in state.agent_results)
 
     @pytest.mark.asyncio
-    async def test_step_20_degraded_then_step_22_skips(self, tmp_path: Path) -> None:
-        """When step 20 degrades, step 22 should also skip."""
+    async def test_step_23_degraded_then_step_25_skips(self, tmp_path: Path) -> None:
+        """When step 23 degrades, step 25 should also skip."""
         engine = self._make_engine(tmp_path)
         state = self._make_state(tmp_path)
 
@@ -3074,16 +3045,16 @@ class TestStep20To22JudgeCycleDegradedMode:
             "dd_agents.agents.judge.JudgeAgent.run_with_iteration",
             side_effect=RuntimeError("Judge crashed"),
         ):
-            await engine._step_20_judge_review(state)
+            await engine._step_23_judge_review(state)
 
-        result = await engine._step_22_judge_round2(state)
+        result = await engine._step_25_judge_round2(state)
         assert result is state
-        # No quality_caveats should be set since we had degradation at step 20
+        # No quality_caveats should be set since we had degradation at step 23
         assert "quality_caveats" not in state.judge_scores
 
     @pytest.mark.asyncio
-    async def test_step_20_returns_none_scores_graceful(self, tmp_path: Path) -> None:
-        """When judge returns None scores, step 20 degrades gracefully."""
+    async def test_step_23_returns_none_scores_graceful(self, tmp_path: Path) -> None:
+        """When judge returns None scores, step 23 degrades gracefully."""
         engine = self._make_engine(tmp_path)
         state = self._make_state(tmp_path)
 
@@ -3091,14 +3062,14 @@ class TestStep20To22JudgeCycleDegradedMode:
             "dd_agents.agents.judge.JudgeAgent.run_with_iteration",
             return_value=None,
         ):
-            result = await engine._step_20_judge_review(state)
+            result = await engine._step_23_judge_review(state)
 
         # Should not crash, and scores should be empty (not degraded since it was a clean None)
         assert result is state
 
     @pytest.mark.asyncio
     async def test_full_judge_cycle_all_pass(self, tmp_path: Path) -> None:
-        """Full judge cycle: all agents pass, steps 21 and 22 are no-ops."""
+        """Full judge cycle: all agents pass, steps 24 and 25 are no-ops."""
         from dd_agents.models.audit import AgentScore, QualityScores
 
         engine = self._make_engine(tmp_path)
@@ -3121,21 +3092,21 @@ class TestStep20To22JudgeCycleDegradedMode:
             "dd_agents.agents.judge.JudgeAgent.run_with_iteration",
             return_value=mock_scores,
         ):
-            await engine._step_20_judge_review(state)
+            await engine._step_23_judge_review(state)
 
         assert state.judge_scores["agents_below_threshold"] == []
 
-        # Step 21: no agents to re-spawn
-        result21 = await engine._step_21_judge_respawn(state)
+        # Step 24: no agents to re-spawn
+        result21 = await engine._step_24_judge_respawn(state)
         assert result21 is state
 
-        # Step 22: no agents below threshold
-        result22 = await engine._step_22_judge_round2(state)
+        # Step 25: no agents below threshold
+        result22 = await engine._step_25_judge_round2(state)
         assert result22 is state
 
 
-class TestStep35WithMixedCriticalAndNonCriticalFailures:
-    """Tests for step 35 with mixed critical/non-critical DoD failures."""
+class TestStep38WithMixedCriticalAndNonCriticalFailures:
+    """Tests for step 38 with mixed critical/non-critical DoD failures."""
 
     def _make_engine(self, tmp_path: Path) -> PipelineEngine:
         config_path = tmp_path / "deal-config.json"
@@ -3155,7 +3126,7 @@ class TestStep35WithMixedCriticalAndNonCriticalFailures:
         )
 
     @pytest.mark.asyncio
-    async def test_step_35_mixed_failures_critical_sets_dod_false(self, tmp_path: Path) -> None:
+    async def test_step_38_mixed_failures_critical_sets_dod_false(self, tmp_path: Path) -> None:
         """When both critical and non-critical checks fail, dod should be False."""
         from dd_agents.models.audit import AuditCheck
 
@@ -3173,7 +3144,7 @@ class TestStep35WithMixedCriticalAndNonCriticalFailures:
             "dd_agents.validation.dod.DefinitionOfDoneChecker.check_all",
             return_value=mock_checks,
         ):
-            result = await engine._step_35_shutdown(state)
+            result = await engine._step_38_shutdown(state)
 
         assert result.validation_results["dod"] is False
 
@@ -3184,7 +3155,7 @@ class TestStep35WithMixedCriticalAndNonCriticalFailures:
         assert len(data["critical_failures"]) == 2
 
     @pytest.mark.asyncio
-    async def test_step_35_only_non_critical_failures_keeps_dod_true(self, tmp_path: Path) -> None:
+    async def test_step_38_only_non_critical_failures_keeps_dod_true(self, tmp_path: Path) -> None:
         """When only non-critical checks fail, dod should remain True."""
         from dd_agents.models.audit import AuditCheck
 
@@ -3202,7 +3173,7 @@ class TestStep35WithMixedCriticalAndNonCriticalFailures:
             "dd_agents.validation.dod.DefinitionOfDoneChecker.check_all",
             return_value=mock_checks,
         ):
-            result = await engine._step_35_shutdown(state)
+            result = await engine._step_38_shutdown(state)
 
         assert result.validation_results["dod"] is True
 
@@ -3213,7 +3184,7 @@ class TestStep35WithMixedCriticalAndNonCriticalFailures:
         assert len(data["critical_failures"]) == 0
 
     @pytest.mark.asyncio
-    async def test_step_35_all_checks_pass(self, tmp_path: Path) -> None:
+    async def test_step_38_all_checks_pass(self, tmp_path: Path) -> None:
         """When all checks pass, dod should be True with zero critical failures."""
         from dd_agents.models.audit import AuditCheck
 
@@ -3229,7 +3200,7 @@ class TestStep35WithMixedCriticalAndNonCriticalFailures:
             "dd_agents.validation.dod.DefinitionOfDoneChecker.check_all",
             return_value=mock_checks,
         ):
-            result = await engine._step_35_shutdown(state)
+            result = await engine._step_38_shutdown(state)
 
         assert result.validation_results["dod"] is True
 
@@ -3240,7 +3211,7 @@ class TestStep35WithMixedCriticalAndNonCriticalFailures:
         assert data["critical_failures"] == []
 
     @pytest.mark.asyncio
-    async def test_step_35_critical_dod_numbers_match_spec(self, tmp_path: Path) -> None:
+    async def test_step_38_critical_dod_numbers_match_spec(self, tmp_path: Path) -> None:
         """Verify that CRITICAL_DOD_CHECKS matches the expected set from the spec."""
         _engine = self._make_engine(tmp_path)
         assert frozenset({1, 2, 3, 11, 13, 14, 15, 17, 19}) == PipelineEngine.CRITICAL_DOD_CHECKS
@@ -3993,7 +3964,7 @@ class TestManifestRecalibratedCounts:
 
         (merged_dir / "subject_a.json").write_text(json.dumps({"findings": [finding], "gaps": []}))
 
-        await engine._step_26_build_numerical_manifest(state)
+        await engine._step_29_build_numerical_manifest(state)
 
         manifest_path = state.run_dir / "numerical_manifest.json"
         manifest = json.loads(manifest_path.read_text())

@@ -36,6 +36,7 @@ _BUDGET_MEMORIES: int = 2_000
 _BUDGET_CORRECTIONS: int = 500
 _BUDGET_KB_TIMELINE: int = 500
 _BUDGET_AGENT_DESCRIPTIONS: int = 800
+_BUDGET_CROSS_DOMAIN_DEPS: int = 800
 
 # Threshold above which findings are grouped by domain in the digest
 _DOMAIN_GROUPING_THRESHOLD: int = 20
@@ -147,6 +148,22 @@ def _build_agent_descriptions(active_agents: list[str]) -> str:
     return "\n".join(lines) if len(lines) > 2 else ""
 
 
+def _build_cross_domain_deps(active_agents: list[str]) -> str:
+    """Build cross-domain dependency descriptions for the chat prompt.
+
+    Returns an empty string when dependencies are unavailable or no
+    relevant agents are active.
+    """
+    if not active_agents:
+        return ""
+    try:
+        from dd_agents.orchestrator.ontology import describe_dependencies_for_chat
+    except ImportError:
+        return ""
+    text = describe_dependencies_for_chat(active_agents)
+    return text[:_BUDGET_CROSS_DOMAIN_DEPS] if text else ""
+
+
 class ChatContextBuilder:
     """Assembles system prompts and per-turn user prompts for chat sessions.
 
@@ -200,6 +217,11 @@ class ChatContextBuilder:
         agent_desc = _build_agent_descriptions(self._active_agents)
         if agent_desc:
             parts.append(f"\n{agent_desc}")
+
+        # 3b. Cross-domain dependency descriptions (Issue #189)
+        cross_domain_desc = _build_cross_domain_deps(self._active_agents)
+        if cross_domain_desc:
+            parts.append(f"\n{cross_domain_desc}")
 
         # 4. Findings stats
         parts.append(f"\nFINDINGS OVERVIEW:\n{self._index.summary}")

@@ -10,7 +10,7 @@ The pipeline accelerates what traditionally takes teams of lawyers and analysts 
 dd-agents run deal-config.json
 ```
 
-This runs the full 35-step pipeline: config validation, document extraction, entity
+This runs the full 38-step pipeline: config validation, document extraction, entity
 resolution, specialist agent analysis, quality audits, and report generation.
 
 ## Execution Modes
@@ -72,7 +72,7 @@ Use Opus for the legal agent, standard for everything else:
 dd-agents run deal-config.json --model-override legal=claude-opus-4-6
 ```
 
-## The 35-Step Pipeline
+## The 38-Step Pipeline
 
 The pipeline is organized into 7 phases:
 
