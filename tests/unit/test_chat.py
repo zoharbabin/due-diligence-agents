@@ -372,6 +372,33 @@ class TestChatContextBuilder:
         assert "My question" in prompt
         assert "<conversation_history>" not in prompt
 
+    def test_build_system_prompt_includes_cross_domain_deps(self, mock_index: Any) -> None:
+        from dd_agents.chat.context import ChatContextBuilder
+
+        builder = ChatContextBuilder(
+            finding_index=mock_index,
+            active_agents=["finance", "legal", "commercial"],
+        )
+        prompt = builder.build_system_prompt()
+        assert "Cross-Domain Dependencies" in prompt
+        assert "Finance" in prompt or "finance" in prompt.lower()
+
+    def test_build_system_prompt_no_cross_domain_with_empty_agents(self, mock_index: Any) -> None:
+        from dd_agents.chat.context import ChatContextBuilder
+
+        builder = ChatContextBuilder(finding_index=mock_index, active_agents=[])
+        prompt = builder.build_system_prompt()
+        assert "Cross-Domain Dependencies" not in prompt
+
+    def test_build_system_prompt_no_cross_domain_with_single_agent(self, mock_index: Any) -> None:
+        from dd_agents.chat.context import ChatContextBuilder
+
+        builder = ChatContextBuilder(finding_index=mock_index, active_agents=["legal"])
+        prompt = builder.build_system_prompt()
+        # Single agent can't have cross-domain deps (edges require both source + target)
+        # The ontology only includes edges where both domains are active
+        assert "Cross-Domain Dependencies" not in prompt
+
 
 # ===================================================================
 # ChatEngine

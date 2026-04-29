@@ -1,0 +1,69 @@
+{
+  "contract": "sla_financial_exposure.md",
+  "agent": "commercial",
+  "tags": ["cross_domain"],
+  "ambiguity_zone": 0.15,
+  "max_expected_findings": 12,
+  "min_expected_findings": 1,
+  "expected_findings": [
+    {
+      "category": "sla_risk",
+      "min_severity": "P3",
+      "max_severity": "P0",
+      "must_contain_keywords": ["service"],
+      "keyword_synonyms": {
+        "service": ["SLA", "availability", "uptime", "credit", "service level", "monitoring", "incident", "response", "99.99%", "99.95%"]
+      },
+      "citation_must_reference": {
+        "file": "sla_financial_exposure.md"
+      },
+      "required": true
+    },
+    {
+      "category": "termination",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": ["terminat"],
+      "keyword_synonyms": {
+        "terminat": ["termination", "terminate", "chronic", "failure", "early", "without cause", "50%", "penalty"]
+      },
+      "citation_must_reference": {
+        "file": "sla_financial_exposure.md"
+      },
+      "required": false
+    },
+    {
+      "category": "pricing_risk",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": ["credit"],
+      "keyword_synonyms": {
+        "credit": ["service credit", "40%", "cap", "fee reduction", "penalty", "liability", "exposure", "$19,200", "$230,400"]
+      },
+      "citation_must_reference": {
+        "file": "sla_financial_exposure.md"
+      },
+      "required": false
+    },
+    {
+      "category": "service_delivery",
+      "min_severity": "P3",
+      "max_severity": "P2",
+      "must_contain_keywords": ["scope"],
+      "keyword_synonyms": {
+        "scope": ["managed", "monitoring", "backup", "disaster recovery", "capacity", "security assessment", "24/7", "incident response"]
+      },
+      "citation_must_reference": {
+        "file": "sla_financial_exposure.md"
+      },
+      "required": false
+    }
+  ],
+  "expected_gaps": [],
+  "must_not_find": [
+    {
+      "category": "ip_ownership",
+      "reason": "No IP provisions in a managed services agreement"
+    }
+  ]
+}

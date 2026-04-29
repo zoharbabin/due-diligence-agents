@@ -8,6 +8,22 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 > The first public release was **v0.4.0** (2026-03-30). Tagged releases on PyPI and
 > GitHub begin at **v0.4.1**.
 
+## [1.5.0] — 2026-04-29
+
+### Added
+
+- **Neurosymbolic Cross-Domain Analysis** (Issue #189) — Symbolic trigger rules detect when findings in one domain require verification by another (e.g., Finance revenue recognition -> Legal contract enforceability). 7 built-in rules, budget-bounded, priority-ordered. 3 new pipeline steps (18-20): cross_domain_analysis, targeted_respawn, targeted_merge.
+- **Domain Ontology** — 13-edge dependency graph across 9 specialist domains. Powers trigger rules and enriches chat system prompt with cross-domain context.
+- **Cross-Domain Config** — `forensic_dd.cross_domain` in deal-config.json: enable/disable, budget cap, severity filter, rule disable list.
+- **Agent Registry** — `AgentRegistry` singleton and `AgentDescriptor` metadata enable extensible agent architecture. Built-in agents self-register; external agents via entry-points.
+- **CLI Demo Video** — Terminal recording showcasing real M&A analysis: data room scan, pipeline preview, natural-language queries with citation-backed answers.
+- **Eval Framework Extension** — 6 cross-domain ground truth contracts with expected findings for Finance, Legal, and Commercial. 57 deterministic trigger rule tests. 15 E2E cross-domain tests.
+
+### Improved
+
+- **Query command Markdown rendering** — `dd-agents query` output now renders Markdown (tables, headers, bullets, bold) via Rich instead of raw text.
+- **Chat cross-domain context** — System prompt includes dependency descriptions when multiple domain agents are active, enabling cross-domain synthesis in answers.
+
 ## [1.4.0] — 2026-04-28
 
 ### Added

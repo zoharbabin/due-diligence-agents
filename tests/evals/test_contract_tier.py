@@ -225,6 +225,10 @@ class TestDatasetComposition:
         tags = self._all_tags()
         assert tags.get("adversarial", 0) >= 1, "Need at least 1 adversarial eval case"
 
+    def test_has_cross_domain_cases(self) -> None:
+        tags = self._all_tags()
+        assert tags.get("cross_domain", 0) >= 4, "Need at least 4 cross_domain eval cases"
+
     def test_must_not_find_coverage(self) -> None:
         """At least 30% of eval cases should have must_not_find entries (false positive guards)."""
         total = 0

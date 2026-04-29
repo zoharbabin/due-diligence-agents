@@ -1,0 +1,95 @@
+{
+  "contract": "sla_financial_exposure.md",
+  "agent": "finance",
+  "tags": ["cross_domain"],
+  "ambiguity_zone": 0.15,
+  "max_expected_findings": 12,
+  "min_expected_findings": 1,
+  "expected_findings": [
+    {
+      "category": "pricing_risk",
+      "min_severity": "P3",
+      "max_severity": "P0",
+      "must_contain_keywords": ["credit"],
+      "keyword_synonyms": {
+        "credit": ["service credit", "liability", "exposure", "revenue", "fee reduction", "penalty", "cap", "40%", "$230,400"]
+      },
+      "citation_must_reference": {
+        "file": "sla_financial_exposure.md"
+      },
+      "required": true
+    },
+    {
+      "category": "revenue_recognition",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": ["revenue"],
+      "keyword_synonyms": {
+        "revenue": ["recognition", "recognized", "accrual", "reduce", "period", "compounding", "trailing"]
+      },
+      "citation_must_reference": {
+        "file": "sla_financial_exposure.md"
+      },
+      "required": false
+    },
+    {
+      "category": "termination_exposure",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": ["terminat"],
+      "keyword_synonyms": {
+        "terminat": ["termination", "terminate", "early", "50%", "remaining", "chronic", "failure", "penalty"]
+      },
+      "citation_must_reference": {
+        "file": "sla_financial_exposure.md"
+      },
+      "required": false
+    },
+    {
+      "category": "payment_terms",
+      "min_severity": "P3",
+      "max_severity": "P2",
+      "must_contain_keywords": ["payment"],
+      "keyword_synonyms": {
+        "payment": ["monthly", "net 30", "invoice", "$35,000", "$48,000", "advance", "escalation", "CPI"]
+      },
+      "citation_must_reference": {
+        "file": "sla_financial_exposure.md"
+      },
+      "required": false
+    },
+    {
+      "category": "sla_risk",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": ["SLA"],
+      "keyword_synonyms": {
+        "SLA": ["service level", "availability", "99.99%", "99.95%", "uptime", "downtime", "incident", "response"]
+      },
+      "citation_must_reference": {
+        "file": "sla_financial_exposure.md"
+      },
+      "required": false
+    },
+    {
+      "category": "financial_discrepancy",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": ["exposure"],
+      "keyword_synonyms": {
+        "exposure": ["$576,000", "$1,152,000", "annual", "contract value", "worst-case", "maximum", "liability", "$230,400"]
+      },
+      "citation_must_reference": {
+        "file": "sla_financial_exposure.md"
+      },
+      "required": false
+    }
+  ],
+  "expected_gaps": [],
+  "must_not_find": [
+    {
+      "category": "ip_ownership",
+      "reason": "No IP risk in a managed services contract"
+    }
+  ]
+}

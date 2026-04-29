@@ -1,0 +1,95 @@
+{
+  "contract": "coc_financial_exposure.md",
+  "agent": "finance",
+  "tags": ["cross_domain"],
+  "ambiguity_zone": 0.15,
+  "max_expected_findings": 12,
+  "min_expected_findings": 1,
+  "expected_findings": [
+    {
+      "category": "pricing_risk",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": ["fee"],
+      "keyword_synonyms": {
+        "fee": ["prepaid", "refund", "penalty", "termination", "exposure", "escalation", "prepayment", "discount", "contract value", "revenue", "8%", "25%"]
+      },
+      "citation_must_reference": {
+        "file": "coc_financial_exposure.md"
+      },
+      "required": true
+    },
+    {
+      "category": "revenue_recognition",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": ["revenue"],
+      "keyword_synonyms": {
+        "revenue": ["recognition", "annual", "quarterly", "$480,000", "$504,000", "$529,200", "license fee", "escalation", "compounding"]
+      },
+      "citation_must_reference": {
+        "file": "coc_financial_exposure.md"
+      },
+      "required": false
+    },
+    {
+      "category": "termination_exposure",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": ["terminat"],
+      "keyword_synonyms": {
+        "terminat": ["termination", "terminate", "early", "penalty", "remaining", "pro-rata", "refund", "change of control"]
+      },
+      "citation_must_reference": {
+        "file": "coc_financial_exposure.md"
+      },
+      "required": false
+    },
+    {
+      "category": "sla_risk",
+      "min_severity": "P3",
+      "max_severity": "P2",
+      "must_contain_keywords": ["service"],
+      "keyword_synonyms": {
+        "service": ["SLA", "availability", "99.95%", "credit", "downtime", "chronic", "service level"]
+      },
+      "citation_must_reference": {
+        "file": "coc_financial_exposure.md"
+      },
+      "required": false
+    },
+    {
+      "category": "payment_terms",
+      "min_severity": "P3",
+      "max_severity": "P2",
+      "must_contain_keywords": ["payment"],
+      "keyword_synonyms": {
+        "payment": ["quarterly", "$120,000", "$126,000", "$132,300", "invoice", "prepay", "discount"]
+      },
+      "citation_must_reference": {
+        "file": "coc_financial_exposure.md"
+      },
+      "required": false
+    },
+    {
+      "category": "financial_discrepancy",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": ["exposure"],
+      "keyword_synonyms": {
+        "exposure": ["$1,513,200", "total", "contract value", "3-year", "financial impact", "at risk", "annual", "$132,300"]
+      },
+      "citation_must_reference": {
+        "file": "coc_financial_exposure.md"
+      },
+      "required": false
+    }
+  ],
+  "expected_gaps": [],
+  "must_not_find": [
+    {
+      "category": "ip_ownership",
+      "reason": "IP section is minimal with no risk indicators"
+    }
+  ]
+}

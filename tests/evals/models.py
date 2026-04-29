@@ -319,6 +319,49 @@ CATEGORY_SYNONYMS: dict[str, list[str]] = {
         "labor_standards",
         "vendor_audit",
     ],
+    # Cross-domain categories
+    "termination_exposure": [
+        "termination_risk",
+        "tfc_exposure",
+        "contract_termination_risk",
+        "early_termination_exposure",
+        "revenue_at_risk",
+    ],
+    "contract_enforceability": [
+        "enforceability",
+        "acceptance_criteria",
+        "delivery_acceptance",
+        "deemed_accepted",
+        "contract_validity",
+    ],
+    "governing_law": [
+        "jurisdiction",
+        "choice_of_law",
+        "applicable_law",
+        "forum_selection",
+        "venue",
+    ],
+    "audit_rights": [
+        "audit",
+        "audit_clause",
+        "usage_audit",
+        "compliance_audit",
+        "audit_provision",
+    ],
+    "concentration_risk": [
+        "customer_concentration",
+        "revenue_concentration",
+        "client_concentration",
+        "single_customer_risk",
+        "dependency_risk",
+    ],
+    "service_delivery": [
+        "service_scope",
+        "managed_services",
+        "service_description",
+        "scope_of_services",
+        "deliverables",
+    ],
 }
 
 

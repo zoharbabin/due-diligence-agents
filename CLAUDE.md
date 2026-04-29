@@ -19,7 +19,7 @@ pip install dd-agents[pdf]
 pip install -e ".[dev,pdf]"
 
 # Test (run after EVERY change)
-pytest tests/unit/ -x -q                    # Unit tests (~3,600, fast, no API)
+pytest tests/unit/ -x -q                    # Unit tests (~3,660, fast, no API)
 pytest tests/integration/ -x -q             # Integration tests (mock agents)
 pytest tests/e2e/ -x -q                     # E2E tests (requires API, expensive)
 

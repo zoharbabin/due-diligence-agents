@@ -1,0 +1,82 @@
+{
+  "contract": "coc_financial_exposure.md",
+  "agent": "legal",
+  "tags": ["cross_domain"],
+  "ambiguity_zone": 0.15,
+  "max_expected_findings": 12,
+  "min_expected_findings": 1,
+  "expected_findings": [
+    {
+      "category": "change_of_control",
+      "min_severity": "P2",
+      "max_severity": "P0",
+      "must_contain_keywords": ["change of control"],
+      "keyword_synonyms": {
+        "change of control": ["coc", "acquisition", "merger", "voting", "ownership change", "50%"]
+      },
+      "citation_must_reference": {
+        "file": "coc_financial_exposure.md"
+      },
+      "required": true
+    },
+    {
+      "category": "assignment_consent",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": ["assign"],
+      "keyword_synonyms": {
+        "assign": ["assignment", "transfer", "anti-assignment", "consent", "successor"]
+      },
+      "citation_must_reference": {
+        "file": "coc_financial_exposure.md"
+      },
+      "required": false
+    },
+    {
+      "category": "termination",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": ["terminat"],
+      "keyword_synonyms": {
+        "terminat": ["terminate", "termination", "without penalty", "90 days", "early", "chronic", "SLA failure"]
+      },
+      "citation_must_reference": {
+        "file": "coc_financial_exposure.md"
+      },
+      "required": false
+    },
+    {
+      "category": "sla_risk",
+      "min_severity": "P3",
+      "max_severity": "P2",
+      "must_contain_keywords": ["service"],
+      "keyword_synonyms": {
+        "service": ["SLA", "availability", "99.95%", "credit", "downtime", "service level", "service continuity", "degradation"]
+      },
+      "citation_must_reference": {
+        "file": "coc_financial_exposure.md"
+      },
+      "required": false
+    },
+    {
+      "category": "liability",
+      "min_severity": "P3",
+      "max_severity": "P2",
+      "must_contain_keywords": ["refund"],
+      "keyword_synonyms": {
+        "refund": ["prepaid", "pro-rata", "penalty", "data export", "financial exposure", "obligation"]
+      },
+      "citation_must_reference": {
+        "file": "coc_financial_exposure.md"
+      },
+      "required": false
+    }
+  ],
+  "expected_gaps": [],
+  "must_not_find": [
+    {
+      "category": "data_privacy",
+      "reason": "No data privacy provisions in this license agreement"
+    }
+  ]
+}

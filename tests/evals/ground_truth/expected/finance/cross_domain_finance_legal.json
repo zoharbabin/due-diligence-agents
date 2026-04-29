@@ -2,7 +2,8 @@
   "contract": "cross_domain_finance_legal.md",
   "agent": "finance",
   "tags": ["cross_domain"],
-  "max_expected_findings": 8,
+  "ambiguity_zone": 0.15,
+  "max_expected_findings": 12,
   "expected_findings": [
     {
       "category": "revenue_recognition",
@@ -27,7 +28,7 @@
         "fee"
       ],
       "keyword_synonyms": {
-        "fee": ["setup", "implementation", "total", "discrepancy", "inconsistency", "one-time", "$50,000", "understate", "contract value", "discount", "not reflected", "charge", "cost"]
+        "fee": ["setup", "implementation", "total", "discrepancy", "inconsistency", "one-time", "$50,000", "understate", "contract value", "discount", "not reflected", "charge", "cost", "$1,040,000", "$990,000"]
       },
       "citation_must_reference": {
         "file": "cross_domain_finance_legal.md"
@@ -43,6 +44,45 @@
       ],
       "keyword_synonyms": {
         "interest": ["late", "24%", "2%", "penalty", "overdue", "payment", "net 30"]
+      },
+      "citation_must_reference": {
+        "file": "cross_domain_finance_legal.md"
+      },
+      "required": false
+    },
+    {
+      "category": "pricing_risk",
+      "min_severity": "P3",
+      "max_severity": "P2",
+      "must_contain_keywords": ["discount"],
+      "keyword_synonyms": {
+        "discount": ["3%", "early payment", "volume", "12%", "incentive", "not reflected", "rate"]
+      },
+      "citation_must_reference": {
+        "file": "cross_domain_finance_legal.md"
+      },
+      "required": false
+    },
+    {
+      "category": "termination_exposure",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": ["terminat"],
+      "keyword_synonyms": {
+        "terminat": ["termination", "terminate", "change of control", "pro-rata", "refund", "prepaid"]
+      },
+      "citation_must_reference": {
+        "file": "cross_domain_finance_legal.md"
+      },
+      "required": false
+    },
+    {
+      "category": "concentration_risk",
+      "min_severity": "P3",
+      "max_severity": "P2",
+      "must_contain_keywords": ["audit"],
+      "keyword_synonyms": {
+        "audit": ["usage", "underpayment", "5%", "10%", "penalty", "shortfall", "compliance"]
       },
       "citation_must_reference": {
         "file": "cross_domain_finance_legal.md"

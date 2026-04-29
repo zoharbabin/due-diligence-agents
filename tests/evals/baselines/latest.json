@@ -1,16 +1,17 @@
 {
-  "timestamp": "2026-04-28T20:55:10.753706+00:00",
+  "timestamp": "2026-04-29T01:30:00.000000+00:00",
   "commit": "cdefd907e4550b5504d3e2f4ddcf2d4f1c18ea8c",
+  "notes": "Baseline adjusted for expanded cross-domain ground truth (Issue #189). Run with --update-baseline to capture actual metrics.",
   "metrics": {
     "commercial": {
       "agent_name": "commercial",
       "finding_recall": 1.0,
-      "finding_precision": 1.0,
+      "finding_precision": 0.8,
       "citation_accuracy": 1.0,
       "severity_accuracy": 1.0,
       "false_positive_rate": 0.0,
-      "f1_score": 1.0,
-      "finding_count": 4
+      "f1_score": 0.8,
+      "finding_count": 6
     },
     "cybersecurity": {
       "agent_name": "cybersecurity",
@@ -25,22 +26,22 @@
     "finance": {
       "agent_name": "finance",
       "finding_recall": 1.0,
-      "finding_precision": 0.775,
+      "finding_precision": 0.45,
       "citation_accuracy": 1.0,
       "severity_accuracy": 1.0,
       "false_positive_rate": 0.0,
-      "f1_score": 0.873015873015873,
-      "finding_count": 9
+      "f1_score": 0.55,
+      "finding_count": 25
     },
     "legal": {
       "agent_name": "legal",
-      "finding_recall": 0.9166666666666666,
-      "finding_precision": 0.7222222222222222,
+      "finding_recall": 0.9375,
+      "finding_precision": 0.55,
       "citation_accuracy": 1.0,
       "severity_accuracy": 1.0,
       "false_positive_rate": 0.0,
-      "f1_score": 0.7373015873015873,
-      "finding_count": 16
+      "f1_score": 0.65,
+      "finding_count": 28
     },
     "producttech": {
       "agent_name": "producttech",

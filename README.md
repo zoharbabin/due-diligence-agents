@@ -9,13 +9,19 @@
     <a href="https://github.com/zoharbabin/due-diligence-agents/actions"><img src="https://github.com/zoharbabin/due-diligence-agents/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
     <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.12+-blue.svg" alt="Python 3.12+"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green.svg" alt="License"></a>
-    <img src="https://img.shields.io/badge/tests-3,648-brightgreen.svg" alt="Tests">
+    <img src="https://img.shields.io/badge/tests-3,660-brightgreen.svg" alt="Tests">
     <img src="https://img.shields.io/badge/mypy-strict-blue.svg" alt="mypy strict">
     <a href="https://github.com/zoharbabin/due-diligence-agents/stargazers"><img src="https://img.shields.io/github/stars/zoharbabin/due-diligence-agents?style=social" alt="GitHub Stars"></a>
   </p>
 </p>
 
 ---
+
+<p align="center">
+  <video src="https://github.com/zoharbabin/due-diligence-agents/raw/main/docs/demo.mp4" width="960" autoplay loop muted playsinline>
+    Your browser does not support the video tag. <a href="docs/demo.mp4">Watch the demo</a>.
+  </video>
+</p>
 
 **[See a sample report](https://zoharbabin.github.io/due-diligence-agents/)** — interactive HTML output from a synthetic 4-subject deal, no install required.
 

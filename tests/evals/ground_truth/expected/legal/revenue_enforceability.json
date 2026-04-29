@@ -1,0 +1,82 @@
+{
+  "contract": "revenue_enforceability.md",
+  "agent": "legal",
+  "tags": ["cross_domain"],
+  "ambiguity_zone": 0.15,
+  "max_expected_findings": 12,
+  "min_expected_findings": 1,
+  "expected_findings": [
+    {
+      "category": "termination",
+      "min_severity": "P3",
+      "max_severity": "P0",
+      "must_contain_keywords": ["terminat"],
+      "keyword_synonyms": {
+        "terminat": ["terminate", "termination", "convenience", "cancel", "breach", "cure", "90 days"]
+      },
+      "citation_must_reference": {
+        "file": "revenue_enforceability.md"
+      },
+      "required": true
+    },
+    {
+      "category": "liability",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": ["refund"],
+      "keyword_synonyms": {
+        "refund": ["clawback", "claw-back", "reimburse", "return", "repay", "waive", "25%", "50%"]
+      },
+      "citation_must_reference": {
+        "file": "revenue_enforceability.md"
+      },
+      "required": false
+    },
+    {
+      "category": "contract_enforceability",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": ["acceptance"],
+      "keyword_synonyms": {
+        "acceptance": ["delivery", "acceptance window", "deemed accepted", "remediate", "rejection", "deficiency", "15 business days"]
+      },
+      "citation_must_reference": {
+        "file": "revenue_enforceability.md"
+      },
+      "required": false
+    },
+    {
+      "category": "governing_law",
+      "min_severity": "P3",
+      "max_severity": "P2",
+      "must_contain_keywords": ["governing"],
+      "keyword_synonyms": {
+        "governing": ["law", "jurisdiction", "New York", "arbitration", "JAMS", "dispute"]
+      },
+      "citation_must_reference": {
+        "file": "revenue_enforceability.md"
+      },
+      "required": false
+    },
+    {
+      "category": "payment_terms",
+      "min_severity": "P3",
+      "max_severity": "P2",
+      "must_contain_keywords": ["payment"],
+      "keyword_synonyms": {
+        "payment": ["net 30", "invoice", "retainer", "monthly", "50%", "payable", "due", "milestone"]
+      },
+      "citation_must_reference": {
+        "file": "revenue_enforceability.md"
+      },
+      "required": false
+    }
+  ],
+  "expected_gaps": [],
+  "must_not_find": [
+    {
+      "category": "ip_ownership",
+      "reason": "No IP clauses in this consulting agreement"
+    }
+  ]
+}

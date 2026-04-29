@@ -1,0 +1,95 @@
+{
+  "contract": "revenue_enforceability.md",
+  "agent": "finance",
+  "tags": ["cross_domain"],
+  "ambiguity_zone": 0.15,
+  "max_expected_findings": 12,
+  "min_expected_findings": 1,
+  "expected_findings": [
+    {
+      "category": "revenue_recognition",
+      "min_severity": "P2",
+      "max_severity": "P0",
+      "must_contain_keywords": ["recognition"],
+      "keyword_synonyms": {
+        "recognition": ["recognize", "ratably", "ratable", "ASC 606", "milestone", "contingent", "deferred", "variable consideration"]
+      },
+      "citation_must_reference": {
+        "file": "revenue_enforceability.md"
+      },
+      "required": true
+    },
+    {
+      "category": "financial_discrepancy",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": ["fee"],
+      "keyword_synonyms": {
+        "fee": ["overage", "additional", "$350", "not included", "total", "contract value", "implementation", "success bonus", "contingent", "$735,000"]
+      },
+      "citation_must_reference": {
+        "file": "revenue_enforceability.md"
+      },
+      "required": false
+    },
+    {
+      "category": "pricing_risk",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": ["refund"],
+      "keyword_synonyms": {
+        "refund": ["clawback", "claw-back", "reimburse", "return", "repay", "waive", "25%", "50%", "exposure", "risk", "penalty", "bonus"]
+      },
+      "citation_must_reference": {
+        "file": "revenue_enforceability.md"
+      },
+      "required": false
+    },
+    {
+      "category": "payment_terms",
+      "min_severity": "P3",
+      "max_severity": "P2",
+      "must_contain_keywords": ["payment"],
+      "keyword_synonyms": {
+        "payment": ["net 30", "invoice", "retainer", "monthly", "50%", "payable", "due", "$45,000"]
+      },
+      "citation_must_reference": {
+        "file": "revenue_enforceability.md"
+      },
+      "required": false
+    },
+    {
+      "category": "termination_exposure",
+      "min_severity": "P3",
+      "max_severity": "P1",
+      "must_contain_keywords": ["terminat"],
+      "keyword_synonyms": {
+        "terminat": ["termination", "terminate", "convenience", "remaining", "unexpired", "50%", "retainer", "early", "TfC"]
+      },
+      "citation_must_reference": {
+        "file": "revenue_enforceability.md"
+      },
+      "required": false
+    },
+    {
+      "category": "concentration_risk",
+      "min_severity": "P3",
+      "max_severity": "P2",
+      "must_contain_keywords": ["contract"],
+      "keyword_synonyms": {
+        "contract": ["single", "client", "$540,000", "annual", "retainer", "ARR", "recurring", "concentration", "revenue"]
+      },
+      "citation_must_reference": {
+        "file": "revenue_enforceability.md"
+      },
+      "required": false
+    }
+  ],
+  "expected_gaps": [],
+  "must_not_find": [
+    {
+      "category": "data_privacy",
+      "reason": "No data privacy provisions in a consulting services agreement focused on revenue"
+    }
+  ]
+}

@@ -1243,7 +1243,7 @@ def _print_query_result(question: str, result: Any) -> None:
 
     console.print(
         Panel(
-            result.answer,
+            Markdown(result.answer),
             title=f"Q: {question}",
             subtitle=f"[{conf_color}]confidence: {result.confidence}[/{conf_color}] | type: {result.query_type}",
             border_style="blue",
