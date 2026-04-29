@@ -2,7 +2,7 @@
 
 All validation is fail-closed. The pre-merge validation runs every QA check before finalizing the report. Any failure blocks the report. Numbers are validated by counting, not by LLM reasoning.
 
-> **Historical note**: This document references the ReportingLead agent which was removed in v0.4.0. Step 23 is now deterministic pre-merge validation (`validation/pre_merge.py`). See `06-agents.md` §11.
+> **Historical note**: This document references the ReportingLead agent which was removed in v0.4.0, and hardcodes 4-agent lists that are now 9 specialists via `AgentRegistry`. Step 23 is now deterministic pre-merge validation (`validation/pre_merge.py`). Validators accept an `active_agents` parameter defaulting to `AgentRegistry.all_specialist_names()`. See `CLAUDE.md`.
 
 ---
 

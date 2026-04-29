@@ -1,5 +1,7 @@
 # 01 -- Architecture Decision Records
 
+> **Historical note**: This is a design spec. The SDK version floor is now `>= 0.1.56` (not 0.1.39). The specialist count grew from 4 to 9 via `AgentRegistry`. See `CLAUDE.md` for the current state.
+
 Seven ADRs defining the foundational technical choices for the Due Diligence Agent SDK.
 
 ## Market Context

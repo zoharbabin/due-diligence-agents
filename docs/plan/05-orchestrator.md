@@ -2,7 +2,7 @@
 
 > **Source of truth**: SKILL.md sections 0c, 0e, 1-9 (35 execution steps, persistence, incremental mode, error recovery, QA, Definition of Done)
 > **SDK reference**: `Claude_Agent_SDK_Complete_Reference.md` sections 2, 4, 5
-> **Historical note**: This document references the ReportingLead agent which was removed in v0.4.0. Step 23 is now deterministic pre-merge validation (`validation/pre_merge.py`). See `06-agents.md` §11.
+> **Historical note**: This document references the ReportingLead agent which was removed in v0.4.0. Step 23 is now deterministic pre-merge validation (`validation/pre_merge.py`). The specialist count grew from 4 to 9 via `AgentRegistry`; `PipelineState` now includes `active_agents` for checkpoint/resume agent-set validation. See `CLAUDE.md` for current architecture.
 
 ## Overview
 

@@ -158,9 +158,9 @@ This checks all required fields, value constraints, and version compatibility.
   },
   "forensic_dd": {
     "enabled": true,
-    "domains": {
+    "specialists": {
       "disabled": [],
-      "custom": []
+      "customizations": {}
     }
   },
   "precedence": {
@@ -294,7 +294,7 @@ Model assignments per profile:
 
 | Agent Role | `economy` | `standard` | `premium` |
 |-----------|-----------|------------|-----------|
-| Specialists (Legal, Finance, Commercial, ProductTech) | Haiku | Sonnet | Sonnet |
+| Specialists (all 9 domains) | Haiku | Sonnet | Sonnet |
 | Judge | Haiku | Sonnet | Sonnet |
 | Executive Synthesis | Sonnet | Sonnet | Opus |
 | Red Flag Scanner | Haiku | Haiku | Sonnet |
@@ -307,18 +307,13 @@ Model assignments per profile:
 
 ### forensic_dd (optional)
 
-Controls the forensic DD analysis domains:
+Controls the forensic DD specialist agents:
 
-- `enabled`: enable/disable the entire forensic DD skill (default: true)
-- `domains.disabled`: list of domain IDs to skip
-- `domains.custom`: list of custom analysis domains, each with:
-  - `id`: lowercase identifier (e.g. `insurance_review`)
-  - `name`: display name
-  - `description`: what this domain covers
-  - `agent_assignment`: which agent handles it (`legal`, `finance`, `commercial`, `producttech`)
-  - `expected_finding_categories`: categories this domain should produce
-  - `key_terms`: terms to search for in documents
-  - `weight`: analysis priority (1-3, default: 3)
+- `enabled`: enable/disable the entire forensic DD pipeline (default: true)
+- `specialists.disabled`: list of agent names to skip (e.g. `["hr", "esg"]`)
+- `specialists.customizations`: per-agent overrides with additional focus areas or instructions, keyed by agent name
+
+Available specialist names: `legal`, `finance`, `commercial`, `producttech`, `cybersecurity`, `hr`, `tax`, `regulatory`, `esg`. External agents registered via pip entry-points are also configurable here.
 
 ### precedence (optional)
 

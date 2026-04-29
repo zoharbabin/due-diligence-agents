@@ -9,7 +9,7 @@ You will run `dd-agents` against a small data room with four contracts spread ac
 1. Discover and inventory every document.
 2. Extract clauses, financials, and governance structures.
 3. Resolve entity names across documents.
-4. Run specialist agents (Legal, Finance, Commercial, ProductTech).
+4. Run specialist agents (Legal, Finance, Commercial, ProductTech, Cybersecurity, HR, Tax, Regulatory, ESG).
 5. Produce a detailed cross-domain HTML report and a 14-sheet Excel companion report.
 
 ## Prerequisites
@@ -144,10 +144,15 @@ _dd/
         ├── latest -> 20260222_143000/
         └── 20260222_143000/         # Per-run output (VERSIONED, immutable)
             ├── findings/
-            │   ├── legal/           # Legal specialist findings per subject
-            │   ├── finance/         # Finance specialist findings per subject
-            │   ├── commercial/      # Commercial specialist findings per subject
-            │   ├── producttech/     # ProductTech specialist findings per subject
+            │   ├── legal/           # Per-subject findings from each specialist
+            │   ├── finance/
+            │   ├── commercial/
+            │   ├── producttech/
+            │   ├── cybersecurity/
+            │   ├── hr/
+            │   ├── tax/
+            │   ├── regulatory/
+            │   ├── esg/
             │   └── merged/          # Deduplicated findings across all agents
             ├── report/
             │   ├── dd_report.html   # Interactive cross-domain HTML report
@@ -163,7 +168,7 @@ Key outputs:
 
 - **`runs/latest/report/dd_report.html`** -- The interactive HTML report with cross-domain findings, risk heatmaps, and drill-down to exact contract clauses. **Review all high-severity findings with your domain experts before acting on them.**
 - **`runs/latest/report/dd_report.xlsx`** -- The 14-sheet Excel companion report with findings, risk matrix, entity map, financial summaries, and more.
-- **`runs/latest/findings/`** -- Per-subject JSON findings from each specialist agent (legal, finance, commercial, producttech) plus merged results.
+- **`runs/latest/findings/`** -- Per-subject JSON findings from each specialist agent plus merged results.
 - **`inventory/`** -- File discovery, subject registry, and entity resolution matches.
 - **`runs/latest/audit.json`** -- QA audit trail and Definition of Done checks.
 

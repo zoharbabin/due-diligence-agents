@@ -1,7 +1,7 @@
 <p align="center">
   <h1 align="center">Due Diligence Agents</h1>
   <p align="center">
-    Find what gets buried in the data room. Open-source integrated M&A due diligence — legal, financial, commercial, and technical analysis across every contract, cross-referenced with exact citations.
+    Find what gets buried in the data room. Open-source integrated M&A due diligence — 9 specialist domains across every contract, cross-referenced with exact citations.
   </p>
   <p align="center">
     <a href="https://pypi.org/project/dd-agents/"><img src="https://img.shields.io/pypi/v/dd-agents.svg" alt="PyPI version"></a>
@@ -9,7 +9,7 @@
     <a href="https://github.com/zoharbabin/due-diligence-agents/actions"><img src="https://github.com/zoharbabin/due-diligence-agents/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
     <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.12+-blue.svg" alt="Python 3.12+"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green.svg" alt="License"></a>
-    <img src="https://img.shields.io/badge/tests-3,549-brightgreen.svg" alt="Tests">
+    <img src="https://img.shields.io/badge/tests-3,648-brightgreen.svg" alt="Tests">
     <img src="https://img.shields.io/badge/mypy-strict-blue.svg" alt="mypy strict">
     <a href="https://github.com/zoharbabin/due-diligence-agents/stargazers"><img src="https://img.shields.io/github/stars/zoharbabin/due-diligence-agents?style=social" alt="GitHub Stars"></a>
   </p>
@@ -21,7 +21,7 @@
 
 ---
 
-Finds what gets buried across hundreds of contracts — cross-references it across legal, financial, commercial, and technical domains — and traces every finding to an exact page, section, and quote. Use the structured output alongside your advisors to build IC memos, advisor reports, negotiation checklists, or integration plans.
+Finds what gets buried across hundreds of contracts — cross-references it across 9 specialist domains (Legal, Finance, Commercial, ProductTech, Cybersecurity, HR, Tax, Regulatory, ESG) — and traces every finding to an exact page, section, and quote. Use the structured output alongside your advisors to build IC memos, advisor reports, negotiation checklists, or integration plans.
 
 > **This tool does not replace professional advisors.** Legal, financial, and regulatory conclusions should always be made by qualified professionals. This tool helps your team and advisors work faster.
 
@@ -37,7 +37,7 @@ The numbers tell the story:
 - **AI contract analysis reaches 95% accuracy** with clause-aware prompting (up from 74% baseline) — [Addleshaw Goddard RAG Report](https://www.addleshawgoddard.com/globalassets/insights/technology/llm/rag-report.pdf), 510 contracts tested
 - **86% of M&A organizations have integrated GenAI** into deal workflows — [Deloitte 2025 M&A Trends](https://www.deloitte.com/us/en/what-we-do/capabilities/mergers-acquisitions-restructuring/articles/m-a-trends-report.html)
 
-This tool runs all four workstreams in parallel across every document, cross-references findings automatically, and produces structured analysis your team can search, filter, and drill into — the kind of cross-domain picture that used to take weeks to assemble manually.
+This tool runs all nine workstreams in parallel across every document, cross-references findings automatically, and produces structured analysis your team can search, filter, and drill into — the kind of cross-domain picture that used to take weeks to assemble manually.
 
 **Who uses this:** Corp dev teams screening targets, PE firms running portfolio DD, legal teams doing contract review, advisors accelerating workstreams. Anyone who needs to search hundreds of contracts and connect findings across domains.
 
@@ -49,7 +49,7 @@ This tool runs all four workstreams in parallel across every document, cross-ref
 dd-agents run deal-config.json
 ```
 
-Analyzes every document through 4 domain lenses, cross-references findings, and validates quality through 5 blocking gates. Produces:
+Analyzes every document through 9 domain lenses, cross-references findings, and validates quality through 5 blocking gates. Produces:
 
 - **Interactive HTML report** — cross-domain findings, risk heatmaps, severity filtering, drill-down to exact clauses
 - **14-sheet Excel report** — structured findings, cross-references, audit trail for downstream modeling
@@ -94,10 +94,10 @@ dd-agents assess ./data_room                                # Check data room qu
 dd-agents portfolio add "Deal A" --data-room ./data_room_a  # Track multiple deals
 dd-agents portfolio compare                                 # Compare risk across deals
 dd-agents export-pdf report.html                            # Export to PDF
-dd-agents log                                               # Browse the deal knowledge timeline
-dd-agents lineage --finding-id F-001                        # Trace a finding back to source
-dd-agents health                                            # Check knowledge base integrity
-dd-agents annotate F-001 "Confirmed with counsel"           # Add analyst notes to findings
+dd-agents log --data-room ./data_room                       # Browse the deal knowledge timeline
+dd-agents lineage --data-room ./data_room                   # Trace finding evolution across runs
+dd-agents health --data-room ./data_room                    # Check knowledge base integrity
+dd-agents annotate --data-room ./data_room "Confirmed with counsel"  # Add analyst notes
 ```
 
 ## Quick Start

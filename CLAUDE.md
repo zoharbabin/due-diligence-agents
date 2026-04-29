@@ -19,7 +19,7 @@ pip install dd-agents[pdf]
 pip install -e ".[dev,pdf]"
 
 # Test (run after EVERY change)
-pytest tests/unit/ -x -q                    # Unit tests (~3,300, fast, no API)
+pytest tests/unit/ -x -q                    # Unit tests (~3,600, fast, no API)
 pytest tests/integration/ -x -q             # Integration tests (mock agents)
 pytest tests/e2e/ -x -q                     # E2E tests (requires API, expensive)
 
@@ -202,6 +202,7 @@ xlrd>=2.0                       # Legacy .xls (BIFF) extraction
 scikit-learn>=1.3               # TF-IDF vectorization for entity resolution
 click>=8.0                      # CLI interface
 rich>=13.0                      # Terminal output formatting
+prompt-toolkit>=3.0             # Chat mode interactive input (multiline, key bindings)
 ```
 
 Optional: `pymupdf>=1.23` (PDF extraction, AGPL-3.0), `chromadb>=0.4` (vector search), `pytesseract>=0.3` + `Pillow>=12.1` + `pdf2image>=1.16` (OCR), `mlx-vlm>=0.1` + `pypdfium2>=4.0` (GLM-OCR)

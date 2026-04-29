@@ -4,7 +4,7 @@
 
 ## Overview
 
-The forensic DD pipeline runs 8 agents across 35 steps. Failures are inevitable: agents exhaust context, extraction tools hang, shared files corrupt, configs change between runs. This document defines all 15 error scenarios, their detection methods, automatic recovery actions, fallbacks, and Python implementation patterns.
+The forensic DD pipeline runs 13 agents (9 specialists + 4 synthesis/validation) across 35 steps. Failures are inevitable: agents exhaust context, extraction tools hang, shared files corrupt, configs change between runs. This document defines all 15 error scenarios, their detection methods, automatic recovery actions, fallbacks, and Python implementation patterns.
 
 Design principle: **fail forward**. A single agent failure should not abort the entire pipeline. The orchestrator degrades gracefully — continuing with partial results, logging P1 gaps for missing coverage, and notifying the user of degraded output.
 

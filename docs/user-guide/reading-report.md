@@ -1,6 +1,6 @@
 # Reading the Report
 
-The pipeline produces two report formats: an interactive HTML report for navigation and drill-down, and a 14-sheet Excel report for detailed analysis. Both include sourced citations, severity filtering, and cross-domain correlation. These reports provide deep, granular analysis across legal, financial, commercial, and product/tech domains — structured output your team uses as the basis for their own deliverables (board presentations, advisor memos, negotiation checklists, integration plans).
+The pipeline produces two report formats: an interactive HTML report for navigation and drill-down, and a 14-sheet Excel report for detailed analysis. Both include sourced citations, severity filtering, and cross-domain correlation. These reports provide deep, granular analysis across 9 specialist domains (Legal, Finance, Commercial, ProductTech, Cybersecurity, HR, Tax, Regulatory, ESG) — structured output your team uses as the basis for their own deliverables (board presentations, advisor memos, negotiation checklists, integration plans).
 
 **This tool does not replace professional advisors.** Use the structured findings alongside your advisory process to search, correlate, and track risks more efficiently.
 
@@ -78,13 +78,14 @@ Privacy and data protection analysis: GDPR/CCPA compliance, data processing agre
 cross-border transfer mechanisms, and breach notification obligations.
 
 **Risk Heatmap**
-Domain-level risk summary showing severity distribution across Legal, Finance,
-Commercial, and ProductTech domains.
+Domain-level risk summary showing severity distribution across all active
+specialist domains.
 
-**Domain Sections** (Legal, Finance, Commercial, ProductTech)
+**Domain Sections** (Legal, Finance, Commercial, ProductTech, Cybersecurity, HR, Tax, Regulatory, ESG)
 Category breakdowns within each specialist domain, with finding counts and
 per-entity details. Each domain section is capped at the most significant findings
-with expand/collapse for full detail.
+with expand/collapse for full detail. Sections only appear for agents that were
+active in the pipeline run.
 
 **Discount & Pricing Analysis**
 Discount patterns, pricing consistency, and margin erosion across the contract portfolio.

@@ -1,6 +1,6 @@
 # Running the Pipeline
 
-The pipeline accelerates what traditionally takes teams of lawyers and analysts weeks of manual contract review. [DD timelines keep compressing](https://www.spellbook.legal/briefs/m-a-due-diligence) — what used to be a six-week process becomes three weeks, with no reduction in scope. The pipeline analyzes every document across four domains (Legal, Finance, Commercial, Product/Tech), cross-validates findings, and produces quality-gated structured analysis with sourced citations.
+The pipeline accelerates what traditionally takes teams of lawyers and analysts weeks of manual contract review. [DD timelines keep compressing](https://www.spellbook.legal/briefs/m-a-due-diligence) — what used to be a six-week process becomes three weeks, with no reduction in scope. The pipeline analyzes every document across 9 specialist domains (Legal, Finance, Commercial, ProductTech, Cybersecurity, HR, Tax, Regulatory, ESG), cross-validates findings, and produces quality-gated structured analysis with sourced citations.
 
 **This tool does not replace professional advisors.** Use the output alongside your advisory workstreams to accelerate search, correlation, and tracking across the data room.
 
@@ -38,7 +38,7 @@ dd-agents run deal-config.json --mode incremental
 | Option | Description |
 |--------|-------------|
 | `--mode full\|incremental` | Override execution mode from config |
-| `--resume-from N` | Resume from step N (1-35), skipping earlier steps |
+| `--resume-from N` | Resume from step N (0-35; 0 means start fresh) |
 | `--dry-run` | Validate config and print step plan without executing |
 | `--quick-scan` | Run steps 1-13 plus Red Flag Scanner only (fast triage) |
 | `--model-profile PROFILE` | Override model tier: `economy`, `standard`, `premium` |
@@ -93,9 +93,11 @@ and verify inventory integrity. Steps 11-12 are conditional (database reconcilia
 and incremental classification).
 
 **Phase 4: Agent Execution (Steps 13-17)**
-Create the specialist team (Legal, Finance, Commercial, ProductTech), prepare analysis
-instructions with document ranking context, route references, and run agents in parallel.
-Step 17 is a **blocking gate** -- coverage must meet minimum thresholds across all domains.
+Create the specialist team (9 agents by default — Legal, Finance, Commercial, ProductTech,
+Cybersecurity, HR, Tax, Regulatory, ESG), prepare analysis instructions with document
+ranking context, route references, and run agents in parallel. Agents can be disabled
+per-deal via `deal-config.json`. Step 17 is a **blocking gate** -- coverage must meet
+minimum thresholds across all active domains.
 
 **Phase 5: Quality Review (Steps 18-22)**
 Merge incremental results (if applicable). Optionally spawn the Judge agent for
@@ -141,7 +143,7 @@ When a gate fails, the pipeline stops with exit code 2 and prints the reason for
 
 ## Agents
 
-The pipeline uses 8 specialized analyzers — 4 domain specialists that process contracts in parallel, plus 4 synthesis/validation components:
+The pipeline uses 13 specialized analyzers — 9 domain specialists that process contracts in parallel, plus 4 synthesis/validation components:
 
 | Agent | Type | Phase | Description |
 |-------|------|-------|-------------|
@@ -149,12 +151,17 @@ The pipeline uses 8 specialized analyzers — 4 domain specialists that process 
 | Finance | Specialist | 4 | Revenue recognition, SaaS metrics, financial risk |
 | Commercial | Specialist | 4 | Customer concentration, pricing, renewal risk |
 | ProductTech | Specialist | 4 | Technology dependencies, integration complexity |
+| Cybersecurity | Specialist | 4 | Security governance, incident history, vulnerability management, compliance certifications |
+| HR | Specialist | 4 | Workforce composition, compensation, key talent retention, labor compliance |
+| Tax | Specialist | 4 | Income tax compliance, transfer pricing, NOL/tax attributes, deal structure tax |
+| Regulatory | Specialist | 4 | License transferability, antitrust, data privacy regulation, AML/sanctions |
+| ESG | Specialist | 4 | Environmental contamination, climate/carbon risk, ESG governance, supply chain sustainability |
 | Judge | Validation | 5 | Adversarial review of specialist findings (optional) |
 | Executive Synthesis | Synthesis | 6 | Go/No-Go calibration, severity recalibration |
 | Acquirer Intelligence | Synthesis | 6 | Buyer thesis alignment, synergy validation (when `buyer_strategy` configured) |
 | Red Flag Scanner | Triage | 6 | Quick stoplight triage (when `--quick-scan` used) |
 
-All 4 specialists share a base execution engine (`BaseAgentRunner`) but are differentiated by substantive domain-specific prompts containing M&A-specific legal definitions, targeted extraction instructions, and relevant keyword sets.
+All 9 specialists share a base execution engine (`BaseAgentRunner`) but are differentiated by substantive domain-specific prompts containing M&A-specific definitions, targeted extraction instructions, and relevant keyword sets. The specialist set is extensible — external agents can be added via pip entry-points, and agents can be disabled per-deal via `deal-config.json`.
 
 ## Output Directory Structure
 

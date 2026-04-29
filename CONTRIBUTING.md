@@ -35,14 +35,14 @@ make test-unit         # Unit tests only (fast, no API calls)
 pytest tests/e2e/ -x   # End-to-end tests (requires API key, slow)
 ```
 
-The project has ~3,549 unit tests, 17 integration tests, and 24 E2E tests (some skipped without API key). Unit and integration tests require no API key.
+The project has ~3,600 unit tests, ~60 integration tests, and 24 E2E tests (some skipped without API key). Unit and integration tests require no API key.
 
 ## Quality Gates
 
 ```bash
-make verify        # Runs lint + typecheck + tests (must pass before merge)
-make lint          # ruff check + format check
-make format        # Auto-format code with ruff
+pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/   # Must pass before merge
+ruff check src/ tests/                                                      # Lint only
+ruff format src/ tests/                                                     # Auto-format code
 ```
 
 ## Code Style
@@ -68,7 +68,7 @@ Configuration lives in `pyproject.toml` under `[tool.ruff]`, `[tool.mypy]`, and 
 
 1. Branch from `main`.
 2. Write tests first, then implement.
-3. Ensure `make verify` passes locally before pushing.
+3. Ensure quality gates pass locally before pushing (`pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/`).
 4. Add or update tests for any new functionality.
 5. Open a PR with a clear description of what changed and why.
 6. One approval required to merge.
@@ -89,7 +89,7 @@ This project is structured for autonomous implementation by Claude Code:
 - **`.claude/settings.json`** — Tool permissions and quality gate hooks
 - **`.claude/agents/`** — Custom subagents (code-reviewer, test-runner)
 - **`scripts/`** — Quality gate scripts (lint, test, type check, pre-commit gate)
-- **`Makefile`** — Convenience targets (`make verify`, `make test`, `make lint`)
+- **Quality gate command** — `pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/`
 
 To start autonomous implementation:
 ```bash

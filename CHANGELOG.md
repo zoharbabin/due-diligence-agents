@@ -86,7 +86,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 - **Finding Schema Guard** — PreToolUse hook validates finding JSON structure on Write, blocking wrong field names before they reach disk.
 - **Citation Enforcement** — Agents required to provide exact citations; validation rejects findings without source references.
-- **Agent Hardening** — Improved prompt robustness and output parsing across all 8 agents.
+- **Agent Hardening** — Improved prompt robustness and output parsing across all agents.
 - **New MCP Tools** — Additional document analysis tools for agent use.
 
 ## [1.0.2] — 2026-04-10
@@ -263,9 +263,9 @@ Initial public release containing the complete Due Diligence Agent SDK.
 ### Core Platform
 
 - **35-step deterministic orchestrator** with 5 blocking quality gates, step dependencies, state machine, and checkpoint/resume support.
-- **8 AI agents**: 4 specialists (Legal, Finance, Commercial, ProductTech) + Judge + Executive Synthesis + Red Flag Scanner + Acquirer Intelligence — all driven by `claude-agent-sdk` v0.1.39+.
+- **13 AI agents**: 9 specialists (Legal, Finance, Commercial, ProductTech, Cybersecurity, HR, Tax, Regulatory, ESG) + Judge + Executive Synthesis + Red Flag Scanner + Acquirer Intelligence — all driven by `claude-agent-sdk`. Agent set is extensible via `AgentRegistry` and config-driven via `deal-config.json`.
 - **137 Pydantic v2 data models** covering findings, gaps, manifests, config, inventory, quality scores, and all intermediate pipeline schemas.
-- **CLI** with 15 commands: `run`, `validate`, `version`, `init`, `auto-config`, `search`, `assess`, `export-pdf`, `query`, `portfolio` (group), `templates` (group), `log`, `annotate`, `lineage`, `health`.
+- **CLI** with 16 commands: `run`, `validate`, `version`, `init`, `auto-config`, `search`, `assess`, `export-pdf`, `query`, `chat`, `portfolio` (group), `templates` (group), `log`, `annotate`, `lineage`, `health`.
 
 ### Document Processing
 

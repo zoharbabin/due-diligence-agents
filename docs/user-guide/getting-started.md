@@ -1,8 +1,8 @@
 # Getting Started
 
-This tool accelerates M&A due diligence by analyzing your entire data room across Legal, Finance, Commercial, and Product/Tech — helping your deal team find what gets buried, cross-reference it across domains, and trace every finding to an exact page and quote.
+This tool accelerates M&A due diligence by analyzing your entire data room across 9 specialist domains (Legal, Finance, Commercial, ProductTech, Cybersecurity, HR, Tax, Regulatory, ESG) — helping your deal team find what gets buried, cross-reference it across domains, and trace every finding to an exact page and quote.
 
-[31% of M&A failures trace back to due diligence shortcomings](https://acquisitionstars.com/ma-failure-rate/), often because legal, financial, and commercial workstreams run in silos with no cross-referencing. This tool runs all four workstreams simultaneously, cross-references findings across domains, and produces structured analysis your team can use as the foundation for IC memos, advisor reports, or negotiation checklists.
+[31% of M&A failures trace back to due diligence shortcomings](https://acquisitionstars.com/ma-failure-rate/), often because workstreams run in silos with no cross-referencing. This tool runs all nine workstreams simultaneously, cross-references findings across domains, and produces structured analysis your team can use as the foundation for IC memos, advisor reports, or negotiation checklists.
 
 **This tool does not replace professional advisors.** Legal, financial, and regulatory conclusions should always be made by qualified professionals. This tool helps your team and advisors work more efficiently.
 
@@ -155,7 +155,7 @@ dd-agents init --data-room ./data_room
 dd-agents run deal-config.json
 ```
 
-The pipeline extracts text, matches company names, runs AI analysis across all four domains, validates quality, and generates the report.
+The pipeline extracts text, matches company names, runs AI analysis across all specialist domains, validates quality, and generates the report.
 
 To preview what will happen without making API calls:
 

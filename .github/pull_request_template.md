@@ -13,5 +13,5 @@
 ## Checklist
 
 - [ ] Tests added or updated
-- [ ] `make verify` passes (lint + typecheck + tests)
+- [ ] Quality gates pass (`pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/`)
 - [ ] No breaking changes (or documented in this PR)

@@ -22,11 +22,11 @@ A technical guide to how Due Diligence Agents analyzes, connects, and compounds 
 
 ## 1. The Problem
 
-M&A due diligence requires multiple workstreams — legal, financial, commercial, product/technical — each analyzing the same data room from different perspectives. Each workstream produces independent findings. But the real risks live at the intersections: a customer that represents 5% of revenue AND has a change-of-control termination right AND is on an expiring contract with below-market pricing. Surfacing that requires connecting findings across all four domains.
+M&A due diligence requires multiple workstreams — legal, financial, commercial, product/technical, cybersecurity, HR, tax, regulatory, ESG — each analyzing the same data room from different perspectives. Each workstream produces independent findings. But the real risks live at the intersections: a customer that represents 5% of revenue AND has a change-of-control termination right AND is on an expiring contract with below-market pricing. Surfacing that requires connecting findings across all domains.
 
-Traditional tools are single-domain (one workstream at a time) or single-function (document storage, not analysis). No existing solution performs multi-domain forensic analysis with adversarial cross-validation across Legal, Finance, Commercial, and Product/Tech.
+Traditional tools are single-domain (one workstream at a time) or single-function (document storage, not analysis). No existing solution performs multi-domain forensic analysis with adversarial cross-validation across 9 specialist domains.
 
-This system runs all four workstreams in parallel, cross-references findings automatically, and traces every claim to an exact page, section, and quote. The architecture below explains how.
+This system runs all workstreams in parallel, cross-references findings automatically, and traces every claim to an exact page, section, and quote. The architecture below explains how.
 
 ---
 
@@ -77,7 +77,7 @@ The system runs as a 35-step async state machine organized into five stages. Eac
 │  precedence scoring, reference file routing              │
 ├─────────────────────────────────────────────────────────┤
 │  Stage 3: Agent Execution (Steps 13-17)                 │
-│  Prompt building, 4 specialist agents in parallel,      │
+│  Prompt building, 9 specialist agents in parallel,      │
 │  coverage verification with respawn for gaps            │
 │  🚫 GATE: Subject coverage (step 17)                    │
 ├─────────────────────────────────────────────────────────┤
@@ -96,7 +96,7 @@ The system runs as a 35-step async state machine organized into five stages. Eac
 
 ### Checkpoint and resume
 
-After every step, state is serialized to a checkpoint file. If the pipeline crashes at step 30, it resumes from step 30 — not from scratch. For the most expensive step (step 16: spawning specialist agents), sub-checkpoints track individual agent completion. If 2 of 4 agents finish before a crash, only the remaining 2 are re-spawned.
+After every step, state is serialized to a checkpoint file. If the pipeline crashes at step 30, it resumes from step 30 — not from scratch. For the most expensive step (step 16: spawning specialist agents), sub-checkpoints track individual agent completion. If some agents finish before a crash, only the remaining agents are re-spawned.
 
 ### Three-tier persistence
 
@@ -240,7 +240,7 @@ Map-merge-resolve was inspired by MapReduce but serves a fundamentally different
 
 ## 7. Multi-Agent Cross-Domain Analysis
 
-Four specialist agents analyze the data room in parallel, each from their domain perspective:
+Nine specialist agents analyze the data room in parallel, each from their domain perspective. The agent set is config-driven — agents can be disabled per-deal via `deal-config.json`, and external agents can be added via pip entry-points.
 
 | Agent | Focus Areas | Example Findings |
 |-------|-------------|-----------------|
@@ -248,6 +248,11 @@ Four specialist agents analyze the data room in parallel, each from their domain
 | **Finance** | Revenue recognition, ARR reconciliation, unit economics, pricing compliance, cost structure | "Reported ARR of $4.2M includes $380K in usage-based overages that haven't recurred in 3 quarters — effective recurring base is $3.8M" |
 | **Commercial** | Pricing models, MFN clauses, renewal mechanics, competitive positioning, volume commitments | "Customer's MFN clause guarantees pricing parity — any discount given to future customers automatically applies, capping upsell margin across the base" |
 | **ProductTech** | Contractual feature commitments, per-SKU pricing, security SLAs, integration complexity, technical debt | "3 enterprise contracts commit to SSO and audit-log features not yet shipped — blocking renewal negotiation and creating implicit delivery obligations post-close" |
+| **Cybersecurity** | Security governance, incident history, vulnerability management, identity & access, compliance certifications | "SOC 2 Type II certification lapsed 6 months ago — no renewal evidence in data room" |
+| **HR** | Workforce composition, compensation, key talent retention, labor compliance, organizational structure | "24-month non-compete with single-trigger acceleration — full equity vests on change of control" |
+| **Tax** | Transfer pricing, NOL/tax attributes, sales & use tax, international tax, deal structure tax | "Section 382 limits NOL usage to ~$350K/year post-acquisition — $2.1M in accumulated NOLs will take 6+ years to utilize" |
+| **Regulatory** | License transferability, antitrust, data privacy regulation, AML/sanctions, government contracts | "Payment Facilitator license requires prior written approval for CoC — 90-120 day processing time" |
+| **ESG** | Environmental contamination, climate/carbon risk, ESG governance, supply chain sustainability | "No Scope 3 emissions measurement and no SBTi commitment — increasing regulatory risk" |
 
 ### Cross-domain findings emerge from merge
 
@@ -467,4 +472,4 @@ Every major design decision maps to published research or production retrospecti
 
 ---
 
-*This document reflects the architecture as of v0.5.0. For implementation details, see the spec docs in `docs/plan/`. For the 35-step pipeline specification, see `docs/plan/05-orchestrator.md`. For search module details, see `docs/search-guide.md`.*
+*For implementation details, see the spec docs in `docs/plan/`. For the 35-step pipeline specification, see `docs/plan/05-orchestrator.md`. For search module details, see `docs/search-guide.md`.*

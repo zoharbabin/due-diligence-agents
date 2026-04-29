@@ -1,7 +1,9 @@
 # 06 -- Agent Definitions
 
+> **Historical note**: This is a design spec written before implementation. The original design specified 4 specialist agents. The implementation has 9 specialists (Legal, Finance, Commercial, ProductTech, Cybersecurity, HR, Tax, Regulatory, ESG) managed via `AgentRegistry` in `agents/registry.py` with `AgentDescriptor` metadata in `agents/descriptor.py`. The Reporting Lead was removed in v0.4.0. See `CLAUDE.md` and `agents/specialists.py` for the current agent architecture.
+
 > **Source**: `agent-prompts.md` (508 lines), `SKILL.md` sections 3a-3g
-> **SDK reference**: `claude-agent-sdk` v0.1.39+ — `query()`, `ClaudeAgentOptions`, `HookMatcher`
+> **SDK reference**: `claude-agent-sdk` v0.1.56+ — `query()`, `ClaudeAgentOptions`, `HookMatcher`
 > **Cross-references**: `04-data-models.md` (output schemas), `05-orchestrator.md` (pipeline steps 16, 19-22, 23), `07-tools-and-hooks.md` (hooks + MCP tools), `10-reporting.md` (merge protocol), `12-error-recovery.md` (retry)
 
 ---

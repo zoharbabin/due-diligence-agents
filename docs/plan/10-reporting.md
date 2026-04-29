@@ -1,6 +1,8 @@
 # 10 — Reporting (Excel Generation, Merge/Dedup, Report Diff, Date Reconciliation)
 
-The Reporting Lead is the final agent in the pipeline. It receives merged specialist findings, builds the numerical manifest, runs QA checks, generates the 14-sheet Excel report from `report_schema.json`, and produces the report diff. This document specifies every data transformation between raw agent outputs and the final Excel file.
+> **Historical note**: This is a design spec written before implementation. The Reporting Lead agent described here was removed in v0.4.0 and replaced by deterministic Python in `validation/pre_merge.py` and `reporting/merge.py`. The specialist count grew from 4 to 9 via `AgentRegistry` (see `CLAUDE.md` for current architecture). The merge/dedup logic and Excel report structure described here remain accurate.
+
+The merge step (step 24) receives merged specialist findings, builds the numerical manifest, runs QA checks, generates the 14-sheet Excel report from `report_schema.json`, and produces the report diff. This document specifies every data transformation between raw agent outputs and the final Excel file.
 
 ---
 

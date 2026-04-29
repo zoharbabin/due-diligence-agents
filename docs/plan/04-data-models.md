@@ -1,5 +1,7 @@
 # 04 -- Data Models (Pydantic v2)
 
+> **Historical note**: This is a design spec. The `AgentName` enum grew from 4 to 9 values (Cybersecurity, HR, Tax, Regulatory, ESG added). `ForensicDDConfig` now includes `specialists: SpecialistsConfig` for config-driven agent disable. See `models/enums.py` and `models/config.py` for the current schemas.
+
 All JSON schemas from the forensic-dd skill files are translated to Pydantic v2 models. These serve three purposes:
 1. **Validation** -- `model_validate()` for deterministic agent output checking
 2. **Structured output** -- `model_json_schema()` feeds SDK `output_format`

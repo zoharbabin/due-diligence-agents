@@ -1,14 +1,16 @@
 # Due Diligence Agent SDK -- Executive Plan
 
-> Status: Implemented — pipeline and search command operational
+> Status: Implemented — pipeline, search, and chat commands operational
 > Package: `dd_agents` under `src/dd_agents/`
-> SDK: `claude-agent-sdk` v0.1.39+ (Python 3.12+)
+> SDK: `claude-agent-sdk` v0.1.56+ (Python 3.12+)
+>
+> **Note**: This is a historical design document. Some details (agent counts, SDK versions, architecture diagrams) reflect the original design. The current implementation has evolved — see `CLAUDE.md` for the authoritative current state.
 
 ---
 
 ## What We Are Building
 
-A Python application that performs forensic M&A due diligence on contract data rooms. It spawns 8 AI agents (Legal, Finance, Commercial, ProductTech, optional Judge, Executive Synthesis, Red Flag Scanner, Acquirer Intelligence), enforces a 35-step pipeline with 5 blocking gates (step 1 config validation is a precondition, not counted as a gate), validates outputs against Pydantic schemas, and produces a detailed cross-domain HTML report + 14-sheet Excel report with structured findings, citations, and audit trail. The reports provide granular analysis that deal teams can use as a basis for their own deliverables — board presentations, advisor memos, negotiation checklists, or integration plans. The orchestrator is Python code. Agents are workers, not decision-makers.
+A Python application that performs forensic M&A due diligence on contract data rooms. It spawns 13 AI agents (9 specialists — Legal, Finance, Commercial, ProductTech, Cybersecurity, HR, Tax, Regulatory, ESG — plus optional Judge, Executive Synthesis, Red Flag Scanner, Acquirer Intelligence), enforces a 35-step pipeline with 5 blocking gates, validates outputs against Pydantic schemas, and produces a detailed cross-domain HTML report + 14-sheet Excel report with structured findings, citations, and audit trail. The specialist set is extensible via `AgentRegistry` and config-driven via `deal-config.json`. The reports provide granular analysis that deal teams can use as a basis for their own deliverables — board presentations, advisor memos, negotiation checklists, or integration plans. The orchestrator is Python code. Agents are workers, not decision-makers.
 
 ## Core Principles
 
@@ -96,7 +98,7 @@ All 3,102 lines of domain knowledge -- extraction rules, severity taxonomy (P0-P
 All core dependencies are freely available under permissive open-source licenses (Apache 2.0, MIT, BSD). pymupdf (optional `[pdf]` extra) is AGPL-3.0 licensed.
 
 ```
-claude-agent-sdk >= 0.1.39
+claude-agent-sdk >= 0.1.56
 pydantic >= 2.0
 openpyxl >= 3.1
 networkx >= 3.0
@@ -121,7 +123,7 @@ Detailed content is distributed across 22 numbered files. Each file is self-cont
 | 03 | Project structure (`src/dd_agents/` package layout) |
 | 04 | Pydantic v2 data models (20+ schemas) |
 | 05 | 35-step orchestrator, blocking gates, state machine |
-| 06 | 8 agent definitions, prompt construction, model selection |
+| 06 | Agent definitions (13 agents, extensible via AgentRegistry), prompt construction, model selection |
 | 07 | Tools and hooks (Stop flat format, PreToolUse guards, custom MCP tools) |
 | 08 | Extraction (file discovery, markitdown fallback chain, checksum cache) |
 | 09 | Entity resolution (6-pass matcher, cache, rapidfuzz) |

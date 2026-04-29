@@ -1,5 +1,7 @@
 # 21 -- Contract Ontology, Graph-Based Reasoning, and Explainability
 
+> **Historical note**: This is a design spec. References to "Reporting Lead" describe an agent removed in v0.4.0. The specialist count grew from 4 to 9 via `AgentRegistry`. See `CLAUDE.md` for the current state.
+
 How the DD system understands contract language, maintains reasoning chains, and produces verifiable findings. This document defines the lightweight ontology for contract documents, the graph-based reasoning architecture, and the explainability framework that ensures every finding is traceable to source text.
 
 Cross-references: `01-architecture-decisions.md` (ADR-04: NetworkX), `04-data-models.md` (GovernanceEdge, Finding, Citation), `06-agents.md` (specialist focus areas, Judge protocol), `07-tools-and-hooks.md` (verify_citation hook), `11-qa-validation.md` (audit gates, numerical validation), `19-vector-graph-db-comparison.md` (NetworkX selection rationale), `20-cross-document-analysis.md` (cross-document patterns).
