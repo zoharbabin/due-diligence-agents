@@ -216,35 +216,97 @@ class TestIPOwnershipTechRisk:
 
 
 class TestDataPrivacyCompliance:
-    def test_fires_on_producttech_data_privacy(self) -> None:
+    def test_fires_on_cross_border_keyword_in_description(self) -> None:
         rule = DataPrivacyCompliance()
-        findings = [_finding(agent="producttech", category="data_privacy_risk", severity="P1")]
+        findings = [
+            _finding(
+                agent="producttech",
+                category="data_privacy_risk",
+                severity="P1",
+                description="Cross-border data transfers to EU subsidiaries",
+            )
+        ]
         triggers = rule("acme", findings)
         assert len(triggers) == 1
         assert triggers[0].target_agent == "legal"
 
-    def test_fires_on_gdpr(self) -> None:
+    def test_fires_on_gdpr_category(self) -> None:
         rule = DataPrivacyCompliance()
         findings = [_finding(agent="producttech", category="gdpr_compliance", severity="P2")]
         assert len(rule("acme", findings)) == 1
+
+    def test_fires_on_cross_border_category(self) -> None:
+        rule = DataPrivacyCompliance()
+        findings = [_finding(agent="producttech", category="cross_border_data_transfer", severity="P1")]
+        assert len(rule("acme", findings)) == 1
+
+    def test_does_not_fire_without_cross_border_signal(self) -> None:
+        rule = DataPrivacyCompliance()
+        findings = [
+            _finding(agent="producttech", category="data_privacy_risk", severity="P1", description="Local data")
+        ]
+        assert rule("acme", findings) == []
 
     def test_does_not_fire_on_wrong_agent(self) -> None:
         rule = DataPrivacyCompliance()
         findings = [_finding(agent="legal", category="data_privacy", severity="P1")]
         assert rule("acme", findings) == []
 
+    def test_fires_on_sccs_keyword(self) -> None:
+        rule = DataPrivacyCompliance()
+        findings = [
+            _finding(
+                agent="producttech",
+                category="data_privacy_risk",
+                severity="P1",
+                description="No SCCs in place for data transfers",
+            )
+        ]
+        assert len(rule("acme", findings)) == 1
+
 
 class TestSLAFinancialImpact:
-    def test_fires_on_commercial_sla(self) -> None:
+    def test_fires_on_sla_with_credit_keyword(self) -> None:
         rule = SLAFinancialImpact()
-        findings = [_finding(agent="commercial", category="sla_risk_high", severity="P1")]
+        findings = [
+            _finding(
+                agent="commercial",
+                category="sla_risk_high",
+                severity="P1",
+                description="Service credit liability exceeds 15% of monthly fees",
+            )
+        ]
         triggers = rule("acme", findings)
         assert len(triggers) == 1
         assert triggers[0].target_agent == "finance"
 
-    def test_fires_on_service_credit(self) -> None:
+    def test_fires_on_service_credit_category(self) -> None:
         rule = SLAFinancialImpact()
         findings = [_finding(agent="commercial", category="service_credit_exposure", severity="P2")]
+        assert len(rule("acme", findings)) == 1
+
+    def test_does_not_fire_without_credit_signal(self) -> None:
+        rule = SLAFinancialImpact()
+        findings = [
+            _finding(
+                agent="commercial",
+                category="sla_risk_high",
+                severity="P1",
+                description="SLA uptime target is 99.5%",
+            )
+        ]
+        assert rule("acme", findings) == []
+
+    def test_fires_on_penalty_keyword(self) -> None:
+        rule = SLAFinancialImpact()
+        findings = [
+            _finding(
+                agent="commercial",
+                category="sla_breach",
+                severity="P1",
+                description="Penalty clause for missed SLA targets",
+            )
+        ]
         assert len(rule("acme", findings)) == 1
 
 

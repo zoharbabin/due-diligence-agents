@@ -264,6 +264,10 @@ class CrossDomainConfig(BaseModel):
     disabled_rules: list[str] = Field(
         default_factory=list, description="Trigger rule names to disable (e.g. 'sla_financial_impact')"
     )
+    custom_rules: list[str] = Field(
+        default_factory=list,
+        description="Custom trigger rule entry-point names to load (e.g. 'my_package.rules:my_rule')",
+    )
 
 
 class ForensicDDConfig(BaseModel):

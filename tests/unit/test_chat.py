@@ -399,6 +399,47 @@ class TestChatContextBuilder:
         # The ontology only includes edges where both domains are active
         assert "Cross-Domain Dependencies" not in prompt
 
+    def test_format_finding_oneliner_cross_domain_tag(self, mock_index: Any) -> None:
+        from dd_agents.chat.context import ChatContextBuilder
+
+        builder = ChatContextBuilder(finding_index=mock_index, active_agents=["legal"])
+        finding = {
+            "agent": "legal",
+            "_subject_safe_name": "acme",
+            "title": "Contract enforceability",
+            "citations": [],
+            "metadata": {"cross_domain": True, "cross_domain_trigger": "revenue_recognition_enforceability"},
+        }
+        line = builder._format_finding_oneliner(finding)
+        assert "[cross-domain: revenue_recognition_enforceability]" in line
+
+    def test_format_finding_oneliner_cross_domain_no_trigger_type(self, mock_index: Any) -> None:
+        from dd_agents.chat.context import ChatContextBuilder
+
+        builder = ChatContextBuilder(finding_index=mock_index, active_agents=["legal"])
+        finding = {
+            "agent": "legal",
+            "_subject_safe_name": "acme",
+            "title": "Contract enforceability",
+            "citations": [],
+            "metadata": {"cross_domain": True},
+        }
+        line = builder._format_finding_oneliner(finding)
+        assert "[cross-domain review]" in line
+
+    def test_format_finding_oneliner_no_cross_domain_tag(self, mock_index: Any) -> None:
+        from dd_agents.chat.context import ChatContextBuilder
+
+        builder = ChatContextBuilder(finding_index=mock_index, active_agents=["legal"])
+        finding = {
+            "agent": "legal",
+            "_subject_safe_name": "acme",
+            "title": "Standard finding",
+            "citations": [],
+        }
+        line = builder._format_finding_oneliner(finding)
+        assert "cross-domain" not in line
+
 
 # ===================================================================
 # ChatEngine

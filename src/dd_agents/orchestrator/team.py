@@ -202,6 +202,7 @@ class AgentTeam:
         *,
         prompt: str | None = None,
         prompts: list[str] | None = None,
+        run_suffix: str = "",
     ) -> dict[str, Any]:
         """Run a single specialist agent via the agent runner SDK integration.
 
@@ -219,6 +220,10 @@ class AgentTeam:
             Optional list of pre-built prompts (one per batch).  Takes
             precedence over *prompt*.  Used by respawn to pass multiple
             batched prompts for missing subjects.
+        run_suffix:
+            When non-empty, appended to the agent name for output directory
+            naming (e.g. ``"_pass2"`` → ``findings/legal_pass2/``).  Used
+            by cross-domain targeted respawn.
         """
         from dd_agents.agents.prompt_builder import AgentType
         from dd_agents.agents.specialists import SPECIALIST_CLASSES

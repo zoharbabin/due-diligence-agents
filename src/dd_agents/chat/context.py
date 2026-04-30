@@ -387,7 +387,13 @@ class ChatContextBuilder:
                     if page:
                         source += f" p{page}"
                     source += ")"
-        return f"[{domain}] {subject}: {title}{source}"
+        # Cross-domain finding tag (spec §6.2)
+        meta = f.get("metadata", {})
+        cross_domain_tag = ""
+        if isinstance(meta, dict) and meta.get("cross_domain"):
+            trigger_type = meta.get("cross_domain_trigger", "")
+            cross_domain_tag = f" [cross-domain: {trigger_type}]" if trigger_type else " [cross-domain review]"
+        return f"[{domain}] {subject}: {title}{source}{cross_domain_tag}"
 
     def _load_deal_context(self) -> str:
         """Load deal context from run metadata."""

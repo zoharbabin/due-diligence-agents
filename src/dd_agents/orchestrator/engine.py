@@ -2215,7 +2215,8 @@ class PipelineEngine:
         finding context and specific verification instructions, then spawns
         the target agent against only the cited contracts.
 
-        Skipped when no triggers fired in step 18.
+        Skipped when no triggers fired in step 18.  On resume, agents already
+        listed in ``state.pass2_agents`` are skipped to avoid re-running them.
         """
         from dd_agents.orchestrator.triggers import CrossDomainTrigger
 
@@ -2245,16 +2246,25 @@ class PipelineEngine:
         for t in triggers:
             by_agent.setdefault(t.target_agent, []).append(t)
 
+        # Build source-finding lookup for prompt enrichment (spec §2.2)
+        source_findings_by_id = self._build_source_findings_lookup(state)
+
+        already_completed = set(state.pass2_agents)
+
         team = self._ensure_team(state)
         findings_dir = state.run_dir / "findings"
         audit_prompts_dir = state.run_dir / "audit" / "cross_domain_prompts"
         audit_prompts_dir.mkdir(parents=True, exist_ok=True)
 
         for agent_name, agent_triggers in by_agent.items():
+            if agent_name in already_completed:
+                logger.info("Skipping pass-2 agent %s -- already completed (resume)", agent_name)
+                continue
+
             pass2_dir = findings_dir / f"{agent_name}_pass2"
             pass2_dir.mkdir(parents=True, exist_ok=True)
 
-            prompt = self._build_targeted_prompt(agent_name, agent_triggers)
+            prompt = self._build_targeted_prompt(agent_name, agent_triggers, source_findings_by_id)
             prompt_path = audit_prompts_dir / f"{agent_name}_pass2_prompt.txt"
             prompt_path.write_text(prompt, encoding="utf-8")
 
@@ -2262,6 +2272,7 @@ class PipelineEngine:
                 agent_name,
                 {},
                 prompt=prompt,
+                run_suffix="_pass2",
             )
 
             state.agent_results[f"{agent_name}_pass2"] = result
@@ -2289,13 +2300,44 @@ class PipelineEngine:
 
         return state
 
+    def _build_source_findings_lookup(self, state: PipelineState) -> dict[str, dict[str, Any]]:
+        """Build a finding_id → finding dict lookup from pass-1 findings."""
+        lookup: dict[str, dict[str, Any]] = {}
+        findings_dir = state.run_dir / "findings"
+        for agent_name in self._active_agents:
+            agent_dir = findings_dir / agent_name
+            if not agent_dir.is_dir():
+                continue
+            for json_file in sorted(agent_dir.glob("*.json")):
+                if json_file.name == "coverage_manifest.json":
+                    continue
+                try:
+                    data = json.loads(json_file.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    continue
+                for finding in data.get("findings", []):
+                    fid = finding.get("finding_id", finding.get("id", ""))
+                    if fid:
+                        lookup[str(fid)] = finding
+        return lookup
+
     def _build_targeted_prompt(
         self,
         agent_name: str,
         triggers: list[Any],
+        source_findings_by_id: dict[str, dict[str, Any]] | None = None,
     ) -> str:
-        """Build a targeted pass-2 prompt from cross-domain triggers."""
+        """Build a targeted pass-2 prompt from cross-domain triggers.
+
+        Parameters
+        ----------
+        source_findings_by_id:
+            Lookup of finding_id → finding dict from pass-1.  Used to include
+            source finding detail (title, description, citations) per spec §2.2.
+        """
         from dd_agents.orchestrator.triggers import sanitize_for_prompt
+
+        findings_lookup = source_findings_by_id or {}
 
         parts: list[str] = [
             f"You are the {agent_name} specialist performing a TARGETED follow-up review.",
@@ -2318,6 +2360,23 @@ class PipelineEngine:
             parts.append(f"- Source agent: {source}")
             parts.append(f"- Priority: {priority}")
             parts.append(f"- Task: {instructions}")
+
+            source_ids = trigger_dict.get("source_finding_ids", [])
+            for fid in source_ids:
+                sf = findings_lookup.get(str(fid))
+                if sf:
+                    title = sanitize_for_prompt(str(sf.get("title", "")))
+                    sev = sf.get("severity", "?")
+                    cat = sf.get("category", "?")
+                    desc = sanitize_for_prompt(str(sf.get("description", ""))[:500])
+                    parts.append(f"- Source finding: [{sev}] {title}")
+                    parts.append(f"  Category: {cat}")
+                    parts.append(f"  Description: {desc}")
+                    cites = sf.get("citations", [])
+                    if cites and isinstance(cites, list):
+                        quote = str(cites[0].get("exact_quote", ""))[:200]
+                        if quote:
+                            parts.append(f'  Citation: "{sanitize_for_prompt(quote)}"')
             parts.append("")
 
         unique_contracts = list(dict.fromkeys(all_contracts))
@@ -2329,6 +2388,7 @@ class PipelineEngine:
             parts.append("")
 
         parts.append("## Output Requirements")
+        parts.append(f"- Write findings to: findings/{agent_name}_pass2/")
         parts.append('- Tag all findings with metadata: {"cross_domain": true}')
         parts.append("- Reference the source finding in your analysis")
         parts.append("- Use the same finding/gap JSON schema as your primary analysis")

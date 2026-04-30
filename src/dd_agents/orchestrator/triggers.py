@@ -319,6 +319,10 @@ class IPOwnershipTechRisk(_RuleBase):
         ]
 
 
+_CROSS_BORDER_KEYWORDS = ("cross_border", "cross-border", "international", "transborder", "sccs", "adequacy")
+_SERVICE_CREDIT_KEYWORDS = ("service_credit", "service credit", "credit", "penalty", "rebate", "10%", "15%", "20%")
+
+
 class DataPrivacyCompliance(_RuleBase):
     """ProductTech data_privacy → Legal DPA compliance verification."""
 
@@ -330,6 +334,13 @@ class DataPrivacyCompliance(_RuleBase):
             for f in findings
             if _get_agent(f) == "producttech"
             and _category_matches(_get_category(f), ("data_privacy", "security_posture", "gdpr", "cross_border"))
+            and (
+                _category_matches(_get_category(f), ("cross_border", "gdpr"))
+                or any(
+                    kw in (str(f.get("title", "")) + str(f.get("description", ""))).lower()
+                    for kw in _CROSS_BORDER_KEYWORDS
+                )
+            )
         ]
         if not hits:
             return []
@@ -362,6 +373,13 @@ class SLAFinancialImpact(_RuleBase):
             for f in findings
             if _get_agent(f) == "commercial"
             and _category_matches(_get_category(f), ("sla_risk", "sla_breach", "service_level", "service_credit"))
+            and (
+                _category_matches(_get_category(f), ("service_credit",))
+                or any(
+                    kw in (str(f.get("title", "")) + str(f.get("description", ""))).lower()
+                    for kw in _SERVICE_CREDIT_KEYWORDS
+                )
+            )
         ]
         if not hits:
             return []

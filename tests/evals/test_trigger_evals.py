@@ -203,10 +203,21 @@ class TestIPOwnershipTechRisk:
 
 
 class TestDataPrivacyCompliance:
-    """ProductTech data_privacy → Legal DPA compliance verification."""
+    """ProductTech data_privacy → Legal DPA compliance verification.
 
-    def test_fires_on_data_privacy(self) -> None:
-        findings = [_make_finding(agent="producttech", category="data_privacy", severity="P2")]
+    Rule requires cross-border signal: either a cross_border/gdpr category
+    or cross-border keywords in title/description.
+    """
+
+    def test_fires_on_data_privacy_with_cross_border_description(self) -> None:
+        findings = [
+            _make_finding(
+                agent="producttech",
+                category="data_privacy",
+                severity="P2",
+                description="Cross-border data transfers to EU subsidiaries",
+            )
+        ]
         triggers = DataPrivacyCompliance()("company_a", findings)
         assert len(triggers) == 1
         assert triggers[0].target_agent == "legal"
@@ -217,8 +228,13 @@ class TestDataPrivacyCompliance:
         triggers = DataPrivacyCompliance()("company_a", findings)
         assert len(triggers) == 1
 
-    def test_fires_on_security_posture(self) -> None:
+    def test_does_not_fire_without_cross_border_signal(self) -> None:
         findings = [_make_finding(agent="producttech", category="security_posture", severity="P2")]
+        triggers = DataPrivacyCompliance()("company_a", findings)
+        assert len(triggers) == 0
+
+    def test_fires_on_cross_border_category(self) -> None:
+        findings = [_make_finding(agent="producttech", category="cross_border_data_transfer", severity="P2")]
         triggers = DataPrivacyCompliance()("company_a", findings)
         assert len(triggers) == 1
 
@@ -229,10 +245,21 @@ class TestDataPrivacyCompliance:
 
 
 class TestSLAFinancialImpact:
-    """Commercial SLA risk → Finance service credit quantification."""
+    """Commercial SLA risk → Finance service credit quantification.
 
-    def test_fires_on_sla_risk(self) -> None:
-        findings = [_make_finding(agent="commercial", category="sla_risk", severity="P1")]
+    Rule requires service credit signal: either a service_credit category
+    or credit/penalty keywords in title/description.
+    """
+
+    def test_fires_on_sla_with_credit_keyword(self) -> None:
+        findings = [
+            _make_finding(
+                agent="commercial",
+                category="sla_risk",
+                severity="P1",
+                description="Service credit liability exceeds 15% of fees",
+            )
+        ]
         triggers = SLAFinancialImpact()("company_a", findings)
         assert len(triggers) == 1
         assert triggers[0].target_agent == "finance"
@@ -463,40 +490,33 @@ class TestTriggerMetadata:
         assert "data_room/SubjectA/revenue_schedule.pdf" in triggers[0].contracts
 
     def test_instructions_non_empty(self) -> None:
+        rule_inputs: dict[str, tuple[str, str, str, str]] = {
+            "revenue_recognition_enforceability": ("finance", "revenue_recognition", "Revenue risk", "Revenue desc"),
+            "coc_financial_impact": ("legal", "change_of_control", "CoC risk", "Change of control desc"),
+            "termination_revenue_exposure": ("legal", "termination", "TfC clause", "Termination for convenience"),
+            "ip_ownership_tech_risk": ("legal", "ip_ownership", "IP risk", "IP ownership dispute"),
+            "data_privacy_compliance": (
+                "producttech",
+                "data_privacy",
+                "Cross-border data",
+                "International data transfers via SCCs",
+            ),
+            "sla_financial_impact": (
+                "commercial",
+                "sla_risk",
+                "SLA penalty risk",
+                "Service credit liability exceeds 15% of monthly fees",
+            ),
+            "pricing_commercial_validation": ("finance", "pricing_risk", "Pricing anomaly", "Pricing discrepancy"),
+        }
         for rule in BUILTIN_RULES:
-            agent = "finance" if "revenue" in rule.name or "pricing" in rule.name else "legal"
-            if "privacy" in rule.name:
-                agent = "producttech"
-            elif "sla" in rule.name:
-                agent = "commercial"
-            cat = rule.name.split("_")[0] if "_" in rule.name else "change_of_control"
-            if "revenue" in rule.name:
-                cat = "revenue_recognition"
-            elif "coc" in rule.name:
-                cat = "change_of_control"
-            elif "termination" in rule.name:
-                cat = "termination"
-            elif "ip" in rule.name:
-                cat = "ip_ownership"
-            elif "privacy" in rule.name:
-                cat = "data_privacy"
-            elif "sla" in rule.name:
-                cat = "sla_risk"
-            elif "pricing" in rule.name:
-                cat = "pricing_risk"
-
-            findings = [
-                _make_finding(
-                    agent=agent,
-                    category=cat,
-                    severity="P0",
-                    title="Termination for convenience right",
-                    description="Client may terminate for convenience with notice.",
-                )
-            ]
+            inputs = rule_inputs.get(rule.name)
+            assert inputs is not None, f"No test input defined for rule {rule.name}"
+            agent, cat, title, description = inputs
+            findings = [_make_finding(agent=agent, category=cat, severity="P0", title=title, description=description)]
             triggers = rule("subject", findings)
-            if triggers:
-                assert len(triggers[0].instructions) > 50, f"Rule {rule.name} has short instructions"
+            assert len(triggers) >= 1, f"Rule {rule.name} did not fire on its curated input"
+            assert len(triggers[0].instructions) > 50, f"Rule {rule.name} has short instructions"
 
 
 # ---------------------------------------------------------------------------
@@ -565,15 +585,29 @@ class TestOntologyTriggerAlignment:
                     )
                 ]
             elif "privacy" in rule.name:
-                findings_for_probe = [_make_finding(agent="producttech", category="data_privacy", severity="P0")]
+                findings_for_probe = [
+                    _make_finding(
+                        agent="producttech",
+                        category="data_privacy",
+                        severity="P0",
+                        description="International cross-border data transfers",
+                    )
+                ]
             elif "sla" in rule.name:
-                findings_for_probe = [_make_finding(agent="commercial", category="sla_risk", severity="P0")]
+                findings_for_probe = [
+                    _make_finding(
+                        agent="commercial",
+                        category="sla_risk",
+                        severity="P0",
+                        description="Service credit liability exceeds 15%",
+                    )
+                ]
             elif "pricing" in rule.name:
                 findings_for_probe = [_make_finding(agent="finance", category="pricing_risk", severity="P0")]
 
             triggers = rule("_probe", findings_for_probe)
-            if triggers:
-                rule_source_targets.add((triggers[0].source_agent, triggers[0].target_agent))
+            assert len(triggers) >= 1, f"Rule {rule.name} should fire on its probe input"
+            rule_source_targets.add((triggers[0].source_agent, triggers[0].target_agent))
 
         ontology_pairs = {(d.source_domain, d.target_domain) for d in DOMAIN_DEPENDENCIES}
 
@@ -612,7 +646,13 @@ class TestPerSubjectCap:
                 for i in range(5)
             ]
             + [
-                _make_finding(agent="commercial", category="sla_risk", severity="P0", finding_id=f"k-{i}")
+                _make_finding(
+                    agent="commercial",
+                    category="sla_risk",
+                    severity="P0",
+                    finding_id=f"k-{i}",
+                    description="Service credit penalty exceeds 15%",
+                )
                 for i in range(5)
             ]
             + [
@@ -627,7 +667,13 @@ class TestPerSubjectCap:
                 for i in range(5)
             ]
             + [
-                _make_finding(agent="producttech", category="data_privacy", severity="P0", finding_id=f"m-{i}")
+                _make_finding(
+                    agent="producttech",
+                    category="data_privacy",
+                    severity="P0",
+                    finding_id=f"m-{i}",
+                    description="Cross-border data transfers to EU",
+                )
                 for i in range(5)
             ],
         }
