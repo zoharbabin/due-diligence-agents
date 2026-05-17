@@ -8,6 +8,27 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 > The first public release was **v0.4.0** (2026-03-30). Tagged releases on PyPI and
 > GitHub begin at **v0.4.1**.
 
+## [1.6.0] — 2026-05-16
+
+### Added
+
+- **Document Export in Chat** — New `run_export_script` MCP tool enables the chat agent to generate sophisticated Excel workbooks (charts, conditional formatting, formulas, multi-sheet), Word documents (styled paragraphs, tables, headers), CSV, and other file formats. Scripts run in a sandboxed subprocess with openpyxl and python-docx pre-imported. Output restricted to `_dd/exports/`.
+- **`--max-turns` CLI flag** — Override the per-question turn limit in chat mode (max 500).
+- **`--no-limit` CLI flag** — Remove per-turn caps for complex chat tasks; session cost is the only brake.
+
+### Fixed
+
+- **MCP document tools on long paths** — `search_in_file`, `get_page_content`, and `verify_citation` returned empty results when the data room lived under a long path (e.g. OneDrive/CloudStorage). Root cause: extraction pipeline writes text files using the absolute path (triggering SHA-256 hash truncation at 200 bytes), but chat tools looked up files using relative paths (no hash). New shared `resolve_text_path()` tries multiple path forms with glob fallback.
+- **Chat partial result recovery** — When the SDK connection drops after substantial work (10+ messages), the engine now returns collected text with a warning instead of discarding it.
+- **Cross-domain trigger conjunctive conditions** — DataPrivacyCompliance now requires a cross-border signal; SLAFinancialImpact requires a service credit signal (Issue #189 hardening).
+- **Targeted respawn source context** — Pass-2 agent prompts now include source finding title, severity, category, and citations.
+- **Pass-2 resume** — Already-completed pass-2 agents are skipped on pipeline resume.
+
+### Improved
+
+- **Chat defaults raised** — Session cost $2→$10, per-turn cost $0.50→$2.00, max turns 50→200.
+- **Chat system prompt** — Includes instructions for document export and cross-domain dependency synthesis.
+
 ## [1.5.0] — 2026-04-29
 
 ### Added
