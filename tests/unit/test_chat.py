@@ -659,7 +659,7 @@ class TestToolServerChat:
         from dd_agents.tools.server import get_tools_for_agent
 
         tools = get_tools_for_agent("chat")
-        assert len(tools) == 13
+        assert len(tools) == 14
 
     def test_chat_tools_include_memory(self) -> None:
         from dd_agents.tools.server import get_tools_for_agent

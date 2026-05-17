@@ -391,6 +391,7 @@ CHAT_CUSTOM_TOOLS: list[str] = [
     "flag_finding",
     "list_corrections",
     "extract_document",
+    "run_export_script",
 ]
 
 

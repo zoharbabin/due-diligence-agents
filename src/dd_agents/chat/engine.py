@@ -129,6 +129,7 @@ CHAT_MCP_TOOL_NAMES: list[str] = [
     "flag_finding",
     "list_corrections",
     "extract_document",
+    "run_export_script",
 ]
 
 # Cost estimation constants

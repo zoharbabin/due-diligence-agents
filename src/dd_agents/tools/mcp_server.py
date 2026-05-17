@@ -11,12 +11,9 @@ via closures bound at server-creation time.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from pathlib import Path
-
 from datetime import UTC
+from pathlib import Path
+from typing import Any
 
 from dd_agents.tools.server import get_tools_for_agent
 
@@ -761,6 +758,52 @@ def build_mcp_server(
             )
 
         tools.append(extract_document_tool)
+
+    # ------------------------------------------------------------------
+    # Export script tool (only for agent_type="chat")
+    # ------------------------------------------------------------------
+
+    if "run_export_script" in allowed_tool_names:
+        from dd_agents.tools.run_export_script import run_export_script as _run_export
+
+        # Exports go to a dedicated subdirectory under the data room
+        _res_output_dir = str(Path(data_room_path) / "_dd" / "exports") if data_room_path else None
+
+        if _res_output_dir is not None:
+            _res_bound_output_dir = _res_output_dir
+
+            @tool(
+                "run_export_script",
+                "Execute a Python script to generate Excel (.xlsx), Word (.docx), CSV, "
+                "or other document files. The script runs in a sandboxed subprocess with "
+                "openpyxl, python-docx, and standard libraries pre-imported. "
+                "Write all output files to the OUTPUT_DIR path (a Path object, already set). "
+                "Use this for any document generation the user requests — formatted workbooks, "
+                "styled reports, charts, pivot tables, mail-merge documents, etc.",
+                {
+                    "type": "object",
+                    "properties": {
+                        "code": {
+                            "type": "string",
+                            "description": (
+                                "Python code to execute. OUTPUT_DIR (Path) is pre-set to the "
+                                "exports directory. Common libraries are pre-imported: "
+                                "openpyxl (with styles, charts, formatting), python-docx "
+                                "(with shared, enum), os, json, csv, re, math, datetime, "
+                                "collections, itertools, Decimal. Write files to OUTPUT_DIR."
+                            ),
+                        },
+                    },
+                    "required": ["code"],
+                },
+            )
+            async def run_export_script_tool(input_data: dict[str, Any]) -> dict[str, Any]:
+                return _run_export(
+                    code=input_data["code"],
+                    output_dir=_res_bound_output_dir,
+                )
+
+            tools.append(run_export_script_tool)
 
     if not tools:
         logger.debug("No tools registered for agent_type=%r", agent_type)

@@ -343,7 +343,7 @@ dd-agents chat [OPTIONS]
 | `--no-tools` | Flag | Off | Disable document tools (findings-only mode) |
 | `--verbose / -v` | Flag | Off | Enable verbose logging |
 
-Chat mode provides MCP document tools (citation verification, page reading, entity resolution) and persistent memory. The model can save key insights during conversation and recall them in future sessions.
+Chat mode provides MCP document tools (citation verification, page reading, entity resolution), persistent memory, and document export. The model can save key insights during conversation, recall them in future sessions, and generate Excel workbooks, Word documents, and CSV files on request using the `run_export_script` tool. Exported files are saved to `_dd/exports/`.
 
 **In-session commands:**
 - `cost` — show current session cost
