@@ -34,6 +34,7 @@ dd-agents run CONFIG_PATH [OPTIONS]
 |--------|------|---------|-------------|
 | `--mode` | `full\|incremental` | from config | Override execution mode |
 | `--resume-from` | int (0-35) | 0 (beginning) | Resume from a specific step |
+| `--no-narrative` | flag | off | Skip LLM narrative generation (deterministic report only) |
 | `--dry-run` | flag | off | Print step plan without executing |
 | `--quick-scan` | flag | off | Run steps 1-13 + Red Flag Scanner only |
 | `--model-profile` | `economy\|standard\|premium` | from config | Model quality: `economy` (fastest, cheapest), `standard` (balanced), `premium` (most accurate, most expensive) |
@@ -622,3 +623,4 @@ dd-agents --version
 - [Deal Configuration](deal-configuration.md) -- Config file structure
 - [Running the Pipeline](running-pipeline.md) -- Pipeline execution details
 - [Reading the Report](reading-report.md) -- Report navigation guide
+- [Troubleshooting](troubleshooting.md) -- Common errors, exit codes, recovery steps

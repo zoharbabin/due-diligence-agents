@@ -1,8 +1,8 @@
+> **Historical design spec** — written during the build phase. The code in `src/dd_agents/` is the authoritative implementation. Key divergences: 38 steps (not 35), 9 specialists + 4 synthesis agents (not 4+2), no ReportingLead agent (replaced by deterministic `validation/pre_merge.py` in v0.4.0). Retained for design rationale only — see `CLAUDE.md` for current state.
+
 # 11 -- QA and Validation (Audit Gates, 31 DoD Checks, Numerical Validation)
 
 All validation is fail-closed. The pre-merge validation runs every QA check before finalizing the report. Any failure blocks the report. Numbers are validated by counting, not by LLM reasoning.
-
-> **Historical note**: This document references the ReportingLead agent which was removed in v0.4.0, and hardcodes 4-agent lists that are now 9 specialists via `AgentRegistry`. Step 23 is now deterministic pre-merge validation (`validation/pre_merge.py`). Validators accept an `active_agents` parameter defaulting to `AgentRegistry.all_specialist_names()`. See `CLAUDE.md`.
 
 ---
 

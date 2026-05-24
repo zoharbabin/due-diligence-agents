@@ -1,8 +1,9 @@
+> **Historical design spec** — written during the build phase. The code in `src/dd_agents/` is the authoritative implementation. Key divergences: 38 steps (not 35), 9 specialists + 4 synthesis agents (not 4+2), no ReportingLead agent (replaced by deterministic `validation/pre_merge.py` in v0.4.0). Retained for design rationale only — see `CLAUDE.md` for current state.
+
 # 05 — Orchestrator (Pipeline Engine)
 
 > **Source of truth**: SKILL.md sections 0c, 0e, 1-9 (35 execution steps, persistence, incremental mode, error recovery, QA, Definition of Done)
 > **SDK reference**: `Claude_Agent_SDK_Complete_Reference.md` sections 2, 4, 5
-> **Historical note**: This document references the ReportingLead agent which was removed in v0.4.0. Step 23 is now deterministic pre-merge validation (`validation/pre_merge.py`). The specialist count grew from 4 to 9 via `AgentRegistry`; `PipelineState` now includes `active_agents` for checkpoint/resume agent-set validation. See `CLAUDE.md` for current architecture.
 
 ## Overview
 

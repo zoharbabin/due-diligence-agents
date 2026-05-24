@@ -1,6 +1,6 @@
-# 03 -- Project Structure
+> **Historical design spec** — written during the build phase. The code in `src/dd_agents/` is the authoritative implementation. Key divergences: 38 steps (not 35), 9 specialists + 4 synthesis agents (not 4+2), no ReportingLead agent (replaced by deterministic `validation/pre_merge.py` in v0.4.0). Retained for design rationale only — see `CLAUDE.md` for current state.
 
-> **Historical note**: This document references `agents/reporting_lead.py` which was removed in v0.4.0. Step 23 is now deterministic pre-merge validation (`validation/pre_merge.py`). See `06-agents.md` §11.
+# 03 -- Project Structure
 
 ## Repository Layout
 
@@ -11,7 +11,6 @@ due-diligence-agents/
 ├── CLAUDE.md                         # Claude Code instructions
 ├── CONTRIBUTING.md                   # Development setup, code style, PR process
 ├── CHANGELOG.md                      # Version history
-├── docs/history/                     # Archived planning docs (build complete)
 ├── Dockerfile                        # Multi-stage Docker build
 ├── .github/workflows/
 │   ├── ci.yml                        # CI pipeline (lint, types, tests, build)

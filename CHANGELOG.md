@@ -8,6 +8,28 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 > The first public release was **v0.4.0** (2026-03-30). Tagged releases on PyPI and
 > GitHub begin at **v0.4.1**.
 
+## [1.7.0] — 2026-05-24
+
+### Added
+
+- **HTML Report Quality Overhaul** (Epic #201) — Transforms the HTML report from a linear data dump into a decision support tool with six major capabilities:
+  - **Deterministic Go/No-Go Verdict** (#195) — Rule-based verdict rubric (NO-GO / CONDITIONAL / PROCEED WITH CONDITIONS / PROCEED) with contributing factors and executive takeaways. Fully deterministic: identical inputs always produce identical output.
+  - **Client-Side Filter Bar** (#196) — Sticky severity + domain chip buttons that toggle finding visibility. URL hash state (`#filter:sev=P0&dom=legal`) for shareable filtered views. Progressive enhancement — report readable without JS.
+  - **3-Layer Drill-Down** (#197) — Domain summary cards with RAG status, top categories, and priority findings. Dashboard layer ranks top-5 material findings by composite priority score.
+  - **Cross-Domain Synthesis Rewrite** (#198) — Compound severity escalation rules (2×P2→P1, P1+P2→P0, 3+domains→P1 min). Domain-pair narrative templates. Interaction matrix visualization.
+  - **Inline SVG Charts** (#199) — Donut chart (severity distribution), heatmap grid (domain risk), waterfall chart (financial impact), timeline chart (critical dates). All print-safe with `viewBox`, WCAG AA accessible (`role="img"`, `aria-label`, `<title>`, `<desc>`), colorblind-safe (▲/●/◆/○ indicators).
+  - **Actionable Recommendations** (#200) — 99 domain-specific recommendation templates (9 domains × 11 patterns). Keyword-matched to findings with domain-first scoring and same-domain tie-breaking. Timeline-grouped action items dashboard.
+
+### Improved
+
+- **Colorblind accessibility** — Severity badges include text indicators (P0:▲, P1:●, P2:◆, P3:○) alongside color.
+- **Print CSS** — New card classes (`cross-domain-card`, `priority-finding`, `domain-card`) use `break-inside: avoid`.
+- **XSS hardening** — SVG chart titles escaped; color parameters validated against regex allowlist; all renderer user strings HTML-escaped.
+- **Sidebar navigation** — Added Domain Overview and Action Items links to the nav bar.
+- **Type safety** — Removed all `type: ignore` comments from cross-domain renderer via proper tuple typing.
+- **Documentation overhaul** — All user guides audited and corrected for v1.6 accuracy. Deleted 4 stale build-phase docs (migration, file-manifest, implementation-order, structured-output-plan). Added deprecation banners to 12 historical design specs. Fixed step counts, severity references, CLI commands, and config descriptions throughout.
+- **Marketing assets** — New 1080p VHS terminal recording (`demo-v1.6.tape`) showcasing real CLI output. Troubleshooting guide added to user documentation.
+
 ## [1.6.0] — 2026-05-16
 
 ### Added
@@ -239,8 +261,6 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - **ReportingLead removed** from `06-agents.md` — replaced with deterministic merge documentation reflecting v0.4.0 architecture.
 - CLI reference updated with knowledge commands (`log`, `annotate`, `lineage`, `health`) and `--no-knowledge`/`--no-file` flags.
 - Inline docstrings updated for qa_audit (18 checks), engine (31 DoD), numerical_audit (6 layers).
-
-## [Unreleased]
 
 ## [0.5.0] - 2026-04-05
 

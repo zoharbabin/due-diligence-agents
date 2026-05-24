@@ -147,6 +147,13 @@ def main() -> None:
     help="Skip knowledge compilation after pipeline run.",
 )
 @click.option(
+    "--no-narrative",
+    "no_narrative",
+    is_flag=True,
+    default=False,
+    help="Skip LLM narrative generation (use deterministic report content only).",
+)
+@click.option(
     "--model-profile",
     "model_profile",
     type=click.Choice(["economy", "standard", "premium"], case_sensitive=False),
@@ -167,6 +174,7 @@ def run(
     dry_run: bool,
     quick_scan: bool,
     no_knowledge: bool,
+    no_narrative: bool,
     model_profile: str | None,
     model_overrides: tuple[str, ...],
 ) -> None:
@@ -289,6 +297,8 @@ def run(
         run_options["quick_scan"] = True
     if no_knowledge:
         run_options["no_knowledge"] = True
+    if no_narrative:
+        run_options["no_narrative"] = True
 
     console.print()
     console.print(

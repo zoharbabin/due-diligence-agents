@@ -333,8 +333,8 @@ class TestExecutiveSummary:
         # Executive summary section should exist
         assert "id='sec-executive'" in content or "Executive Summary" in content
 
-        # Single P0 → High → Proceed with Caution (softened thresholds, Issue #113)
-        assert "Proceed with Caution" in content
+        # Single P0 → deterministic verdict: NO-GO (Issue #195)
+        assert "NO-GO" in content
 
     def test_executive_summary_heatmap(self, tmp_path: Path) -> None:
         """Executive summary renders a domain x severity data visualization."""
@@ -762,7 +762,7 @@ class TestExecutiveSummaryExtended:
     """Extended tests for all Go/No-Go signal mappings."""
 
     def test_go_no_go_critical(self, tmp_path: Path) -> None:
-        """Critical risk (3+ P0) shows No-Go."""
+        """Critical risk (3+ P0) shows NO-GO (deterministic verdict, Issue #195)."""
         merged: dict[str, Any] = {
             "c": {
                 "subject": "C",
@@ -773,42 +773,41 @@ class TestExecutiveSummaryExtended:
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
         gen.generate(merged, out)
-        assert "No-Go" in out.read_text(encoding="utf-8")
+        assert "NO-GO" in out.read_text(encoding="utf-8")
 
-    def test_go_no_go_single_p0_proceed_with_caution(self, tmp_path: Path) -> None:
-        """Single P0 (softened) shows Proceed with Caution, not No-Go."""
+    def test_go_no_go_single_p0(self, tmp_path: Path) -> None:
+        """Single P0 → NO-GO under deterministic verdict (Issue #195)."""
         merged: dict[str, Any] = {"c": {"subject": "C", "findings": [_make_finding(severity="P0")], "gaps": []}}
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
         gen.generate(merged, out)
-        assert "Proceed with Caution" in out.read_text(encoding="utf-8")
+        assert "NO-GO" in out.read_text(encoding="utf-8")
 
     def test_go_no_go_high(self, tmp_path: Path) -> None:
-        """High risk shows Proceed with Caution."""
+        """3+ P1 findings shows CONDITIONAL (deterministic verdict, Issue #195)."""
         findings = [_make_finding(severity="P1") for _ in range(3)]
         merged: dict[str, Any] = {"c": {"subject": "C", "findings": findings, "gaps": []}}
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
         gen.generate(merged, out)
-        assert "Proceed with Caution" in out.read_text(encoding="utf-8")
+        assert "CONDITIONAL" in out.read_text(encoding="utf-8")
 
     def test_go_no_go_medium(self, tmp_path: Path) -> None:
-        """Medium risk shows Conditional Go."""
+        """Single P1 shows PROCEED WITH CONDITIONS (deterministic verdict, Issue #195)."""
         merged: dict[str, Any] = {"c": {"subject": "C", "findings": [_make_finding(severity="P1")], "gaps": []}}
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
         gen.generate(merged, out)
-        assert "Conditional Go" in out.read_text(encoding="utf-8")
+        assert "PROCEED WITH CONDITIONS" in out.read_text(encoding="utf-8")
 
     def test_go_no_go_clean(self, tmp_path: Path) -> None:
-        """Clean risk shows Go."""
+        """Clean risk shows PROCEED (deterministic verdict, Issue #195)."""
         merged: dict[str, Any] = {"c": {"subject": "C", "findings": [], "gaps": []}}
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
         gen.generate(merged, out)
         content = out.read_text(encoding="utf-8")
-        # Go should appear in executive summary
-        assert ">Go<" in content or "Go</div>" in content
+        assert "PROCEED" in content
 
     def test_concentration_hhi_thresholds(self) -> None:
         """Concentration risk levels match HHI thresholds."""
@@ -1024,18 +1023,18 @@ class TestNavBarCompleteness:
         content = out.read_text(encoding="utf-8")
         assert "href='#sec-executive'" in content
 
-    def test_nav_bar_has_reconciliation_link(self, tmp_path: Path) -> None:
-        """Nav bar includes link to Data Reconciliation section."""
+    def test_nav_bar_has_cross_domain_link(self, tmp_path: Path) -> None:
+        """Nav bar includes link to Cross-Domain section."""
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
         gen.generate({}, out)
         content = out.read_text(encoding="utf-8")
-        assert "href='#sec-xref'" in content
+        assert "href='#sec-cross-domain'" in content
 
-    def test_nav_bar_has_risk_link(self, tmp_path: Path) -> None:
-        """Nav bar includes link to Risk section."""
+    def test_nav_bar_has_financial_link(self, tmp_path: Path) -> None:
+        """Nav bar includes link to Financial Impact section."""
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
         gen.generate({}, out)
         content = out.read_text(encoding="utf-8")
-        assert "href='#sec-heatmap'" in content
+        assert "href='#sec-financial'" in content

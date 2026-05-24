@@ -427,7 +427,7 @@ class TestTfCNav:
     """TfC navigation link tests."""
 
     def test_tfc_nav_link_present(self) -> None:
-        """Nav bar includes TfC Revenue link."""
-        nav_html = render_nav_bar(section_rag={"tfc": "amber"})
-        assert "#sec-tfc" in nav_html
-        assert "TfC" in nav_html or "tfc" in nav_html.lower()
+        """Nav bar includes financial analysis link (TfC in deep-dive layer)."""
+        nav_html = render_nav_bar(section_rag={"valuation": "amber"})
+        assert "#sec-financial" in nav_html
+        assert "#sec-valuation" in nav_html

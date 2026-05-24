@@ -61,28 +61,42 @@ BASH_BLOCKLIST: list[str] = [
     "nc ",
     "ncat ",
     "netcat ",
+    "tee ",
+    "sed -i",
+    "zsh -c",
+    "dash -c",
+    "csh -c",
+    "fish -c",
+    "ksh -c",
 ]
 
 # Patterns that catch shell invocation via absolute/relative paths or env dispatch.
 # Checked via regex after whitespace normalization.
 _SHELL_INVOKE_PATTERNS: list[re.Pattern[str]] = [
     # Absolute / relative path to any shell: /bin/bash, /usr/bin/env sh, ./sh, etc.
-    re.compile(r"(?:^|&&|\|\||;)\s*(?:/\S*/)?(?:ba)?sh\s+-c\b"),
+    re.compile(r"(?:^|&&|\|\||;)\s*(?:/\S*/)?(?:ba|da|z|c|k|fi)?sh\s+-c\b"),
     # /usr/bin/env dispatch to shell or interpreter
-    re.compile(r"(?:^|&&|\|\||;)\s*(?:/\S*/)?env\s+(?:ba)?sh\b"),
+    re.compile(r"(?:^|&&|\|\||;)\s*(?:/\S*/)?env\s+(?:ba|da|z|c|k|fi)?sh\b"),
     # Versioned python invocation: python3.12 -c, python3.11 -c, etc.
     re.compile(r"\bpython\d[\d.]*\s+-c\b"),
     # Heredoc into shell: bash<<, sh<<
-    re.compile(r"\b(?:ba)?sh\s*<<"),
+    re.compile(r"\b(?:ba|da|z|c|k|fi)?sh\s*<<"),
     # $SHELL or ${SHELL} invocation
     re.compile(r"\$\{?shell\}?\s"),
+    # Source/dot command: `. /path/to/script`
+    re.compile(r"(?:^|&&|\|\||;)\s*\.\s+\S"),
 ]
 
 SCOPE_CHECKED_PREFIXES: list[str] = ["mv ", "cp ", "ln ", "mkdir "]
 
 
 def _normalize_whitespace(cmd: str) -> str:
-    """Collapse runs of whitespace to single spaces for consistent matching."""
+    """Normalize command for consistent matching.
+
+    Converts newlines to `;` (since newlines are command separators in bash)
+    before collapsing remaining whitespace to single spaces.
+    """
+    cmd = cmd.replace("\n", " ; ")
     return re.sub(r"\s+", " ", cmd)
 
 
@@ -118,7 +132,7 @@ def bash_guard(tool_name: str, tool_input: dict[str, Any]) -> dict[str, str]:
             if sub_cmd.startswith(prefix):
                 parts = sub_cmd.split()
                 for part in parts[1:]:
-                    if part.startswith("/") or part.startswith(".."):
+                    if part.startswith("/") or part.startswith("..") or part.startswith("~") or part.startswith("$"):
                         return {
                             "decision": "block",
                             "reason": f"Blocked: '{prefix.strip()}' with absolute/parent path in: {command[:100]}",

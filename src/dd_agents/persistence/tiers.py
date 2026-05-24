@@ -104,6 +104,7 @@ class TierManager:
 
     def ensure_permanent_dirs(self) -> None:
         """Create all PERMANENT tier directories if they do not already exist."""
+        self.dd_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         (self.project_dir / TEXT_DIR).mkdir(parents=True, exist_ok=True)
         (self.skill_dir / "runs").mkdir(parents=True, exist_ok=True)
         (self.project_dir / INVENTORY_DIR).mkdir(parents=True, exist_ok=True)

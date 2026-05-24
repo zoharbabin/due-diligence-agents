@@ -1,3 +1,5 @@
+> **Historical design spec** — written during the build phase. The code in `src/dd_agents/` is the authoritative implementation. Key divergences: 38 steps (not 35), 9 specialists + 4 synthesis agents (not 4+2), no ReportingLead agent (replaced by deterministic `validation/pre_merge.py` in v0.4.0). Retained for design rationale only — see `CLAUDE.md` for current state.
+
 # 15 — Testing Strategy and Deployment
 
 ## Overview

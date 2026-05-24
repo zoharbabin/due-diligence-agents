@@ -7,10 +7,13 @@ must be cited to a specific document, page, and section.
 
 from __future__ import annotations
 
+import re
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+_SAFE_ID_RE = re.compile(r"^[a-zA-Z0-9_\-\.]+$")
 
 
 class ArticleType(StrEnum):
@@ -48,6 +51,15 @@ class KnowledgeArticle(BaseModel):
     """
 
     id: str = Field(description="Unique article ID (deterministic hash or UUID prefix)")
+
+    @field_validator("id")
+    @classmethod
+    def _validate_id_safe(cls, v: str) -> str:
+        if not _SAFE_ID_RE.match(v):
+            msg = f"Article ID contains unsafe characters (only alnum, _, -, . allowed): {v!r}"
+            raise ValueError(msg)
+        return v
+
     article_type: ArticleType = Field(description="Article type for categorization")
     title: str = Field(max_length=200, description="Human-readable title (max 200 chars)")
     content: dict[str, Any] = Field(

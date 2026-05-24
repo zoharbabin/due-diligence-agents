@@ -1,6 +1,6 @@
-# 04 -- Data Models (Pydantic v2)
+> **Historical design spec** — written during the build phase. The code in `src/dd_agents/` is the authoritative implementation. Key divergences: 38 steps (not 35), 9 specialists + 4 synthesis agents (not 4+2), no ReportingLead agent (replaced by deterministic `validation/pre_merge.py` in v0.4.0). Retained for design rationale only — see `CLAUDE.md` for current state.
 
-> **Historical note**: This is a design spec. The `AgentName` enum grew from 4 to 9 values (Cybersecurity, HR, Tax, Regulatory, ESG added). `ForensicDDConfig` now includes `specialists: SpecialistsConfig` for config-driven agent disable. See `models/enums.py` and `models/config.py` for the current schemas.
+# 04 -- Data Models (Pydantic v2)
 
 All JSON schemas from the forensic-dd skill files are translated to Pydantic v2 models. These serve three purposes:
 1. **Validation** -- `model_validate()` for deterministic agent output checking

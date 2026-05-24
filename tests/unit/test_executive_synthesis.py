@@ -308,7 +308,7 @@ class TestGoNoGoWithSynthesis:
         assert "Intercompany payable is trivially resolved" in content
 
     def test_go_no_go_fallback_without_synthesis(self, tmp_path: Path) -> None:
-        """Mechanical signal works when no synthesis is provided."""
+        """Deterministic verdict works when no synthesis is provided."""
         from dd_agents.reporting.html import HTMLReportGenerator
 
         merged: dict[str, Any] = {
@@ -322,7 +322,7 @@ class TestGoNoGoWithSynthesis:
         out = tmp_path / "report.html"
         gen.generate(merged, out)
         content = out.read_text(encoding="utf-8")
-        assert "No-Go" in content
+        assert "NO-GO" in content
 
     def test_deal_breakers_uses_synthesis_ranking(self, tmp_path: Path) -> None:
         """When synthesis provides ranked breakers, they are rendered."""

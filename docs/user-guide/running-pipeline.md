@@ -13,6 +13,8 @@ dd-agents run deal-config.json
 This runs the full 38-step pipeline: config validation, document extraction, entity
 resolution, specialist agent analysis, quality audits, and report generation.
 
+**Where does output go?** Results are written to `_dd/forensic-dd/` inside your data room directory. The final report is at `{data_room_path}/_dd/forensic-dd/runs/latest/report/dd_report.html`. See [Output Directory Structure](#output-directory-structure) for the full layout.
+
 ## Execution Modes
 
 ### Full Mode (default)
@@ -44,6 +46,7 @@ dd-agents run deal-config.json --mode incremental
 | `--model-profile PROFILE` | Override model tier: `economy`, `standard`, `premium` |
 | `--model-override AGENT=MODEL` | Per-agent model, e.g. `--model-override legal=claude-opus-4-6` |
 | `--no-knowledge` | Skip knowledge compilation after pipeline run |
+| `--no-narrative` | Skip LLM narrative generation (deterministic report only) |
 | `--verbose / -v` | Enable debug logging |
 
 ### Examples
@@ -74,47 +77,54 @@ dd-agents run deal-config.json --model-override legal=claude-opus-4-6
 
 ## The 38-Step Pipeline
 
-The pipeline is organized into 7 phases:
+The pipeline is organized into 8 phases:
 
 **Phase 1: Setup (Steps 1-3)**
 Validate config, initialize persistence layer, check cross-skill dependencies.
-Step 1 is effectively blocking -- if config validation fails, the pipeline halts.
+Step 1 is effectively blocking — if config validation fails, the pipeline halts.
 
 **Phase 2: Discovery and Extraction (Steps 4-5)**
 Discover files in the data room. Extract text from PDFs and Office documents using
-pymupdf with fallback to markitdown, OCR, or Claude vision. Step 5 is a **blocking gate** --
+pymupdf with fallback to markitdown, OCR, or Claude vision. Step 5 is a **blocking gate** —
 extraction must succeed for at least a minimum threshold of files.
 
 **Phase 3: Inventory and Resolution (Steps 6-12)**
-Build subject inventory with document ranking (which version of a file to trust when
-duplicates exist), match company names across documents (handling aliases, abbreviations,
-and legal suffixes automatically), build reference registry, count subject mentions,
-and verify inventory integrity. Steps 11-12 are conditional (database reconciliation
-and incremental classification).
+Build subject inventory with document precedence ranking (which version of a file to
+trust when duplicates exist), match company names across documents (handling aliases,
+abbreviations, and legal suffixes automatically), build reference registry, count
+subject mentions, and verify inventory integrity. Steps 11-12 are conditional
+(database reconciliation and incremental classification).
 
 **Phase 4: Agent Execution (Steps 13-17)**
 Create the specialist team (9 agents by default — Legal, Finance, Commercial, ProductTech,
 Cybersecurity, HR, Tax, Regulatory, ESG), prepare analysis instructions with document
 ranking context, route references, and run agents in parallel. Agents can be disabled
-per-deal via `deal-config.json`. Step 17 is a **blocking gate** -- coverage must meet
+per-deal via `deal-config.json`. Step 17 is a **blocking gate** — coverage must meet
 minimum thresholds across all active domains.
 
-**Phase 5: Quality Review (Steps 18-22)**
-Merge incremental results (if applicable). Optionally spawn the Judge agent for
-adversarial review of specialist findings. Steps 19-22 run only when `judge.enabled`
-is true in the deal config.
+**Phase 5: Cross-Domain Analysis (Steps 18-20)**
+Neurosymbolic cross-domain analysis. Step 18 uses deterministic trigger rules to detect
+when findings in one domain imply risks in another (e.g., a Legal CoC clause that
+threatens Finance revenue). Step 19 spawns targeted pass-2 agents to verify
+cross-domain risks. Step 20 merges pass-2 findings. These steps are budget-bounded
+and priority-ordered.
 
-**Phase 6: Reporting (Steps 23-31)**
-Step 23 runs pre-merge validation (cross-agent anomaly detection, citation verification,
-P0/P1 follow-up). Steps 24-25 merge and deduplicate findings across agents and identify
-coverage gaps. Step 26 builds the numerical manifest. Steps 27-28 run the numerical
-audit (**blocking gate**) and full QA audit (**blocking gate**). Step 29 builds the
-incremental diff. Step 30 generates both Excel and HTML reports, and also runs the
+**Phase 6: Merge & Judge Review (Steps 21-25)**
+Step 21 merges incremental results (if applicable). Steps 22-25 optionally spawn the
+Judge agent for adversarial review of specialist findings (runs only when
+`judge.enabled` is true in the deal config).
+
+**Phase 7: Validation & Reporting (Steps 26-34)**
+Step 26 runs pre-merge validation (cross-agent anomaly detection, citation verification).
+Steps 27-28 merge and deduplicate findings across agents and identify coverage gaps.
+Step 29 builds the numerical manifest. Step 30 runs the numerical audit
+(**blocking gate**). Step 31 runs the full QA audit (**blocking gate**). Step 32 builds
+the incremental diff. Step 33 generates both Excel and HTML reports, and also runs the
 Executive Synthesis agent (Go/No-Go calibration), the Acquirer Intelligence agent
 (when `buyer_strategy` is configured), and the Red Flag Scanner (when `--quick-scan`
-is used). Step 31 is the post-generation validation **blocking gate**.
+is used). Step 34 is the post-generation validation **blocking gate**.
 
-**Phase 7: Finalization (Steps 32-35)**
+**Phase 8: Finalization (Steps 35-38)**
 Write run metadata, update run history, save entity resolution cache, shut down.
 
 ## Blocking Gates
@@ -125,9 +135,9 @@ Five steps are blocking gates that halt the pipeline on failure:
 |------|------|---------------|
 | 5 | Bulk Extraction | Minimum extraction success rate |
 | 17 | Coverage Gate | Agent coverage across all domains |
-| 27 | Numerical Audit | Financial figure consistency across 6 validation layers |
-| 28 | Full QA Audit | 31 definition-of-done checks |
-| 31 | Post-Generation Validation | Report completeness and integrity |
+| 30 | Numerical Audit | Financial figure consistency across 6 validation layers |
+| 31 | Full QA Audit | 31 definition-of-done checks |
+| 34 | Post-Generation Validation | Report completeness and integrity |
 
 When a gate fails, the pipeline stops with exit code 2 and prints the reason for failure.
 
@@ -135,11 +145,11 @@ When a gate fails, the pipeline stops with exit code 2 and prints the reason for
 
 | Gate | Common Cause | How to Fix |
 |------|-------------|------------|
-| Bulk Extraction (step 5) | Corrupted or password-protected PDFs | Remove or replace problem files, then `--resume-from 4` |
-| Coverage Gate (step 17) | Too few documents per subject for meaningful analysis | Add missing documents to the data room, then `--resume-from 6` |
-| Numerical Audit (step 27) | Contradictory financial figures across documents | Review flagged findings in `audit.json`, then `--resume-from 27` |
-| Full QA Audit (step 28) | Quality checks failed (missing citations, low confidence) | Review `dod_results.json` for specifics, then `--resume-from 28` |
-| Post-Generation (step 31) | Report generation produced incomplete output | Check disk space, then `--resume-from 30` |
+| Bulk Extraction (step 5) | Corrupted or password-protected files | Remove or replace problem files, then `--resume-from 4` |
+| Coverage Gate (step 17) | Too few documents per subject | Add missing documents to the data room, then `--resume-from 6` |
+| Numerical Audit (step 30) | Contradictory financial figures | Review `audit.json` in the run directory, then `--resume-from 30` |
+| Full QA Audit (step 31) | Quality checks failed (missing citations) | Review `dod_results.json` for specifics, then `--resume-from 31` |
+| Post-Generation (step 34) | Incomplete report output | Check disk space, then `--resume-from 33` |
 
 ## Agents
 
@@ -161,7 +171,7 @@ The pipeline uses 13 specialized analyzers — 9 domain specialists that process
 | Acquirer Intelligence | Synthesis | 6 | Buyer thesis alignment, synergy validation (when `buyer_strategy` configured) |
 | Red Flag Scanner | Triage | 6 | Quick stoplight triage (when `--quick-scan` used) |
 
-All 9 specialists share a base execution engine (`BaseAgentRunner`) but are differentiated by substantive domain-specific prompts containing M&A-specific definitions, targeted extraction instructions, and relevant keyword sets. The specialist set is extensible — external agents can be added via pip entry-points, and agents can be disabled per-deal via `deal-config.json`.
+The system is neurosymbolic: deterministic risk scoring, cross-domain trigger rules, and domain ontology graphs provide structured reasoning scaffolding that guides and constrains LLM analysis. All 9 specialists share a base execution engine (`BaseAgentRunner`) but are differentiated by substantive domain-specific prompts. The specialist set is extensible — external agents can be added via pip entry-points, and agents can be disabled per-deal via `deal-config.json`.
 
 ## Output Directory Structure
 
@@ -170,7 +180,7 @@ All output goes under `_dd/forensic-dd/` relative to the data room:
 ```
 _dd/forensic-dd/
 ├── index/text/                     # PERMANENT: extracted document text
-├── inventory/                      # PERMANENT: subject registry, file counts
+├── inventory/                      # FRESH: rebuilt each run (subject registry, file counts)
 ├── entity_resolution_cache.json    # PERMANENT: entity matching cache
 └── runs/
     └── 20260307_143000/            # VERSIONED: timestamped per run

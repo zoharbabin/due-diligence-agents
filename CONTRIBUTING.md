@@ -2,11 +2,9 @@
 
 ## Prerequisites
 
-- Python 3.12+
-- pip
+- Python 3.12+ and pip
 - Git
-- `poppler-utils` (optional — fallback for pymupdf PDF extraction failures)
-- `tesseract-ocr` (optional — OCR for scanned PDFs)
+- Optional system packages for extraction: `poppler-utils`, `tesseract-ocr`
 
 ## Development Setup
 
@@ -17,7 +15,7 @@ pip install -e ".[dev,pdf]"
 pre-commit install
 ```
 
-This installs the package in editable mode with all dev dependencies (pytest, ruff, mypy, pre-commit).
+This installs the package in editable mode with all dev dependencies.
 
 ## Branch Conventions
 
@@ -35,7 +33,7 @@ make test-unit         # Unit tests only (fast, no API calls)
 pytest tests/e2e/ -x   # End-to-end tests (requires API key, slow)
 ```
 
-The project has ~3,600 unit tests, ~60 integration tests, and 24 E2E tests (some skipped without API key). Unit and integration tests require no API key.
+Unit and integration tests require no API key. E2E tests require `ANTHROPIC_API_KEY`.
 
 ## Quality Gates
 
@@ -64,11 +62,23 @@ Configuration lives in `pyproject.toml` under `[tool.ruff]`, `[tool.mypy]`, and 
 - Keep the first line under 72 characters
 - Add a blank line before any extended description
 
+## Quick Contributions
+
+For documentation fixes, typo corrections, or small improvements that don't change
+runtime behavior:
+
+1. Fork the repo and make your change.
+2. Run `ruff check src/ tests/` (no test suite needed for doc-only changes).
+3. Open a PR with a one-line description.
+
+Look for issues labeled [`good first issue`](https://github.com/zoharbabin/due-diligence-agents/labels/good%20first%20issue) for
+beginner-friendly tasks.
+
 ## Pull Request Process
 
 1. Branch from `main`.
 2. Write tests first, then implement.
-3. Ensure quality gates pass locally before pushing (`pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/`).
+3. Ensure quality gates pass locally: `make verify` (or `pytest tests/unit/ -x -q && mypy src/ --strict && ruff check src/ tests/`).
 4. Add or update tests for any new functionality.
 5. Open a PR with a clear description of what changed and why.
 6. One approval required to merge.
@@ -77,15 +87,13 @@ Configuration lives in `pyproject.toml` under `[tool.ruff]`, `[tool.mypy]`, and 
 
 1. Read [`docs/plan/PLAN.md`](docs/plan/PLAN.md) for the executive overview.
 2. Read [`docs/plan/01-architecture-decisions.md`](docs/plan/01-architecture-decisions.md) for key architectural choices.
-3. Read [`docs/plan/18-implementation-order.md`](docs/plan/18-implementation-order.md) for the build sequence.
-4. See [`docs/history/IMPLEMENTATION_PLAN.md`](docs/history/IMPLEMENTATION_PLAN.md) for the build sequence history (all 8 phases complete).
+3. Read [`CLAUDE.md`](CLAUDE.md) for current architecture, commands, and code style.
 
 ### Autonomous Implementation (Claude Code)
 
 This project is structured for autonomous implementation by Claude Code:
 
 - **`CLAUDE.md`** — Project instructions loaded automatically at session start
-- **`docs/history/IMPLEMENTATION_PLAN.md`** — Phased build history (all 8 phases complete)
 - **`.claude/settings.json`** — Tool permissions and quality gate hooks
 - **`.claude/agents/`** — Custom subagents (code-reviewer, test-runner)
 - **`scripts/`** — Quality gate scripts (lint, test, type check, pre-commit gate)

@@ -4,7 +4,7 @@ This guide walks you through running the due-diligence agent pipeline on a minim
 
 ## What You'll Build
 
-You will run `dd-agents` against a small data room with four contracts spread across two subject groups, plus a reference document. The pipeline will:
+You will run `dd-agents` against a small data room with four documents (three contracts and one invoice) spread across three subjects in two groups, plus a reference document. The pipeline will:
 
 1. Discover and inventory every document.
 2. Extract clauses, financials, and governance structures.
@@ -85,12 +85,17 @@ dd-agents validate deal-config.json
 Expected output:
 
 ```
-Config valid: deal-config.json
-  Buyer:  Meridian Holdings
-  Target: NovaBridge Solutions
-  Data room: examples/quickstart/sample_data_room/ (5 documents found)
-  Judge: disabled
-  Mode: full
+Config is valid.
+┌─────────────────────────────────────┐
+│     Deal Configuration Summary      │
+├──────────────────┬──────────────────┤
+│ Config version   │ 1.0.0            │
+│ Buyer            │ Meridian Holdings│
+│ Target           │ NovaBridge …     │
+│ Deal type        │ acquisition      │
+│ Execution mode   │ full             │
+│ Judge enabled    │ False            │
+└──────────────────┴──────────────────┘
 ```
 
 ## Step 4: Dry Run
@@ -119,7 +124,7 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 dd-agents run deal-config.json
 ```
 
-This will execute all 35 orchestrator steps.
+This will execute all 38 orchestrator steps.
 
 ## What to Expect
 
@@ -212,7 +217,7 @@ You have not installed the package. Run `pip install -e ".[dev]"` from the repo 
 ### Run seems stuck or slow
 
 - The pipeline processes documents sequentially by default. Large data rooms take longer.
-- Check `_dd/run_*/metadata/run_summary.json` for progress.
+- Check `_dd/forensic-dd/runs/latest/metadata.json` for run status.
 - Use `--dry-run` first to estimate scope.
 
 ### Want to re-run only changed documents?

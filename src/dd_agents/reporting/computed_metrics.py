@@ -17,6 +17,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from dd_agents.reporting.recommendation_templates import generate_recommendations
+from dd_agents.reporting.verdict import compute_verdict, generate_executive_takeaways
 from dd_agents.utils.constants import (
     SEVERITY_ORDER,
     SEVERITY_P0,
@@ -720,6 +722,17 @@ def _topic_matches(text: str, keywords: list[str]) -> bool:
     return any(kw in text_lower for kw in keywords)
 
 
+def _infer_domains_from_category(category: str) -> list[str]:
+    """Infer which domains contribute to a risk category."""
+    mapping: dict[str, list[str]] = {
+        "change_of_control": ["Legal", "Commercial"],
+        "termination_for_convenience": ["Legal", "Finance"],
+        "customer_concentration": ["Commercial", "Finance"],
+        "pricing_risk": ["Commercial", "Finance"],
+    }
+    return mapping.get(category, ["Legal"])
+
+
 class ReportComputedData(BaseModel):
     """All pre-computed metrics for the HTML report.
 
@@ -799,6 +812,9 @@ class ReportComputedData(BaseModel):
 
     # Executive synthesis (optional, set externally or via compute())
     executive_synthesis: dict[str, Any] | None = Field(default=None, description="Executive synthesis agent output")
+
+    # Narrative generation (optional, set externally)
+    narrative: dict[str, Any] | None = Field(default=None, description="LLM-generated narrative content")
 
     # --- Issue #113: Business-oriented analysis ---
 
@@ -1036,6 +1052,36 @@ class ReportComputedData(BaseModel):
     language_distribution: dict[str, int] = Field(
         default_factory=dict,
         description="Count of findings by source document language",
+    )
+
+    # --- Issue #195: Deterministic Verdict ---
+    verdict: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Deterministic Go/No-Go verdict: signal, rationale, contributing_factors",
+    )
+    executive_takeaways: list[dict[str, str]] = Field(
+        default_factory=list,
+        description="3-5 cross-domain synthesis bullets for executive summary",
+    )
+    financial_exposure_summary: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="De-duplicated financial exposure by risk category with ranges",
+    )
+
+    # --- Issue #197: Domain Summaries & Priority Scores ---
+    domain_summaries: dict[str, dict[str, Any]] = Field(
+        default_factory=dict,
+        description="Per-domain summary: rag_status, top_categories, finding_count",
+    )
+    dashboard_findings: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Top-5 material findings by priority score for dashboard layer",
+    )
+
+    # --- Issue #200: Actionable Recommendations ---
+    actionable_recommendations: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Structured recommendations matched from templates with owner/timeline/effort",
     )
 
 
@@ -1525,6 +1571,68 @@ class ReportDataComputer:
             else ("amber" if valuation_bridge.get("exposure_pct", 0) > 5 else "green")
         )
 
+        # --- Issue #195: Deterministic verdict ---
+
+        exposure_pct = valuation_bridge.get("exposure_pct", 0.0)
+        cross_domain_critical = sum(1 for r in cross_domain_risks if r.get("has_p0"))
+        verdict_result = compute_verdict(
+            p0_count=severity_counts.get(SEVERITY_P0, 0),
+            p1_count=severity_counts.get(SEVERITY_P1, 0),
+            exposure_pct=float(exposure_pct),
+            cross_domain_critical_count=cross_domain_critical,
+            risk_score=deal_risk_score,
+        )
+        verdict_dict: dict[str, Any] = {
+            "signal": verdict_result.signal,
+            "rationale": verdict_result.rationale,
+            "contributing_factors": verdict_result.contributing_factors,
+        }
+
+        exec_takeaways = generate_executive_takeaways(
+            cross_domain_risks=cross_domain_risks,
+            material_findings=material_findings,
+            display_names=display_names,
+            total_contracted_arr=total_contracted_arr,
+            revenue_by_subject=revenue_by_subject,
+        )
+
+        # --- Issue #195: De-duplicated financial exposure summary ---
+        financial_exposure = self._compute_financial_exposure_summary(risk_waterfall, revenue_by_subject, display_names)
+
+        # --- Issue #197: Domain summaries for drill-down ---
+        filtered_category_groups = {
+            d: {
+                cat: [f for f in findings if not _is_noise_finding(f) and not _is_data_quality_finding(f)]
+                for cat, findings in cats.items()
+                if any(not _is_noise_finding(f) and not _is_data_quality_finding(f) for f in findings)
+            }
+            for d, cats in category_groups.items()
+        }
+        domain_summaries_data = self._compute_domain_summaries(
+            domain_severity, domain_risk_labels, filtered_category_groups, top_by_domain, display_names
+        )
+
+        # --- Issue #197: Dashboard top findings (by priority score) ---
+        dashboard_findings_list = self._compute_dashboard_findings(material_findings, cross_domain_risks)
+
+        # --- Issue #200: Actionable recommendations (template-matched) ---
+
+        matched_recs = generate_recommendations(material_findings, max_items=30)
+        actionable_recs = [
+            {
+                "action": r.action,
+                "owner": r.owner,
+                "timeline": r.timeline,
+                "effort": r.effort,
+                "escalation": r.escalation,
+                "finding_title": r.finding_title,
+                "finding_severity": r.finding_severity,
+                "domain": r.domain,
+                "pattern_key": r.pattern_key,
+            }
+            for r in matched_recs
+        ]
+
         return ReportComputedData(
             total_findings=total_findings,
             total_gaps=total_gaps,
@@ -1640,6 +1748,15 @@ class ReportDataComputer:
             tech_stack_analysis=self._compute_tech_stack_analysis(all_findings),
             product_adoption=self._compute_product_adoption(all_findings, merged_data),
             language_distribution=self._compute_language_distribution(all_findings),
+            # Issue #195: Deterministic Verdict
+            verdict=verdict_dict,
+            executive_takeaways=exec_takeaways,
+            financial_exposure_summary=financial_exposure,
+            # Issue #197: Domain Summaries
+            domain_summaries=domain_summaries_data,
+            dashboard_findings=dashboard_findings_list,
+            # Issue #200: Actionable Recommendations
+            actionable_recommendations=actionable_recs,
         )
 
     # --- Issue #113: Helper methods for business-oriented analysis ---
@@ -3219,3 +3336,129 @@ class ReportDataComputer:
                     if lang and isinstance(lang, str):
                         dist[lang] = dist.get(lang, 0) + 1
         return dist
+
+    # --- Issue #195: Financial Exposure Summary ---
+
+    @staticmethod
+    def _compute_financial_exposure_summary(
+        risk_waterfall: dict[str, dict[str, Any]],
+        revenue_by_subject: dict[str, float],
+        display_names: dict[str, str],
+    ) -> list[dict[str, Any]]:
+        """Compute de-duplicated financial exposure by risk category.
+
+        Avoids double-counting by tracking which subjects contribute to each
+        category and not summing the same subject across overlapping categories.
+        """
+        summary: list[dict[str, Any]] = []
+        seen_subjects: set[str] = set()
+
+        for category, data in sorted(risk_waterfall.items(), key=lambda x: -x[1].get("amount", 0)):
+            subjects = data.get("subjects", [])
+            amount = data.get("amount", 0.0)
+            new_subjects = [s for s in subjects if s not in seen_subjects]
+            unique_amount = sum(revenue_by_subject.get(s, 0.0) for s in new_subjects)
+            seen_subjects.update(subjects)
+
+            if amount <= 0 and not subjects:
+                continue
+
+            summary.append(
+                {
+                    "category": category.replace("_", " ").title(),
+                    "estimated_impact": amount,
+                    "unique_impact": unique_amount,
+                    "confidence": "Medium" if len(subjects) > 1 else "Low",
+                    "contract_count": len(subjects),
+                    "source_domains": _infer_domains_from_category(category),
+                }
+            )
+
+        return summary
+
+    # --- Issue #197: Domain Summaries ---
+
+    def _compute_domain_summaries(
+        self,
+        domain_severity: dict[str, dict[str, int]],
+        domain_risk_labels: dict[str, str],
+        category_groups: dict[str, dict[str, list[dict[str, Any]]]],
+        top_by_domain: dict[str, list[dict[str, Any]]],
+        display_names: dict[str, str],
+    ) -> dict[str, dict[str, Any]]:
+        """Compute per-domain summary for Layer 2 drill-down."""
+        summaries: dict[str, dict[str, Any]] = {}
+
+        for domain in self._active_agents:
+            sev = domain_severity.get(domain, {})
+            risk_label = domain_risk_labels.get(domain, "Clean")
+            finding_count = sum(sev.values())
+
+            # RAG status
+            if sev.get(SEVERITY_P0, 0) > 0 or (sev.get(SEVERITY_P1, 0) >= 3):
+                rag = "red"
+            elif sev.get(SEVERITY_P1, 0) > 0 or finding_count > 0:
+                rag = "amber"
+            else:
+                rag = "green"
+
+            # Top categories (by finding count)
+            cats = category_groups.get(domain, {})
+            top_cats = sorted(cats.items(), key=lambda x: -len(x[1]))[:3]
+            top_categories = [{"name": cat, "count": len(findings)} for cat, findings in top_cats]
+
+            # Top findings preview
+            top_findings = top_by_domain.get(domain, [])[:3]
+            preview = [
+                {
+                    "title": str(f.get("title", "")),
+                    "severity": str(f.get("severity", SEVERITY_P3)),
+                    "entity": display_names.get(str(f.get("_subject_safe_name", "")), ""),
+                }
+                for f in top_findings
+            ]
+
+            summaries[domain] = {
+                "rag_status": rag,
+                "risk_label": risk_label,
+                "finding_count": finding_count,
+                "severity_counts": dict(sev),
+                "top_categories": top_categories,
+                "top_findings_preview": preview,
+            }
+
+        return summaries
+
+    # --- Issue #197: Dashboard Findings (Priority Score) ---
+
+    def _compute_dashboard_findings(
+        self,
+        material_findings: list[dict[str, Any]],
+        cross_domain_risks: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Compute top-5 findings ranked by priority score for dashboard.
+
+        Priority = severity(50%) + cross_domain_connections(30%) + financial_signal(20%).
+        """
+        cross_domain_entities: set[str] = set()
+        for risk in cross_domain_risks:
+            entity = risk.get("entity", "")
+            if entity:
+                cross_domain_entities.add(entity)
+
+        scored: list[tuple[float, dict[str, Any]]] = []
+        for f in material_findings:
+            sev = str(f.get("severity", SEVERITY_P3))
+            sev_weight = {SEVERITY_P0: 1.0, SEVERITY_P1: 0.7, SEVERITY_P2: 0.4, SEVERITY_P3: 0.1}.get(sev, 0.1)
+
+            csn = f.get("_subject_safe_name", "")
+            cross_domain_bonus = 0.3 if csn in cross_domain_entities else 0.0
+
+            text = f"{f.get('title', '')} {f.get('description', '')}".lower()
+            financial_signal = 0.2 if "$" in text or "revenue" in text or "arr" in text else 0.0
+
+            priority = sev_weight * 0.5 + cross_domain_bonus + financial_signal
+            scored.append((priority, f))
+
+        scored.sort(key=lambda x: -x[0])
+        return [f for _, f in scored[:5]]

@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,8 @@ from dd_agents.knowledge.articles import ArticleType, KnowledgeArticle
 from dd_agents.knowledge.index import KnowledgeIndex
 
 logger = logging.getLogger(__name__)
+
+_SAFE_ID_RE = re.compile(r"^[a-zA-Z0-9_\-\.]+$")
 
 # Subdirectories within the knowledge base, keyed by ArticleType.
 _TYPE_DIRS: dict[ArticleType, str] = {
@@ -102,6 +105,9 @@ class DealKnowledgeBase:
 
     def get_article(self, article_id: str) -> KnowledgeArticle | None:
         """Load a single article by ID. Returns None if not found."""
+        if not _SAFE_ID_RE.match(article_id):
+            logger.warning("Rejected unsafe article_id: %r", article_id)
+            return None
         for type_dir in _TYPE_DIRS.values():
             path = self._knowledge_dir / type_dir / f"{article_id}.json"
             if path.exists():
@@ -166,6 +172,9 @@ class DealKnowledgeBase:
 
     def delete_article(self, article_id: str) -> bool:
         """Delete an article from disk. Returns True if found and deleted."""
+        if not _SAFE_ID_RE.match(article_id):
+            logger.warning("Rejected unsafe article_id: %r", article_id)
+            return False
         for type_dir in _TYPE_DIRS.values():
             path = self._knowledge_dir / type_dir / f"{article_id}.json"
             if path.exists():

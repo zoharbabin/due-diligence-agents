@@ -121,9 +121,11 @@
   },
   "forensic_dd": {
     "enabled": true,
-    "domains": {
-      "disabled": [],
-      "custom": []
+    "specialists": {
+      "disabled": []
+    },
+    "cross_domain": {
+      "enabled": true
     }
   }
 }

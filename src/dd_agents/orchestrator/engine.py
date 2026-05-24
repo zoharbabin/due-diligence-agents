@@ -591,13 +591,13 @@ class PipelineEngine:
         checkpoint_dir = state.project_dir / state.skill_dir / "checkpoints"
         cp6_path = checkpoint_dir / "checkpoint_06_build_inventory.json"
         if cp6_path.exists():
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(json.JSONDecodeError, OSError, ValueError):
                 cp6_data = json.loads(cp6_path.read_text(encoding="utf-8"))
                 raw_entries = cp6_data.get("_subject_entries", [])
                 restored_from_cp: list[SubjectEntry] = []
                 for item in raw_entries:
                     if isinstance(item, dict):
-                        with contextlib.suppress(Exception):
+                        with contextlib.suppress(ValueError, TypeError):
                             restored_from_cp.append(SubjectEntry.model_validate(item))
                 if restored_from_cp:
                     state._subject_entries = restored_from_cp  # type: ignore[attr-defined]
@@ -3675,6 +3675,95 @@ class PipelineEngine:
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Red flag scan failed (non-blocking): %s", exc)
 
+        # Narrative Generation — interpretive layer for HTML report
+        # Produces deal-specific commentary, recommendations, and open questions.
+        # Non-blocking — failure falls back to deterministic report content.
+        narrative_data: dict[str, Any] | None = None
+        if not self._run_options.get("no_narrative"):
+            try:
+                from dd_agents.agents.narrative_generation import NarrativeGenerationAgent
+                from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+                narr_agent = NarrativeGenerationAgent(
+                    project_dir=self.project_dir,
+                    run_dir=state.run_dir,
+                    run_id=state.run_id,
+                )
+
+                # Build domain summaries from severity distribution
+                domain_summaries_for_narr: dict[str, dict[str, Any]] = {}
+                domain_sev: dict[str, dict[str, int]] = {}
+                for _ssn, cdata in merged_findings.items():
+                    if not isinstance(cdata, dict):
+                        continue
+                    for finding in cdata.get("findings", []):
+                        if not isinstance(finding, dict):
+                            continue
+                        recal = ReportDataComputer._recalibrate_severity(finding)
+                        agent = recal.get("agent", "")
+                        sev = recal.get("severity", "")
+                        if agent:
+                            if agent not in domain_sev:
+                                domain_sev[agent] = {"P0": 0, "P1": 0, "P2": 0, "P3": 0}
+                            domain_sev[agent][sev] = domain_sev[agent].get(sev, 0) + 1
+                for domain, counts in domain_sev.items():
+                    total = sum(counts.values())
+                    has_p0 = counts.get("P0", 0) > 0
+                    has_p1 = counts.get("P1", 0) > 0
+                    risk_label = "High" if has_p0 else ("Medium" if has_p1 else "Low")
+                    domain_summaries_for_narr[domain] = {
+                        "risk_label": risk_label,
+                        "finding_count": total,
+                        "severity_counts": counts,
+                    }
+
+                deal_config_for_narr = state.deal_config if isinstance(state.deal_config, dict) else None
+                narr_state: dict[str, Any] = {
+                    "deal_config": deal_config_for_narr,
+                    "executive_synthesis": executive_synthesis,
+                    "p0_findings": p0_findings,
+                    "p1_findings": p1_findings,
+                    "findings_summary": {
+                        "total_subjects": len(merged_findings),
+                        "total_findings": sum(
+                            len(v.get("findings", [])) for v in merged_findings.values() if isinstance(v, dict)
+                        ),
+                        "severity_distribution": severity_dist,
+                    },
+                    "domain_summaries": domain_summaries_for_narr,
+                    "active_domains": list(domain_sev.keys()),
+                    "merged_findings_dir": str(state.run_dir / "findings" / "merged"),
+                }
+                narr_result = await narr_agent.run(narr_state)
+
+                self.cost_tracker.record(
+                    agent_name="narrative_generation",
+                    step="33_generate_reports",
+                    input_tokens=narr_result.get("input_tokens_est", 0),
+                    output_tokens=narr_result.get("output_tokens_est", 0),
+                    model=narr_result.get("model", ""),
+                )
+                state.agent_costs["narrative_generation"] = narr_result.get("cost_usd", 0.0)
+
+                if narr_result.get("status") == "success" and narr_result.get("output"):
+                    outputs = narr_result["output"]
+                    if outputs and isinstance(outputs, list) and isinstance(outputs[0], dict):
+                        from dd_agents.models.narrative import NarrativeOutput
+
+                        try:
+                            narr_validated = NarrativeOutput.model_validate(outputs[0])
+                            narrative_data = narr_validated.model_dump()
+                        except (ValueError, TypeError):
+                            narrative_data = outputs[0]
+                        logger.info("Narrative generation completed")
+                        # Persist narrative for downstream consumers
+                        narr_path = state.run_dir / "narrative.json"
+                        import json as _json
+
+                        narr_path.write_text(_json.dumps(narrative_data, indent=2, default=str))
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Narrative generation failed (non-blocking): %s", exc)
+
         # Generate interactive HTML report alongside Excel (Issue #9)
         try:
             from dd_agents.reporting.html import HTMLReportGenerator
@@ -3691,6 +3780,7 @@ class PipelineEngine:
                 acquirer_intelligence=acquirer_intel,
                 executive_synthesis=executive_synthesis,
                 red_flag_scan=red_flag_scan,
+                narrative=narrative_data,
                 run_dir=state.run_dir,
             )
             logger.info("HTML report generated: %s", html_path)

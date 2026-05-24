@@ -540,7 +540,7 @@ class TestHTMLRenderingDynamicAgents:
         from dd_agents.reporting import html_base
 
         source = inspect.getsource(html_base)
-        assert "repeat(auto-fill, minmax(200px, 1fr))" in source
+        assert "repeat(auto-fill, minmax(180px, 1fr))" in source
         assert ".heatmap" in source
 
     def test_agent_to_domain_maps_cybersecurity(self):

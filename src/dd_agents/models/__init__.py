@@ -119,6 +119,16 @@ from dd_agents.models.manifest import (
     ManifestSubject,
 )
 
+# Narrative
+from dd_agents.models.narrative import (
+    DealContextNarrative,
+    DomainNarrative,
+    FindingNarrative,
+    NarrativeOutput,
+    NarrativeRecommendation,
+    OpenQuestion,
+)
+
 # Numerical
 from dd_agents.models.numerical import (
     ManifestEntry,
@@ -267,6 +277,13 @@ __all__ = [
     # Numerical
     "ManifestEntry",
     "NumericalManifest",
+    # Narrative
+    "DealContextNarrative",
+    "DomainNarrative",
+    "FindingNarrative",
+    "NarrativeOutput",
+    "NarrativeRecommendation",
+    "OpenQuestion",
     # Reporting
     "ColumnDef",
     "ConditionalFormat",

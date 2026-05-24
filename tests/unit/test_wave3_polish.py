@@ -769,14 +769,14 @@ class TestHTMLReportIntegration:
 
         assert hasattr(report_module, "_product_adoption_renderer")
 
-    def test_nav_has_new_sections(self) -> None:
+    def test_nav_has_core_sections(self) -> None:
         from dd_agents.reporting.html_base import render_nav_bar
 
         html = render_nav_bar()
-        assert "sec-clause-library" in html
-        assert "sec-key-employee" in html
-        assert "sec-tech-stack" in html
-        assert "sec-product-adoption" in html
+        assert "sec-executive" in html
+        assert "sec-action-items" in html
+        assert "sec-financial" in html
+        assert "sec-domain-legal" in html
 
 
 # ===========================================================================

@@ -48,6 +48,7 @@ _inventory/
 # Data room files (prevent accidental commit of customer documents)
 data_room/
 *.pdf
+!docs/marketing/*.pdf
 
 # ChromaDB local storage
 chroma_data/
@@ -58,3 +59,7 @@ node_modules/
 
 # Generated reports
 *.xlsx
+
+# Development artifacts
+cache/
+report-*.png

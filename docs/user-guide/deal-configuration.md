@@ -6,6 +6,24 @@ analysis focuses on the right risks, entities, and contract provisions — the
 difference between a generic scan and forensic-grade analysis tuned to your specific
 deal. There are three ways to create one.
 
+## Minimal Config (Required Fields Only)
+
+Only 4 fields are required to run the pipeline:
+
+```json
+{
+  "config_version": "1.0.0",
+  "buyer": { "name": "Acme Corp" },
+  "target": { "name": "Target Inc" },
+  "deal": { "type": "acquisition" },
+  "data_room": { "path": "./data_room" }
+}
+```
+
+Everything else is optional and enhances analysis when provided. The pipeline will
+use defaults for all unspecified fields (Judge enabled, standard model profile,
+full execution mode, all 9 specialists active).
+
 ## Auto-Generation with AI
 
 The `auto-config` command scans your data room with Claude and produces a complete config:
@@ -161,6 +179,12 @@ This checks all required fields, value constraints, and version compatibility.
     "specialists": {
       "disabled": [],
       "customizations": {}
+    },
+    "cross_domain": {
+      "enabled": true,
+      "max_pass2_budget_usd": 5.0,
+      "min_trigger_severity": "P1",
+      "disabled_rules": []
     }
   },
   "precedence": {
@@ -248,7 +272,7 @@ Used by agents for organizational risk analysis and key-person dependency detect
 ### execution
 
 - `execution_mode`: `full` (default) or `incremental` (reuses prior extraction)
-- `staleness_threshold`: days before cached extraction is considered stale (default: 3)
+- `staleness_threshold`: consecutive unchanged runs before a stale-refresh triggers re-analysis (default: 3)
 - `force_full_on_config_change`: re-run everything if config changed since last run (default: true)
 - `batch_concurrency`: max parallel batches per agent (1-10, default: 6)
 
@@ -270,11 +294,12 @@ Controls the optional Judge agent that reviews specialist findings:
 
 ### extraction (optional)
 
-- `ocr_backend`: OCR engine preference — `auto` (default), `pytesseract`, `glm_ocr`, or `none`
-  - `auto`: tries pymupdf → markitdown → pytesseract → glm_ocr
+- `ocr_backend`: OCR engine preference for scanned pages — `auto` (default), `pytesseract`, or `glm_ocr`
+  - `auto`: detects best available OCR backend, preferring `glm_ocr` over `pytesseract`
   - `pytesseract`: English-only OCR (hardcoded `lang="eng"`)
   - `glm_ocr`: multilingual OCR via GLM vision-language model (100+ languages, recommended for non-English data rooms)
-  - `none`: skip OCR entirely (text-only extraction)
+
+Text extraction (non-scanned PDFs) uses a separate chain: pymupdf → pdftotext → markitdown → OCR fallback.
 
 ### reporting
 
@@ -312,6 +337,10 @@ Controls the forensic DD specialist agents:
 - `enabled`: enable/disable the entire forensic DD pipeline (default: true)
 - `specialists.disabled`: list of agent names to skip (e.g. `["hr", "esg"]`)
 - `specialists.customizations`: per-agent overrides with additional focus areas or instructions, keyed by agent name
+- `cross_domain.enabled`: enable neurosymbolic cross-domain analysis (default: true)
+- `cross_domain.max_pass2_budget_usd`: maximum spend on cross-domain pass-2 agent calls (default: 5.0)
+- `cross_domain.min_trigger_severity`: minimum finding severity to trigger cross-domain verification — `P0`, `P1`, `P2`, or `P3` (default: `P1`)
+- `cross_domain.disabled_rules`: list of trigger rule IDs to skip (default: `[]`)
 
 Available specialist names: `legal`, `finance`, `commercial`, `producttech`, `cybersecurity`, `hr`, `tax`, `regulatory`, `esg`. External agents registered via pip entry-points are also configurable here.
 

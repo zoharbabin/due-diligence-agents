@@ -83,9 +83,8 @@ def _build_pre_tool_hook(
 
             return {}
         except Exception as exc:  # noqa: BLE001
-            # Guard against SDK stream-closed errors during session teardown.
-            logger.debug("PreToolUse hook error (likely session teardown): %s", exc)
-            return {}
+            logger.warning("PreToolUse hook error — blocking tool call for safety: %s", exc)
+            return {"decision": "block", "reason": f"Hook guard error (fail-closed): {exc}"}
 
     return pre_tool_hook
 

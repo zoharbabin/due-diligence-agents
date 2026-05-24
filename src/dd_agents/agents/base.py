@@ -571,8 +571,8 @@ class BaseAgentRunner(ABC):
             elif isinstance(data, dict):
                 results.append(data)
             return results
-        except (json.JSONDecodeError, ValueError):
-            pass
+        except (json.JSONDecodeError, ValueError) as exc:
+            logger.debug("Strategy 1a (full JSON parse) failed: %s", exc)
 
         # Strategy 1b: extract last top-level JSON object.
         # In multi-turn sessions, agents produce intermediate prose before
@@ -599,8 +599,13 @@ class BaseAgentRunner(ABC):
                 if isinstance(data, dict):
                     results.append(data)
                     return results
-            except (json.JSONDecodeError, ValueError):
-                pass
+            except (json.JSONDecodeError, ValueError) as exc:
+                logger.debug(
+                    "Strategy 1b (last-object parse) failed for slice [%d:%d]: %s",
+                    json_start,
+                    json_end,
+                    exc,
+                )
 
         if len(cleaned) > 200:
             logger.debug(

@@ -29,6 +29,106 @@ _TIMEOUT_SECONDS = 120
 _MAX_OUTPUT_FILES = 50
 _MAX_TOTAL_OUTPUT_BYTES = 200 * 1024 * 1024  # 200 MB
 
+# Environment variables safe to pass to the export subprocess.
+# Secrets (API keys, tokens, credentials) are stripped.
+_ENV_ALLOWLIST: set[str] = {
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "PATH",
+    "PYTHONDONTWRITEBYTECODE",
+    "PYTHONPATH",
+    "SHELL",
+    "TEMP",
+    "TMPDIR",
+    "TMP",
+    "TZ",
+    "USER",
+}
+
+
+# Modules that export scripts must never import — prevents network
+# exfiltration, arbitrary process execution, and system-level access.
+_BLOCKED_MODULES: set[str] = {
+    "ctypes",
+    "ftplib",
+    "http.client",
+    "httplib",
+    "httpx",
+    "multiprocessing",
+    "requests",
+    "shutil",
+    "smtplib",
+    "socket",
+    "socketserver",
+    "subprocess",
+    "telnetlib",
+    "urllib",
+    "urllib.request",
+    "urllib2",
+    "urllib3",
+    "webbrowser",
+    "xmlrpc",
+}
+
+
+def _check_blocked_imports(code: str) -> set[str]:
+    """Scan script source for imports of blocked modules.
+
+    Uses AST parsing for accuracy (catches `import x`, `from x import y`,
+    and `__import__('x')` calls). Falls back to regex for safety if AST fails.
+    """
+    import ast
+
+    found: set[str] = set()
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        # Fall back to regex scan if code can't be parsed
+        for mod in _BLOCKED_MODULES:
+            if mod in code:
+                found.add(mod)
+        return found
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                top = alias.name.split(".")[0]
+                if alias.name in _BLOCKED_MODULES or top in _BLOCKED_MODULES:
+                    found.add(alias.name)
+        elif isinstance(node, ast.ImportFrom):
+            if node.module:
+                top = node.module.split(".")[0]
+                if node.module in _BLOCKED_MODULES or top in _BLOCKED_MODULES:
+                    found.add(node.module)
+        elif isinstance(node, ast.Call):
+            func = node.func
+            if isinstance(func, ast.Name) and func.id == "__import__" and node.args:
+                arg = node.args[0]
+                if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                    top = arg.value.split(".")[0]
+                    if arg.value in _BLOCKED_MODULES or top in _BLOCKED_MODULES:
+                        found.add(arg.value)
+    return found
+
+
+def _build_safe_env(out_path: Path) -> dict[str, str]:
+    """Build a minimal environment for the export subprocess.
+
+    Only passes allowlisted variables plus OUTPUT_DIR.  This prevents
+    LLM-generated scripts from accessing API keys, tokens, or other
+    secrets present in the parent process environment.
+    """
+    env: dict[str, str] = {}
+    for key in _ENV_ALLOWLIST:
+        val = os.environ.get(key)
+        if val is not None:
+            env[key] = val
+    env["OUTPUT_DIR"] = str(out_path)
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    return env
+
 
 def run_export_script(
     code: str,
@@ -62,6 +162,13 @@ def run_export_script(
         return {
             "error": "too_large",
             "reason": f"Script exceeds {_MAX_SCRIPT_BYTES:,} byte limit",
+        }
+
+    blocked = _check_blocked_imports(code)
+    if blocked:
+        return {
+            "error": "blocked_import",
+            "reason": f"Script uses blocked module(s): {', '.join(sorted(blocked))}",
         }
 
     out_path = Path(output_dir)
@@ -106,9 +213,7 @@ def run_export_script(
         script_path = f.name
 
     try:
-        env = os.environ.copy()
-        env["OUTPUT_DIR"] = str(out_path)
-        env["PYTHONDONTWRITEBYTECODE"] = "1"
+        env = _build_safe_env(out_path)
 
         result = subprocess.run(
             [sys.executable, script_path],

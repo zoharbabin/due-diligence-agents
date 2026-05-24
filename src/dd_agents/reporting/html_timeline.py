@@ -70,8 +70,11 @@ class TimelineRenderer(SectionRenderer):
                 )
             )
 
-        # Findings table
+        # SVG timeline visualization
         findings = timeline.get("findings", [])
+        self._render_svg_timeline(parts, findings)
+
+        # Findings table
         if findings:
             parts.append("<h3>Contract Date Findings</h3>")
             parts.append(
@@ -90,3 +93,17 @@ class TimelineRenderer(SectionRenderer):
 
         parts.append("</section>")
         return "\n".join(parts)
+
+    def _render_svg_timeline(self, parts: list[str], findings: list[dict[str, Any]]) -> None:
+        """Add SVG timeline chart if date-bearing findings exist."""
+        from dd_agents.reporting.html_charts import render_timeline_chart
+
+        events: list[dict[str, Any]] = []
+        for f in findings[:10]:
+            title = self.escape(str(f.get("title", ""))[:35])
+            sev = str(f.get("severity", "P3"))
+            events.append({"label": title, "date": "", "severity": sev})
+
+        svg = render_timeline_chart(events, title="Contract Date Findings Timeline")
+        if svg:
+            parts.append(f"<div style='margin:16px 0'>{svg}</div>")

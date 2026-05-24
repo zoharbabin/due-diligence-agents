@@ -417,7 +417,24 @@ def main() -> None:
     deal_config = {
         "buyer": {"name": "Meridian Capital Partners"},
         "target": {"name": "CloudSync Technologies"},
-        "deal": {"type": "acquisition", "expected_close": "2026-Q3"},
+        "deal_info": {"type": "acquisition", "expected_close": "2026-Q3"},
+        "buyer_strategy": {
+            "thesis": "Acquire best-of-breed vertical SaaS to bolt onto platform portfolio; "
+            "target's 4.9M ARR and enterprise customer base accelerates GTM in manufacturing vertical",
+            "key_synergies": [
+                "Cross-sell to Meridian's 200+ manufacturing accounts",
+                "Consolidate engineering under unified platform team",
+                "Migrate target customers to shared infrastructure (30% margin improvement)",
+            ],
+            "risk_tolerance": "moderate",
+            "integration_timeline": "6 months",
+            "valuation_basis": "8x ARR ($39.2M)",
+            "key_assumptions": [
+                "95%+ customer retention through close",
+                "Full IP ownership transfers cleanly",
+                "No regulatory blockers in target markets",
+            ],
+        },
     }
 
     executive_synthesis = {
@@ -439,6 +456,122 @@ def main() -> None:
         "severity_overrides": [],
     }
 
+    narrative = {
+        "deal_context": {
+            "summary": (
+                "Meridian Capital Partners is acquiring CloudSync Technologies (vertical SaaS, "
+                "$4.9M ARR) at 8x revenue to bolt onto its manufacturing platform portfolio. "
+                "The thesis depends on retaining 95%+ of customers and clean IP transfer — "
+                "both are directly threatened by findings below."
+            ),
+            "buyer_thesis_alignment": (
+                "Two P0 findings directly undermine the acquisition thesis: "
+                "(1) The NovaBridge CoC clause puts 49% of ARR at immediate termination risk, "
+                "violating the 95% retention assumption. "
+                "(2) The IP assignment gap threatens the 'full IP ownership' assumption. "
+                "These aren't generic risks — they specifically attack the value drivers "
+                "supporting the 8x multiple."
+            ),
+        },
+        "domain_summaries": [
+            {
+                "domain": "legal",
+                "headline": "3 CoC clauses threaten 54% of ARR — consent waivers needed pre-close",
+                "narrative": (
+                    "Legal analysis reveals systemic change-of-control risk across the top 2 "
+                    "revenue accounts. NovaBridge ($2.4M) has immediate termination right with "
+                    "no cure period; Pinnacle ($1.8M) requires written consent within 60 days. "
+                    "Combined, these contracts represent the majority of the asset value "
+                    "underpinning the 8x multiple."
+                ),
+            },
+            {
+                "domain": "finance",
+                "headline": "Customer concentration creates single-point-of-failure: top 2 = 86% ARR",
+                "narrative": (
+                    "Revenue is dangerously concentrated. If either NovaBridge or Pinnacle "
+                    "terminates, the business loses 49% or 37% of revenue respectively. "
+                    "The combined 86% concentration makes the 8x valuation fragile."
+                ),
+            },
+            {
+                "domain": "commercial",
+                "headline": "Below-market pricing locked in without escalation erodes margins",
+                "narrative": (
+                    "Horizon Logistics pricing is 32% below rate card with no escalation "
+                    "clause for the remaining 2 years. This limits the upside from Meridian's "
+                    "planned cross-sell motion and margin improvement thesis."
+                ),
+            },
+        ],
+        "recommendations": [
+            {
+                "action": "Obtain CoC consent waiver from NovaBridge before closing",
+                "rationale": (
+                    "$2.4M ARR (49% of total) terminates immediately on close without consent. "
+                    "This directly violates the 95% retention assumption in the 8x valuation."
+                ),
+                "finding_refs": ["Change of control triggers immediate termination"],
+                "owner": "M&A Counsel",
+                "urgency": "pre-close",
+                "estimated_effort": "2-4 weeks negotiation",
+            },
+            {
+                "action": "Execute IP assignment for NovaBridge custom modules",
+                "rationale": (
+                    "3 custom integration modules have ambiguous ownership. Meridian's "
+                    "platform consolidation thesis requires clear IP title."
+                ),
+                "finding_refs": ["IP assignment clause missing for custom integrations"],
+                "owner": "IP Counsel",
+                "urgency": "pre-close",
+                "estimated_effort": "1-2 weeks",
+            },
+            {
+                "action": "Structure retention holdback tied to customer renewal",
+                "rationale": (
+                    "86% concentration in 2 accounts. If either churns in first year, "
+                    "Meridian overpaid by 4-5x. Holdback aligns seller incentives."
+                ),
+                "finding_refs": ["Customer concentration risk exceeds 35% of total ARR"],
+                "owner": "Deal Lead",
+                "urgency": "pre-close",
+                "estimated_effort": "Included in SPA negotiation",
+            },
+            {
+                "action": "Engage auditors to validate revenue recognition policies",
+                "rationale": (
+                    "Quarterly billing vs monthly recognition creates restatement risk "
+                    "that could affect trailing metrics used in valuation."
+                ),
+                "finding_refs": ["Revenue recognition timing mismatch"],
+                "owner": "CFO / Audit Partner",
+                "urgency": "pre-close",
+                "estimated_effort": "1-2 weeks",
+            },
+        ],
+        "open_questions": [
+            {
+                "question": "Has NovaBridge been approached about CoC consent?",
+                "category": "decision_required",
+                "priority": "high",
+                "related_domains": ["legal"],
+            },
+            {
+                "question": "What is the actual developer who built the custom modules?",
+                "category": "data_gap",
+                "priority": "high",
+                "related_domains": ["legal", "producttech"],
+            },
+            {
+                "question": "Is the HIPAA breach notification requirement triggered?",
+                "category": "needs_counsel",
+                "priority": "medium",
+                "related_domains": ["regulatory", "cybersecurity"],
+            },
+        ],
+    }
+
     merged_data = _make_sample_data()
 
     gen = HTMLReportGenerator()
@@ -449,6 +582,7 @@ def main() -> None:
         title="CloudSync Technologies — M&A Due Diligence Report",
         deal_config=deal_config,
         executive_synthesis=executive_synthesis,
+        narrative=narrative,
     )
 
     print(f"Sample report generated: {output_path}")

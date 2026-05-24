@@ -129,7 +129,7 @@ The typical workflow is three steps: generate a config, run the pipeline, review
 
 ### 1. Generate a Deal Configuration
 
-The fastest path is `auto-config`, which uses AI to scan your data room and produce a complete configuration (costs roughly $0.50-$2 in API usage):
+The fastest path is `auto-config`, which uses AI to scan your data room and produce a complete configuration:
 
 ```bash
 dd-agents auto-config "Acme Corp" "Target Inc" --data-room ./data_room

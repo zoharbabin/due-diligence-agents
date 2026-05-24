@@ -1,6 +1,6 @@
-# 06 -- Agent Definitions
+> **Historical design spec** — written during the build phase. The code in `src/dd_agents/` is the authoritative implementation. Key divergences: 38 steps (not 35), 9 specialists + 4 synthesis agents (not 4+2), no ReportingLead agent (replaced by deterministic `validation/pre_merge.py` in v0.4.0). Retained for design rationale only — see `CLAUDE.md` for current state.
 
-> **Historical note**: This is a design spec written before implementation. The original design specified 4 specialist agents. The implementation has 9 specialists (Legal, Finance, Commercial, ProductTech, Cybersecurity, HR, Tax, Regulatory, ESG) managed via `AgentRegistry` in `agents/registry.py` with `AgentDescriptor` metadata in `agents/descriptor.py`. The Reporting Lead was removed in v0.4.0. See `CLAUDE.md` and `agents/specialists.py` for the current agent architecture.
+# 06 -- Agent Definitions
 
 > **Source**: `agent-prompts.md` (508 lines), `SKILL.md` sections 3a-3g
 > **SDK reference**: `claude-agent-sdk` v0.1.56+ — `query()`, `ClaudeAgentOptions`, `HookMatcher`

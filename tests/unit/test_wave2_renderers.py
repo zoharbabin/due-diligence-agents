@@ -639,8 +639,8 @@ class TestCrossDomainRenderer:
         assert "sec-cross-domain" in html
         assert "Cross-Domain Risk Correlation" in html
         assert "Subject A" in html
-        assert "8.5" in html
-        assert "alert-critical" in html  # P0 alert for Subject A
+        assert "cross-domain-card" in html
+        assert "severity-badge" in html  # Compound severity badge for P0 entity
 
     def test_xss_escaping_entity(self) -> None:
         data = _make_data()

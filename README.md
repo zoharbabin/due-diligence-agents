@@ -9,7 +9,7 @@
     <a href="https://github.com/zoharbabin/due-diligence-agents/actions"><img src="https://github.com/zoharbabin/due-diligence-agents/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
     <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.12+-blue.svg" alt="Python 3.12+"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green.svg" alt="License"></a>
-    <img src="https://img.shields.io/badge/tests-3,689-brightgreen.svg" alt="Tests">
+    <a href="https://github.com/zoharbabin/due-diligence-agents/actions"><img src="https://img.shields.io/badge/tests-passing-brightgreen.svg" alt="Tests"></a>
     <img src="https://img.shields.io/badge/mypy-strict-blue.svg" alt="mypy strict">
     <a href="https://github.com/zoharbabin/due-diligence-agents/stargazers"><img src="https://img.shields.io/github/stars/zoharbabin/due-diligence-agents?style=social" alt="GitHub Stars"></a>
   </p>
@@ -19,7 +19,26 @@
 
 https://github.com/user-attachments/assets/44322675-2f3e-4401-9e6b-e248c68c08f6
 
-**[See a sample report](https://zoharbabin.github.io/due-diligence-agents/)** — interactive HTML output from a synthetic 4-subject deal, no install required.
+**[See a sample report](https://zoharbabin.github.io/due-diligence-agents/)** — interactive HTML output from a synthetic deal, no install required.
+
+<details>
+<summary><strong>Report Preview</strong> — executive dashboard with Go/No-Go verdict, cross-domain synthesis, filter bar</summary>
+
+<p align="center">
+<img src="docs/marketing/screenshots/01-executive-dashboard.png" alt="Executive Dashboard with Go/No-Go verdict, key takeaways, and severity distribution" width="720">
+</p>
+
+<p align="center">
+<img src="docs/marketing/screenshots/03-cross-domain-synthesis.png" alt="Cross-domain synthesis showing compound risks across entity domains" width="720">
+</p>
+
+<p align="center">
+<img src="docs/marketing/screenshots/06-risk-heatmap.png" alt="9-domain risk heatmap with RAG status and severity breakdown" width="720">
+</p>
+
+See the full [Report Showcase](docs/marketing/REPORT_SHOWCASE.md) for all features.
+
+</details>
 
 ---
 
@@ -53,7 +72,7 @@ dd-agents run deal-config.json
 
 Analyzes every document through 9 domain lenses, cross-references findings, and validates quality through 5 blocking gates. Produces:
 
-- **Interactive HTML report** — cross-domain findings, risk heatmaps, severity filtering, drill-down to exact clauses
+- **Interactive HTML report** — Go/No-Go verdict with executive narrative, progressive disclosure (decision → actions → domain details → full evidence), severity filtering
 - **14-sheet Excel report** — structured findings, cross-references, audit trail for downstream modeling
 - **Per-subject JSON findings** — every finding with severity, citations, cross-references, and governance graph edges
 
@@ -130,9 +149,25 @@ pip install -e ".[dev,pdf]"
 ```
 </details>
 
-Open `_dd/forensic-dd/runs/latest/report/dd_report.html` in your browser.
+Output appears at `{data_room_path}/_dd/forensic-dd/runs/latest/report/dd_report.html` — open it in your browser.
 
 **No API key yet?** Generate a config without any API calls: `dd-agents init --data-room ./data_room`
+
+<details>
+<summary><strong>Minimal config (only required fields)</strong></summary>
+
+```json
+{
+  "config_version": "1.0.0",
+  "buyer": { "name": "Acme Corp" },
+  "target": { "name": "Target Inc" },
+  "deal": { "type": "acquisition" },
+  "data_room": { "path": "./data_room" }
+}
+```
+
+Everything else (`entity_aliases`, `judge`, `execution`, `buyer_strategy`, etc.) is optional and enhances analysis when provided. See [Deal Configuration](docs/user-guide/deal-configuration.md) for the full schema.
+</details>
 
 See the [Getting Started guide](docs/user-guide/getting-started.md) for a complete walkthrough with the included sample data room.
 
@@ -208,6 +243,11 @@ Supports PDFs, Word, Excel, PowerPoint, and images. Scanned PDFs are handled via
     └─────────┴──────┬───────┴────────────┴───────────────┘
                       │
               ┌───────▼────────┐
+              │  Cross-Domain  │  ← Symbolic trigger rules detect
+              │   Analysis     │    inter-domain dependencies
+              └───────┬────────┘
+                      │
+              ┌───────▼────────┐
               │  Judge Agent   │  ← Validates findings
               │  (optional)    │
               └───────┬────────┘
@@ -229,6 +269,15 @@ Supports PDFs, Word, Excel, PowerPoint, and images. Scanned PDFs are handled via
 **9 domain specialists** (Legal, Finance, Commercial, ProductTech, Cybersecurity, HR, Tax, Regulatory, ESG) analyze every document in parallel. Agents are config-driven — enable/disable per deal via `deal-config.json`. A **Judge** spot-checks findings. **Executive Synthesis** calibrates severity and the Go/No-Go signal. **Red Flag Scanner** provides quick triage. **Acquirer Intelligence** maps findings to the buyer's thesis (when configured). External agents can be added via pip entry-points without modifying core code.
 
 The pipeline **halts on quality failures** rather than producing unreliable output. Runs can be resumed from any step.
+
+## Security & Privacy
+
+- **Local execution** — all analysis runs on your machine. Documents only leave your machine as API calls to your configured LLM provider (Anthropic or AWS Bedrock).
+- **No telemetry** — the tool does not phone home, collect usage data, or send analytics anywhere.
+- **Read-only** — the tool never modifies files in your data room. Output is written to a separate `_dd/` directory.
+- **No persistent credentials** — API keys are read from environment variables or `.env` files, never stored in output artifacts.
+
+See [SECURITY.md](SECURITY.md) for the full security policy, vulnerability reporting, and data handling details.
 
 ## What Gets Analyzed
 
@@ -339,12 +388,20 @@ All core dependencies use permissive open-source licenses (Apache 2.0, MIT, BSD)
 | [Running the Pipeline](docs/user-guide/running-pipeline.md) | Execution modes, resume, quality gates |
 | [Reading the Report](docs/user-guide/reading-report.md) | Navigating the HTML and Excel output |
 | [CLI Reference](docs/user-guide/cli-reference.md) | Complete command reference |
+| [Troubleshooting](docs/user-guide/troubleshooting.md) | Common errors, exit codes, recovery steps |
 | [Search Guide](docs/search-guide.md) | Contract search for legal teams |
 | [Architecture & Design](docs/plan/PLAN.md) | System architecture and design documents |
 
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, code style, and PR process.
+
+## Press & Coverage
+
+| Source | Article |
+|--------|---------|
+| C&S Finance Group | [New Open-Source AI System with 13 Agents Launched to Automate M&A Due Diligence](https://www.csfinancegroup.com/news/new-open-source-ai-system-with-13-agents-launched-to-automate-m-a-due-diligence-27eaa0b3-23d1-4926-ba9e-b1cd051317ce) |
+| DEV Community | [Building a 13-Agent AI System for M&A Due Diligence — Architecture Deep Dive](https://dev.to/zoharbabin/building-a-13-agent-ai-system-for-ma-due-diligence-architecture-deep-dive-20ah) |
 
 ## Star History
 

@@ -81,16 +81,17 @@ The system runs as a 38-step async state machine organized into five stages. Eac
 │  coverage verification with respawn for gaps            │
 │  🚫 GATE: Subject coverage (step 17)                    │
 ├─────────────────────────────────────────────────────────┤
-│  Stage 4: Quality Review (Steps 18-28)                  │
-│  Judge adversarial review, merge & dedup, numerical     │
-│  audit (6-layer), 31 Definition of Done checks          │
-│  🚫 GATE: Numerical audit (step 27)                     │
-│  🚫 GATE: Full QA audit (step 28)                       │
+│  Stage 4: Quality Review (Steps 18-31)                  │
+│  Cross-domain analysis, judge adversarial review,       │
+│  merge & dedup, numerical audit (6-layer),              │
+│  31 Definition of Done checks                           │
+│  🚫 GATE: Numerical audit (step 30)                     │
+│  🚫 GATE: Full QA audit (step 31)                       │
 ├─────────────────────────────────────────────────────────┤
-│  Stage 5: Reporting & Knowledge (Steps 29-35)           │
+│  Stage 5: Reporting & Knowledge (Steps 32-38)           │
 │  Report generation, post-gen validation, knowledge      │
 │  compilation, entity cache persistence                  │
-│  🚫 GATE: Post-generation validation (step 31)          │
+│  🚫 GATE: Post-generation validation (step 34)          │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -256,7 +257,7 @@ Nine specialist agents analyze the data room in parallel, each from their domain
 
 ### Cross-domain findings emerge from merge
 
-The same document gets analyzed by all four agents. Legal finds a change-of-control termination right. Finance calculates the revenue at risk. Commercial notes the subject is on an expiring contract. ProductTech flags a missing data processing agreement. After merge and dedup (step 24), these findings are linked to the same subject — and the Executive Synthesis agent connects them into a cross-domain risk assessment.
+The same document gets analyzed by all relevant agents. Legal finds a change-of-control termination right. Finance calculates the revenue at risk. Commercial notes the subject is on an expiring contract. ProductTech flags a missing data processing agreement. After merge and dedup (step 27), these findings are linked to the same subject — and the Executive Synthesis agent connects them into a cross-domain risk assessment.
 
 ### Domain boundaries are explicit
 
@@ -336,7 +337,7 @@ _dd/forensic-dd/knowledge/          [PERMANENT tier]
 
 ### How it works
 
-**After each run** (step 32), the Knowledge Compiler processes merged findings:
+**After each run** (step 35), the Knowledge Compiler processes merged findings:
 
 1. **Entity profiles** created or updated — severity distribution, key clauses, cross-run history
 2. **Clause summaries** aggregated — which entities are affected by each clause type

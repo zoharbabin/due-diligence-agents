@@ -100,10 +100,12 @@ def _compute(merged: dict[str, object] | None = None) -> ReportComputedData:
 
 class TestSectionRendererHelpers:
     def test_severity_badge_colors(self) -> None:
+        indicators = {"P0": "▲", "P1": "●", "P2": "◆", "P3": "○"}
         for sev in ("P0", "P1", "P2", "P3"):
             badge = SectionRenderer.severity_badge(sev)
-            assert f">{sev}</span>" in badge
+            assert sev in badge
             assert "severity-badge" in badge
+            assert indicators[sev] in badge
 
     def test_escape_html(self) -> None:
         assert SectionRenderer.escape("<script>") == "&lt;script&gt;"
@@ -1055,21 +1057,21 @@ class TestExecutiveSummaryRenderer:
         html_out = r.render()
         assert "id='sec-executive'" in html_out
         assert "Executive Summary" in html_out
-        # Single P0 → High → Proceed with Caution (softened scoring)
-        assert "Proceed with Caution" in html_out
+        # Single P0 → deterministic verdict: NO-GO (Issue #195)
+        assert "NO-GO" in html_out
 
     def test_go_signal_clean(self) -> None:
         merged = {"c": {"subject": "C", "findings": [], "gaps": []}}
         computed = _compute(merged)
         r = ExecutiveSummaryRenderer(computed, merged)
         html_out = r.render()
-        assert "Go" in html_out
+        assert "PROCEED" in html_out
 
     def test_heatmap_rendered(self) -> None:
         computed = _compute()
         r = ExecutiveSummaryRenderer(computed, _make_merged_data())
         html_out = r.render()
-        assert "Risk by Domain" in html_out
+        assert "domain-strip" in html_out
         assert "Legal" in html_out
 
     def test_top_deal_breakers(self) -> None:
@@ -1083,17 +1085,16 @@ class TestExecutiveSummaryRenderer:
         computed = _compute()
         r = ExecutiveSummaryRenderer(computed, _make_merged_data())
         html_out = r.render()
-        assert "Material Findings" in html_out
-        assert "P0 Critical" in html_out
-        assert "Match Rate" in html_out
+        # Domain strip shows domain names and severity badges
+        assert "domain-row" in html_out
+        assert "domain-row-badge" in html_out
 
     def test_concentration_risk(self) -> None:
         computed = _compute()
         r = ExecutiveSummaryRenderer(computed, _make_merged_data())
         html_out = r.render()
-        # HHI is computed; if present it should be rendered
-        if computed.concentration_hhi > 0:
-            assert "Concentration Risk" in html_out
+        # Concentration risk is now surfaced via domain severity in the domain strip
+        assert "domain-strip" in html_out
 
 
 # ===========================================================================
@@ -1706,29 +1707,29 @@ class TestDiffRenderer:
 
 
 class TestSidebarNavLinks:
-    def test_sidebar_has_p0_p1_links(self) -> None:
+    def test_sidebar_has_decision_links(self) -> None:
         nav = render_nav_bar()
-        assert "href='#sec-p0-table'" in nav
-        assert "href='#sec-p1-table'" in nav
+        assert "href='#sec-executive'" in nav
+        assert "href='#sec-action-items'" in nav
 
-    def test_sidebar_has_quality_links(self) -> None:
+    def test_sidebar_has_evidence_links(self) -> None:
         nav = render_nav_bar()
-        assert "href='#sec-quality'" in nav
-        assert "href='#sec-audit-checks'" in nav
+        assert "href='#sec-subjects'" in nav
+        assert "href='#sec-methodology'" in nav
 
     def test_sidebar_has_all_domain_links(self) -> None:
         nav = render_nav_bar()
         for domain in ("legal", "finance", "commercial", "producttech"):
             assert f"href='#sec-domain-{domain}'" in nav
 
-    def test_sidebar_has_recommendations_link(self) -> None:
+    def test_sidebar_has_analysis_links(self) -> None:
         nav = render_nav_bar()
-        assert "href='#sec-recommendations'" in nav
-        assert "href='#sec-methodology'" in nav
+        assert "href='#sec-financial'" in nav
+        assert "href='#sec-valuation'" in nav
 
-    def test_sidebar_has_red_flags_link(self) -> None:
+    def test_sidebar_has_domain_overview_link(self) -> None:
         nav = render_nav_bar()
-        assert "href='#sec-red-flags'" in nav
+        assert "href='#sec-domain-overview'" in nav
 
 
 # ===========================================================================
@@ -1963,7 +1964,7 @@ class TestExecutiveSummaryMaterialCounts:
     """Test that executive summary uses material counts."""
 
     def test_executive_summary_material_counts(self) -> None:
-        """Executive summary should show material finding count, not total."""
+        """Executive summary uses material findings for domain severity display."""
         findings = [
             _make_finding(severity="P0", title="Real deal breaker"),
             _make_finding(severity="P1", title="Binary xlsx inaccessible"),
@@ -1971,22 +1972,24 @@ class TestExecutiveSummaryMaterialCounts:
         ]
         merged = {"c": {"subject": "C", "findings": findings, "gaps": []}}
         computed = _compute(merged)
+        # Verify noise filtering happened correctly
+        assert computed.material_count == 2
+        assert computed.noise_count == 1
         r = ExecutiveSummaryRenderer(computed, merged)
         html_out = r.render()
-        # Should reference material count (2), not total (3)
-        assert f">{computed.material_count}</div>" in html_out
-        assert "data quality" in html_out.lower() or "excluded" in html_out.lower()
+        # Domain strip renders with finding counts
+        assert "domain-strip" in html_out
 
 
 class TestSidebarAppendixGroup:
-    """Test that sidebar has an Appendix group with Methodology and Data Quality."""
+    """Test that sidebar has an Evidence group with Methodology and Data Gaps."""
 
-    def test_sidebar_appendix_group(self) -> None:
-        """Sidebar should have an Appendix group containing Methodology and Data Quality."""
+    def test_sidebar_evidence_group(self) -> None:
+        """Sidebar should have an Evidence group containing Methodology and Data Gaps."""
         nav = render_nav_bar()
-        assert "Appendix" in nav
+        assert "Evidence" in nav
         assert "href='#sec-methodology'" in nav
-        assert "href='#sec-governance'" in nav
+        assert "href='#sec-gaps'" in nav
 
 
 class TestDisplayNameResolution:

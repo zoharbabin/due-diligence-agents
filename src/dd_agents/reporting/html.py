@@ -1,17 +1,15 @@
 """Self-contained interactive HTML report generator.
 
-Generates a single HTML file (Mermaid.js loaded from CDN for governance graphs).
-Top-down executive M&A decision-support report with progressive drill-down:
+Generates a single HTML file with progressive disclosure in 4 layers:
 
-Level 0: Deal-Level Decision View (go/no-go signals)
-  Level 1: Domain Analysis (Legal / Finance / Commercial / ProductTech)
-    Level 2: Risk Categories within each domain
-      Level 3: Per-Subject / Per-Entity findings
-        Level 4: Individual findings with full citations
+Layer 1 (Decision): Verdict, takeaways, domain strip, open items — visible on load
+Layer 2 (Actions): Recommendations, financial impact, valuation bridge — expand to view
+Layer 3 (Domains): Domain cards, cross-domain correlation, deep-dives — expand to view
+Layer 4 (Evidence): All findings, specialized analyses, appendix — expand to view
 
-Features: sidebar navigation with scroll tracking, alert boxes, severity
-filtering, global search, sortable tables, collapsible sections, print mode,
-CSS custom properties, RAG indicators, recommendations engine.
+Features: off-canvas sidebar navigation, severity filtering, global search,
+sortable tables, collapsible layers, print mode, CSS custom properties,
+RAG indicators, neurosymbolic recommendations engine.
 
 Architecture: Thin orchestrator that delegates to per-section renderers.
 Each renderer inherits SectionRenderer and consumes pre-computed ReportComputedData.
@@ -26,6 +24,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from dd_agents.reporting.computed_metrics import ReportDataComputer
+from dd_agents.reporting.html_action_items import ActionItemsRenderer
 from dd_agents.reporting.html_analysis import (
     CoCAnalysisRenderer,
     PrivacyAnalysisRenderer,
@@ -39,9 +38,11 @@ from dd_agents.reporting.html_cross_domain import CrossDomainRenderer
 from dd_agents.reporting.html_dashboard import DashboardRenderer
 from dd_agents.reporting.html_diff import DiffRenderer
 from dd_agents.reporting.html_discount import DiscountAnalysisRenderer
+from dd_agents.reporting.html_domain_summary import DomainSummaryRenderer
 from dd_agents.reporting.html_domains import DomainRenderer
 from dd_agents.reporting.html_entity import EntityDistributionRenderer
 from dd_agents.reporting.html_executive import ExecutiveSummaryRenderer
+from dd_agents.reporting.html_filter_bar import FilterBarRenderer
 from dd_agents.reporting.html_financial import FinancialImpactRenderer
 from dd_agents.reporting.html_findings_table import FindingsTableRenderer
 from dd_agents.reporting.html_gaps import GapRenderer
@@ -112,6 +113,7 @@ class HTMLReportGenerator:
         acquirer_intelligence: dict[str, Any] | None = None,
         executive_synthesis: dict[str, Any] | None = None,
         red_flag_scan: dict[str, Any] | None = None,
+        narrative: dict[str, Any] | None = None,
         run_dir: Path | None = None,
     ) -> None:
         """Write the HTML report to *output_path*.
@@ -168,6 +170,10 @@ class HTMLReportGenerator:
                 with contextlib.suppress(json.JSONDecodeError, OSError):
                     computed.cross_domain_triggers = json.loads(triggers_path.read_text(encoding="utf-8"))
 
+        # Inject narrative data if provided
+        if narrative and isinstance(narrative, dict):
+            computed.narrative = narrative
+
         # Config dict passed to renderers for metadata they need
         renderer_config: dict[str, Any] = {
             "_title": title,
@@ -190,88 +196,119 @@ class HTMLReportGenerator:
             render_nav_bar(section_rag=computed.section_rag),
         ]
 
-        # Section renderers (professional DD report flow — rendering overhaul)
-        renderers: list[SectionRenderer] = [
-            # 0. Red Flag Assessment (quick-scan mode — Issue #125, renders only when data present)
-            RedFlagAssessmentRenderer(computed, merged_data, renderer_config),
-            # 1. Executive summary (Go/No-Go, risk heatmap, deal breakers, key metrics)
+        # --- Layer 1: The Decision (one viewport) ---
+        layer1_renderers: list[SectionRenderer] = [
             ExecutiveSummaryRenderer(computed, merged_data, renderer_config),
-            # 2. Dashboard (deal header + metrics strip — material counts)
-            DashboardRenderer(computed, merged_data, renderer_config),
-            # 2b. Financial Impact (revenue-at-risk waterfall, treemap — Issue #102)
-            FinancialImpactRenderer(computed, merged_data, renderer_config),
-            # 2c. SaaS Health Metrics (KPI cards, tier distribution — Issue #115)
-            SaaSMetricsRenderer(computed, merged_data, renderer_config),
-            # 2d. Valuation Impact Bridge (Issue #116)
-            ValuationBridgeRenderer(computed, merged_data, renderer_config),
-            # 3. P0/P1 entity tables
-            FindingsTableRenderer(computed, merged_data, renderer_config),
-            # 4. Change of Control analysis
-            CoCAnalysisRenderer(computed, merged_data, renderer_config),
-            # 4b. Termination for Convenience — Revenue Quality
-            TfCAnalysisRenderer(computed, merged_data, renderer_config),
-            # 5. Data Privacy analysis
-            PrivacyAnalysisRenderer(computed, merged_data, renderer_config),
-            # 6. Risk Heatmap (domain deep-dive summary)
-            RiskRenderer(computed, merged_data, renderer_config),
-            # 7. Domain sections (Legal, Finance, Commercial, ProductTech) — capped
-            DomainRenderer(computed, merged_data, renderer_config),
-            # 8. Discount & Pricing Analysis (Issue #135)
-            DiscountAnalysisRenderer(computed, merged_data, renderer_config),
-            # 9. Renewal & Contract Expiry (Issue #136)
-            RenewalAnalysisRenderer(computed, merged_data, renderer_config),
-            # 10. Regulatory & Compliance (Issue #121)
-            ComplianceRenderer(computed, merged_data, renderer_config),
-            # 11. Legal Entity Distribution (Issue #137)
-            EntityDistributionRenderer(computed, merged_data, renderer_config),
-            # 12. Contract Date Timeline (Issue #147)
-            TimelineRenderer(computed, merged_data, renderer_config),
-            # 12a. Insurance & Liability Analysis (Issue #156)
-            LiabilityRenderer(computed, merged_data, renderer_config),
-            # 12b. IP & Technology License Risk (Issue #158)
-            IPRiskRenderer(computed, merged_data, renderer_config),
-            # 12c. Cross-Domain Risk Correlation (Issue #103)
-            CrossDomainRenderer(computed, merged_data, renderer_config),
-            # 12d. Clause Analysis (Issue #119)
-            _clause_lib_renderer(computed, merged_data, renderer_config),
-            # 12e. Key Employee & Organizational Risk (Issue #131)
-            _key_employee_renderer(computed, merged_data, renderer_config),
-            # 12f. Technology Stack Assessment (Issue #132)
-            _tech_stack_renderer(computed, merged_data, renderer_config),
-            # 12g. Product Adoption Matrix (Issue #138)
-            _product_adoption_renderer(computed, merged_data, renderer_config),
-            # 13. Cross-Reference Reconciliation
-            CrossRefRenderer(computed, merged_data, renderer_config),
-            # 14. Entity Health Tiers
-            SubjectHealthRenderer(computed, merged_data, renderer_config),
-            # 15. Recommendations
-            RecommendationsRenderer(computed, merged_data, renderer_config),
-            # 15b. Post-Close Integration Playbook (Issue #117)
-            IntegrationPlaybookRenderer(computed, merged_data, renderer_config),
-            # 15c. Governance Graph Visualization (Issue #142)
-            GovernanceGraphRenderer(computed, merged_data, renderer_config),
-            # --- Appendix ---
-            # 16. Missing or Incomplete Data (moved from main body to appendix)
-            GapRenderer(computed, merged_data, renderer_config),
-            # 17. Entity Detail (collapsed)
-            SubjectRenderer(computed, merged_data, renderer_config),
-            # 18. Methodology & Limitations (collapsed appendix)
-            MethodologyRenderer(computed, merged_data, renderer_config),
-            # 19. Data Quality appendix (collapsed) — governance, QA, noise findings
-            QualityRenderer(computed, merged_data, renderer_config, run_dir=run_dir),
         ]
 
-        # Conditional diff section (only for incremental runs)
-        renderers.append(DiffRenderer(computed, merged_data, renderer_config, run_dir=run_dir))
+        # --- Layer 2: What To Do (actions + financial impact) ---
+        layer2_renderers: list[SectionRenderer] = [
+            ActionItemsRenderer(computed, merged_data, renderer_config),
+            FinancialImpactRenderer(computed, merged_data, renderer_config),
+            ValuationBridgeRenderer(computed, merged_data, renderer_config),
+        ]
+
+        # --- Layer 3: Domain Details (collapsed sections) ---
+        layer3_renderers: list[SectionRenderer] = [
+            FilterBarRenderer(computed, merged_data, renderer_config),
+            DomainSummaryRenderer(computed, merged_data, renderer_config),
+            CrossDomainRenderer(computed, merged_data, renderer_config),
+            DomainRenderer(computed, merged_data, renderer_config),
+        ]
+
+        # --- Layer 4: Full Evidence (collapsed) ---
+        layer4_renderers: list[SectionRenderer] = [
+            RedFlagAssessmentRenderer(computed, merged_data, renderer_config),
+            DashboardRenderer(computed, merged_data, renderer_config),
+            SaaSMetricsRenderer(computed, merged_data, renderer_config),
+            FindingsTableRenderer(computed, merged_data, renderer_config),
+            CoCAnalysisRenderer(computed, merged_data, renderer_config),
+            TfCAnalysisRenderer(computed, merged_data, renderer_config),
+            PrivacyAnalysisRenderer(computed, merged_data, renderer_config),
+            RiskRenderer(computed, merged_data, renderer_config),
+            DiscountAnalysisRenderer(computed, merged_data, renderer_config),
+            RenewalAnalysisRenderer(computed, merged_data, renderer_config),
+            ComplianceRenderer(computed, merged_data, renderer_config),
+            EntityDistributionRenderer(computed, merged_data, renderer_config),
+            TimelineRenderer(computed, merged_data, renderer_config),
+            LiabilityRenderer(computed, merged_data, renderer_config),
+            IPRiskRenderer(computed, merged_data, renderer_config),
+            _clause_lib_renderer(computed, merged_data, renderer_config),
+            _key_employee_renderer(computed, merged_data, renderer_config),
+            _tech_stack_renderer(computed, merged_data, renderer_config),
+            _product_adoption_renderer(computed, merged_data, renderer_config),
+            CrossRefRenderer(computed, merged_data, renderer_config),
+            SubjectHealthRenderer(computed, merged_data, renderer_config),
+            RecommendationsRenderer(computed, merged_data, renderer_config),
+            IntegrationPlaybookRenderer(computed, merged_data, renderer_config),
+            GovernanceGraphRenderer(computed, merged_data, renderer_config),
+            GapRenderer(computed, merged_data, renderer_config),
+            SubjectRenderer(computed, merged_data, renderer_config),
+            MethodologyRenderer(computed, merged_data, renderer_config),
+            QualityRenderer(computed, merged_data, renderer_config, run_dir=run_dir),
+            DiffRenderer(computed, merged_data, renderer_config, run_dir=run_dir),
+        ]
 
         # Conditional buyer strategy section
         if computed.buyer_strategy:
-            renderers.append(StrategyRenderer(computed, merged_data, renderer_config))
+            layer2_renderers.append(StrategyRenderer(computed, merged_data, renderer_config))
 
-        for renderer in renderers:
+        # Render Layer 1 — the decision (always visible, first viewport)
+        for renderer in layer1_renderers:
             section_html = renderer.render()
             if section_html:
                 parts.append(section_html)
+
+        # Render Layer 2 — what to do (visible, below fold)
+        layer2_html: list[str] = []
+        for renderer in layer2_renderers:
+            section_html = renderer.render()
+            if section_html:
+                layer2_html.append(section_html)
+        if layer2_html:
+            parts.append(
+                "<div class='layer-divider'>"
+                "<button class='layer-toggle' id='toggle-actions' type='button' "
+                "aria-expanded='false'>What To Do About It</button>"
+                "</div>"
+                "<div class='deep-dive-layer' id='actions-content' style='display:none'>"
+            )
+            parts.extend(layer2_html)
+            parts.append("</div>")
+
+        # Render Layer 3 — domain details (collapsed)
+        layer3_html: list[str] = []
+        for renderer in layer3_renderers:
+            section_html = renderer.render()
+            if section_html:
+                layer3_html.append(section_html)
+        if layer3_html:
+            parts.append(
+                "<div class='layer-divider'>"
+                "<button class='layer-toggle' id='toggle-deep-dive' type='button' "
+                "aria-expanded='false'>Domain Details</button>"
+                "</div>"
+                "<div class='deep-dive-layer' id='deep-dive-content' style='display:none'>"
+            )
+            parts.extend(layer3_html)
+            parts.append("</div>")
+
+        # Render Layer 4 — full evidence (collapsed)
+        layer4_html: list[str] = []
+        for renderer in layer4_renderers:
+            section_html = renderer.render()
+            if section_html:
+                layer4_html.append(section_html)
+        if layer4_html:
+            parts.append(
+                "<div class='layer-divider'>"
+                "<button class='layer-toggle layer-toggle--muted' id='toggle-appendix' type='button' "
+                "aria-expanded='false'>Full Evidence &amp; Appendix</button>"
+                "</div>"
+                "<div class='deep-dive-layer' id='appendix-content' style='display:none'>"
+            )
+            parts.extend(layer4_html)
+            parts.append("</div>")
 
         parts.extend(
             [

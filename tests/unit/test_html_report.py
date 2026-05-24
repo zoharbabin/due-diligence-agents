@@ -604,7 +604,7 @@ class TestHTMLReportGenerator:
 
         content = out.read_text(encoding="utf-8")
         assert "class='sidebar'" in content
-        assert "href='#sec-heatmap'" in content
+        assert "href='#sec-executive'" in content
         assert "href='#sec-gaps'" in content
         assert "href='#sec-subjects'" in content
 

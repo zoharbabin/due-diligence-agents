@@ -1,199 +1,101 @@
 # Reading the Report
 
-The pipeline produces two report formats: an interactive HTML report for navigation and drill-down, and a 14-sheet Excel report for detailed analysis. Both include sourced citations, severity filtering, and cross-domain correlation. These reports provide deep, granular analysis across 9 specialist domains (Legal, Finance, Commercial, ProductTech, Cybersecurity, HR, Tax, Regulatory, ESG) — structured output your team uses as the basis for their own deliverables (board presentations, advisor memos, negotiation checklists, integration plans).
+The pipeline produces two report formats: an interactive HTML report for navigation and drill-down, and a 14-sheet Excel report for detailed analysis. Both include sourced citations, severity classifications, and cross-domain correlation. These reports provide deep, granular analysis across 9 specialist domains — structured output your team uses as the basis for their own deliverables (board presentations, advisor memos, negotiation checklists, integration plans).
 
 **This tool does not replace professional advisors.** Use the structured findings alongside your advisory process to search, correlate, and track risks more efficiently.
 
 ## HTML Report
 
 Open `_dd/forensic-dd/runs/<timestamp>/report/dd_report.html` in any modern browser.
-The report is fully self-contained with no external dependencies.
+The report is fully self-contained (no external dependencies, works offline).
+
+### Report Structure — Progressive Disclosure
+
+The report uses a 4-layer progressive disclosure design. You get the answer first, then drill down for detail:
+
+**Layer 1: The Decision (visible on load, no scrolling required)**
+- Deal context header (buyer → target, deal type)
+- Go/No-Go verdict with executive narrative explaining the recommendation
+- Key takeaways as full sentences with severity icons
+- Domain risk strip showing all 9 domains with severity bars
+
+**Layer 2: What To Do About It (click to expand)**
+- Action items with urgency timelines, owners, and rationale
+- Financial impact quantification
+- Valuation bridge (risk-adjusted)
+- Buyer strategy alignment (when configured)
+
+**Layer 3: Domain Details (click to expand)**
+- Domain overview cards with finding previews and narrative headlines
+- Cross-domain risk correlation
+- Per-domain deep-dive sections (expandable)
+
+**Layer 4: Full Evidence & Appendix (click to expand)**
+- Red flag assessment, dashboard, SaaS metrics
+- All findings table (sortable, filterable)
+- Specialized analyses (CoC, TfC, privacy, discount, renewal, compliance)
+- Entity distribution, timeline, liability, IP risk
+- Clause library, key employee, tech stack, product adoption
+- Cross-reference reconciliation, entity health tiers
+- Recommendations, integration playbook, governance graph
+- Data gaps, per-entity detail, methodology, data quality
 
 ### Navigation
 
-The left sidebar lists all report sections with scroll tracking -- the active section
-highlights as you scroll. Click any section to jump directly to it.
+Click the hamburger menu (☰) in the top-left corner to open the sidebar. The sidebar lists key sections grouped by category (Decision, Domains, Analysis, Evidence) with RAG status dots.
 
-Each section in the sidebar displays a RAG (Red/Amber/Green) indicator showing the
-risk status for that area at a glance.
+**Clicking a sidebar link automatically expands the parent layer** if it's collapsed, then scrolls to the section. You don't need to manually expand layers before navigating.
 
 ### Severity Filtering
 
-Use the severity filter controls at the top to show or hide findings by priority level:
+The filter bar (visible in Layer 3) lets you show or hide findings by severity and domain:
 
 | Level | Meaning | Color |
 |-------|---------|-------|
-| P0 | Critical -- deal breakers, immediate action required | Red |
-| P1 | High -- significant risk, requires attention before close | Orange |
-| P2 | Medium -- notable issues, manageable with remediation | Yellow |
-| P3 | Low -- minor concerns, monitor post-close | Blue |
-| P4 | Informational -- observations, no action needed | Gray |
+| P0 | Critical — deal breakers, immediate action required | Red |
+| P1 | High — significant risk, requires attention before close | Orange |
+| P2 | Medium — notable issues, manageable with remediation | Yellow |
+| P3 | Low — minor concerns, monitor post-close | Blue |
 
-### Report Sections
+### The Verdict Block
 
-The report follows a top-down drill-down structure, organized into four tiers:
-deal-level decisions, domain deep-dives, cross-cutting analysis, and appendices.
+The first thing you see is the verdict card. When executive synthesis runs (the default), this shows the LLM-calibrated Go/No-Go signal with the full executive narrative integrated — explaining not just WHAT the verdict is but WHY, what's at risk, and what to do about it.
 
-#### Deal-Level Decision View
+The verdict considers:
+- All findings across 9 domains
+- Deal context and buyer thesis (when configured)
+- Mitigability and timeline to resolution
+- Cross-domain compound risks
 
-**Red Flag Assessment** (quick-scan mode only)
-Stoplight signal (red/yellow/green) with critical flags from the Red Flag Scanner.
-Only present when `--quick-scan` was used.
+Risk labels (Critical, High, Medium, Low, Clean) reflect severity of findings. The signal (No-Go, Proceed with Caution, Conditional Go, Go) reflects the overall recommendation accounting for mitigability.
 
-**Executive Summary**
-Go/No-Go recommendation, risk heatmap, deal breakers, and key metrics. Start here
-for the high-level picture.
+### Domain Overview Cards
 
-**Dashboard**
-Deal header with buyer/target names, deal type, and metric cards showing material
-finding counts by severity.
+In Layer 3, domain cards show:
+- Domain name with risk badge (High/Medium/Low/Clean)
+- Severity bar showing finding distribution
+- Top 3 findings preview with severity tags
+- LLM-generated narrative headline (when narrative data available)
+- Link to full domain detail
 
-**Financial Impact**
-Revenue-at-risk waterfall chart and treemap visualization. Quantifies the financial
-exposure from identified contract risks.
-
-**SaaS Health Metrics**
-KPI cards for key SaaS metrics (NRR, GRR, churn, LTV) and customer tier distribution.
-
-**Valuation Impact Bridge**
-Shows how identified risks map to potential valuation adjustments, bridging from
-headline valuation to risk-adjusted valuation.
-
-**P0/P1 Findings Table**
-Sortable table of all critical and high-severity findings across all entities.
-Each row includes entity name, domain, category, severity, and description.
-
-#### Domain Deep-Dive
-
-**Change of Control Analysis**
-Detailed analysis of change-of-control clauses: consent requirements, notification
-obligations, termination triggers, and revenue at risk.
-
-**Termination for Convenience Analysis**
-Revenue quality assessment based on TfC clause exposure: notice periods, cure windows,
-and uncommitted revenue.
-
-**Data Privacy Compliance**
-Privacy and data protection analysis: GDPR/CCPA compliance, data processing agreements,
-cross-border transfer mechanisms, and breach notification obligations.
-
-**Risk Heatmap**
-Domain-level risk summary showing severity distribution across all active
-specialist domains.
-
-**Domain Sections** (Legal, Finance, Commercial, ProductTech, Cybersecurity, HR, Tax, Regulatory, ESG)
-Category breakdowns within each specialist domain, with finding counts and
-per-entity details. Each domain section is capped at the most significant findings
-with expand/collapse for full detail. Sections only appear for agents that were
-active in the pipeline run.
-
-**Discount & Pricing Analysis**
-Discount patterns, pricing consistency, and margin erosion across the contract portfolio.
-
-**Renewal & Contract Expiry**
-Upcoming renewal dates, auto-renewal terms, evergreen clauses, and expiry concentration.
-
-**Regulatory & Compliance**
-Regulatory obligations, audit rights, compliance certifications, and industry-specific
-requirements found in contracts.
-
-**Legal Entity Distribution**
-Breakdown of contracts by legal entity and jurisdiction, highlighting entity
-fragmentation and multi-jurisdiction exposure.
-
-**Contract Date Timeline**
-Visual timeline of contract start/end dates, showing concentration risk around
-key periods and upcoming expirations.
-
-**Insurance & Liability Analysis**
-Liability caps, indemnification provisions, insurance requirements, and uncapped
-liability exposure across the portfolio.
-
-**IP & Technology License Risk**
-Intellectual property ownership, license grant scope, open-source obligations,
-and technology transfer provisions.
-
-**Cross-Domain Risk Correlation**
-Findings that span multiple specialist domains, showing how risks in one area
-compound or contradict risks in another.
-
-**Contract Clause Library**
-Searchable catalog of key contract clauses identified by AI analysis across the portfolio,
-organized by clause type (CoC, TfC, liability, IP, privacy, etc.) with exact quotes and source citations.
-
-**Key Employee & Organizational Risk**
-Key-person dependencies, non-compete/non-solicit provisions, and organizational
-risks identified in employment agreements and corporate documents.
-
-**Technology Stack Assessment**
-Technology dependencies, platform risks, technical debt indicators, and integration
-complexity findings from product/tech analysis.
-
-**Product Adoption Matrix**
-Product and feature adoption patterns across the customer base, highlighting
-concentration risk and cross-sell/upsell indicators.
-
-#### Cross-Cutting Analysis
-
-**Cross-Reference Reconciliation**
-Findings corroborated or contradicted across multiple agents or documents.
-
-**Entity Health Tiers**
-Entities ranked by overall risk, grouped into health tiers (green/amber/red).
-
-**Recommendations**
-Prioritized action items: pre-close requirements, closing conditions, and
-post-close monitoring items.
-
-**Post-Close Integration Playbook**
-Integration priorities, governance recommendations, and day-1 readiness checklist.
-Present when buyer strategy is configured in the deal config.
-
-**Governance Graph**
-Visual representation of entity relationships, ownership structure, and
-corporate hierarchy extracted from the data room.
-
-**Buyer Strategy & Acquirer Intelligence** (conditional)
-Acquisition thesis alignment, synergy validation, and deal-specific risk assessment.
-Only present when `buyer_strategy` is configured in the deal config.
-
-#### Appendix (collapsed by default)
-
-**Missing or Incomplete Data**
-Data availability limitations, documentation gaps, and extraction quality issues.
-Findings about missing or unreadable data are separated here from the main analysis
-to avoid inflating domain-level severity counts.
-
-**Entity Detail**
-Per-entity drill-down with all findings, organized by domain and category.
-
-**Methodology & Limitations**
-Pipeline methodology, agent descriptions, analysis scope, and known limitations.
-
-**Data Quality**
-Governance metrics, QA audit results, and noise findings filtered from the main report.
-
-**Run Diff** (incremental mode only)
-What changed since the previous pipeline run: new findings, resolved findings,
-and severity changes.
+Cards with no findings show a compact "No findings" state.
 
 ### RAG Indicators
 
-Each section displays a RAG status:
+Each sidebar link and domain card displays a RAG status:
 
 - **Red**: Critical issues found, immediate attention needed
 - **Amber**: Notable issues present, review recommended
 - **Green**: No significant issues, area looks clean
 
-### Global Search
+### Presentation Mode
 
-Use the search bar to filter findings across the entire report by keyword.
+Click the "Present" button in the sidebar footer to enter presentation mode — removes navigation chrome for screen-sharing or projecting.
 
 ### Print Mode
 
 The report includes print-optimized CSS. Use your browser's print function
-(Ctrl+P / Cmd+P) for a clean PDF-style output. For higher-fidelity PDF export,
-use:
+(Ctrl+P / Cmd+P) for a clean layout with all sections expanded. For higher-fidelity PDF export:
 
 ```bash
 dd-agents export-pdf _dd/forensic-dd/runs/latest/report/dd_report.html
@@ -220,10 +122,10 @@ The Excel report at `dd_report.xlsx` contains 14 sheets:
 | Run_Diff | Changes from prior run (incremental mode only) |
 | _Metadata | Run configuration, timing, costs, versions |
 
-Sheets use conditional formatting: red for P0/P1, yellow for P2, no fill for P3/P4.
+Sheets use conditional formatting: red for P0/P1, yellow for P2, no fill for P3.
 
 ## Next Steps
 
-- [Running the Pipeline](running-pipeline.md) -- Re-run with different settings
-- [Deal Configuration](deal-configuration.md) -- Adjust focus areas or enable the Judge
-- [CLI Reference](cli-reference.md) -- Export and search commands
+- [Running the Pipeline](running-pipeline.md) — Re-run with different settings
+- [Deal Configuration](deal-configuration.md) — Adjust focus areas or enable the Judge
+- [CLI Reference](cli-reference.md) — Export and search commands
