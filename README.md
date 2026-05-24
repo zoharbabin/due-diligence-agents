@@ -11,6 +11,8 @@
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green.svg" alt="License"></a>
     <a href="https://github.com/zoharbabin/due-diligence-agents/actions"><img src="https://img.shields.io/badge/tests-passing-brightgreen.svg" alt="Tests"></a>
     <img src="https://img.shields.io/badge/mypy-strict-blue.svg" alt="mypy strict">
+    <a href="https://hub.docker.com/r/zoharbabin/due-diligence-agents"><img src="https://img.shields.io/docker/pulls/zoharbabin/due-diligence-agents.svg" alt="Docker pulls"></a>
+    <a href="https://github.com/codespaces/new?hide_repo_select=true&repo=zoharbabin/due-diligence-agents"><img src="https://img.shields.io/badge/open_in-Codespaces-blue?logo=github" alt="Open in Codespaces"></a>
     <a href="https://github.com/zoharbabin/due-diligence-agents/stargazers"><img src="https://img.shields.io/github/stars/zoharbabin/due-diligence-agents?style=social" alt="GitHub Stars"></a>
   </p>
 </p>
@@ -233,16 +235,16 @@ Supports PDFs, Word, Excel, PowerPoint, and images. Scanned PDFs are handled via
     │            │            │
     ▼            ▼            ▼
  ┌──────┐  ┌────────┐  ┌──────────┐  ┌──────────┐  ┌─────────────┐
- │Legal │  │Finance │  │Commercial│  │ProductTech│  │Cybersecurity│
+ │Legal │  │Finance │  │Commercial│  │ProductTech│ │Cybersecurity│
  │Agent │  │ Agent  │  │  Agent   │  │  Agent   │  │   Agent     │
  └──┬───┘  └───┬────┘  └────┬─────┘  └────┬─────┘  └──────┬──────┘
-    │          │             │             │               │
- ┌──┴──┐  ┌───┴────┐  ┌─────┴──────┐  ┌──┴──┐    ┌───────┴─────┐
- │ HR  │  │  Tax   │  │ Regulatory │  │ ESG │    │  + External │
- │Agent│  │ Agent  │  │   Agent    │  │Agent│    │   Agents    │
- └──┬──┘  └───┬────┘  └─────┬──────┘  └──┬──┘    └───────┬─────┘
+    │          │            │             │               │
+ ┌──┴──┐  ┌────────┐  ┌─────┴──────┐  ┌───┴──┐    ┌───────┴─────┐
+ │ HR  │  │  Tax   │  │ Regulatory │  │ ESG  │    │  + External │
+ │Agent│  │ Agent  │  │   Agent    │  │Agent │    │   Agents    │
+ └──┬──┘  └───┬────┘  └──────┬─────┘  └───┬──┘    └───────┬─────┘
     │         │              │            │               │
-    └─────────┴──────┬───────┴────────────┴───────────────┘
+    └─────────┴───────┬──────┴────────────┴───────────────┘
                       │
               ┌───────▼────────┐
               │  Cross-Domain  │  ← Symbolic trigger rules detect
@@ -336,7 +338,7 @@ pip install dd-agents[pdf]      # Recommended (includes PDF extraction via pymup
 brew install zoharbabin/due-diligence-agents/dd-agents
 
 # Docker
-docker pull ghcr.io/zoharbabin/due-diligence-agents:latest
+docker pull zoharbabin/due-diligence-agents:latest
 
 # Extras
 pip install dd-agents           # Core only (no PDF extraction)
@@ -362,11 +364,11 @@ These are optional — the tool works without them but may produce lower-quality
 
 ```bash
 # Pre-built image (recommended)
-docker pull ghcr.io/zoharbabin/due-diligence-agents:latest
+docker pull zoharbabin/due-diligence-agents:latest
 docker run -e ANTHROPIC_API_KEY="sk-ant-..." \
   -v ./data_room:/workspace/data_room \
   -v ./deal-config.json:/workspace/deal-config.json \
-  ghcr.io/zoharbabin/due-diligence-agents run deal-config.json
+  zoharbabin/due-diligence-agents run deal-config.json
 
 # Or build from source
 docker build -t dd-agents .

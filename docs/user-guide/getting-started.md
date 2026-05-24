@@ -20,6 +20,12 @@ pip install dd-agents[pdf]
 
 This installs the tool and all required dependencies, including PDF extraction support.
 
+**Alternative: isolated install with pipx** (recommended for CLI tools — avoids conflicts with other Python packages):
+
+```bash
+pipx install dd-agents[pdf]
+```
+
 <details>
 <summary><strong>Install from source (for development)</strong></summary>
 

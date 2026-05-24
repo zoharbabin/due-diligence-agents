@@ -50,6 +50,9 @@ data_room/
 *.pdf
 !docs/marketing/*.pdf
 
+# MkDocs build output
+site/
+
 # ChromaDB local storage
 chroma_data/
 

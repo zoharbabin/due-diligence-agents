@@ -1,0 +1,74 @@
+site_name: DD-Agents Documentation
+site_url: https://zoharbabin.github.io/due-diligence-agents/
+site_description: Open-source forensic M&A due diligence — 9 specialist domains, cross-referenced citations, quality-gated reports.
+site_author: Zohar Babin
+repo_url: https://github.com/zoharbabin/due-diligence-agents
+repo_name: zoharbabin/due-diligence-agents
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - attr_list
+  - md_in_html
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation & First Run: user-guide/getting-started.md
+    - Deal Configuration: user-guide/deal-configuration.md
+    - Running the Pipeline: user-guide/running-pipeline.md
+    - Reading the Report: user-guide/reading-report.md
+    - CLI Reference: user-guide/cli-reference.md
+    - Troubleshooting: user-guide/troubleshooting.md
+  - Guides:
+    - Contract Search: search-guide.md
+    - Knowledge Architecture: knowledge-architecture.md
+  - Architecture:
+    - Executive Plan: plan/PLAN.md
+    - Architecture Decisions: plan/01-architecture-decisions.md
+  - Contributing: contributing.md
+  - Sample Report: https://zoharbabin.github.io/due-diligence-agents/sample-report/
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/zoharbabin/due-diligence-agents
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/dd-agents/
