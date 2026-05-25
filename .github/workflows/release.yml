@@ -128,6 +128,25 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
   # ──────────────────────────────────────────────
+  # Sync Docker Hub repository description
+  # ──────────────────────────────────────────────
+
+  update-dockerhub-description:
+    name: "Update Docker Hub Description"
+    runs-on: ubuntu-latest
+    needs: [publish-docker]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update Docker Hub description
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ secrets.DOCKERHUB_USERNAME }}/due-diligence-agents
+          readme-filepath: ./DOCKERHUB.md
+          short-description: "Find what gets buried in your contracts — 9 AI agents, cross-referenced citations, exportable reports."
+
+  # ──────────────────────────────────────────────
   # Update Homebrew formula with new version
   # ──────────────────────────────────────────────
 
@@ -253,7 +272,7 @@ jobs:
           echo "" >> notes.md
           echo "### Docker" >> notes.md
           echo '```bash' >> notes.md
-          echo "docker pull ghcr.io/${{ github.repository }}:${TAG#v}" >> notes.md
+          echo "docker pull zoharbabin/due-diligence-agents:${TAG#v}" >> notes.md
           echo '```' >> notes.md
 
       - name: Create GitHub Release
