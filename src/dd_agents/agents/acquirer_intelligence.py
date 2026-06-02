@@ -17,7 +17,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field  # noqa: TC001 — runtime use for output schema
 
-from dd_agents.agents.base import BaseAgentRunner
+from dd_agents.agents.base import READONLY_TOOLS, BaseAgentRunner
 
 logger = logging.getLogger(__name__)
 
@@ -52,11 +52,8 @@ class AcquirerIntelligenceOutput(BaseModel):  # noqa: TC001 — runtime use
 # Read-only tools -- this agent should never modify pipeline outputs
 # ---------------------------------------------------------------------------
 
-ACQUIRER_INTELLIGENCE_TOOLS: list[str] = [
-    "Read",
-    "Glob",
-    "Grep",
-]
+# Shared read-only tool set (audit §2.3) — single source of truth in base.py.
+ACQUIRER_INTELLIGENCE_TOOLS: list[str] = list(READONLY_TOOLS)
 
 
 class AcquirerIntelligenceAgent(BaseAgentRunner):
@@ -102,7 +99,7 @@ class AcquirerIntelligenceAgent(BaseAgentRunner):
         )
 
     def get_tools(self) -> list[str]:
-        return list(ACQUIRER_INTELLIGENCE_TOOLS)
+        return list(READONLY_TOOLS)
 
     def build_prompt(self, state: dict[str, Any]) -> str:
         """Build acquirer intelligence prompt from buyer strategy + findings summary."""

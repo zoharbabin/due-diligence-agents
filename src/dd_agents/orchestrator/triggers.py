@@ -56,6 +56,31 @@ def sanitize_for_prompt(text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Trigger instruction template (audit §3.3)
+#
+# All 7 built-in rules render their pass-2 instruction through this single
+# helper so every cross-domain trigger has a uniform shape: an action verb
+# line, numbered steps (findings -> metrics -> cross-ref), a severity-
+# escalation hint, and a citation mandate. KISS: pure string assembly, no LLM.
+# ---------------------------------------------------------------------------
+
+
+def _trigger_instruction(*, action: str, steps: list[str], severity_hint: str) -> str:
+    """Render a uniform cross-domain trigger instruction.
+
+    Shape (stable across all rules):
+        <action>
+        1. <step>
+        2. <step>
+        ...
+        SEVERITY: <severity_hint>
+        Cite all thresholds/findings with source file paths.
+    """
+    numbered = "\n".join(f"{i}. {step}" for i, step in enumerate(steps, 1))
+    return f"{action}\n{numbered}\nSEVERITY: {severity_hint}\nCite all thresholds/findings with source file paths."
+
+
+# ---------------------------------------------------------------------------
 # CrossDomainTrigger
 # ---------------------------------------------------------------------------
 
@@ -207,12 +232,18 @@ class RevenueRecognitionEnforceability(_RuleBase):
                 trigger_type=self._name,
                 source_findings=hits,
                 subject=subject,
-                instructions=(
-                    "Review the cited contracts for: "
-                    "(1) enforceable rights under ASC 606, "
-                    "(2) delivery/acceptance criteria, "
-                    "(3) clawback or refund clauses, "
-                    "(4) time-based vs delivery-based recognition language."
+                instructions=_trigger_instruction(
+                    action="Review the cited contracts for revenue-recognition enforceability:",
+                    steps=[
+                        "enforceable rights under ASC 606",
+                        "delivery/acceptance criteria",
+                        "clawback or refund clauses",
+                        "time-based vs delivery-based recognition language",
+                    ],
+                    severity_hint=(
+                        "escalate to P1 if recognized revenue depends on unenforceable "
+                        "or contested rights; otherwise treat as a P2 valuation concern"
+                    ),
                 ),
             )
         ]
@@ -240,12 +271,18 @@ class CoCFinancialImpact(_RuleBase):
                 trigger_type=self._name,
                 source_findings=hits,
                 subject=subject,
-                instructions=(
-                    "Quantify the financial exposure: "
-                    "(1) revenue at risk if CoC terminates contracts, "
-                    "(2) prepaid fee refund obligations, "
-                    "(3) acceleration clauses, "
-                    "(4) impact on ARR/TCV projections."
+                instructions=_trigger_instruction(
+                    action="Quantify the financial exposure of the change-of-control trigger:",
+                    steps=[
+                        "revenue at risk if CoC terminates contracts",
+                        "prepaid fee refund obligations",
+                        "acceleration clauses",
+                        "impact on ARR/TCV projections",
+                    ],
+                    severity_hint=(
+                        "P0 if CoC auto-terminates contracts representing material revenue; "
+                        "P1 if consent/renegotiation is required on material revenue"
+                    ),
                 ),
             )
         ]
@@ -276,11 +313,18 @@ class TerminationRevenueExposure(_RuleBase):
                 trigger_type=self._name,
                 source_findings=hits,
                 subject=subject,
-                instructions=(
-                    "Calculate revenue exposure from TfC clauses: "
-                    "(1) remaining contract value at risk, "
-                    "(2) termination penalty amounts, "
-                    "(3) impact on committed vs uncommitted revenue."
+                instructions=_trigger_instruction(
+                    action="Calculate revenue exposure from termination-for-convenience clauses:",
+                    steps=[
+                        "remaining contract value at risk",
+                        "termination penalty amounts",
+                        "impact on committed vs uncommitted revenue",
+                    ],
+                    severity_hint=(
+                        "escalate to P1 if TfC-exposed revenue exceeds the configured ARR "
+                        "threshold with short notice periods; otherwise P2 (at-risk ARR signal). "
+                        "Never flag TfC as P0"
+                    ),
                 ),
             )
         ]
@@ -308,12 +352,18 @@ class IPOwnershipTechRisk(_RuleBase):
                 trigger_type=self._name,
                 source_findings=hits,
                 subject=subject,
-                instructions=(
-                    "Assess technical impact: "
-                    "(1) which systems/codebases use the disputed IP, "
-                    "(2) dependency depth, "
-                    "(3) availability of alternatives, "
-                    "(4) migration cost estimate."
+                instructions=_trigger_instruction(
+                    action="Assess the technical impact of the disputed IP ownership:",
+                    steps=[
+                        "which systems/codebases use the disputed IP",
+                        "dependency depth",
+                        "availability of alternatives",
+                        "migration cost estimate",
+                    ],
+                    severity_hint=(
+                        "P1 if the disputed IP is embedded in core product systems with no "
+                        "viable alternative; P2 if isolated or readily replaceable"
+                    ),
                 ),
             )
         ]
@@ -351,12 +401,18 @@ class DataPrivacyCompliance(_RuleBase):
                 trigger_type=self._name,
                 source_findings=hits,
                 subject=subject,
-                instructions=(
-                    "Review DPA/data processing provisions: "
-                    "(1) SCCs or adequacy decisions, "
-                    "(2) sub-processor obligations, "
-                    "(3) data breach notification requirements, "
-                    "(4) GDPR Article 28 compliance."
+                instructions=_trigger_instruction(
+                    action="Review DPA/data-processing provisions for cross-border compliance:",
+                    steps=[
+                        "SCCs or adequacy decisions",
+                        "sub-processor obligations",
+                        "data breach notification requirements",
+                        "GDPR Article 28 compliance",
+                    ],
+                    severity_hint=(
+                        "P1 if cross-border transfers lack a valid mechanism (no SCCs/adequacy) "
+                        "or GDPR Article 28 obligations are missing; otherwise P2"
+                    ),
                 ),
             )
         ]
@@ -390,11 +446,17 @@ class SLAFinancialImpact(_RuleBase):
                 trigger_type=self._name,
                 source_findings=hits,
                 subject=subject,
-                instructions=(
-                    "Quantify SLA financial exposure: "
-                    "(1) maximum annual service credit liability, "
-                    "(2) fee reduction triggers and amounts, "
-                    "(3) impact on recurring revenue recognition."
+                instructions=_trigger_instruction(
+                    action="Quantify SLA financial exposure from service-credit obligations:",
+                    steps=[
+                        "maximum annual service credit liability",
+                        "fee reduction triggers and amounts",
+                        "impact on recurring revenue recognition",
+                    ],
+                    severity_hint=(
+                        "escalate to P1 if maximum service-credit liability exceeds the "
+                        "configured ARR threshold; otherwise P2"
+                    ),
                 ),
             )
         ]
@@ -421,12 +483,18 @@ class PricingCommercialValidation(_RuleBase):
                 trigger_type=self._name,
                 source_findings=hits,
                 subject=subject,
-                instructions=(
-                    "Validate pricing structure: "
-                    "(1) are discounts reflected in rate cards, "
-                    "(2) volume commitment vs actual usage, "
-                    "(3) renewal pricing mechanisms, "
-                    "(4) competitive benchmarking."
+                instructions=_trigger_instruction(
+                    action="Validate the pricing structure behind the flagged discrepancy:",
+                    steps=[
+                        "are discounts reflected in rate cards",
+                        "volume commitment vs actual usage",
+                        "renewal pricing mechanisms",
+                        "competitive benchmarking",
+                    ],
+                    severity_hint=(
+                        "P1 if the pricing discrepancy materially overstates revenue or "
+                        "ARR; otherwise P2 (pricing-quality concern)"
+                    ),
                 ),
             )
         ]

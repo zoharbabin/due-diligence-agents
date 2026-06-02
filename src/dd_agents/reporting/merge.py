@@ -1685,3 +1685,62 @@ class FindingMerger:
                         finding.severity.value,
                         finding.id,
                     )
+
+    def detect_tamper_signals(
+        self,
+        findings_by_subject: dict[str, list[dict[str, Any]]],
+        documents_by_subject: dict[str, int] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Deterministic output-side tamper check (audit §7.2).
+
+        Read-only, additive helper — does NOT mutate the merge/severity flow.
+        Scans each finding's title/description and citation ``exact_quote`` text
+        for prompt-injection patterns (reuses
+        :data:`SAFETY_FLOOR_NEGATION_PATTERNS`). When matched, emits a
+        synthetic P1 ``document_integrity`` finding for the subject so the
+        possible tampering surfaces in the report. Clean findings → ``[]``.
+
+        ``documents_by_subject`` is accepted for forward compatibility (e.g.
+        documents-but-zero-findings checks) but is not required for the
+        injection-pattern scan.
+        """
+        from dd_agents.agents.prompt_constants import SAFETY_FLOOR_NEGATION_PATTERNS
+
+        del documents_by_subject  # reserved; not needed for the pattern scan
+
+        signals: list[dict[str, Any]] = []
+        for subject in sorted(findings_by_subject):
+            for f in findings_by_subject[subject]:
+                if not isinstance(f, dict):
+                    continue
+                texts: list[str] = [
+                    str(f.get("title", "")),
+                    str(f.get("description", "")),
+                ]
+                for cite in f.get("citations", []) or []:
+                    if isinstance(cite, dict):
+                        texts.append(str(cite.get("exact_quote", "")))
+                haystack = "\n".join(t for t in texts if t)
+                matched = next(
+                    (p.pattern for p in SAFETY_FLOOR_NEGATION_PATTERNS if p.search(haystack)),
+                    None,
+                )
+                if matched is None:
+                    continue
+                signals.append(
+                    {
+                        "severity": Severity.P1.value,
+                        "category": "document_integrity",
+                        "title": "Possible document tampering / prompt injection detected",
+                        "description": (
+                            "Source text associated with this finding contains an "
+                            "instruction-like pattern aimed at the analysis agent "
+                            f"(matched: {matched!r}). Treat the underlying document as "
+                            "untrusted evidence and verify integrity with the data-room owner."
+                        ),
+                        "subject": subject,
+                        "source_finding_id": str(f.get("finding_id", f.get("id", ""))),
+                        "metadata": {"tamper": True, "detector": "detect_tamper_signals"},
+                    }
+                )
+        return signals

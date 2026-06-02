@@ -464,6 +464,13 @@ class PromptBuilder:
         self.run_id = run_id
         self.prompt_version = self.PROMPT_VERSION
         self.max_listed_files: int = self.MAX_LISTED_FILES
+        # Build-time preamble cache (audit §4.1a).  The static preamble
+        # (role + deal context) is identical across batches in a run — only
+        # the subject list changes — so memoize it per (agent, config) on the
+        # instance.  Byte-identity is preserved because the cached string is
+        # the exact output of the deterministic builder for the same inputs;
+        # per-call layers (customizations, safety floor) still apply unchanged.
+        self._role_section_cache: dict[str, str] = {}
 
     # ------------------------------------------------------------------
     # Specialist prompt
@@ -682,8 +689,15 @@ class PromptBuilder:
         subjects = self._coerce_subjects(subjects)
         sections: list[str] = []
 
-        # 1. Role & deal context
-        sections.append(self._build_role_section(agent_name, deal_config))
+        # Section ordering is intentional (audit §3.2, highest-recall tail):
+        # the subject/file listing sits in the MIDDLE (section 2) while the
+        # severity rubric (5b), output format (6), and citation/robustness
+        # mandates (8) come LAST so the model reads them most recently. The
+        # non-removable safety floor is appended after all sections (below) and
+        # must remain the true last layer — do not move it.
+        # 1. Role & deal context (memoized per agent+config — audit §4.1a;
+        #    byte-identical to the un-cached build for the same inputs).
+        sections.append(self._cached_role_section(agent_name, deal_config))
 
         # 2. Subject list (with optional precedence annotations)
         sections.append(self._build_subject_list(agent_name, subjects, file_precedence))
@@ -1255,6 +1269,32 @@ class PromptBuilder:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _cached_role_section(self, agent_name: str, deal_config: DealConfig | None) -> str:
+        """Return the role/deal-context section, memoized per (agent, config).
+
+        Build-time preamble cache (audit §4.1a): within a run the static
+        preamble does not vary across batches, so the deterministic output of
+        :meth:`_build_role_section` is cached on the instance.  The cache key
+        folds the agent name, run id, and a stable digest of the deal config so
+        distinct configs never collide.  The returned string is byte-identical
+        to calling :meth:`_build_role_section` directly.
+        """
+        if deal_config is None:
+            config_key = "none"
+        else:
+            dump = getattr(deal_config, "model_dump_json", None)
+            try:
+                config_key = dump(exclude_none=False) if callable(dump) else repr(deal_config)
+            except Exception:  # noqa: BLE001 — never let cache keying break prompt assembly
+                config_key = repr(deal_config)
+        key = f"{agent_name}\x00{self.run_id}\x00{config_key}"
+        cached = self._role_section_cache.get(key)
+        if cached is not None:
+            return cached
+        built = self._build_role_section(agent_name, deal_config)
+        self._role_section_cache[key] = built
+        return built
 
     def _build_role_section(self, agent_name: str, deal_config: DealConfig | None) -> str:
         lines = [

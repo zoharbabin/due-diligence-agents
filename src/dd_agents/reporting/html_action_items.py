@@ -44,12 +44,11 @@ class ActionItemsRenderer(SectionRenderer):
 
         # Fallback: template-matched recommendations
         material = getattr(self.data, "material_findings", [])
-        if not material:
-            return ""
-
-        recommendations = generate_recommendations(material, max_items=30)
+        recommendations = generate_recommendations(material, max_items=30) if material else []
         if not recommendations:
-            return ""
+            # No action items, but the AI-assisted disclosure (§1.3/§8.2) must
+            # ALWAYS appear in the report — render the disclaimer unconditionally.
+            return self._render_empty_with_disclaimer()
 
         parts: list[str] = [
             "<section class='report-section' id='sec-action-items'>",
@@ -182,15 +181,38 @@ class ActionItemsRenderer(SectionRenderer):
         parts.append("</section>")
         return "\n".join(p for p in parts if p)
 
+    def _render_empty_with_disclaimer(self) -> str:
+        """Render the section with the unconditional disclaimer and no items.
+
+        The AI-assisted analysis disclosure (audit §1.3/§8.2) must always appear
+        in the report — even when there are zero matched/narrative action items.
+        """
+        return "\n".join(
+            [
+                "<section class='report-section' id='sec-action-items'>",
+                "<h2>Action Items</h2>",
+                self._render_disclaimer(is_llm=False),
+                "<p class='text-muted'>No action items were generated from the current findings.</p>",
+                "</section>",
+            ]
+        )
+
     def _render_disclaimer(self, *, is_llm: bool = False) -> str:
-        """Render advisory disclaimer appropriate to the recommendation source."""
+        """Render advisory disclaimer appropriate to the recommendation source.
+
+        AI-assisted analysis disclosure (§1.3/§8.2): the advisory notice — that
+        output is AI-assisted analysis to be verified with qualified advisors and
+        does not constitute professional counsel — is rendered unconditionally,
+        including the empty path via :meth:`_render_empty_with_disclaimer`.
+        """
         if is_llm:
             return (
                 "<div class='alert alert-info'>"
                 "<div class='alert-title'>Advisory Notice</div>"
                 "<div class='alert-body'>These recommendations are produced through neurosymbolic "
                 "analysis — deterministic risk scoring and cross-domain trigger rules guide LLM "
-                "synthesis across all findings, deal context, and buyer thesis. They do not "
+                "synthesis across all findings, deal context, and buyer thesis. This is "
+                "AI-assisted analysis — verify with qualified advisors. They do not "
                 "constitute legal, financial, or professional counsel.</div>"
                 "</div>"
             )
@@ -198,7 +220,8 @@ class ActionItemsRenderer(SectionRenderer):
             "<div class='alert alert-info'>"
             "<div class='alert-title'>Advisory Notice</div>"
             "<div class='alert-body'>These recommendations are produced through deterministic "
-            "analysis of findings against domain-specific risk patterns. They do not constitute "
+            "analysis of findings against domain-specific risk patterns. This is "
+            "AI-assisted analysis — verify with qualified advisors. They do not constitute "
             "legal, financial, or professional counsel.</div>"
             "</div>"
         )

@@ -16,16 +16,13 @@ import json
 import logging
 from typing import Any
 
-from dd_agents.agents.base import BaseAgentRunner
+from dd_agents.agents.base import READONLY_TOOLS, BaseAgentRunner
 from dd_agents.models.narrative import NarrativeOutput
 
 logger = logging.getLogger(__name__)
 
-NARRATIVE_TOOLS: list[str] = [
-    "Read",
-    "Glob",
-    "Grep",
-]
+# Shared read-only tool set (audit §2.3) — single source of truth in base.py.
+NARRATIVE_TOOLS: list[str] = list(READONLY_TOOLS)
 
 
 class NarrativeGenerationAgent(BaseAgentRunner):
@@ -44,7 +41,7 @@ class NarrativeGenerationAgent(BaseAgentRunner):
         return "narrative_generation"
 
     def get_system_prompt(self) -> str:
-        from dd_agents.agents.prompt_constants import SEVERITY_PREAMBLE
+        from dd_agents.agents.prompt_constants import COMPLIANCE_FRAMING, SEVERITY_PREAMBLE
 
         return (
             "You are a senior M&A advisor writing the interpretive layer of a due diligence report. "
@@ -53,11 +50,11 @@ class NarrativeGenerationAgent(BaseAgentRunner):
             "Write for a deal team audience — clear, specific, no jargon inflation. "
             "Every statement must be tied to evidence from the findings provided. "
             "You produce a single structured JSON output — never modify source files."
-            "\n\n" + SEVERITY_PREAMBLE
+            "\n\n" + SEVERITY_PREAMBLE + "\n\n" + COMPLIANCE_FRAMING
         )
 
     def get_tools(self) -> list[str]:
-        return list(NARRATIVE_TOOLS)
+        return list(READONLY_TOOLS)
 
     def build_prompt(self, state: dict[str, Any]) -> str:
         """Build narrative generation prompt from all available context."""

@@ -26,6 +26,18 @@ SEVERITY_PREAMBLE: str = (
 )
 
 # ---------------------------------------------------------------------------
+# Compliance framing (audit §1.3) — threaded into interpretive/verdict prompts
+# (Executive Synthesis, Narrative Generation) so output never reads as settled
+# legal/financial/tax/regulatory fact.
+# ---------------------------------------------------------------------------
+
+COMPLIANCE_FRAMING: str = (
+    "Frame all output as analysis to be verified by qualified advisors. Never "
+    "state legal, financial, tax, or regulatory conclusions as settled fact — "
+    "present them as findings requiring professional review."
+)
+
+# ---------------------------------------------------------------------------
 # JSON output constraint (used in system prompt, output format, etc.)
 # ---------------------------------------------------------------------------
 

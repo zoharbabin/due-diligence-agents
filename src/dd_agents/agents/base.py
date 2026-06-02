@@ -19,6 +19,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Read-only tool set shared by all synthesis agents (executive_synthesis,
+# acquirer_intelligence, red_flag_scanner, narrative_generation).  Synthesis
+# agents only read merged findings and write their structured output via the
+# SDK text stream — they never need Write/Edit/Bash.  Defined once here so the
+# four agents stay in lock-step (audit §2.3).
+READONLY_TOOLS: tuple[str, ...] = ("Read", "Glob", "Grep")
+
 # ---------------------------------------------------------------------------
 # Optional SDK import -- graceful degradation when not installed
 # ---------------------------------------------------------------------------
@@ -678,3 +685,19 @@ class BaseAgentRunner(ABC):
                     logger.warning("Failed to save raw output to %s: %s", raw_output_path, exc)
 
         return results
+
+
+class SynthesisAgentBase(BaseAgentRunner):
+    """Base for synthesis agents that only read merged findings.
+
+    Defaults :meth:`get_tools` to the shared read-only set (audit §2.3) so the
+    synthesis agents (executive_synthesis, acquirer_intelligence,
+    red_flag_scanner, narrative_generation) do not each re-declare the same
+    list.  Concrete synthesis agents may keep using the module-level
+    ``READONLY_TOOLS`` constant directly; this base is offered as a thin,
+    behavior-preserving alternative.  ``get_agent_name`` / ``get_system_prompt``
+    remain abstract.
+    """
+
+    def get_tools(self) -> list[str]:
+        return list(READONLY_TOOLS)
