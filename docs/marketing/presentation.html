@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Due Diligence Agents — Integrated, AI-Powered M&A Due Diligence</title>
+<style>
+  :root{
+    --bg:#0a0e1a; --bg2:#0f1525; --ink:#eef2fb; --muted:#9aa6c0; --dim:#6b7794;
+    --blue:#4f8cff; --cyan:#28d6c8; --green:#34d399; --amber:#f5b945; --red:#ff6b6b; --purple:#a78bfa;
+    --line:rgba(255,255,255,.08); --card:rgba(255,255,255,.035); --cardline:rgba(255,255,255,.09);
+    --maxw:1180px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased; overflow:hidden;
+  }
+  code,.mono{font-family:"SF Mono",ui-monospace,Menlo,Monaco,Consolas,monospace}
+
+  /* ---------- deck mechanics ---------- */
+  #deck{position:fixed;inset:0;overflow:hidden}
+  .slide{
+    position:absolute;inset:0;display:none;
+    overflow-y:auto;overflow-x:hidden;
+    padding:54px 48px 84px;
+    animation:fade .35s ease;
+  }
+  .slide.active{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .wrap{max-width:var(--maxw);margin:0 auto}
+
+  /* progress + chrome */
+  #bar{position:fixed;top:0;left:0;height:3px;background:linear-gradient(90deg,var(--blue),var(--cyan));z-index:50;transition:width .35s ease}
+  #hud{position:fixed;bottom:14px;right:20px;z-index:50;display:flex;gap:14px;align-items:center;
+    font-size:12px;color:var(--dim)}
+  #hud .nav{display:flex;gap:6px}
+  #hud button{background:var(--card);border:1px solid var(--cardline);color:var(--ink);
+    width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:14px;transition:.15s}
+  #hud button:hover{background:rgba(255,255,255,.1)}
+  #counter{font-variant-numeric:tabular-nums;letter-spacing:.04em}
+  #brandbug{position:fixed;bottom:14px;left:20px;z-index:50;font-size:11px;color:var(--dim);letter-spacing:.06em}
+  #brandbug b{color:var(--muted);font-weight:600}
+
+  /* speaker notes */
+  #notes{position:fixed;left:0;right:0;bottom:0;z-index:60;
+    background:rgba(8,11,20,.97);border-top:1px solid var(--line);
+    backdrop-filter:blur(8px);
+    max-height:42vh;overflow-y:auto;padding:18px 24px 22px;display:none;
+    box-shadow:0 -20px 40px rgba(0,0,0,.5)}
+  #notes.show{display:block}
+  #notes h4{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--cyan);margin-bottom:10px}
+  #notes .body{font-size:15px;line-height:1.62;color:#cdd6ec;max-width:var(--maxw);margin:0 auto}
+  #notes .body li{margin:5px 0 5px 18px}
+  #notes .body strong{color:#fff}
+  #notes .body em{color:var(--amber);font-style:normal}
+
+  /* ---------- typography ---------- */
+  .kicker{font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--blue);font-weight:700;margin-bottom:18px}
+  .kicker.c{color:var(--cyan)} .kicker.g{color:var(--green)} .kicker.a{color:var(--amber)}
+  .kicker.r{color:var(--red)} .kicker.p{color:var(--purple)}
+  h1{font-size:60px;line-height:1.02;font-weight:800;letter-spacing:-.02em;margin-bottom:22px}
+  h2{font-size:42px;line-height:1.06;font-weight:800;letter-spacing:-.015em;margin-bottom:14px}
+  h3{font-size:21px;font-weight:700;margin-bottom:8px}
+  .sub{font-size:20px;line-height:1.5;color:var(--muted);max-width:880px;margin-bottom:30px}
+  .sub.tight{margin-bottom:18px}
+  p{font-size:17px;line-height:1.6;color:#c6cfe6}
+  .grad-b{background:linear-gradient(90deg,#5b9bff,#28d6c8);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .grad-g{background:linear-gradient(90deg,#34d399,#28d6c8);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .grad-a{background:linear-gradient(90deg,#f5b945,#ff8f6b);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .grad-p{background:linear-gradient(90deg,#a78bfa,#5b9bff);-webkit-background-clip:text;background-clip:text;color:transparent}
+
+  /* ---------- layout helpers ---------- */
+  .grid{display:grid;gap:18px}
+  .g2{grid-template-columns:1fr 1fr}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g4{grid-template-columns:repeat(4,1fr)}
+  .card{background:var(--card);border:1px solid var(--cardline);border-radius:14px;padding:22px}
+  .card.tint-b{border-color:rgba(79,140,255,.3);background:rgba(79,140,255,.06)}
+  .card.tint-g{border-color:rgba(52,211,153,.28);background:rgba(52,211,153,.06)}
+  .card.tint-a{border-color:rgba(245,185,69,.28);background:rgba(245,185,69,.06)}
+  .card.tint-r{border-color:rgba(255,107,107,.28);background:rgba(255,107,107,.06)}
+  .card.tint-p{border-color:rgba(167,139,250,.28);background:rgba(167,139,250,.06)}
+  .card h3{font-size:18px}
+  .card p{font-size:15px;color:var(--muted);line-height:1.55}
+  .card .lead{font-size:14px;color:var(--dim);letter-spacing:.04em;text-transform:uppercase;font-weight:700;margin-bottom:10px}
+
+  .stat{font-size:50px;font-weight:800;letter-spacing:-.02em;line-height:1}
+  .stat.b{color:var(--blue)} .stat.c{color:var(--cyan)} .stat.g{color:var(--green)}
+  .stat.a{color:var(--amber)} .stat.r{color:var(--red)} .stat.p{color:var(--purple)}
+  .statlbl{font-size:13px;color:var(--muted);margin-top:8px;line-height:1.4}
+
+  .pill{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.04em;
+    padding:4px 11px;border-radius:999px;border:1px solid var(--cardline);background:var(--card);color:var(--muted)}
+  .pill.b{color:#9cc0ff;border-color:rgba(79,140,255,.4)}
+  .pill.g{color:#8ef0c8;border-color:rgba(52,211,153,.4)}
+  .pill.a{color:#ffd98a;border-color:rgba(245,185,69,.4)}
+  .pill.r{color:#ffb0b0;border-color:rgba(255,107,107,.4)}
+  .pill.p{color:#cdb8ff;border-color:rgba(167,139,250,.4)}
+
+  ul.clean{list-style:none}
+  ul.clean li{position:relative;padding-left:24px;margin:11px 0;font-size:16px;line-height:1.5;color:#c6cfe6}
+  ul.clean li::before{content:"";position:absolute;left:4px;top:9px;width:7px;height:7px;border-radius:2px;background:var(--blue)}
+  ul.clean.g li::before{background:var(--green)} ul.clean.a li::before{background:var(--amber)}
+  ul.clean.r li::before{background:var(--red)} ul.clean.p li::before{background:var(--purple)}
+  ul.clean li b{color:#fff}
+
+  .flowstep{display:flex;gap:14px;align-items:flex-start;margin:13px 0}
+  .flowstep .n{flex:none;width:30px;height:30px;border-radius:8px;background:var(--card);border:1px solid var(--cardline);
+    display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--cyan)}
+  .flowstep .t{font-size:16px;font-weight:700;color:#fff;margin-bottom:2px}
+  .flowstep .d{font-size:14px;color:var(--muted);line-height:1.45}
+
+  /* architecture flow diagram */
+  .flow{display:flex;flex-direction:column;align-items:center;gap:0;background:#070b14;border:1px solid var(--line);border-radius:14px;padding:20px 24px}
+  .flow-node{width:100%;max-width:760px;text-align:center;border-radius:10px;padding:11px 18px;font-size:15px;color:#dde5f5;border:1px solid var(--cardline);background:var(--card)}
+  .flow-node b{color:#fff;font-weight:700;letter-spacing:.01em}
+  .flow-node .fn-sub{display:block;font-size:12.5px;color:var(--dim);margin-top:3px;letter-spacing:.01em}
+  .flow-node .fn-note{font-size:13px;color:var(--dim)}
+  .flow-node .fn-note::before{content:"← "}
+  .flow-node.input{border-color:rgba(40,214,200,.35);background:rgba(40,214,200,.07)}
+  .flow-node.input .fn-sub{color:#7fd9d0}
+  .flow-node.orch{border-color:rgba(245,185,69,.45);background:rgba(245,185,69,.09);max-width:820px}
+  .flow-node.orch b{color:var(--amber)}
+  .flow-node.orch .fn-sub{color:#e8c98a}
+  .flow-node.step.purple{border-color:rgba(167,139,250,.32);background:rgba(167,139,250,.07);max-width:820px}
+  .flow-node.step.purple b{color:#cdb8ff}
+  .flow-node.output{border-color:rgba(52,211,153,.4);background:rgba(52,211,153,.1);color:#8ef0c8;font-weight:700;max-width:420px}
+  .flow-arr{color:var(--dim);font-size:13px;line-height:1.2;padding:7px 0;display:flex;align-items:center;gap:9px}
+  .flow-arr .fn-note{color:var(--muted);font-size:13px}
+  .flow-chips{display:flex;flex-wrap:wrap;justify-content:center;gap:7px;max-width:820px}
+  .flow-chips .fc{font-size:13px;font-weight:600;color:#9cc0ff;padding:6px 13px;border-radius:8px;
+    border:1px solid rgba(79,140,255,.32);background:rgba(79,140,255,.08)}
+
+  .codebox{background:#070b14;border:1px solid var(--line);border-radius:12px;padding:18px 20px;font-size:14px;line-height:1.7;color:#cfe3ff;overflow-x:auto;white-space:pre-wrap}
+  .codebox .cm{color:#5d6b88}
+  .codebox .k{color:var(--purple)}
+  .codebox .s{color:var(--green)}
+  .codebox .r{color:var(--red)}
+  .codebox .a{color:var(--amber)}
+
+  .callout{border-left:3px solid var(--blue);background:rgba(79,140,255,.07);border-radius:0 12px 12px 0;padding:16px 20px;margin-top:18px}
+  .callout.g{border-color:var(--green);background:rgba(52,211,153,.07)}
+  .callout.a{border-color:var(--amber);background:rgba(245,185,69,.07)}
+  .callout.r{border-color:var(--red);background:rgba(255,107,107,.07)}
+  .callout.p{border-color:var(--purple);background:rgba(167,139,250,.07)}
+  .callout .lbl{font-size:11px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;color:var(--blue);margin-bottom:7px}
+  .callout.g .lbl{color:var(--green)} .callout.a .lbl{color:var(--amber)}
+  .callout.r .lbl{color:var(--red)} .callout.p .lbl{color:var(--purple)}
+  .callout p{font-size:16px;color:#dde5f5}
+  .callout p b{color:#fff}
+
+  table.t{width:100%;border-collapse:collapse;font-size:14.5px}
+  table.t th{text-align:left;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);
+    padding:9px 12px;border-bottom:1px solid var(--line);font-weight:700}
+  table.t td{padding:11px 12px;border-bottom:1px solid var(--line);color:#cbd4ea;vertical-align:top;line-height:1.4}
+  table.t tr:last-child td{border-bottom:none}
+  table.t td b{color:#fff}
+  table.t .dom{font-weight:700;color:#fff;white-space:nowrap}
+
+  .shot{width:100%;border-radius:12px;border:1px solid var(--cardline);display:block;box-shadow:0 24px 60px rgba(0,0,0,.5)}
+  .shotcap{font-size:13px;color:var(--dim);margin-top:10px;text-align:center}
+
+  .domgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .dom-card{border:1px solid var(--cardline);border-radius:12px;padding:15px 16px;background:var(--card);border-left-width:4px}
+  .dom-card h4{font-size:15px;font-weight:700;margin-bottom:5px;color:#fff}
+  .dom-card p{font-size:12.5px;color:var(--muted);line-height:1.42}
+
+  .two{display:grid;grid-template-columns:1.05fr .95fr;gap:36px;align-items:center}
+  .two.rev{grid-template-columns:.95fr 1.05fr}
+  @media(max-width:900px){.two,.two.rev{grid-template-columns:1fr}}
+
+  .tag-row{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 0}
+
+  .big-quote{font-size:30px;line-height:1.3;font-weight:700;letter-spacing:-.01em;color:#fff;max-width:920px}
+  .big-quote .grad-b,.big-quote .grad-a,.big-quote .grad-g{font-weight:800}
+
+  .hint{position:fixed;top:16px;right:22px;z-index:50;font-size:11px;color:var(--dim);letter-spacing:.04em}
+  .hint kbd{background:var(--card);border:1px solid var(--cardline);border-radius:5px;padding:1px 6px;font-family:inherit;color:var(--muted)}
+
+  .agentbadge{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:#dde5f5;
+    padding:5px 11px;border-radius:8px;background:var(--card);border:1px solid var(--cardline)}
+  .dot{width:9px;height:9px;border-radius:50%;flex:none}
+
+  .lim{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .lim .row{display:flex;gap:12px;align-items:flex-start}
+  .lim .row .ic{flex:none;font-size:15px;color:var(--amber);font-weight:800;width:18px}
+
+  hr.sp{border:none;height:1px;background:var(--line);margin:22px 0}
+  .small{font-size:13px;color:var(--dim)}
+  .center{text-align:center}
+</style>
+</head>
+<body>
+<div id="bar"></div>
+<div class="hint">Use <kbd>←</kbd> <kbd>→</kbd> to navigate · <kbd>N</kbd> speaker notes · <kbd>F</kbd> fullscreen · <kbd>G</kbd> grid</div>
+
+<div id="deck">
+
+<!-- ============ 1 · COVER ============ -->
+<section class="slide active">
+  <div class="wrap" style="display:flex;flex-direction:column;justify-content:center;min-height:78vh">
+    <div class="kicker">A working system · open-source · in production</div>
+    <h1>AI agents that run<br><span class="grad-b">integrated M&A due diligence</span><br>across an entire data room.</h1>
+    <p class="sub" style="margin-top:8px">Nine specialist domains read every contract in parallel, cross-reference their findings, and trace every conclusion to an exact page, clause, and quote — producing the cross-domain picture that normally takes weeks to assemble from siloed advisor reports.</p>
+    <div class="tag-row" style="margin-top:10px">
+      <span class="pill b">Legal</span><span class="pill b">Finance</span><span class="pill b">Commercial</span>
+      <span class="pill b">Product / Tech</span><span class="pill b">Cybersecurity</span><span class="pill b">HR</span>
+      <span class="pill b">Tax</span><span class="pill b">Regulatory</span><span class="pill b">ESG</span>
+    </div>
+    <hr class="sp" style="margin:34px 0 22px">
+    <div style="display:flex;gap:40px;flex-wrap:wrap;align-items:center">
+      <div><div style="font-size:15px;color:#fff;font-weight:700">Built by a corp-dev practitioner, to solve a real problem</div><div class="small">Open-source · Apache-2.0 · <span class="mono">pip install dd-agents</span></div></div>
+      <div><div style="font-size:15px;color:#fff;font-weight:700">For: corp dev · PE · advisors · legal teams</div><div class="small">Anyone running due diligence across hundreds of contracts</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2 · 60-SECOND VERSION ============ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker c">The 60-second version</div>
+    <h2>What this is, before we go deep.</h2>
+    <p class="sub tight">If you remember three things from this conversation:</p>
+    <div class="grid g3" style="margin-top:8px">
+      <div class="card tint-b">
+        <div class="stat b">1</div>
+        <h3 style="margin-top:14px">It connects the dots advisors don't</h3>
+        <p>Legal, Finance, Commercial, Tech all flag the <i>same</i> counterparty separately. This automatically links a change-of-control clause (Legal) to the revenue concentrated under it (Finance) to the key-person who owns it (HR) — one compound risk, not four disconnected memos.</p>
+      </div>
+      <div class="card tint-g">
+        <div class="stat g">2</div>
+        <h3 style="margin-top:14px">Every finding is provable</h3>
+        <p>No "the AI thinks." Each finding carries the source file, page, section, and a verbatim quote — verified against the actual document. Unverifiable claims are auto-downgraded. It's built to survive an IC and a regulator, not to impress a demo.</p>
+      </div>
+      <div class="card tint-a">
+        <div class="stat a">3</div>
+        <h3 style="margin-top:14px">It accelerates your team — doesn't replace advisors</h3>
+        <p>First-read across hundreds of contracts in hours instead of weeks; standardized across every deal you screen. Your counsel and bankers still sign the conclusions — they just start from a cross-referenced map instead of a blank page.</p>
+      </div>
+    </div>
+    <div class="callout">
+      <div class="lbl">Output</div>
+      <p>One run produces an <b>interactive HTML report</b> (Go/No-Go verdict → action items → domain detail → full evidence), a <b>14-sheet Excel workbook</b> for downstream modeling, and <b>per-finding JSON</b> with citations. Open it offline in a browser. Filter to "P0 only" and share the URL with the deal team.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3 · WHY I BUILT IT ============ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker">Why this exists</div>
+    <h2>I built it to solve my own problem.</h2>
+    <div class="two" style="margin-top:24px">
+      <div>
+        <p style="font-size:19px;line-height:1.6;color:#dde5f5">As a corp-dev lead, I'd spend <b style="color:#fff">weeks assembling the cross-domain picture</b> from siloed advisor reports. Legal, financial, and commercial teams all flagged the same target independently — with nobody connecting the dots.</p>
+        <p style="font-size:19px;line-height:1.6;color:#dde5f5;margin-top:18px">A termination clause in one contract and a revenue-concentration risk in the <i>same</i> counterparty would sit in two separate workstreams — if they were flagged at all.</p>
+        <div class="callout p" style="margin-top:24px">
+          <div class="lbl">The realization</div>
+          <p>The analysis wasn't the hard part. <b>The integration was.</b> Nine workstreams, hundreds of documents, no shared index, no cross-reference, and a clock that keeps compressing. That's a systems problem — and systems problems have engineering answers.</p>
+        </div>
+      </div>
+      <div>
+        <div class="card">
+          <div class="lead">What a real run looks like</div>
+          <ul class="clean">
+            <li><b>200+ counterparties</b> across a single target's contract base</li>
+            <li><b>400–500 documents</b> — PDFs, Word, Excel, scans, images</li>
+            <li><b>9 domains × every document</b>, in parallel</li>
+            <li>Thousands of raw findings → <b>filtered to what's material</b></li>
+            <li>Every survivor <b>traced to a page and a quote</b></li>
+          </ul>
+          <hr class="sp">
+          <p class="small">This isn't a prototype. It's an open-source package (<span class="mono">pip install dd-agents</span>), 60k+ lines, 3,000+ tests, strict-typed, Apache-2.0 — running on real deal data rooms.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4 · THE INDUSTRY PROBLEM ============ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker r">The industry problem you already live</div>
+    <h2>DD runs in silos. The clock keeps shrinking. The cost is sunk either way.</h2>
+    <div class="grid g4" style="margin-top:26px">
+      <div class="card"><div class="stat r">31%</div><div class="statlbl">of M&amp;A failures trace back to due-diligence shortcomings <span class="small">(HBR / McKinsey / KPMG)</span></div></div>
+      <div class="card"><div class="stat a">6→3 wks</div><div class="statlbl">DD timelines compressing — same scope, half the time</div></div>
+      <div class="card"><div class="stat b">1–3%</div><div class="statlbl">corp-dev screen-to-close rate; 200–1,000+ screened/yr, DD cost sunk on every deal that dies</div></div>
+      <div class="card"><div class="stat g">74→95%</div><div class="statlbl">AI contract-analysis accuracy with clause-aware prompting <span class="small">(Addleshaw Goddard, 510 contracts)</span></div></div>
+    </div>
+    <div class="grid g2" style="margin-top:20px">
+      <div class="card tint-b">
+        <div class="lead">Demand is already here</div>
+        <p style="font-size:16px"><b style="color:#fff">86%</b> of M&amp;A organizations have integrated GenAI into deal workflows (Deloitte 2025). Roughly half of practitioners now use AI in DD specifically (Bain). ~<b style="color:#fff">$4.9T</b> in 2025 deal activity, AI cited as rationale in a third of the 100 largest deals (PwC).</p>
+      </div>
+      <div class="card tint-a">
+        <div class="lead">But the tools are fragmented</div>
+        <p style="font-size:16px">Existing tools are <b style="color:#fff">single-domain and legal-centric</b> (Luminance, Kira/Litera, Harvey), single-function (VDRs, CLM), or a build-it-yourself GenAI framework. <b style="color:#fff">None do multi-domain forensic DD with adversarial cross-validation</b> across all nine workstreams. That gap is what this fills.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 5 · WHAT GETS ANALYZED (9 DOMAINS) ============ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker">What gets analyzed</div>
+    <h2>Nine specialist lenses — each a domain expert, not a generalist.</h2>
+    <p class="sub tight">Every document is read by all nine in parallel. Each carries deep, deal-aware domain logic (e.g. Legal disaggregates change-of-control into five distinct subtypes). Enable/disable any of them per deal in config.</p>
+    <div class="domgrid" style="margin-top:8px">
+      <div class="dom-card" style="border-left-color:#4f8cff"><h4>⚖️ Legal</h4><p>Change-of-control (5 subtypes), anti-assignment, termination rights, IP ownership &amp; freedom-to-operate, indemnities, liability caps, governance graph</p></div>
+      <div class="dom-card" style="border-left-color:#34d399"><h4>💰 Finance</h4><p>Revenue cross-referencing (flags &gt;5% ARR mismatch), revenue decomposition, unit economics (CAC/LTV/NRR/GRR), pricing compliance, insurance program</p></div>
+      <div class="dom-card" style="border-left-color:#f5b945"><h4>📊 Commercial</h4><p>Renewals, churn, SLA &amp; service-credit exposure, customer concentration (&gt;30% flag), MFN clauses, supply-chain &amp; operational capacity</p></div>
+      <div class="dom-card" style="border-left-color:#a78bfa"><h4>🛠️ Product / Tech</h4><p>DPA analysis, SOC 2 / ISO 27001, technical SLAs, integration &amp; migration complexity, data portability, technical debt, vendor lock-in</p></div>
+      <div class="dom-card" style="border-left-color:#28d6c8"><h4>🔒 Cybersecurity</h4><p>Breach history, identity &amp; access, encryption, incident response (MTTD/MTTR), vuln management, third-party risk, cyber insurance</p></div>
+      <div class="dom-card" style="border-left-color:#ff6b6b"><h4>👥 HR / People</h4><p>Comp &amp; benefits liabilities, key-talent retention, CoC acceleration / golden parachutes, labor &amp; union exposure, succession, classification</p></div>
+      <div class="dom-card" style="border-left-color:#5b9bff"><h4>🧾 Tax</h4><p>Income tax, transfer pricing, NOLs &amp; §382, sales/use nexus, international &amp; deal-structure tax, provisions, controversy</p></div>
+      <div class="dom-card" style="border-left-color:#8ef0c8"><h4>📋 Regulatory</h4><p>License transferability, antitrust (HSR/EU, HHI), data-privacy regulation, AML/sanctions, government contracts, sector rules</p></div>
+      <div class="dom-card" style="border-left-color:#ffd98a"><h4>🌱 ESG</h4><p>Environmental contamination, permits, climate/carbon (Scope 1/2/3), hazardous materials, ESG governance &amp; disclosure (CSRD/TCFD)</p></div>
+    </div>
+    <div class="callout"><div class="lbl">Extensible</div><p>External specialists plug in via a Python entry-point — no core changes. Three built-in extensions already exist: Insurance→Finance, Operations→Commercial, IP-Deep→Legal.</p></div>
+  </div>
+</section>
+
+<!-- ============ 6 · WHO IT'S FOR / DEAL SHAPES ============ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker p">Who this is for</div>
+    <h2>Built for the serial, programmatic acquirer — across very different risk shapes.</h2>
+    <p class="sub tight">A small in-house team running many deals a year. Different targets, different data rooms — but the same nine workstreams every time. That's the exact profile where a standardized, repeatable DD engine compounds in value.</p>
+    <div class="two" style="margin-top:6px">
+      <div>
+        <table class="t">
+          <tr><th>Deal shape</th><th>Where the risk concentrates</th></tr>
+          <tr><td class="dom">AI / IP-heavy target</td><td>Model IP &amp; data rights, open-source exposure, DPAs, cross-border tax</td></tr>
+          <tr><td class="dom">Public-company carve-out</td><td>SEC-grade scrutiny, regulatory clearance (CFIUS/HSR), ARR quality</td></tr>
+          <tr><td class="dom">VC-backed SaaS</td><td>Customer concentration, churn, retention, revenue quality</td></tr>
+          <tr><td class="dom">Regulated fintech / health</td><td>Financial-crime / AML / sector compliance, license transferability</td></tr>
+          <tr><td class="dom">Platform / bolt-on</td><td>Commercial commitments, contract assignment, integration</td></tr>
+        </table>
+        <p class="small" style="margin-top:12px">Each row is a <i>different</i> data-room shape — but the same nine domains, run the same disciplined way.</p>
+      </div>
+      <div>
+        <div class="card tint-p">
+          <div class="lead">The fit, in one line</div>
+          <p style="font-size:17px;color:#dde5f5">Your repeating DD workstreams <b style="color:#fff">are this tool's nine agents.</b></p>
+          <hr class="sp">
+          <ul class="clean p">
+            <li><b>AI / IP deals:</b> Product/Tech agent on model IP, data rights, DPAs, open-source exposure</li>
+            <li><b>CCaaS / SaaS:</b> Finance + Commercial on ARR quality, churn, customer concentration, at-risk revenue</li>
+            <li><b>Regulated targets:</b> Regulatory agent on AML/sanctions, license transferability</li>
+            <li><b>Cross-border deals:</b> Tax agent on transfer pricing &amp; structure; Regulatory on CFIUS/HSR filings</li>
+            <li><b>Public carve-outs:</b> citation-grade audit trail that holds up to SEC scrutiny</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 7 · THE REPORT (DASHBOARD SHOT) ============ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker c">Let me show you the output first</div>
+    <h2>The deal lead gets the answer in 30 seconds — then drills down.</h2>
+    <div class="two rev" style="margin-top:18px">
+      <div>
+        <img class="shot" src="screenshots/01-executive-dashboard.png" alt="Executive dashboard with Go/No-Go verdict, key takeaways, severity distribution">
+        <div class="shotcap">Layer 1 — the decision zone, visible on load. Verdict + narrative + 9-domain risk strip + open items.</div>
+      </div>
+      <div>
+        <h3 style="color:var(--cyan)">Progressive disclosure, four layers</h3>
+        <div class="flowstep"><div class="n">1</div><div><div class="t">Decision</div><div class="d">Go / Conditional Go / Proceed-with-Conditions / No-Go, with a narrative explaining <i>why</i>, top deal-breakers, and revenue exposure.</div></div></div>
+        <div class="flowstep"><div class="n">2</div><div><div class="t">Actions</div><div class="d">Recommendations grouped Pre-close → 30d → 90d → Long-term, each with owner, effort, and the finding it ties to.</div></div></div>
+        <div class="flowstep"><div class="n">3</div><div><div class="t">Domains</div><div class="d">Nine domain cards + the cross-domain correlation matrix + deep dives.</div></div></div>
+        <div class="flowstep"><div class="n">4</div><div><div class="t">Evidence</div><div class="d">Every finding, sortable, with file/page/quote. Nothing is asserted without it.</div></div></div>
+        <div class="callout c"><p><b>Self-contained &amp; offline.</b> One HTML file, zero network calls, XSS-safe. Filter to "P0 only," and the URL itself encodes the filter — share it with the deal team.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 8 · CROSS-DOMAIN SYNTHESIS ============ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker p">The single biggest differentiator</div>
+    <h2>It finds the risk that <span class="grad-p">lives between domains</span>.</h2>
+    <div class="two" style="margin-top:18px">
+      <div>
+        <p style="font-size:18px;color:#dde5f5">A change-of-control clause is a Legal finding. The <b style="color:#fff">$2.4M ARR concentrated under that customer</b> is a Finance finding. The <b style="color:#fff">key account-owner with no successor</b> is an HR finding. Three teams, three memos, three workstreams.</p>
+        <p style="font-size:18px;color:#dde5f5;margin-top:16px">This system recognizes they're <b style="color:#fff">the same compound risk on the same counterparty</b> — and escalates it accordingly.</p>
+        <div class="card tint-p" style="margin-top:18px">
+          <div class="lead">Compound severity escalation</div>
+          <ul class="clean p">
+            <li>Two P2s on the same entity across domains → <b>escalate to P1</b></li>
+            <li>P1 + P2 on the same entity across domains → <b>escalate to P0</b></li>
+            <li>3+ domains flagging the same entity → <b>P1 minimum</b></li>
+          </ul>
+        </div>
+      </div>
+      <div>
+        <img class="shot" src="screenshots/03-cross-domain-synthesis.png" alt="Cross-domain synthesis showing compound risks across entity domains">
+        <div class="shotcap">Compound-risk cards + domain-interaction matrix. The picture that used to take weeks to assemble manually.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 9 · ARCHITECTURE OVERVIEW ============ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker">How it works — the architecture</div>
+    <h2>A Python pipeline drives the agents. The agents are workers, not decision-makers.</h2>
+    <p class="sub tight">38 deterministic steps, 5 blocking quality gates. This control inversion is the whole ballgame — and the reason it's reliable enough for deal work.</p>
+    <div class="flow" style="margin-top:6px">
+      <div class="flow-node input">Data Room <span class="fn-sub">PDFs · Word · Excel · scanned images</span></div>
+      <div class="flow-arr">▼ <span class="fn-note">extract · classify subjects · resolve entities · score document precedence</span></div>
+      <div class="flow-node orch"><b>PYTHON ORCHESTRATOR</b> <span class="fn-sub">38-step state machine · 5 blocking gates · checkpoint / resume</span></div>
+      <div class="flow-arr">▼ <span class="fn-note">9 specialists run in parallel</span></div>
+      <div class="flow-chips">
+        <span class="fc">Legal</span><span class="fc">Finance</span><span class="fc">Commercial</span><span class="fc">Product/Tech</span><span class="fc">Cyber</span><span class="fc">HR</span><span class="fc">Tax</span><span class="fc">Regulatory</span><span class="fc">ESG</span>
+      </div>
+      <div class="flow-arr">▼</div>
+      <div class="flow-node step purple"><b>Cross-Domain Triggers</b> <span class="fn-note">symbolic rules, no LLM</span></div>
+      <div class="flow-arr">▼</div>
+      <div class="flow-node step purple"><b>Judge</b> <span class="fn-note">adversarial spot-check · re-spawn if weak</span></div>
+      <div class="flow-arr">▼</div>
+      <div class="flow-node step purple"><b>Merge · Dedup · Numerical Audit</b> <span class="fn-note">deterministic Python</span></div>
+      <div class="flow-arr">▼</div>
+      <div class="flow-node step purple"><b>Executive Synthesis</b> <span class="fn-note">Go/No-Go · severity calibration</span></div>
+      <div class="flow-arr">▼</div>
+      <div class="flow-node output">HTML + Excel + JSON</div>
+    </div>
+    <div class="callout a"><div class="lbl">Why Python-on-top, not "an agent that orchestrates"</div><p>The orchestrator can't skip a step, miscount, or proceed past a failed gate, because <b>it isn't an LLM</b> — it's code. Agents are invoked at specific steps; their output is validated by Python before the pipeline advances. Resume from any checkpoint after a failure.</p></div>
+  </div>
+</section>
+
+<!-- ============ 10 · ENFORCEMENT PARADOX ============ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker r">The hard lesson behind that design</div>
+    <h2>Telling an LLM "you MUST" is a suggestion, not a control.</h2>
+    <div class="two" style="margin-top:20px">
+      <div>
+        <p style="font-size:18px;color:#dde5f5">An earlier version let the LLM run the whole pipeline from a prose spec. On a real ~200-counterparty deal, we did a retrospective on the failures.</p>
+        <div class="card tint-r" style="margin-top:18px">
+          <div class="lead">All 17 quality failures were the same kind</div>
+          <ul class="clean r">
+            <li>Agents <b>skipped counterparties</b> (28 of 34 outputs produced)</li>
+            <li>Produced <b>aggregate summaries</b> instead of per-subject analysis</li>
+            <li><b>Fabricated citations</b> — quotes not in the source</li>
+            <li><b>Missed gap detection</b> for missing referenced docs</li>
+            <li>Generated <b>counts that didn't add up</b></li>
+            <li>The orchestrating LLM <b>skipped its own blocking gates</b></li>
+          </ul>
+        </div>
+      </div>
+      <div>
+        <div class="callout"><div class="lbl">The enforcement paradox</div><p style="font-size:17px">The LLM that's <i>told</i> to follow the rules is also the entity that <i>decides</i> whether to follow them. Markdown emphasis — "MUST", "BLOCKING", "CRITICAL" — has zero enforcement power.</p></div>
+        <div class="callout g" style="margin-top:18px"><div class="lbl">The fix</div><p style="font-size:17px">Invert control. <b>Python enforces flow. Hooks enforce output format. Validation gates are <span class="mono">if/else</span> in code.</b> Coverage is verified by counting files on disk. Numbers are re-derived from source. The LLM does analysis; it never decides whether quality passed.</p></div>
+        <p class="small" style="margin-top:16px">This is the difference between an impressive demo and a system a deal team can put its name on.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 11 · ANTI-HALLUCINATION / CITATIONS ============ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker g">The trust layer · citation verification</div>
+    <h2>Every claim is proven against the source — or it doesn't survive.</h2>
+    <p class="sub tight">When an agent says "termination right in Section 12.3," the system independently confirms that quote actually exists. This is what separates analysis from hallucination.</p>
+    <div class="grid" style="grid-template-columns:1.1fr .9fr;gap:30px;margin-top:4px">
+      <div>
+        <div class="flowstep"><div class="n">1</div><div><div class="t">Exact page match</div><div class="d">Search the cited page. Whitespace normalized to absorb PDF column-layout artifacts.</div></div></div>
+        <div class="flowstep"><div class="n">2</div><div><div class="t">Adjacent pages ±1</div><div class="d">Catches cross-page quotes and off-by-one page errors from extraction.</div></div></div>
+        <div class="flowstep"><div class="n">3</div><div><div class="t">Full-document fuzzy match (≥80%)</div><div class="d">OCR'd text never matches exactly — <span class="mono">rapidfuzz</span> partial-ratio catches reformatted quotes.</div></div></div>
+        <div class="flowstep"><div class="n">4</div><div><div class="t">Cross-file search</div><div class="d">Quote not in the cited file? Search all of that counterparty's docs and <b style="color:#fff">auto-correct the file attribution</b>.</div></div></div>
+      </div>
+      <div>
+        <div class="card tint-g">
+          <div class="lead">Defense in depth — 5 layers</div>
+          <ul class="clean g">
+            <li><b>Structured output</b> validated against a schema; malformed output rejected on write</li>
+            <li><b>Mandatory citations</b> — file, page, section, exact quote</li>
+            <li><b>"NOT_FOUND" escape valve</b> — tell the model to write a gap instead of inventing</li>
+            <li><b>Adversarial Judge</b> re-checks high-severity claims</li>
+            <li><b>6-layer numerical audit</b> re-derives every number</li>
+          </ul>
+        </div>
+        <div class="callout g"><p><b>The single biggest unlock:</b> giving the model an explicit way to say <span class="mono">NOT_FOUND</span> and write a gap. Without that escape valve, models fabricate rather than admit ignorance. With it, hallucination drops sharply.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 12 · NEUROSYMBOLIC TRIGGERS ============ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker p">Neurosymbolic cross-domain analysis</div>
+    <h2>Deterministic rules decide <span class="grad-p">when</span> a finding needs a second domain's eyes.</h2>
+    <p class="sub tight">After the first pass, symbolic rules — <b>no LLM, fully auditable</b> — fire when one domain's finding has implications in another. Each fired rule spawns a focused second-pass analysis, scoped to only the cited contracts, with full provenance.</p>
+    <table class="t" style="margin-top:4px">
+      <tr><th>If this domain finds…</th><th>…ask this domain to</th><th></th></tr>
+      <tr><td class="dom">Finance: revenue recognition issue</td><td>Legal</td><td>verify contract enforceability — ASC 606 rights, delivery criteria, clawbacks</td></tr>
+      <tr><td class="dom">Legal: change-of-control risk</td><td>Finance</td><td>quantify revenue at risk if CoC terminates; acceleration; ARR/TCV impact</td></tr>
+      <tr><td class="dom">Legal: termination-for-convenience</td><td>Finance</td><td>calculate at-risk remaining contract value &amp; committed vs uncommitted revenue</td></tr>
+      <tr><td class="dom">Legal: IP ownership dispute</td><td>Product/Tech</td><td>assess which systems depend on the disputed IP; migration cost</td></tr>
+      <tr><td class="dom">Product/Tech: cross-border data flow</td><td>Legal</td><td>verify DPA compliance — SCCs/adequacy, GDPR Art. 28, breach notice</td></tr>
+      <tr><td class="dom">Commercial: SLA / service-credit risk</td><td>Finance</td><td>quantify max annual service-credit liability &amp; recurring-revenue impact</td></tr>
+      <tr><td class="dom">Finance: pricing anomaly</td><td>Commercial</td><td>validate vs rate cards, volume commitments, renewal &amp; competitive benchmarks</td></tr>
+    </table>
+    <div class="callout p"><div class="lbl">Why this matters</div><p><b>LLMs are for judgment; code is for control.</b> The rules are pattern-matched on finding category + severity + keywords — deterministic, logged, budget-bounded (≈$5/deal cap on second-pass work). You can audit exactly why every cross-domain check fired.</p></div>
+  </div>
+</section>
+
+<!-- ============ 13 · ENTITY RESOLUTION + PRECEDENCE ============ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker">The invisible foundations</div>
+    <h2>Two problems that, unsolved, make every downstream finding wrong.</h2>
+    <div class="g2 grid" style="margin-top:20px">
+      <div class="card tint-b">
+        <div class="lead">Entity resolution — 6-pass cascade</div>
+        <p style="margin-bottom:12px">"IBM", "International Business Machines", and subsidiary "Red Hat" — same entity in your analysis? If the system can't resolve that, consolidation breaks.</p>
+        <ul class="clean">
+          <li><b>1 Exact</b> · <b>2 Normalized</b> (strip Inc/Corp/LLC)</li>
+          <li><b>3 Alias</b> lookup (config-driven)</li>
+          <li><b>4 Fuzzy</b> token-sort (88% long / 95% short names)</li>
+          <li><b>5 TF-IDF cosine</b> for transpositions</li>
+          <li><b>6 Parent-child</b> hierarchy + learned matches</li>
+        </ul>
+        <p class="small" style="margin-top:12px">Counter-intuitive guard: names ≤5 chars never fuzzy-match — otherwise "Inc." matches everything. Every match is logged for audit.</p>
+      </div>
+      <div class="card tint-a">
+        <div class="lead">Document precedence — which version governs</div>
+        <p style="margin-bottom:12px">A data room has v1, v2_draft, v2_signed, MSA_final, MSA_executed. And an MSA governs every Order Form beneath it — until an Order Form says <i>"notwithstanding…"</i> and the child overrides the parent.</p>
+        <ul class="clean a">
+          <li><b>Version chains:</b> signed/executed rank 10 → draft 2 → superseded 1</li>
+          <li><b>Folder tiers:</b> /Executed/ outranks /Drafts/</li>
+          <li><b>Composite score:</b> version 40% · folder 30% · recency 30%</li>
+          <li><b>Governance graph</b> (NetworkX): amendment chains, cascade impact, conflict detection — deterministic traversal, not LLM</li>
+        </ul>
+        <p class="small" style="margin-top:12px">CoC-impact query across 200 contracts resolves in ~50ms. The graph decides how clauses interact; the LLM only reads what each one says.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 14 · SEVERITY CALIBRATION ============ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker g">The judgment you'd expect from a partner</div>
+    <h2>Same clause. Different deal. Different severity.</h2>
+    <p class="sub tight">A raw AI flags every change-of-control clause as critical. But the <i>deal structure</i> decides what's actually material — and that context flows through the whole pipeline.</p>
+    <div class="g2 grid" style="margin-top:4px">
+      <div class="card tint-r">
+        <div class="lead">Asset purchase</div>
+        <ul class="clean r">
+          <li><b>P0</b> — anti-assignment blocks transfer; get consent or lose the customer</li>
+          <li><b>P1</b> — shared-services agreement must be replicated; no transition plan</li>
+        </ul>
+      </div>
+      <div class="card tint-g">
+        <div class="lead">Stock purchase — same clauses</div>
+        <ul class="clean g">
+          <li><b>P3</b> — legal entity doesn't change; no assignment occurs. Routine.</li>
+          <li><b>P3</b> — intercompany obligations eliminated at closing. Not a risk.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="callout"><div class="lbl">One severity authority — deterministic and auditable</div>
+      <p>Final severity is decided <b>once</b>, by code, not scattered across the pipeline: the agent's call → deterministic recalibration of known false positives (termination-for-convenience capped at P2; competitor-only CoC → P3) → your own per-deal overrides. Every finding carries its <span class="mono">severity_source</span> and the full chain, so an IC or auditor sees exactly why each clause landed where it did. A safety bound means a user override can never silently bury a genuine deal-breaker.</p>
+    </div>
+    <p class="small" style="margin-top:14px">The twist seasoned people catch: some contracts treat ownership change as a "deemed assignment," so anti-assignment can trigger even in a stock deal. That's why CoC is disaggregated into five subtypes — to catch exactly this.</p>
+  </div>
+</section>
+
+<!-- ============ 15 · NOISE + JUDGE ============ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker a">Signal vs noise · the adversarial check</div>
+    <h2>Most of what AI finds is noise. The work is killing it.</h2>
+    <div class="two" style="margin-top:18px">
+      <div>
+        <p style="font-size:17px;color:#dde5f5">Four agents across hundreds of documents produce <b style="color:#fff">thousands of findings.</b> Without classification, the real risks drown.</p>
+        <div class="flowstep"><div class="n">1</div><div><div class="t">Noise filter (15 patterns)</div><div class="d">"extraction failed," "binary file" — process artifacts, not findings. Removed.</div></div></div>
+        <div class="flowstep"><div class="n">2</div><div><div class="t">Data-quality filter (14 patterns)</div><div class="d">"records unavailable" — real gaps, but not material risks. Routed to an appendix.</div></div></div>
+        <div class="flowstep"><div class="n">3</div><div><div class="t">Material findings</div><div class="d">What survives both filters. These drive the verdict.</div></div></div>
+      </div>
+      <div>
+        <div class="card tint-g">
+          <div class="lead">The Judge — adversarial QA</div>
+          <p style="margin-bottom:10px">A separate agent spot-checks findings with <b style="color:#fff">accusatory framing</b> — "this finding appears fabricated; prove it with a direct quote." (Polite "please double-check" prompts had near-zero effect; accusatory framing improved accuracy ~9% in the research.)</p>
+          <ul class="clean g">
+            <li>Risk-based sampling: <b>P0 100% · P1 20% · P2 10%</b></li>
+            <li>Scored across 5 weighted dimensions; threshold 70/100</li>
+            <li>Weak agents <b>re-spawned</b> for a second round</li>
+          </ul>
+        </div>
+        <div class="callout g"><p><b>Know when to stop using LLMs.</b> Validation, dedup, and audit were moved from an LLM to deterministic Python — quality went up, cost went to zero, and every failure now has a stack trace.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 16 · QUALITY GATES / FAIL-CLOSED ============ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker r">Fail-closed by design</div>
+    <h2>Better to produce nothing than unreliable output.</h2>
+    <p class="sub tight">Five blocking gates halt the pipeline on failure — they don't just log a warning nobody reads. If it can't meet the bar, it stops and tells you why.</p>
+    <div class="grid g3" style="margin-top:6px">
+      <div class="card"><div class="lead" style="color:var(--red)">Gate · Extraction</div><p>Halts if document text extraction systemically fails.</p></div>
+      <div class="card"><div class="lead" style="color:var(--red)">Gate · Coverage</div><p>Every counterparty must be analyzed by every agent. Auto-respawn for gaps.</p></div>
+      <div class="card"><div class="lead" style="color:var(--red)">Gate · Numerical audit</div><p>6 layers: source traceability, re-derivation, cross-source &amp; cross-format consistency.</p></div>
+      <div class="card"><div class="lead" style="color:var(--red)">Gate · QA audit</div><p>17 structural checks — manifests, citations, domain coverage, report sheets.</p></div>
+      <div class="card"><div class="lead" style="color:var(--red)">Gate · Post-generation</div><p>Excel must match the numerical manifest cell-for-cell before release.</p></div>
+      <div class="card tint-r"><div class="lead">Agent guardrails</div><p>Path-locked to the output dir. 24 blocked shell patterns. Turn limits with hard kill. Agents have tools, not shell freedom.</p></div>
+    </div>
+    <div class="callout r"><p>Plus <b>31 Definition-of-Done checks</b> at the end and atomic, read-only handling of your data room — the tool <b>never modifies your files</b>, sends nothing home, and writes only to a separate <span class="mono">_dd/</span> directory.</p></div>
+  </div>
+</section>
+
+<!-- ============ 16b · CUSTOMIZE THE ANALYSTS (NO CODE) ============ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker p">Make it your firm's playbook — no code</div>
+    <h2>Tune what each analyst looks for. You can add guidance; you can't remove a safety rule.</h2>
+    <p class="sub tight">An M&amp;A lead can adapt the nine specialists to a deal or a house style by editing <b>markdown</b> — not Python. Drop a file per agent, or inherit a deal-type profile.</p>
+    <div class="two" style="margin-top:4px">
+      <div>
+        <div class="codebox" style="font-size:13px">
+<span class="cm"># dd-config/agents/legal.md</span>
+<span class="a">---</span>
+<span class="a">agent:</span> legal
+<span class="a">extends:</span> saas        <span class="cm"># inherit a deal-type profile</span>
+<span class="a">---</span>
+<span class="s">## Persona (replaces default)</span>
+Prioritize change-of-control and IP chain-of-title.
+<span class="s">## Additional Focus Areas</span>
+- open-source copyleft exposure
+- EU data-residency commitments
+<span class="s">## Severity Overrides</span>
+- change_of_control: P1
+        </div>
+      </div>
+      <div>
+        <div class="card tint-p">
+          <div class="lead">Inspect &amp; audit any agent — read-only</div>
+          <ul class="clean p">
+            <li><span class="mono">dd-agents agents list</span> — every specialist + status</li>
+            <li><span class="mono">describe</span> — its persona, focus, severity rules, safety floor</li>
+            <li><span class="mono">validate</span> — lint your config, fail-closed</li>
+            <li><span class="mono">preview</span> — the exact prompt the model will receive</li>
+          </ul>
+        </div>
+        <div class="callout p"><div class="lbl">Governed by design</div><p>Bundled deal-type profiles (<span class="mono">saas</span>, <span class="mono">regulated-fintech</span>, …) compose with one merge rule. A <b>non-removable safety floor</b> — citation mandate, anti-fabrication, anti-tampering — is always appended last, so no customization can weaken the controls.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 17 · KNOWLEDGE COMPOUNDING ============ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker">Institutional memory</div>
+    <h2>Every run is smarter than the last.</h2>
+    <div class="two rev" style="margin-top:18px">
+      <div>
+        <div class="card tint-b">
+          <div class="lead">Deal Knowledge Base — compounds across runs</div>
+          <ul class="clean">
+            <li><b>Entity profiles &amp; clause summaries</b> — enriched each run</li>
+            <li><b>Contradiction tracking</b> — "Company X says 2-yr retention; Contract Y says 5"</li>
+            <li><b>Finding lineage</b> via SHA-256 fingerprint — tracked across runs even when wording changes (active → resolved → recurring)</li>
+            <li><b>Append-only chronicle</b> — every run, search, annotation, timestamped</li>
+            <li><b>Next run's prompts</b> include prior context, known contradictions, finding history</li>
+          </ul>
+        </div>
+      </div>
+      <div>
+        <p style="font-size:19px;line-height:1.55;color:#dde5f5">Run&nbsp;1 finds the risk. <b style="color:#fff">Run&nbsp;2 knows the context</b>, catches what changed, and flags new contradictions.</p>
+        <p style="font-size:19px;line-height:1.55;color:#dde5f5;margin-top:16px">The system develops institutional memory — <b style="color:#fff">like an analyst who remembers every deal they've ever worked on.</b></p>
+        <div class="callout p"><div class="lbl">For a serial acquirer</div><p>Across a deal pipeline this means: re-screening a target you looked at two years ago starts from what you already learned; recurring counterparties (shared customers, common vendors) carry forward; and post-close, the same engine re-runs to track whether flagged risks were remediated.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 18 · MODES / WHAT IT CAN DO ============ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker c">What it can do — beyond the full run</div>
+    <h2>Different jobs, one engine.</h2>
+    <div class="grid g2" style="margin-top:14px">
+      <div class="card tint-g"><div class="lead">Full pipeline</div><h3>Integrated due diligence</h3><p>All 9 domains, cross-referenced, 5 gates, HTML + Excel + JSON. The deep run for an active target.</p><div class="mono small" style="margin-top:10px;color:var(--green)">dd-agents run deal-config.json</div></div>
+      <div class="card tint-a"><div class="lead">Quick scan · minutes</div><h3>Red-flag triage</h3><p>GREEN / YELLOW / RED across 8 deal-killer categories — litigation, IP gaps, undisclosed contracts, key-person, restatements, regulatory, customer concentration, debt covenants. A first read before you commit resources.</p><div class="mono small" style="margin-top:10px;color:var(--amber)">run --quick-scan --model-profile economy</div></div>
+      <div class="card tint-b"><div class="lead">Targeted search</div><h3>Ask every contract one question</h3><p>"Does this require consent on change of control? YES/NO/NOT_ADDRESSED." → Excel with answers, citations, verification scores. The prompts file is plain JSON any lawyer can write.</p><div class="mono small" style="margin-top:10px;color:var(--blue)">dd-agents search prompts.json</div></div>
+      <div class="card tint-p"><div class="lead">Post-run</div><h3>Chat · query · portfolio</h3><p>Multi-turn chat with memory over the findings; one-shot Q&amp;A; track and <b>compare risk across multiple deals</b>; export PDF; data-room quality assessment before you even start.</p><div class="mono small" style="margin-top:10px;color:var(--purple)">dd-agents chat · portfolio compare</div></div>
+    </div>
+    <div class="callout c"><p><b>Deployment:</b> runs entirely on your machine or your cloud (Anthropic API <i>or</i> AWS Bedrock). Docker image, Homebrew, or pip. No telemetry, no phone-home — important for confidential deal data.</p></div>
+  </div>
+</section>
+
+<!-- ============ 19 · COST ============ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker">Economics</div>
+    <h2>Every API call is a deal cost — so cost control is built into the architecture.</h2>
+    <div class="two" style="margin-top:20px">
+      <div>
+        <div class="card">
+          <div class="lead">Right model for the right task</div>
+          <div class="codebox" style="border:none;padding:0;background:none">
+<span class="cm"># Three model profiles: economy / standard / premium</span>
+Extraction &amp; triage:   <span class="s">Haiku</span>   <span class="cm">($0.80 / M in)</span>
+Specialist analysis:   <span class="a">Sonnet</span>  <span class="cm">($3 / M in)</span>
+Executive synthesis:   <span class="r">Opus</span>    <span class="cm">($15 / M in) — only where it matters</span>
+          </div>
+        </div>
+        <div class="callout"><p>Per-agent and per-step cost tracking. <b>Hard budget limits that halt the pipeline.</b> Cross-domain second-pass work is capped (≈$5/deal default). You see the estimated cost <i>before</i> the run.</p></div>
+      </div>
+      <div>
+        <div class="card tint-g">
+          <div class="lead">Why this matters for M&amp;A</div>
+          <p style="font-size:17px;color:#dde5f5">In a deal, pipeline cost shows up on <i>someone's</i> fee schedule. With intelligent cost management at every layer, the run cost stays manageable even for large data rooms.</p>
+          <hr class="sp">
+          <p style="font-size:17px;color:#dde5f5">The point isn't "cheaper than advisors." It's <b style="color:#fff">invaluable alongside them — additive to insight, not to the fee burden.</b> A first-read that makes the expensive hours count.</p>
+        </div>
+        <p class="small" style="margin-top:14px">Open-source, Apache-2.0 — no per-seat license, no SaaS subscription. The only marginal cost is the LLM tokens, on your own provider account.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 20 · LIMITATIONS ============ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker a">Where I'm honest about the edges</div>
+    <h2>Current limitations.</h2>
+    <p class="sub tight">A seasoned M&amp;A person will ask this anyway — so here it is straight.</p>
+    <div class="lim" style="margin-top:6px">
+      <div class="card">
+        <div class="row"><div class="ic">→</div><div><h3 style="font-size:16px">It accelerates advisors; it doesn't replace them</h3><p class="small" style="margin-top:4px">Legal, financial, and regulatory <i>conclusions</i> still belong to qualified professionals. The tool produces analysis they build on — IC memos, negotiation checklists, integration plans.</p></div></div>
+      </div>
+      <div class="card">
+        <div class="row"><div class="ic">→</div><div><h3 style="font-size:16px">Contract / document due diligence</h3><p class="small" style="margin-top:4px">It analyzes what's in the data room. It doesn't do management interviews, site visits, customer calls, or live financial-audit work.</p></div></div>
+      </div>
+      <div class="card">
+        <div class="row"><div class="ic">→</div><div><h3 style="font-size:16px">Garbage in, gaps out — by design</h3><p class="small" style="margin-top:4px">Extraction is the hard 80%. Truly unreadable scans degrade gracefully (it flags a gap rather than guessing), but quality depends on data-room quality.</p></div></div>
+      </div>
+      <div class="card">
+        <div class="row"><div class="ic">→</div><div><h3 style="font-size:16px">English-first; multilingual via OCR</h3><p class="small" style="margin-top:4px">Strongest on English contracts. 100+ language OCR is supported, but non-English legal nuance is less battle-tested.</p></div></div>
+      </div>
+      <div class="card">
+        <div class="row"><div class="ic">→</div><div><h3 style="font-size:16px">Tuned at ~200–500 docs / ~50–200 subjects</h3><p class="small" style="margin-top:4px">File-based, no database. Excellent at typical deal scale; a mega-deal with tens of thousands of docs would want a different storage tier.</p></div></div>
+      </div>
+      <div class="card">
+        <div class="row"><div class="ic">→</div><div><h3 style="font-size:16px">A power tool, not a turnkey SaaS</h3><p class="small" style="margin-top:4px">It's a CLI / open-source package. It assumes a technical operator to run it and a deal professional to interpret. That's also why it's adaptable to <i>your</i> playbook.</p></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 21 · WHERE THIS GOES ============ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker p">Where this goes</div>
+    <h2>From "interesting" to a standard part of the deal machine.</h2>
+    <div class="grid g3" style="margin-top:14px">
+      <div class="card tint-b"><div class="lead">Screening &amp; triage</div><p>Run quick-scan on every target that reaches data-room stage. Standardize the first read so the team spends expensive hours only where red flags warrant it — compounding across the hundreds of targets a corp-dev team screens each year.</p></div>
+      <div class="card tint-g"><div class="lead">A house playbook (today)</div><p>Encode your severity rules, deal-type logic, and focus areas once as reusable <span class="mono">dd-config/</span> markdown profiles — then every deal is diligenced the same way, with the buyer-thesis "Acquirer Intelligence" agent mapping findings to your integration priorities.</p></div>
+      <div class="card tint-a"><div class="lead">Audit-ready by default</div><p>Every finding carries its source quote, severity chain, and a config/prompt-version fingerprint. The report shows the exact analyst configuration it ran under — so an IC or regulator can trace any conclusion end-to-end.</p></div>
+      <div class="card tint-p"><div class="lead">Cross-deal portfolio view</div><p>Compare risk profiles across targets you're weighing; carry institutional memory between runs; re-run post-close to track whether flagged risks were remediated.</p></div>
+      <div class="card tint-r"><div class="lead">Private &amp; on your terms</div><p>Self-hosted, runs on the Anthropic API or AWS Bedrock, no telemetry. Confidential deal data never leaves your environment — a hard requirement you can't get from most SaaS DD tools.</p></div>
+      <div class="card"><div class="lead">Open to collaboration</div><p>It's open source for a reason. The most useful directions come from people who run more deals than I do — which domains matter most, what the IC wants to see first. That feedback shapes where this goes next.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 22 · CLOSE ============ -->
+<section class="slide">
+  <div class="wrap" style="display:flex;flex-direction:column;justify-content:center;min-height:74vh">
+    <div class="kicker g">The takeaway</div>
+    <div class="big-quote">The gap between an AI demo and a system a deal team can <span class="grad-g">put its name on</span> is entirely engineering.</div>
+    <p class="sub" style="margin-top:24px">74% → 95% accuracy came from extraction, chunking, citation verification, deterministic gates, and cross-domain synthesis — not from a bigger model. That discipline is what makes this usable for real M&amp;A.</p>
+    <div class="grid g3" style="margin-top:10px;max-width:880px">
+      <div class="card"><div class="lead">Try it live</div><p class="small">Interactive sample report — no install:<br><span class="mono" style="color:var(--cyan)">zoharbabin.github.io/<br>due-diligence-agents</span></p></div>
+      <div class="card"><div class="lead">The code</div><p class="small"><span class="mono">pip install dd-agents</span><br>Apache-2.0 · 3,000+ tests · open source</p></div>
+      <div class="card tint-p"><div class="lead">Next step</div><p class="small">A working session on a real (or synthetic) data room — a live run, end-to-end.</p></div>
+    </div>
+    <hr class="sp" style="margin:30px 0 18px">
+    <p style="font-size:16px;color:var(--muted)">These patterns aren't M&amp;A-specific — they apply to any system doing cross-document analysis at scale: contract review, compliance, research synthesis, knowledge management.</p>
+  </div>
+</section>
+
+</div><!-- /deck -->
+
+<!-- grid overlay -->
+<div id="gridview" style="position:fixed;inset:0;z-index:70;background:rgba(6,9,16,.97);display:none;overflow-y:auto;padding:40px"></div>
+
+<div id="hud">
+  <span id="counter">01 / 22</span>
+  <div class="nav"><button id="prev" aria-label="Previous">‹</button><button id="next" aria-label="Next">›</button></div>
+</div>
+<div id="brandbug"><b>Due Diligence Agents</b> · integrated, AI-powered M&amp;A due diligence</div>
+
+<div id="notes">
+  <h4>Speaker notes</h4>
+  <div class="body" id="notesBody"></div>
+</div>
+
+<script>
+const slides=[...document.querySelectorAll('.slide')];
+const total=slides.length;
+let i=0;
+
+// ---- speaker notes (one per slide) — generic presenter guidance ----
+const NOTES=[
+`<strong>Open warm, not salesy.</strong> Position yourself as a practitioner who built this to solve a real problem — not a vendor.
+<ul><li>Anchor the one line: <em>nine domains read every contract in parallel, cross-reference, and trace everything to a page and a quote.</em></li><li>Set expectation: "I'll show you the output first, then go as deep as you want on how it works — stop me anywhere."</li></ul>`,
+
+`<strong>The safety net if you only get 60 seconds of attention.</strong> Land the three pillars: (1) connects the dots across domains, (2) every finding is provable, (3) accelerates the team, doesn't replace advisors.
+<ul><li>The compounding-risk example (CoC → revenue → key-person) is the emotional hook for an M&A person — they've lived that fragmentation.</li><li>Say the "does not replace advisors" disclaimer out loud — it builds trust with a sophisticated audience.</li></ul>`,
+
+`<strong>Make it personal and credible.</strong> Not a vendor — a practitioner who got annoyed enough to build the fix.
+<ul><li>"The analysis was never the hard part — the <em>integration</em> was." Reframes it as a systems/engineering problem, which is exactly what it is.</li><li>Drop the scale numbers (200+ counterparties, 400-500 docs) so the audience knows it's tested on real volume, not toy data.</li></ul>`,
+
+`<strong>These are numbers the audience lives.</strong> Don't lecture; validate.
+<ul><li>The 31% DD-failure stat and timeline compression resonate with anyone who's run deals.</li><li>Key strategic point: today's tools are single-domain/legal-centric. <em>Nobody does multi-domain forensic DD with cross-validation.</em> That's the white space.</li></ul>`,
+
+`<strong>Walk the nine quickly — don't read every card.</strong> Pick the 2-3 most relevant to the audience's deal types.
+<ul><li>Use Legal's "5 change-of-control subtypes" as proof these are real domain experts, not a generic prompt.</li><li>Mention config-driven enable/disable — domain set is tunable per deal.</li></ul>`,
+
+`<strong>Tailor this slide to the audience's deal shapes.</strong> Map their world to the nine agents.
+<ul><li>The punchline: "Your repeating DD workstreams <em>are</em> this tool's nine agents." A serial acquirer with a small team is the ideal user.</li><li>Ask: "Does that match the shape of diligence you run?" — invite them in.</li></ul>`,
+
+`<strong>Show, don't tell.</strong> Point at the screenshot. "Deal lead gets the verdict in 30 seconds, then drills down."
+<ul><li>Emphasize progressive disclosure — decision-makers want the answer first, evidence on demand.</li><li>Offline + self-contained + shareable filtered URL = practical for confidential deal collaboration.</li><li>If they're engaged, offer to open the live sample report in the browser.</li></ul>`,
+
+`<strong>This is THE differentiator — give it room.</strong> Everything else is table stakes; cross-domain synthesis is the moat.
+<ul><li>Tell the CoC → at-risk ARR → key-person story as a narrative. "Three teams, three memos. This system says: one compound risk."</li><li>The escalation rules show it's principled, not vibes.</li></ul>`,
+
+`<strong>Shift gears: "Now let me earn your trust on how it actually works."</strong>
+<ul><li>The core idea: <em>Python drives, agents are workers.</em> The orchestrator is code, so it can't skip steps or fake a passing gate.</li><li>Don't over-explain the diagram; land "control inversion = reliability."</li></ul>`,
+
+`<strong>The "enforcement paradox" is the most credible moment.</strong> It shows the lessons were learned the hard way.
+<ul><li>Real retrospective, real deal, 17 failures — all instruction-following, not analytical.</li><li>"You can't tell an LLM 'you MUST' and call it a control." Engineers and skeptics both respect this.</li><li>The fix earns the right to be trusted with deal data.</li></ul>`,
+
+`<strong>For an M&A audience, hallucination is THE objection. Pre-empt it.</strong>
+<ul><li>"Every claim is proven against the source, or it doesn't survive." Walk the 4-scope search briefly.</li><li>The NOT_FOUND escape valve is the memorable insight — give the model a way to admit ignorance and it stops fabricating.</li></ul>`,
+
+`<strong>The sophisticated bit — neurosymbolic.</strong> Frame it simply: "Deterministic rules decide <em>when</em> to ask a second domain; the LLM does the <em>analysis</em>."
+<ul><li>Read 2-3 trigger rows that match the audience's deal types (CoC→Finance revenue-at-risk; cross-border data→Legal DPA).</li><li>"No LLM in the trigger logic — fully auditable, budget-capped." Auditability sells to M&A.</li></ul>`,
+
+`<strong>The unglamorous foundations that make it real.</strong>
+<ul><li>Entity resolution: the IBM/Red Hat example — "if you can't resolve this, every consolidated number is wrong."</li><li>Precedence/governance graph: the "notwithstanding..." override is something every M&A lawyer recognizes. ~50ms across 200 contracts.</li></ul>`,
+
+`<strong>This slide proves M&A judgment, not just tech.</strong> Asset vs stock purchase, same clause, different severity.
+<ul><li>This is where deal professionals lean in — it's exactly how a partner thinks.</li><li>The "deemed assignment" twist shows the system understands the nuance that catches juniors. Three calibration layers + full audit trail.</li></ul>`,
+
+`<strong>Counter-intuitive but honest: most AI output is noise.</strong> The discipline is killing it.
+<ul><li>Three-tier classification (noise → data-quality → material) + the Judge with accusatory framing.</li><li>"Know when to stop using LLMs" — moving validation to Python improved quality AND cut cost. Maturity signal.</li></ul>`,
+
+`<strong>Fail-closed = trustworthy.</strong> "Better to produce nothing than unreliable output."
+<ul><li>5 blocking gates + 31 DoD checks + read-only on the data room + no telemetry.</li><li>The privacy points (never modifies files, sends nothing home) matter enormously for confidential deals — say them clearly.</li></ul>`,
+
+`<strong>Institutional memory — strong for a serial acquirer.</strong>
+<ul><li>"Run 1 finds the risk; Run 2 knows the context." Like an analyst who remembers every deal.</li><li>Tie to the audience: re-screening old targets, recurring counterparties, post-close remediation tracking.</li></ul>`,
+
+`<strong>Show the breadth of jobs it does.</strong> Don't dwell — let the audience pick what's interesting.
+<ul><li>Quick-scan is the easiest entry point for high screening volume.</li><li>The plain-JSON search ("ask every contract one question") is something a legal team could use tomorrow.</li><li>Bedrock + on-prem + no telemetry closes the security loop again.</li></ul>`,
+
+`<strong>Address cost head-on — deal people think in fee schedules.</strong>
+<ul><li>Right-model-for-right-task; hard budget caps; cost estimate before the run.</li><li>The key line: "invaluable alongside advisors, not additive to the fee burden." Open-source = no license cost, just tokens on your own account.</li></ul>`,
+
+`<strong>Volunteer the limits before they're probed — it builds more trust than hiding them.</strong>
+<ul><li>Lead with "it accelerates advisors, doesn't replace them" — the audience needs to hear there's no overclaiming.</li><li>Be matter-of-fact about scope (doc DD, not site visits), scale, language. Honesty here makes everything else more believable.</li></ul>`,
+
+`<strong>Make it concrete and collaborative — this is the ask.</strong>
+<ul><li>Frame as "here's where this could fit" — screening, a house playbook, domain extensions, portfolio view, privacy.</li><li>End by genuinely asking for input — practitioners see more deal variety than the builder. Turn the pitch into a conversation about their needs.</li></ul>`,
+
+`<strong>Close on the philosophy, then a clear next step.</strong>
+<ul><li>"The gap between a demo and a trustworthy system is entirely engineering" — leaves them with the credibility note.</li><li>Concrete CTA: a working session on a real or synthetic data room, live end-to-end run.</li><li>Final line generalizes the patterns beyond M&A. Then stop talking and let them react.</li></ul>`
+];
+
+const counter=document.getElementById('counter');
+const bar=document.getElementById('bar');
+const notesBody=document.getElementById('notesBody');
+const notesPanel=document.getElementById('notes');
+
+function pad(n){return String(n).padStart(2,'0')}
+function show(n){
+  i=Math.max(0,Math.min(total-1,n));
+  slides.forEach((s,idx)=>s.classList.toggle('active',idx===i));
+  counter.textContent=pad(i+1)+' / '+pad(total);
+  bar.style.width=((i+1)/total*100)+'%';
+  notesBody.innerHTML=NOTES[i]||'';
+  slides[i].scrollTop=0;
+}
+function nextS(){show(i+1)}
+function prevS(){show(i-1)}
+
+document.getElementById('next').onclick=nextS;
+document.getElementById('prev').onclick=prevS;
+
+// grid view
+const gridview=document.getElementById('gridview');
+function buildGrid(){
+  gridview.innerHTML='<div style="max-width:1200px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:14px">'+
+    slides.map((s,idx)=>{
+      const h=s.querySelector('h1,h2');
+      const k=s.querySelector('.kicker');
+      return `<button data-i="${idx}" style="text-align:left;cursor:pointer;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:14px;color:#eef2fb;min-height:120px">
+        <div style="font-size:10px;letter-spacing:.1em;color:#6b7794;margin-bottom:8px">${pad(idx+1)}</div>
+        <div style="font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#4f8cff;margin-bottom:6px">${k?k.textContent:''}</div>
+        <div style="font-size:14px;font-weight:700;line-height:1.25">${h?h.textContent:''}</div>
+      </button>`;
+    }).join('')+'</div>';
+  gridview.querySelectorAll('button').forEach(b=>b.onclick=()=>{show(+b.dataset.i);toggleGrid(false)});
+}
+function toggleGrid(force){
+  const open=force!==undefined?force:(gridview.style.display==='none');
+  if(open){buildGrid();gridview.style.display='block'}else{gridview.style.display='none'}
+}
+
+document.addEventListener('keydown',e=>{
+  if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' '){e.preventDefault();nextS()}
+  else if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();prevS()}
+  else if(e.key==='Home'){show(0)}
+  else if(e.key==='End'){show(total-1)}
+  else if(e.key.toLowerCase()==='n'){notesPanel.classList.toggle('show')}
+  else if(e.key.toLowerCase()==='g'){toggleGrid()}
+  else if(e.key.toLowerCase()==='f'){
+    if(!document.fullscreenElement)document.documentElement.requestFullscreen();
+    else document.exitFullscreen();
+  }
+  else if(e.key==='Escape'){toggleGrid(false)}
+});
+
+// touch / swipe
+let tx=0;
+document.addEventListener('touchstart',e=>tx=e.touches[0].clientX,{passive:true});
+document.addEventListener('touchend',e=>{
+  const dx=e.changedTouches[0].clientX-tx;
+  if(Math.abs(dx)>60){dx<0?nextS():prevS()}
+},{passive:true});
+
+show(0);
+</script>
+</body>
+</html>

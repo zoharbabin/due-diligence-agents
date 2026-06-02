@@ -225,3 +225,48 @@ class TestExportScriptNoFalsePositives:
         from dd_agents.tools.run_export_script import run_export_script
 
         assert run_export_script(code, tmp_path).get("error") == "blocked_import"
+
+    @pytest.mark.parametrize(
+        "code",
+        [
+            # getattr of a module-attr name on a BENIGN receiver must not trip
+            # the scan (Copilot #202 C11) — workbook.system / doc.popen are not
+            # the os module.
+            "class W:\n    def system(self):\n        return 1\ngetattr(W(), 'system')()",
+            "class Doc:\n    def popen(self):\n        return 1\ngetattr(Doc(), 'popen')()",
+            "wb = object()\ngetattr(wb, 'spawnl')",
+        ],
+    )
+    def test_getattr_module_attr_on_benign_receiver_allowed(self, code: str, tmp_path: Path) -> None:
+        from dd_agents.tools.run_export_script import run_export_script
+
+        result = run_export_script(code, tmp_path)
+        assert result.get("error") != "blocked_import", f"false positive: {code!r}"
+
+    @pytest.mark.parametrize(
+        "code",
+        [
+            # getattr of a module-attr name on a SENSITIVE receiver stays blocked.
+            "getattr(os, 'system')('echo x')",
+            "o = os\ngetattr(o, 'popen')('echo x')",
+        ],
+    )
+    def test_getattr_module_attr_on_sensitive_receiver_blocked(self, code: str, tmp_path: Path) -> None:
+        from dd_agents.tools.run_export_script import run_export_script
+
+        assert run_export_script(code, tmp_path).get("error") == "blocked_import"
+
+    @pytest.mark.parametrize(
+        "code",
+        [
+            # Dynamic-exec builtins are dangerous on ANY receiver — always block,
+            # even when the receiver is not a sensitive module.
+            "wb = object()\ngetattr(wb, '__import__')",
+            "getattr(__builtins__, 'eval')",
+            "getattr(__builtins__, 'exec')",
+        ],
+    )
+    def test_getattr_exec_builtin_blocked_any_receiver(self, code: str, tmp_path: Path) -> None:
+        from dd_agents.tools.run_export_script import run_export_script
+
+        assert run_export_script(code, tmp_path).get("error") == "blocked_import"

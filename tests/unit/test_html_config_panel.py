@@ -75,6 +75,23 @@ def test_customization_is_xss_escaped() -> None:
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
 
 
+def test_disabled_agent_name_is_xss_escaped() -> None:
+    """Regression (Copilot #202 C10): the disabled-agent list comes from
+    user-controlled deal config and is passed to ``render_alert`` as the body.
+    ``render_alert`` escapes its body, so a malicious agent name must NOT
+    produce a live tag in the report."""
+    deal_config = {
+        "forensic_dd": {
+            "specialists": {
+                "disabled": ["<img src=x onerror=alert(1)>"],
+            }
+        }
+    }
+    html = _render(deal_config)
+    assert "<img src=x onerror=alert(1)>" not in html
+    assert "&lt;img src=x onerror=alert(1)&gt;" in html
+
+
 def test_uses_only_defined_css_classes() -> None:
     deal_config = {
         "forensic_dd": {

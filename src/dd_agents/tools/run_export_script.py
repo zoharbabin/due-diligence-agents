@@ -197,8 +197,13 @@ def _check_blocked_imports(code: str) -> set[str]:
                 and func.value.id in sensitive_names
             ):
                 found.add(f"{func.value.id}.{func.attr}")
-        # getattr-based bypass: getattr(os, "system") — block getattr on a
-        # constant attr name that is itself a blocked call.
+        # getattr-based bypass. Two distinct rules (Copilot #202 C11):
+        #   * dynamic-exec builtins (eval/exec/compile/__import__) are dangerous
+        #     to retrieve dynamically NO MATTER the receiver — always block.
+        #   * module-attr names (system/popen/exec*/spawn*/...) are only
+        #     dangerous on a SENSITIVE receiver. Blocking them unconditionally
+        #     would reintroduce the false positive the attribute-call scoping
+        #     above avoids (e.g. ``getattr(workbook, "system")``).
         if (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name)
@@ -206,9 +211,12 @@ def _check_blocked_imports(code: str) -> set[str]:
             and len(node.args) >= 2
             and isinstance(node.args[1], ast.Constant)
             and isinstance(node.args[1].value, str)
-            and node.args[1].value in (_BLOCKED_ATTR_CALLS | _BLOCKED_CALLS)
         ):
-            found.add(f"getattr:{node.args[1].value}")
+            attr_name = node.args[1].value
+            receiver = node.args[0]
+            receiver_is_sensitive = isinstance(receiver, ast.Name) and receiver.id in sensitive_names
+            if attr_name in _BLOCKED_CALLS or attr_name in _BLOCKED_ATTR_CALLS and receiver_is_sensitive:
+                found.add(f"getattr:{attr_name}")
     return found
 
 
