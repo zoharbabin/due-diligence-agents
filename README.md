@@ -125,6 +125,23 @@ dd-agents health --data-room ./data_room                    # Check knowledge ba
 dd-agents annotate --data-room ./data_room "Confirmed with counsel"  # Add analyst notes
 ```
 
+### Customize the Agents (no code required)
+
+Inspect, audit, and tailor each specialist's persona, focus areas, and severity
+calibration — by editing markdown, not Python. Safety rules can never be removed.
+
+```bash
+dd-agents agents list                          # See every specialist and its status
+dd-agents agents describe --agent legal        # Read an agent's persona + safety floor
+dd-agents agents validate ./my-project         # Lint your dd-config/ customizations
+dd-agents agents preview --agent legal --project-dir ./my-project  # Exact assembled prompt
+```
+
+Drop a `dd-config/agents/legal.md` next to your deal config to override personas,
+add focus areas, or adjust severity — optionally inheriting a bundled deal-type
+profile (`saas`, `regulated-fintech`, …). See
+[Agent Customization](docs/agent-customization.md).
+
 ## Quick Start
 
 **Prerequisites:** Python 3.12+ and an [Anthropic API key](https://console.anthropic.com/).

@@ -144,3 +144,13 @@ def test_preview_prompt_byte_equals_build_specialist_prompt(tmp_path: Path) -> N
     }
     expected = builder.build_specialist_prompt("legal", ["Subject A"], deal_config=deal_config)
     assert preview == expected
+
+
+def test_preview_prompt_raises_for_unknown_agent() -> None:
+    """Regression: preview must fail-fast on an unknown agent (match describe)."""
+    import pytest
+
+    from dd_agents.agents.introspection import preview_prompt
+
+    with pytest.raises(KeyError):
+        preview_prompt("nonexistent_agent")

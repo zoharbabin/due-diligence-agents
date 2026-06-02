@@ -88,3 +88,13 @@ def test_agents_preview_output_writes_file(tmp_path: Path) -> None:
     written = out.read_text(encoding="utf-8")
     assert "LEGAL SPECIALIST AGENT" in written
     assert "MANDATORY Citation Requirements" in written
+
+
+def test_agents_preview_unknown_agent_exits_nonzero() -> None:
+    """CLI: previewing an unknown agent surfaces an error and exits non-zero."""
+    from click.testing import CliRunner
+
+    from dd_agents.cli import main
+
+    result = CliRunner().invoke(main, ["agents", "preview", "--agent", "nope"])
+    assert result.exit_code != 0

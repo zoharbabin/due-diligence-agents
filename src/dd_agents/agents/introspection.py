@@ -210,8 +210,17 @@ def preview_prompt(agent_name: str, project_dir: Path | None = None) -> str:
     Uses synthetic subjects ``["Subject A"]`` and a minimal deal_config so the
     output is byte-identical to what the pipeline would build for that input.
     No disk writes.
+
+    Raises
+    ------
+    KeyError
+        If *agent_name* is not a registered specialist (fail-fast on typos,
+        matching ``describe_agent``).
     """
     from dd_agents.agents.prompt_builder import PromptBuilder
+    from dd_agents.agents.registry import AgentRegistry
+
+    AgentRegistry.get(agent_name)  # raises KeyError for unknown agents
 
     base_dir = project_dir if project_dir is not None else Path.cwd()
     builder = PromptBuilder(project_dir=base_dir, run_dir=base_dir, run_id="preview")
