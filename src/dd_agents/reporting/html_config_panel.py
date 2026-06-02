@@ -112,7 +112,9 @@ class ConfigPanelRenderer(SectionRenderer):
 
             sev = cust.get("severity_overrides")
             if isinstance(sev, dict) and sev:
-                detail = ", ".join(f"{k}→{v}" for k, v in sev.items())
+                # sorted() for deterministic output — dict insertion order varies
+                # by source file/loader and would cause HTML diff noise (Copilot #202 C9).
+                detail = ", ".join(f"{k}→{v}" for k, v in sorted(sev.items()))
                 rows.append((agent, "Severity override", detail))
 
             focus = cust.get("extra_focus_areas")

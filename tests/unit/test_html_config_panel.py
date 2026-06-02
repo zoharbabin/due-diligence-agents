@@ -88,3 +88,24 @@ def test_uses_only_defined_css_classes() -> None:
     # Section + table use the established class vocabulary.
     assert "class='report-section'" in html
     assert "class='subject-table sortable'" in html
+
+
+def test_severity_overrides_rendered_in_sorted_order() -> None:
+    """Regression (Copilot #202 C9): override display must be deterministic
+    (sorted), not dict-insertion-order-dependent, to avoid HTML diff noise."""
+    deal_config = {
+        "forensic_dd": {
+            "specialists": {
+                "customizations": {
+                    # Deliberately unsorted insertion order.
+                    "legal": {"severity_overrides": {"non_compete": "P3", "change_of_control": "P1", "ip": "P2"}},
+                },
+            }
+        }
+    }
+    html = _render(deal_config)
+    # change_of_control sorts before ip before non_compete.
+    i_coc = html.index("change_of_control")
+    i_ip = html.index("ip→") if "ip→" in html else html.index("ip&#")
+    i_nc = html.index("non_compete")
+    assert i_coc < i_ip < i_nc, "severity overrides not rendered in sorted order"

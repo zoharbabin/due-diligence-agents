@@ -644,13 +644,13 @@ Render an agent's persona, focus areas, and the non-removable safety floor as
 markdown.
 
 ```
-dd-agents agents describe --agent NAME [--format md]
+dd-agents agents describe --agent NAME [--format text|md]
 ```
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `--agent` | string | required | Agent name (e.g. `legal`, `finance`) |
-| `--format` | choice | `md` | Output format (`md`) |
+| `--format` | choice | `text` | Output format: `text` (rendered for the terminal) or `md` (raw markdown) |
 
 ```bash
 dd-agents agents describe --agent legal
