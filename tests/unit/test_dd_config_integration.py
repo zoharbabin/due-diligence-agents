@@ -95,3 +95,19 @@ def test_malformed_dd_config_falls_back_gracefully(tmp_path: Path) -> None:
 
 def test_resolve_falls_back_when_no_project_dir() -> None:
     assert resolve_agent_customization(None, None, "legal") is None
+
+
+def test_citation_mandate_appears_exactly_once(tmp_path: Path) -> None:
+    """Regression: the citation mandate must appear once (floor only), not 3x.
+
+    Previously injected via (a) standalone CITATION EXAMPLES section,
+    (b) trailing block in domain_robustness, and (c) the safety floor — the
+    floor is now the single authoritative copy.
+    """
+    builder = PromptBuilder(project_dir=tmp_path, run_dir=tmp_path, run_id="t")
+    prompt = builder.build_specialist_prompt("legal", ["Subject A"], deal_config=_DEAL_CONFIG)
+    assert prompt.count("MANDATORY Citation Requirements") == 1
+    assert prompt.count("Examples of good Legal citations") == 1
+    # Domain guidance still present (not collateral-damaged by the dedup).
+    assert "LEGAL-SPECIFIC EXTRACTION GUIDANCE" in prompt
+    assert "SUBTYPE CLASSIFICATION" in prompt

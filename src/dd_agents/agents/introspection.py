@@ -143,6 +143,15 @@ def validate_customizations(project_dir: Path) -> list[ValidationIssue]:
 
         cust = layer.customization
 
+        # Front-matter `agent:` must match the filename stem when declared.
+        if layer.agent is not None and layer.agent != agent:
+            issues.append(
+                ValidationIssue(
+                    level="error",
+                    message=(f"agent: '{layer.agent}' in front-matter does not match filename '{agent}.md'"),
+                )
+            )
+
         # Empty persona heading present but blank. The loader collapses empty
         # content to None, so detect the heading-with-no-body from the raw text.
         raw_text = agent_file.read_text(encoding="utf-8")

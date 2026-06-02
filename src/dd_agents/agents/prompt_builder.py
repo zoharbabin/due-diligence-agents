@@ -393,6 +393,23 @@ def _get_agent_customization(
     return None
 
 
+def _strip_trailing_citation_mandate(text: str) -> str:
+    """Remove a trailing ``### MANDATORY Citation Requirements`` block.
+
+    Each agent's ``domain_robustness()`` text ends with the citation mandate
+    (via ``build_citation_mandate``). Since the non-removable safety floor
+    appends the authoritative, domain-specific mandate last, injecting the
+    domain-guidance copy too duplicated the block. Trim it here so the prompt
+    carries the mandate exactly once (the floor's copy). The descriptor method
+    itself is unchanged (introspection/tests still see the full text).
+    """
+    marker = "### MANDATORY Citation Requirements"
+    idx = text.find(marker)
+    if idx == -1:
+        return text
+    return text[:idx].rstrip()
+
+
 def render_customization(
     base_prompt: str,
     cust: AgentCustomization | None,
@@ -777,10 +794,12 @@ class PromptBuilder:
             from dd_agents.agents.registry import AgentRegistry
 
             descriptor = AgentRegistry.get(agent_name)
-            # Append registry specialist_focus only when it adds content
-            # beyond what SPECIALIST_FOCUS already provides.
-            if descriptor.citation_examples:
-                sections.append(f"## CITATION EXAMPLES ({agent_name})\n\n{descriptor.citation_examples}")
+            # NOTE: descriptor.citation_examples is the citation mandate; it is
+            # NOT injected as its own section here because the non-removable
+            # safety floor (appended last) already carries the authoritative,
+            # domain-specific mandate. Injecting it here too produced the
+            # citation block 3x in the assembled prompt (audit finding). The
+            # field is retained on the descriptor for introspection/describe.
 
             # 5a-bis. Canonical focus areas (§3.1). The descriptor carries the
             # authoritative focus_areas list; surface it (humanized) so the agent
@@ -793,8 +812,10 @@ class PromptBuilder:
             # 5b. Domain-specific extraction guidance (descriptor field was captured at
             # registration but never injected — audit §2.2). This carries each agent's
             # keyword/extraction playbook (e.g. Legal CoC subtypes) into the prompt.
+            # Strip the trailing citation mandate the domain_robustness text ends
+            # with — the safety floor is the single authoritative copy (dedup).
             if descriptor.domain_robustness:
-                sections.append(descriptor.domain_robustness)
+                sections.append(_strip_trailing_citation_mandate(descriptor.domain_robustness))
         except KeyError:
             pass  # Unknown agent — no descriptor supplement
 

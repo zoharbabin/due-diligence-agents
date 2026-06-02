@@ -42,6 +42,17 @@ def test_agents_describe_unknown_exit_nonzero() -> None:
     assert result.exit_code != 0
 
 
+def test_agents_describe_text_default_exit_zero() -> None:
+    result = CliRunner().invoke(main, ["agents", "describe", "--agent", "legal"])
+    assert result.exit_code == 0
+
+
+def test_agents_describe_md_keeps_raw_markdown() -> None:
+    result = CliRunner().invoke(main, ["agents", "describe", "--agent", "legal", "--format", "md"])
+    assert result.exit_code == 0
+    assert "MANDATORY Citation Requirements" in result.output
+
+
 def test_agents_validate_clean_exit_zero(tmp_path: Path) -> None:
     (tmp_path / "dd-config" / "agents").mkdir(parents=True)
     (tmp_path / "dd-config" / "agents" / "legal.md").write_text(
@@ -67,3 +78,13 @@ def test_agents_preview_exit_zero(tmp_path: Path) -> None:
     result = CliRunner().invoke(main, ["agents", "preview", "--agent", "legal", "--config", str(config)])
     assert result.exit_code == 0
     assert "MANDATORY Citation Requirements" in result.output
+
+
+def test_agents_preview_output_writes_file(tmp_path: Path) -> None:
+    out = tmp_path / "p.txt"
+    result = CliRunner().invoke(main, ["agents", "preview", "--agent", "legal", "--output", str(out)])
+    assert result.exit_code == 0
+    assert out.exists()
+    written = out.read_text(encoding="utf-8")
+    assert "LEGAL SPECIALIST AGENT" in written
+    assert "MANDATORY Citation Requirements" in written

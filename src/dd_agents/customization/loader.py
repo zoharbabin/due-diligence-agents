@@ -48,6 +48,7 @@ class PersonaLayer:
     model_profile: str | None
     extends: str | None
     content_hash: str
+    agent: str | None = None
 
 
 @dataclass(frozen=True)
@@ -170,6 +171,8 @@ def parse_persona_file(path: Path) -> PersonaLayer:
     model_profile = str(model_profile_raw) if model_profile_raw is not None else None
     extends_raw = front_matter.get("extends")
     extends = str(extends_raw) if extends_raw is not None else None
+    agent_raw = front_matter.get("agent")
+    agent = str(agent_raw) if agent_raw is not None else None
 
     return PersonaLayer(
         customization=customization,
@@ -177,6 +180,7 @@ def parse_persona_file(path: Path) -> PersonaLayer:
         model_profile=model_profile,
         extends=extends,
         content_hash=content_hash,
+        agent=agent,
     )
 
 

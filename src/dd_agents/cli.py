@@ -1454,6 +1454,13 @@ def _run_chat_query(
     help="Disable document tools (findings-only mode).",
 )
 @click.option(
+    "-q",
+    "--question",
+    "question",
+    default=None,
+    help="Ask a single question non-interactively and exit (scriptable; no TTY needed).",
+)
+@click.option(
     "--verbose",
     "-v",
     is_flag=True,
@@ -1467,6 +1474,7 @@ def chat(
     max_turns: int | None,
     no_limit: bool,
     no_tools: bool,
+    question: str | None,
     verbose: bool,
 ) -> None:
     """Interactive chat about due diligence findings.
@@ -1481,6 +1489,7 @@ def chat(
         dd-agents chat --report _dd/forensic-dd/runs/latest
         dd-agents chat --no-tools
         dd-agents chat --no-limit --max-cost 25.0
+        dd-agents chat --question "What are the top risks?"
     """
     if verbose:
         logging.basicConfig(level=logging.WARNING, format="%(name)s: %(message)s")
@@ -1536,6 +1545,20 @@ def chat(
     except Exception as exc:
         _print_error("Chat Init Error", str(exc))
         raise SystemExit(1) from exc
+
+    # Headless mode: answer one question, print it, and exit (scriptable).
+    if question is not None:
+        try:
+            response = asyncio.run(engine.ask(question))
+            click.echo(response.text)
+        finally:
+            try:
+                asyncio.run(engine.close())
+            except Exception as exc:  # noqa: BLE001
+                if verbose:
+                    console.print(f"[dim]Session close warning: {exc}[/dim]")
+            _terminate_child_processes()
+        return
 
     # Print banner
     mode_label = "findings + documents" if config.enable_tools else "findings only"
@@ -1923,7 +1946,14 @@ def agents_list(config: Path | None) -> None:
 
 @agents.command("describe")
 @click.option("--agent", "agent_name", required=True, help="Agent name (e.g. legal, finance).")
-@click.option("--format", "fmt", type=click.Choice(["md"]), default="md", show_default=True)
+@click.option(
+    "--format",
+    "fmt",
+    type=click.Choice(["text", "md"]),
+    default="text",
+    show_default=True,
+    help="text: rendered for the terminal. md: raw markdown.",
+)
 def agents_describe(agent_name: str, fmt: str) -> None:
     """Describe an agent's persona, focus areas, and safety floor."""
     from dd_agents.agents.introspection import describe_agent
@@ -1933,7 +1963,13 @@ def agents_describe(agent_name: str, fmt: str) -> None:
     except KeyError as exc:
         _print_error("Unknown Agent", str(exc))
         raise SystemExit(1) from exc
-    click.echo(text)
+
+    if fmt == "md":
+        click.echo(text)
+    else:
+        from rich.markdown import Markdown
+
+        console.print(Markdown(text))
 
 
 @agents.command("validate")
@@ -1978,7 +2014,20 @@ def agents_validate(project_dir: Path) -> None:
     default=None,
     help="Directory containing dd-config/ (defaults to --config's dir, else cwd).",
 )
-def agents_preview(agent_name: str, config: Path | None, project_dir_opt: Path | None) -> None:
+@click.option(
+    "--output",
+    "-o",
+    "output",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Write the assembled prompt to a file instead of stdout.",
+)
+def agents_preview(
+    agent_name: str,
+    config: Path | None,
+    project_dir_opt: Path | None,
+    output: Path | None,
+) -> None:
     """Print the fully assembled prompt for an agent (byte-exact to pipeline).
 
     Resolves ``dd-config/`` overrides from --project-dir, else --config's
@@ -1993,7 +2042,12 @@ def agents_preview(agent_name: str, config: Path | None, project_dir_opt: Path |
     except KeyError as exc:
         _print_error("Unknown Agent", str(exc))
         raise SystemExit(1) from exc
-    click.echo(prompt)
+
+    if output is not None:
+        output.write_text(prompt, encoding="utf-8")
+        console.print(f"Wrote assembled prompt for {agent_name} to {output}")
+    else:
+        click.echo(prompt)
 
 
 # ---------------------------------------------------------------------------

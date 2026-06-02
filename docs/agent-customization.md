@@ -46,6 +46,12 @@ the same inputs. Run `preview --project-dir <your-project>` after editing to
 confirm your change landed. (If `dd-config/` lives inside your data room, pass
 that directory as `--project-dir`.)
 
+> **Note:** The `Subject A`, `Buyer: B`, and `Target: T` values shown in
+> `preview` output are PLACEHOLDERS injected for preview only — the real
+> subjects, buyer, and target come from your data room and deal config at run
+> time. Use `--output PATH` to write the assembled prompt to a file instead of
+> stdout.
+
 The agent roster is whatever is registered in `agents/registry.py` (built-in
 specialists plus any installed via the `dd_agents.specialists` entry-point group).
 Use `dd-agents agents list` to see the live set rather than relying on a
@@ -84,7 +90,7 @@ optional, but the headings must come from the fixed set below.
 ```markdown
 ---
 agent: legal
-status: active
+status: enabled
 model_profile: premium
 extends: saas
 ---
@@ -115,8 +121,8 @@ clause that drives each finding.
 
 | Key | Meaning |
 |-----|---------|
-| `agent` | The agent this file targets. Bundled profiles use `"*"` (applies to any agent that extends them). |
-| `status` | Free-text status label (e.g. `active`). |
+| `agent` | The agent this file targets. Must match the filename stem (`legal.md` → `agent: legal`); a mismatch is a fail-closed validation error. Bundled profiles use `"*"` (applies to any agent that extends them). |
+| `status` | Status label; use `enabled`. |
 | `model_profile` | Optional model-tier hint resolved up the chain. |
 | `extends` | Name of a bundled profile to inherit from (see [profiles](#bundled-profiles)). |
 
@@ -242,7 +248,7 @@ genuine dealbreakers and integrity findings holds.
 ```markdown
 ---
 agent: legal
-status: active
+status: enabled
 extends: saas
 ---
 
