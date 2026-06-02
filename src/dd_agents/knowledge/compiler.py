@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -60,8 +61,15 @@ def _entity_article_id(entity_safe_name: str) -> str:
 
 
 def _clause_article_id(clause_type: str) -> str:
-    """Deterministic article ID for a clause summary."""
-    return f"clause_{clause_type}"
+    """Deterministic, ID-safe article ID for a clause summary.
+
+    ``KnowledgeArticle.id`` only permits alphanumerics, ``_``, ``-``, ``.``.
+    Clause categories can contain spaces or other punctuation (e.g.
+    ``"change of control"``), so slugify: lowercase, non-allowed chars → ``_``,
+    collapse repeats. Deterministic so repeated runs update the same article.
+    """
+    slug = re.sub(r"[^a-z0-9_.-]+", "_", clause_type.strip().lower()).strip("_")
+    return f"clause_{slug or 'uncategorized'}"
 
 
 def _contradiction_id(entity: str, detail: str) -> str:
