@@ -1,6 +1,6 @@
 ---
 agent: "*"
-status: active
+status: enabled
 extends: saas
 ---
 

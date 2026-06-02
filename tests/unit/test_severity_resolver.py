@@ -133,3 +133,54 @@ def test_recalibration_cap_matches_known_patterns() -> None:
     assert reason
     cap2, _ = recalibration_cap("Generic finding", "nothing special", "legal")
     assert cap2 is None
+
+
+def test_idempotent_on_dealbreaker_clamp_path() -> None:
+    """Regression: clamping a P0 user-downgrade to P1 must be idempotent.
+
+    Previously a re-resolution saw P1 (not P0), so was_dealbreaker went False
+    and the same P3 override slipped through to P3 on the 2nd pass.
+    """
+    first = _resolve(
+        llm_severity="P0",
+        post_citation_severity="P0",
+        category="generic",
+        title="t",
+        description="d",
+        user_overrides={"generic": "P3"},
+        allow_user_downgrade_of_dealbreakers=True,
+    )
+    assert first.severity == "P1"
+    second = _resolve(
+        llm_severity=first.severity,
+        post_citation_severity=first.severity,
+        category="generic",
+        title="t",
+        description="d",
+        user_overrides={"generic": "P3"},
+        allow_user_downgrade_of_dealbreakers=True,
+    )
+    assert second.severity == "P1"  # stable, not P3
+
+
+def test_dealbreaker_block_is_idempotent() -> None:
+    first = _resolve(
+        llm_severity="P0",
+        post_citation_severity="P0",
+        category="generic",
+        title="t",
+        description="d",
+        user_overrides={"generic": "P3"},
+        allow_user_downgrade_of_dealbreakers=False,
+    )
+    assert first.severity == "P0"
+    second = _resolve(
+        llm_severity=first.severity,
+        post_citation_severity=first.severity,
+        category="generic",
+        title="t",
+        description="d",
+        user_overrides={"generic": "P3"},
+        allow_user_downgrade_of_dealbreakers=False,
+    )
+    assert second.severity == "P0"

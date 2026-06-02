@@ -151,3 +151,44 @@ except NameError:
         result = run_export_script(code, out)
         assert result["status"] == "ok"
         assert result["file_count"] == 1
+
+
+class TestExportScriptSandboxEscape:
+    """Security regression: the export sandbox must block code-execution escapes.
+
+    The AST module-denylist alone is insufficient because the preamble provides
+    ``os`` (for ``os.chdir``). These tests lock the call-surface denylist that
+    closes the arbitrary-shell / filesystem-escape hole found in the release audit.
+    """
+
+    import pytest
+
+    _ESCAPES = [
+        "import os; os.system('echo x > /tmp/should_not_exist_dd.txt')",
+        "import os; os.popen('echo x').read()",
+        "os.system('echo x')",  # os comes from the preamble, no import
+        "eval(\"__import__('os').system('echo x')\")",
+        "exec(\"import os; os.system('echo x')\")",
+        "__import__('os').system('echo x')",
+        "getattr(os, 'system')('echo x')",
+        "import importlib; importlib.import_module('os').system('echo x')",
+        "import subprocess; subprocess.run(['echo', 'x'])",
+        "import ctypes",
+        "os.fork()",
+        "os.execv('/bin/sh', ['/bin/sh'])",
+    ]
+
+    @pytest.mark.parametrize("code", _ESCAPES)
+    def test_escape_attempt_is_blocked(self, code: str, tmp_path: Path) -> None:
+        from dd_agents.tools.run_export_script import run_export_script
+
+        result = run_export_script(code, tmp_path)
+        assert result.get("error") == "blocked_import", f"escape not blocked: {code!r} -> {result}"
+
+    def test_legitimate_export_still_works(self, tmp_path: Path) -> None:
+        from dd_agents.tools.run_export_script import run_export_script
+
+        code = "import openpyxl\nwb = openpyxl.Workbook()\nwb.save(str(OUTPUT_DIR / 'ok.xlsx'))"
+        result = run_export_script(code, tmp_path)
+        assert result.get("status") == "ok"
+        assert result.get("file_count") == 1

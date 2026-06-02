@@ -30,7 +30,7 @@ All source lives under `src/dd_agents/`. Each package has one job:
 | `entity_resolution/` | Cross-document name deduplication | `matcher.py` → `EntityResolver` |
 | `inventory/` | Data room scanning and classification | `discovery.py`, `subjects.py` |
 | `validation/` | QA audit + DoD checks (fail-closed) | `dod.py`, `numerical_audit.py` |
-| `search/` | Contract search with citation verification | `engine.py` |
+| `search/` | Contract search with citation verification | `runner.py` → `SearchRunner` |
 | `tools/` | MCP server + custom tool implementations | `mcp_server.py` |
 | `chat/` | Interactive chat mode | `engine.py` |
 | `cli.py` | Click CLI command groups | `dd-agents` entry point |

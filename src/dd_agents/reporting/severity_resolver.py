@@ -24,7 +24,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from dd_agents.models.enums import Severity
 from dd_agents.utils.constants import (
     SEVERITY_ORDER,
     SEVERITY_P1,
@@ -203,26 +202,35 @@ def resolve_severity(
     if override and override in SEVERITY_ORDER and override != severity:
         protected = _is_protected(category, metadata)
         is_downgrade = _rank(override) > _rank(severity)
-        was_dealbreaker = severity == Severity.P0
+        # "Dealbreaker" for downgrade-protection means the finding is at or above
+        # the P1 floor (P0 or P1). Keying on the P1 floor — rather than only P0 —
+        # makes resolution IDEMPOTENT: once a P0 override is clamped to P1, a
+        # re-resolution sees P1 and still refuses to drop it below the floor,
+        # instead of letting the same override slip through to P3 on the 2nd pass.
+        is_dealbreaker = _rank(severity) <= _rank(SEVERITY_P1)
+        below_floor = _rank(override) > _rank(SEVERITY_P1)
 
         if protected and is_downgrade:
             chain.append(
                 {"stage": SRC_USER_OVERRIDE, "severity": severity, "reason": f"blocked: {category} is tamper-protected"}
             )
-        elif is_downgrade and was_dealbreaker and not allow_user_downgrade_of_dealbreakers:
+        elif is_downgrade and is_dealbreaker and below_floor and not allow_user_downgrade_of_dealbreakers:
             chain.append(
                 {"stage": SRC_USER_OVERRIDE, "severity": severity, "reason": "blocked: dealbreaker downgrade disabled"}
             )
         else:
             target = override
             # Even when downgrade is allowed, never drop a dealbreaker below P1.
-            if is_downgrade and was_dealbreaker and _rank(target) > _rank(SEVERITY_P1):
+            if is_downgrade and is_dealbreaker and below_floor:
                 target = SEVERITY_P1
                 reason = f"user override (clamped to {SEVERITY_P1}: dealbreaker floor)"
             else:
                 reason = "user override"
-            severity = target
-            source = SRC_USER_OVERRIDE
-            chain.append({"stage": SRC_USER_OVERRIDE, "severity": severity, "reason": reason})
+            # No-op if the bound left severity unchanged (idempotent: a re-resolve
+            # of an already-clamped finding records nothing and changes nothing).
+            if target != severity:
+                severity = target
+                source = SRC_USER_OVERRIDE
+                chain.append({"stage": SRC_USER_OVERRIDE, "severity": severity, "reason": reason})
 
     return SeverityResolution(severity=severity, source=source, reason=reason, chain=chain)

@@ -53,6 +53,8 @@ _ENV_ALLOWLIST: set[str] = {
 _BLOCKED_MODULES: set[str] = {
     "ctypes",
     "ftplib",
+    "importlib",
+    "pty",
     "http.client",
     "httplib",
     "httpx",
@@ -73,11 +75,57 @@ _BLOCKED_MODULES: set[str] = {
 }
 
 
-def _check_blocked_imports(code: str) -> set[str]:
-    """Scan script source for imports of blocked modules.
+# Dynamic-execution builtins an export script must never call — these defeat
+# any import-based denylist (arbitrary code / shell / dynamic import).
+_BLOCKED_CALLS: set[str] = {
+    "eval",
+    "exec",
+    "compile",
+    "__import__",
+}
 
-    Uses AST parsing for accuracy (catches `import x`, `from x import y`,
-    and `__import__('x')` calls). Falls back to regex for safety if AST fails.
+# Dangerous attribute calls on otherwise-allowed modules (esp. ``os``, which the
+# preamble provides for ``os.chdir``). A module denylist cannot stop these, so
+# the call surface itself is blocked: ``os.system``, ``os.popen``, ``os.exec*``,
+# ``os.spawn*``, ``os.fork``, ``os.posix_spawn*``, plus ``importlib.import_module``.
+_BLOCKED_ATTR_CALLS: set[str] = {
+    "system",
+    "popen",
+    "execv",
+    "execve",
+    "execvp",
+    "execvpe",
+    "execl",
+    "execle",
+    "execlp",
+    "execlpe",
+    "spawnv",
+    "spawnve",
+    "spawnl",
+    "spawnle",
+    "spawnlp",
+    "spawnlpe",
+    "posix_spawn",
+    "posix_spawnp",
+    "fork",
+    "forkpty",
+    "import_module",
+}
+
+
+def _check_blocked_imports(code: str) -> set[str]:
+    """Scan script source for blocked imports AND dangerous dynamic-call surface.
+
+    A module-import denylist alone is NOT a security boundary: the preamble
+    deliberately provides ``os`` (for ``os.chdir``), so ``os.system``/``popen``/
+    ``exec*``/``spawn*`` and the dynamic-execution builtins (``eval``/``exec``/
+    ``compile``/``__import__``) would otherwise escape the sandbox to arbitrary
+    shell + filesystem. This scan also rejects those calls. Falls back to a
+    substring scan if the code cannot be parsed (fail-closed: unparseable code
+    is rejected by the caller via the returned markers).
+
+    The AST denylist is one layer; OUTPUT_DIR confinement + the stripped env +
+    the subprocess timeout/output caps are the others (defense in depth).
     """
     import ast
 
@@ -85,10 +133,13 @@ def _check_blocked_imports(code: str) -> set[str]:
     try:
         tree = ast.parse(code)
     except SyntaxError:
-        # Fall back to regex scan if code can't be parsed
         for mod in _BLOCKED_MODULES:
             if mod in code:
                 found.add(mod)
+        # Also catch obvious dynamic-exec strings when AST is unavailable.
+        for name in _BLOCKED_CALLS | _BLOCKED_ATTR_CALLS:
+            if name in code:
+                found.add(name)
         return found
 
     for node in ast.walk(tree):
@@ -104,12 +155,31 @@ def _check_blocked_imports(code: str) -> set[str]:
                     found.add(node.module)
         elif isinstance(node, ast.Call):
             func = node.func
-            if isinstance(func, ast.Name) and func.id == "__import__" and node.args:
-                arg = node.args[0]
-                if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
-                    top = arg.value.split(".")[0]
-                    if arg.value in _BLOCKED_MODULES or top in _BLOCKED_MODULES:
-                        found.add(arg.value)
+            # Bare builtin call: eval(...), exec(...), __import__('os'), ...
+            if isinstance(func, ast.Name):
+                if func.id in _BLOCKED_CALLS:
+                    found.add(func.id)
+                if func.id == "__import__" and node.args:
+                    arg = node.args[0]
+                    if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                        top = arg.value.split(".")[0]
+                        if arg.value in _BLOCKED_MODULES or top in _BLOCKED_MODULES:
+                            found.add(arg.value)
+            # Attribute call: os.system(...), os.popen(...), importlib.import_module(...)
+            elif isinstance(func, ast.Attribute) and func.attr in _BLOCKED_ATTR_CALLS:
+                found.add(func.attr)
+        # getattr-based bypass: getattr(os, "system") — block getattr on a
+        # constant attr name that is itself a blocked call.
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "getattr"
+            and len(node.args) >= 2
+            and isinstance(node.args[1], ast.Constant)
+            and isinstance(node.args[1].value, str)
+            and node.args[1].value in (_BLOCKED_ATTR_CALLS | _BLOCKED_CALLS)
+        ):
+            found.add(f"getattr:{node.args[1].value}")
     return found
 
 
