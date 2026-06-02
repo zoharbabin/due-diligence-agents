@@ -87,6 +87,30 @@ def test_floor_is_appended_after_user_content_in_specialist_prompt(malicious: st
     assert prompt.index(malicious) < prompt.index(UNTRUSTED_DOCUMENT_RULE)
 
 
+def test_persona_override_appears_and_floor_still_follows(tmp_path) -> None:
+    """A '## Persona (replaces default)' override is injected, floor still last."""
+    from dd_agents.agents.prompt_builder import PromptBuilder
+
+    persona_text = "You are a forensic M&A lawyer obsessed with change-of-control risk."
+    builder = PromptBuilder(project_dir=tmp_path, run_dir=tmp_path, run_id="test")
+    deal_config = {
+        "config_version": "1.0.0",
+        "buyer": {"name": "Buyer"},
+        "target": {"name": "Target"},
+        "deal": {"type": "acquisition", "focus_areas": ["legal"]},
+        "forensic_dd": {
+            "specialists": {"customizations": {"legal": {"persona": persona_text}}},
+        },
+    }
+    prompt = builder.build_specialist_prompt("legal", ["Subject A"], deal_config=deal_config)
+
+    assert "PERSONA OVERRIDE" in prompt
+    assert persona_text in prompt
+    # The safety floor still follows the persona override.
+    assert UNTRUSTED_DOCUMENT_RULE in prompt
+    assert prompt.index(persona_text) < prompt.index(UNTRUSTED_DOCUMENT_RULE)
+
+
 def test_reference_description_is_wrapped_untrusted() -> None:
     from dd_agents.agents.prompt_builder import PromptBuilder
     from dd_agents.models.inventory import ReferenceFile

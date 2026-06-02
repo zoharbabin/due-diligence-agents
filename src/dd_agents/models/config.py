@@ -229,6 +229,10 @@ class AgentCustomization(BaseModel):
         default_factory=dict,
         description="Category-to-severity overrides, e.g. {'change_of_control': 'P2'}",
     )
+    persona: str | None = Field(
+        default=None,
+        description="Replaces the agent's built-in persona when set via '## Persona (replaces default)'",
+    )
 
 
 class SpecialistsConfig(BaseModel):

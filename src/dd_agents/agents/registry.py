@@ -108,6 +108,32 @@ class AgentRegistry:
         return [n for n in all_names if n not in disabled_set]
 
     @staticmethod
+    def collect_persona_texts(active: list[str] | None = None) -> dict[str, str]:
+        """Return ``{agent_name: system_prompt_text}`` for provenance hashing (§8.1).
+
+        Instantiates each active runner with placeholder paths (``get_system_prompt``
+        returns static persona text and does not touch disk) and also records a
+        synthetic ``"_SAFETY_FLOOR"`` entry so that edits to the non-removable
+        floor bust the provenance hash too. Pure with respect to the filesystem.
+        """
+        from pathlib import Path
+
+        from dd_agents.agents.prompt_constants import assemble_safety_floor
+
+        names = active if active is not None else AgentRegistry.all_specialist_names()
+        placeholder = Path("/nonexistent")
+        texts: dict[str, str] = {}
+        for name in names:
+            try:
+                descriptor = AgentRegistry.get(name)
+                runner = descriptor.agent_class(project_dir=placeholder, run_dir=placeholder, run_id="provenance")
+                texts[name] = runner.get_system_prompt()
+            except Exception:  # noqa: BLE001 — provenance must never crash a run
+                logger.warning("Could not collect persona text for agent '%s'", name, exc_info=True)
+        texts["_SAFETY_FLOOR"] = assemble_safety_floor("legal")
+        return texts
+
+    @staticmethod
     def discover_entry_points() -> None:
         """Load agents from the ``dd_agents.specialists`` entry-points group."""
         try:

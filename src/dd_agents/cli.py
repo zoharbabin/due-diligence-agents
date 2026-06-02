@@ -1883,6 +1883,108 @@ def templates_show(template_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# agents group (§6.1/§6.4) — introspect, describe, validate, preview
+# ---------------------------------------------------------------------------
+
+
+@main.group()
+def agents() -> None:
+    """Inspect, describe, validate, and preview specialist agents."""
+
+
+def _load_optional_deal_config(config: Path | None) -> object | None:
+    """Load a deal config if *config* is provided; exit on error."""
+    if config is None:
+        return None
+    try:
+        return load_deal_config(config)
+    except (ConfigFileNotFoundError, ConfigParseError, ConfigValidationError) as exc:
+        _print_error("Config Error", str(exc))
+        raise SystemExit(1) from exc
+
+
+@agents.command("list")
+@click.option(
+    "--config",
+    "config",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Optional deal-config.json to reflect disabled agents and model tiers.",
+)
+def agents_list(config: Path | None) -> None:
+    """List all specialist agents and their enabled/disabled status."""
+    from dd_agents.agents.introspection import list_agents
+
+    deal_config = _load_optional_deal_config(config)
+    for summary in list_agents(deal_config):  # type: ignore[arg-type]
+        model = f" [{summary.model}]" if summary.model else ""
+        console.print(f"[bold]{summary.name}[/bold] ({summary.display_name}) — {summary.status}{model}")
+
+
+@agents.command("describe")
+@click.option("--agent", "agent_name", required=True, help="Agent name (e.g. legal, finance).")
+@click.option("--format", "fmt", type=click.Choice(["md"]), default="md", show_default=True)
+def agents_describe(agent_name: str, fmt: str) -> None:
+    """Describe an agent's persona, focus areas, and safety floor."""
+    from dd_agents.agents.introspection import describe_agent
+
+    try:
+        text = describe_agent(agent_name)
+    except KeyError as exc:
+        _print_error("Unknown Agent", str(exc))
+        raise SystemExit(1) from exc
+    click.echo(text)
+
+
+@agents.command("validate")
+@click.argument(
+    "project_dir",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+def agents_validate(project_dir: Path) -> None:
+    """Lint dd-config/ customizations under PROJECT_DIR (fail-closed)."""
+    from dd_agents.agents.introspection import validate_customizations
+
+    issues = validate_customizations(project_dir)
+    if not issues:
+        console.print("[bold green]No customization issues found.[/bold green]")
+        return
+
+    has_error = False
+    for issue in issues:
+        if issue.level == "error":
+            has_error = True
+            err_console.print(f"[bold red]error:[/bold red] {issue.message}")
+        else:
+            err_console.print(f"[yellow]warning:[/yellow] {issue.message}")
+
+    if has_error:
+        raise SystemExit(1)
+
+
+@agents.command("preview")
+@click.option("--agent", "agent_name", required=True, help="Agent name to preview.")
+@click.option(
+    "--config",
+    "config",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Optional deal-config.json; its directory is used as the project dir.",
+)
+def agents_preview(agent_name: str, config: Path | None) -> None:
+    """Print the fully assembled prompt for an agent (byte-exact to pipeline)."""
+    from dd_agents.agents.introspection import preview_prompt
+
+    project_dir = config.parent if config is not None else None
+    try:
+        prompt = preview_prompt(agent_name, project_dir=project_dir)
+    except KeyError as exc:
+        _print_error("Unknown Agent", str(exc))
+        raise SystemExit(1) from exc
+    click.echo(prompt)
+
+
+# ---------------------------------------------------------------------------
 # knowledge log command (Issue #180)
 # ---------------------------------------------------------------------------
 

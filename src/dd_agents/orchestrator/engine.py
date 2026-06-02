@@ -221,6 +221,43 @@ class PipelineEngine:
                 except Exception:
                     pass  # Keep default if config can't be loaded
 
+            # Fail-closed provenance gate (audit §8.1): if the checkpoint carries
+            # a provenance hash, recompute the current one (config + prompt
+            # version + personas) and refuse to resume on drift — a stale
+            # checkpoint paired with changed prompts would silently produce
+            # non-reproducible findings. Empty hash = legacy checkpoint → warn once.
+            stored_provenance = getattr(self.state, "provenance_hash", "")
+            if stored_provenance:
+                from dd_agents.agents.prompt_builder import PromptBuilder
+                from dd_agents.agents.registry import AgentRegistry as _Reg
+                from dd_agents.persistence.provenance import (
+                    compute_persona_hashes as _cph,
+                )
+                from dd_agents.persistence.provenance import (
+                    compute_provenance_hash as _cpv,
+                )
+
+                _active = getattr(self, "_active_agents", None) or _Reg.resolve_active()
+                _current = _cpv(
+                    self.state.config_hash,
+                    PromptBuilder.PROMPT_VERSION,
+                    _cph(_Reg.collect_persona_texts(_active)),
+                )
+                if _current != stored_provenance:
+                    raise BlockingGateError(
+                        "Resume blocked: deal config or agent personas/prompts changed "
+                        "since this checkpoint (provenance hash mismatch). Resuming would "
+                        "pair stale results with new instructions and break reproducibility. "
+                        "Delete the checkpoint directory or re-run without --resume-from to "
+                        "start fresh."
+                    )
+                logger.info("Provenance gate passed — checkpoint matches current config/personas.")
+            elif resume_from_step > 1:
+                logger.warning(
+                    "Legacy checkpoint without provenance hash — resuming without drift "
+                    "verification. Re-run fresh if config or prompts have changed."
+                )
+
         ordered_steps = list(PipelineStep)
 
         for step_enum in ordered_steps:
@@ -642,7 +679,6 @@ class PipelineEngine:
 
     async def _step_01_validate_config(self, state: PipelineState) -> PipelineState:
         """Load and validate deal-config.json.  BLOCKS on failure."""
-        import hashlib
 
         config_path = self.deal_config_path
         if not config_path.exists():
@@ -665,7 +701,23 @@ class PipelineEngine:
             raise BlockingGateError(f"Config validation failed: {exc}") from exc
 
         state.deal_config = raw
-        state.config_hash = hashlib.sha256(raw_bytes).hexdigest()
+        # Provenance (audit §8.1): one canonical config hash (not raw bytes, so
+        # it matches the resume-recompute and run_manager), plus prompt version +
+        # per-agent persona hashes → combined provenance hash. The fail-closed
+        # resume gate compares the combined hash to reject stale checkpoints.
+        from dd_agents.agents.prompt_builder import PromptBuilder
+        from dd_agents.agents.registry import AgentRegistry
+        from dd_agents.persistence.provenance import (
+            compute_config_hash,
+            compute_persona_hashes,
+            compute_provenance_hash,
+        )
+
+        state.config_hash = compute_config_hash(raw)
+        state.prompt_version = PromptBuilder.PROMPT_VERSION
+        active_agents = AgentRegistry.resolve_active()
+        state.persona_hashes = compute_persona_hashes(AgentRegistry.collect_persona_texts(active_agents))
+        state.provenance_hash = compute_provenance_hash(state.config_hash, state.prompt_version, state.persona_hashes)
 
         # Pull execution settings from config
         execution = raw.get("execution", {})
@@ -2953,6 +3005,8 @@ class PipelineEngine:
             file_precedence=state.file_precedence or None,
             user_overrides_by_agent=user_overrides_by_agent or None,
             allow_user_downgrade_of_dealbreakers=allow_downgrade,
+            config_hash=state.config_hash,
+            prompt_version=state.prompt_version,
         )
         findings_dir = state.run_dir / "findings"
         merged = merger.merge_all(

@@ -415,6 +415,11 @@ def apply_deal_config_customizations(
 
     additions: list[str] = []
 
+    if cust.persona:
+        # KISS persona replace: prepend a PERSONA OVERRIDE section. The safety
+        # floor still appends last (see build_specialist_prompt), so this is safe.
+        additions.append(f"## PERSONA OVERRIDE ({agent_name})\n\n{cust.persona}")
+
     if cust.extra_focus_areas:
         lines = [f"## ADDITIONAL FOCUS AREAS ({agent_name})\n"]
         for area in cust.extra_focus_areas:

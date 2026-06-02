@@ -12,6 +12,8 @@ eliminating the divergence risk of copy-pasted prompt text.
 
 from __future__ import annotations
 
+import re
+
 from dd_agents.agents.severity_thresholds import TFC_NOTICE_DAYS, TFC_REVENUE_PCT
 
 # ---------------------------------------------------------------------------
@@ -268,3 +270,19 @@ def assemble_safety_floor(agent_type: str) -> str:
 def wrap_untrusted(content: str) -> str:
     """Wrap untrusted data-room *content* in provenance delimiters (§7.1)."""
     return f"{UNTRUSTED_OPEN}\n{content}\n{UNTRUSTED_CLOSE}"
+
+
+# ---------------------------------------------------------------------------
+# Safety-floor negation deny-list (audit §6.4)
+#
+# Real defense: user-editable customization content can trail the robustness
+# block. These patterns detect attempts to negate the non-removable floor.
+# Used at load-time (loader) and by the `dd-agents agents validate` CLI.
+# ---------------------------------------------------------------------------
+
+SAFETY_FLOOR_NEGATION_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"ignore (all |the )?(previous |safety )?(rules|instructions)", re.IGNORECASE),
+    re.compile(r"do not cite", re.IGNORECASE),
+    re.compile(r"fabricate", re.IGNORECASE),
+    re.compile(r"never write not_found", re.IGNORECASE),
+)
