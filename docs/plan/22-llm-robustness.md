@@ -1,5 +1,7 @@
 # 22 — LLM Robustness: Research-Informed Mitigations
 
+> **Historical design spec** — written during the build phase. The code in `src/dd_agents/` is the authoritative implementation; retained for design rationale only. See `CLAUDE.md` for current state.
+
 > **Purpose**: Cross-cutting reference for every design decision aimed at overcoming inherent LLM limitations when analyzing contracts, financial data, and technical documents. Consolidates findings from peer-reviewed research and maps each finding to a concrete mitigation in the plan.
 > **Cross-references**: `06-agents.md` (prompting), `08-extraction.md` (pipeline), `11-qa-validation.md` (audit), `14-vector-store.md` (retrieval), `21-ontology-and-reasoning.md` (reasoning)
 

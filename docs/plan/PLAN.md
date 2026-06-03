@@ -122,7 +122,7 @@ Detailed content is distributed across 22 numbered files. Each file is self-cont
 | 02 | System architecture, control/data flow, persistence model |
 | 03 | Project structure (`src/dd_agents/` package layout) |
 | 04 | Pydantic v2 data models (20+ schemas) |
-| 05 | 35-step orchestrator, blocking gates, state machine |
+| 05 | 38-step orchestrator, blocking gates, state machine |
 | 06 | Agent definitions (13 agents, extensible via AgentRegistry), prompt construction, model selection |
 | 07 | Tools and hooks (Stop flat format, PreToolUse guards, custom MCP tools) |
 | 08 | Extraction (file discovery, markitdown fallback chain, checksum cache) |
@@ -133,15 +133,12 @@ Detailed content is distributed across 22 numbered files. Each file is self-cont
 | 13 | Multi-project (data isolation between deals, project registry, parallel execution) |
 | 14 | Vector store (optional ChromaDB integration, chunking, semantic search) |
 | 15 | Testing strategy, CI/CD pipeline, Docker deployment |
-| 16 | Migration (5-phase migration from Claude Code Skill to SDK application) |
-| 17 | File manifest (complete file inventory: 92 files across 16 categories) |
-| 18 | Implementation order (phased build plan with dependency graph, critical path) |
 | 19 | Vector and graph DB comparison (ruvector, ChromaDB, Qdrant, etc.) |
 | 20 | Cross-document analysis (contract hierarchy, overrides, contradictions, missing docs, renewal chains) |
 | 21 | Contract ontology, graph-based reasoning, explainability, hallucination prevention |
 | 22 | LLM robustness: research-informed mitigations (AG RAG report, Stanford, Anthropic), chunking, context management, hallucination prevention, Excel handling |
 
-**Reading order for implementers**: Start with PLAN.md (this file) → 01 (ADRs) → 02 (architecture) → 03 (structure) → 04 (models) → 05 (orchestrator) → 06 (agents). Docs 07-14 can be read in any order. Docs 15-18 are build/deployment. Docs 19-22 are supplementary deep-dives. Cross-references between docs use the format `XX-filename.md § Section`.
+**Reading order for implementers**: Start with PLAN.md (this file) → 01 (ADRs) → 02 (architecture) → 03 (structure) → 04 (models) → 05 (orchestrator) → 06 (agents). Docs 07-14 can be read in any order. Doc 15 is build/deployment. Docs 19-22 are supplementary deep-dives. Cross-references between docs use the format `XX-filename.md § Section`.
 
 ---
 

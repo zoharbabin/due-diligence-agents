@@ -47,14 +47,14 @@ dd-agents run deal-config.json
 === "Docker"
 
     ```bash
-    docker pull zoharbabin/dd-agents:latest
+    docker pull zoharbabin/due-diligence-agents:latest
     docker run -e ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
-      -v ./data_room:/data zoharbabin/dd-agents run /data/deal-config.json
+      -v ./data_room:/data zoharbabin/due-diligence-agents run /data/deal-config.json
     ```
 
 ## Next Steps
 
 - [Getting Started](user-guide/getting-started.md) — full installation and first-run walkthrough
 - [Deal Configuration](user-guide/deal-configuration.md) — customize analysis focus areas
-- [CLI Reference](user-guide/cli-reference.md) — all 16 commands
+- [CLI Reference](user-guide/cli-reference.md) — every command, flag, and exit code
 - [Contract Search Guide](search-guide.md) — targeted search without the full pipeline

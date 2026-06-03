@@ -1,5 +1,7 @@
 # 19 -- Vector and Graph Database Comparison
 
+> **Historical design spec** — written during the build phase. The code in `src/dd_agents/vector_store/` is the authoritative implementation; retained for design rationale only. See `CLAUDE.md` for current state.
+
 A comprehensive evaluation of vector database, graph database, and hybrid solutions for the Due Diligence Agent SDK. This document supports ADR-03 (ChromaDB optional) and ADR-04 (NetworkX for governance graphs) with detailed technical analysis, code examples, and maturity assessments.
 
 Cross-references: `01-architecture-decisions.md` (ADR-03, ADR-04), `14-vector-store.md` (ChromaDB integration), `04-data-models.md` (GovernanceEdge schema).

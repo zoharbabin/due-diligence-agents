@@ -1,5 +1,7 @@
 # 08 — Document Extraction Pipeline
 
+> **Historical design spec** — written during the build phase. The code in `src/dd_agents/extraction/` is the authoritative implementation; retained for design rationale only. See `CLAUDE.md` for current state.
+
 ## Overview
 
 Before any agent touches a document, every non-plaintext file in the data room is pre-extracted to markdown. This happens at pipeline step 5 (SKILL.md section 1b) and is a BLOCKING GATE -- agents cannot start until extraction completes. Pre-extraction ensures:

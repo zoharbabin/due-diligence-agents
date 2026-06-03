@@ -114,11 +114,12 @@ dd-agents run deal-config.json --resume-from <step>
 
 ## Environment Tuning
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ANTHROPIC_API_KEY` | (required) | Anthropic API key |
-| `DD_AGENTS_CLI_PATH` | auto-detected | Override Claude CLI path |
-| `AWS_PROFILE` / `AWS_REGION` | none | For AWS Bedrock as LLM provider |
+The variables most relevant when debugging a failed run:
+
+- `ANTHROPIC_API_KEY` — Anthropic API key (or use `AWS_PROFILE` / `AWS_REGION` for Bedrock)
+- `DD_AGENTS_CLI_PATH` — override the auto-detected Claude CLI path when the SDK can't find it
+
+See [`.env.example`](https://github.com/zoharbabin/due-diligence-agents/blob/main/.env.example) for the full set of supported variables, and `grep DD_ src/dd_agents/utils/constants.py` for every `DD_` algorithm-tuning override and its current default.
 
 ## Getting Help
 

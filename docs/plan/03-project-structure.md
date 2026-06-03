@@ -57,13 +57,20 @@ due-diligence-agents/
 │       ├── agents/
 │       │   ├── __init__.py
 │       │   ├── base.py               # BaseAgentRunner (common spawn logic)
+│       │   ├── registry.py           # AgentRegistry singleton (single source of active agents)
+│       │   ├── descriptor.py         # AgentDescriptor metadata
+│       │   ├── introspection.py      # `dd-agents agents` list/describe/validate/preview
+│       │   ├── personas.py           # Built-in persona text per specialist
 │       │   ├── prompt_builder.py     # Prompt builder (assembles from templates)
 │       │   ├── prompt_templates.py   # Prompt template strings
-│       │   ├── specialists.py        # Legal, Finance, Commercial, ProductTech
+│       │   ├── prompt_constants.py   # assemble_safety_floor() — non-removable safety floor
+│       │   ├── severity_thresholds.py # TfC/CoC/ARR severity threshold constants
+│       │   ├── specialists.py        # 9 specialists (Legal, Finance, Commercial, ProductTech, Cybersecurity, HR, Tax, Regulatory, ESG)
 │       │   ├── judge.py              # Judge agent with iteration loop
 │       │   ├── executive_synthesis.py # Executive Synthesis agent
 │       │   ├── red_flag_scanner.py   # Red Flag Scanner agent
 │       │   ├── acquirer_intelligence.py # Acquirer Intelligence agent
+│       │   ├── narrative_generation.py # Executive narrative generation
 │       │   └── cost_tracker.py       # Model profiles + cost tracking
 │       ├── extraction/
 │       │   ├── __init__.py
@@ -194,6 +201,17 @@ due-diligence-agents/
 │       │   ├── __init__.py
 │       │   ├── indexer.py            # Finding index builder
 │       │   └── engine.py             # Query engine
+│       ├── chat/                     # Interactive chat mode over findings
+│       │   ├── __init__.py
+│       │   └── engine.py             # Chat engine (multi-turn Q&A about a deal)
+│       ├── customization/            # User-editable agent personas/profiles (dd-config/)
+│       │   ├── __init__.py
+│       │   ├── loader.py             # parse_persona_file, resolve_chain, load_dd_config
+│       │   └── profiles/            # Bundled deal-type profiles (*.md)
+│       ├── knowledge/                # Deal Knowledge Base (compounds across runs)
+│       │   ├── __init__.py
+│       │   └── base.py              # DealKnowledgeBase entry point
+│       ├── config/                   # Bundled runtime config (report_schema.json, etc.)
 │       ├── testing/                  # Test utilities
 │       │   ├── __init__.py
 │       │   └── data_generator.py     # Synthetic data room generator

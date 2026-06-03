@@ -686,21 +686,24 @@ Print the fully assembled specialist prompt — customizations, profiles, and
 safety floor folded together — byte-identical to what the pipeline sends.
 
 ```
-dd-agents agents preview --agent NAME [--config PATH]
+dd-agents agents preview --agent NAME [--config PATH] [--project-dir DIR] [--output FILE]
 ```
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `--agent` | string | required | Agent name to preview |
 | `--config` | path | none | Optional `deal-config.json`; its directory is used as the project dir (so `dd-config/` is picked up) |
+| `--project-dir` | path | `--config`'s dir, else cwd | Directory containing `dd-config/` |
+| `--output`, `-o` | path | stdout | Write the assembled prompt to a file instead of stdout |
 
 ```bash
 dd-agents agents preview --agent legal
 dd-agents agents preview --agent legal --config ./deal-config.json
+dd-agents agents preview --agent legal --project-dir ./my-deal -o legal-prompt.txt
 ```
 
 Reads the registry, safety floor, and any `dd-config/` customizations. Writes
-nothing. Exits non-zero on an unknown agent name.
+nothing unless `--output` is given. Exits non-zero on an unknown agent name.
 
 See [Agent Customization](../agent-customization.md) for the full customization
 workflow.

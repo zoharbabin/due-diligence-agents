@@ -9,10 +9,15 @@
 > against `HEAD` by adversarial line-by-line fact-check; corrections are folded in and the few
 > claims that could not be confirmed are marked **[UNVERIFIED]** rather than asserted.
 >
-> **Status.** Architecture-and-design document. Nothing here is implemented. Items are
-> prioritized P0–P3 by impact, mirroring the project's own severity discipline. Effort/cost
-> and migration/back-compat are deliberately out of scope at this stage — sequencing is by
-> dependency and risk, and migration is decided after the architecture is settled.
+> **Status — HISTORICAL DESIGN DOC (largely implemented).** This was the design-and-improvement
+> plan; its core proposals have since shipped and are now authoritative *as code*, governed by
+> CLAUDE.md design rules 11–15: the single safety floor (`agents/prompt_constants.py:assemble_safety_floor`),
+> the single severity authority (`reporting/severity_resolver.py:resolve_severity`), severity
+> thresholds as constants (`agents/severity_thresholds.py`), `dd-config/` markdown customization
+> (`customization/loader.py:resolve_chain`), the `dd-agents agents` introspection CLI
+> (`agents/introspection.py`), and run provenance hashing (`persistence/provenance.py`). Read this
+> for design *rationale*; the code is authoritative for current behavior. Items are prioritized
+> P0–P3 by impact, mirroring the project's own severity discipline.
 >
 > **Design north star (applies to every item below).**
 > 1. **Most accurate analysis is the point.** Every change is judged first by whether it makes

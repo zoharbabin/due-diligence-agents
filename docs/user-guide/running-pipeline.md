@@ -225,16 +225,16 @@ prevent stale inventory data from a prior interrupted run.
 
 For advanced tuning (e.g., non-English documents, OCR-heavy data rooms), several algorithm thresholds can be overridden via environment variables. All use the `DD_` prefix.
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DD_QUOTE_MATCH_THRESHOLD` | 80 | Fuzzy match score (0-100) for citation verification. Lower values tolerate more OCR noise. |
-| `DD_MIN_QUOTE_CHARS` | 200 | Minimum characters for an extracted quote to be considered valid. |
-| `DD_MAX_QUOTE_CHARS` | 1000 | Maximum characters for a single quote extraction. |
-| `DD_SYNTHESIS_BUDGET_CHARS` | 80000 | Character budget for the synthesis phase quote aggregation. |
-| `DD_FUZZY_THRESHOLD_LONG` | 88 | Entity resolution fuzzy match threshold for names > 8 characters. |
-| `DD_FUZZY_THRESHOLD_MEDIUM` | 95 | Entity resolution fuzzy match threshold for names 5-8 characters. |
-| `DD_SHORT_NAME_MAX_LEN` | 5 | Names at or below this length are never fuzzy-matched (exact only). |
-| `DD_TFIDF_THRESHOLD` | 0.80 | Cosine similarity threshold for TF-IDF entity matching. |
+| Variable | Tunes |
+|----------|-------|
+| `DD_QUOTE_MATCH_THRESHOLD` | Fuzzy match score for citation verification — lower tolerates more OCR noise |
+| `DD_MIN_QUOTE_CHARS` / `DD_MAX_QUOTE_CHARS` | Bounds on extracted quote length |
+| `DD_SYNTHESIS_BUDGET_CHARS` | Character budget for synthesis-phase quote aggregation |
+| `DD_FUZZY_THRESHOLD_LONG` / `DD_FUZZY_THRESHOLD_MEDIUM` | Entity-resolution fuzzy thresholds by name length |
+| `DD_SHORT_NAME_MAX_LEN` | Names at or below this length are matched exactly (never fuzzy) |
+| `DD_TFIDF_THRESHOLD` | Cosine-similarity threshold for TF-IDF entity matching |
+
+Current defaults — and the full list of `DD_` overrides — live in the code that reads them: `src/dd_agents/utils/constants.py` and `src/dd_agents/search/analyzer.py`. Run `grep DD_ src/dd_agents/utils/constants.py` to see every variable and its default.
 
 Example:
 

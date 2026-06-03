@@ -97,7 +97,8 @@ services:
 ## Tags
 
 - `latest` — most recent stable release
-- `x.y.z` — specific version (e.g., `1.8.0`)
+- `x.y.z` — pin a specific release (matches the PyPI version; see [Releases](https://github.com/zoharbabin/due-diligence-agents/releases))
+- `x.y` — latest patch within a minor series
 
 ## Security & Privacy
 

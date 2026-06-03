@@ -1,5 +1,7 @@
 # 09 -- Entity Resolution (6-Pass Cascading Matcher)
 
+> **Historical design spec** — written during the build phase. The code in `src/dd_agents/entity_resolution/` is the authoritative implementation; retained for design rationale only. See `CLAUDE.md` for current state.
+
 ## Overview
 
 Matching subject names across contracts, databases, directories, and financial data is the single largest source of errors in due diligence. Names vary: "GAG" vs "Global Analytics Group", "AlpineSys" vs "Alpine Systems, Inc.", "Metro Solutions" vs "MetroSoft" (wrong match). Entity resolution runs at pipeline step 7 and must complete before agents start.
