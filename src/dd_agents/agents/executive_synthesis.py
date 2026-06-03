@@ -111,14 +111,14 @@ class ExecutiveSynthesisAgent(BaseAgentRunner):
 
     def get_system_prompt(self) -> str:
         from dd_agents.agents.prompt_constants import COMPLIANCE_FRAMING, SEVERITY_PREAMBLE
+        from dd_agents.agents.prompts.loader import load_named_prompt
 
         return (
-            "You are a senior M&A partner conducting a final review of due diligence "
-            "findings. Your role is to apply professional judgment to re-evaluate "
-            "severity classifications and produce a calibrated Go/No-Go recommendation. "
-            "No-Go requires truly exceptional circumstances. Most deals are Conditional Go. "
-            "You produce a structured JSON analysis — never modify source files."
-            "\n\n" + SEVERITY_PREAMBLE + "\n\n" + COMPLIANCE_FRAMING
+            load_named_prompt("synthesis", "executive_synthesis")
+            + "\n\n"
+            + SEVERITY_PREAMBLE
+            + "\n\n"
+            + COMPLIANCE_FRAMING
         )
 
     def get_tools(self) -> list[str]:

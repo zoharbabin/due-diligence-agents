@@ -127,35 +127,16 @@ class RedFlagScannerAgent(BaseAgentRunner):
         return "red_flag_scanner"
 
     def get_system_prompt(self) -> str:
+        from dd_agents.agents.prompts.loader import load_named_prompt
+
+        # The editable prose lives in prompts/synthesis/red_flag_scanner.md with a
+        # ``<!-- CATEGORIES -->`` marker where the (code-derived) category list is
+        # injected, so the category taxonomy stays single-source in RED_FLAG_CATEGORIES.
         categories_desc = "\n".join(
             f"- **{CATEGORY_LABELS.get(cat, cat)}**: Scan for {cat.replace('_', ' ')}" for cat in RED_FLAG_CATEGORIES
         )
-        return (
-            "You are a Red Flag Scanner for M&A due diligence. Your job is to perform "
-            "a rapid scan of key documents to identify potential deal-killers EARLY — "
-            "before the full pipeline runs.\n\n"
-            "CRITICAL: Speed and accuracy matter. You have 5 minutes. Focus on:\n"
-            "1. Executive summaries and tables of contents\n"
-            "2. Financial highlights/overview documents\n"
-            "3. Legal summary/matter list documents\n"
-            "4. Board meeting minutes (if available)\n\n"
-            "RED FLAG CATEGORIES TO SCAN:\n"
-            f"{categories_desc}\n\n"
-            "For each red flag found, provide:\n"
-            "- category: one of the 8 categories above\n"
-            "- title: concise description\n"
-            "- description: details with evidence\n"
-            "- severity: P0 (deal-killer), P1 (serious), P2 (investigate), P3 (monitor)\n"
-            "- confidence: high (clear evidence), medium (some evidence), low (inferred)\n"
-            "- source_document: file where found\n"
-            "- recommended_action: what the deal team should do\n\n"
-            "CALIBRATION:\n"
-            "- P0 = clear, documented deal-killer (active lawsuit, IP dispute, fraud)\n"
-            "- P1 = serious issue requiring investigation before proceeding\n"
-            "- P2 = concern that needs verification in full DD\n"
-            "- P3 = minor flag worth monitoring\n"
-            "- If no red flags found, that is a VALID and GOOD result. Do not invent flags."
-        )
+        head, tail = load_named_prompt("synthesis", "red_flag_scanner").split("<!-- CATEGORIES -->")
+        return f"{head.rstrip()}\n{categories_desc}\n\n{tail.lstrip()}"
 
     def get_tools(self) -> list[str]:
         return list(READONLY_TOOLS)

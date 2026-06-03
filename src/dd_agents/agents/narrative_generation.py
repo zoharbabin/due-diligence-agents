@@ -42,15 +42,14 @@ class NarrativeGenerationAgent(BaseAgentRunner):
 
     def get_system_prompt(self) -> str:
         from dd_agents.agents.prompt_constants import COMPLIANCE_FRAMING, SEVERITY_PREAMBLE
+        from dd_agents.agents.prompts.loader import load_named_prompt
 
         return (
-            "You are a senior M&A advisor writing the interpretive layer of a due diligence report. "
-            "Your job is to transform structured findings into decision-ready narrative that answers: "
-            "'What does this mean for THIS specific deal, and what should we do about it?' "
-            "Write for a deal team audience — clear, specific, no jargon inflation. "
-            "Every statement must be tied to evidence from the findings provided. "
-            "You produce a single structured JSON output — never modify source files."
-            "\n\n" + SEVERITY_PREAMBLE + "\n\n" + COMPLIANCE_FRAMING
+            load_named_prompt("synthesis", "narrative_generation")
+            + "\n\n"
+            + SEVERITY_PREAMBLE
+            + "\n\n"
+            + COMPLIANCE_FRAMING
         )
 
     def get_tools(self) -> list[str]:

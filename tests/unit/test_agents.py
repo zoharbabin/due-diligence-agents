@@ -2471,15 +2471,19 @@ class TestSharedPersonas:
     def test_constants_non_empty(self) -> None:
         from dd_agents.agents import personas
 
-        for name in (
-            "DD_LEGAL_ANALYST",
-            "DD_ANALYST",
-            "M_AND_A_STRATEGIST",
-            "M_AND_A_LAWYER_SPA",
-        ):
+        # DD_LEGAL_ANALYST / DD_ANALYST remain shared fragments composed at multiple
+        # search/query call sites. The former M_AND_A_* openers were single-call-site
+        # and now live in the editable auto-config prompt markdown.
+        for name in ("DD_LEGAL_ANALYST", "DD_ANALYST"):
             value = getattr(personas, name)
             assert isinstance(value, str)
             assert value, f"{name} must be non-empty"
+
+    def test_auto_config_openers_in_markdown(self) -> None:
+        from dd_agents.agents.prompts.loader import load_named_prompt
+
+        assert "senior M&A strategist" in load_named_prompt("auto_config", "buyer_strategy")
+        assert "senior M&A lawyer" in load_named_prompt("auto_config", "spa_extraction")
 
     def test_legal_analyst_in_analyzer_prompt(self) -> None:
         from dd_agents.agents.personas import DD_LEGAL_ANALYST

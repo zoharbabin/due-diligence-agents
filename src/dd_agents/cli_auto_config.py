@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING, Any
 
 from rich.table import Table
 
-from dd_agents.agents.personas import M_AND_A_LAWYER_SPA, M_AND_A_STRATEGIST
 from dd_agents.agents.prompt_constants import NO_FABRICATION
+from dd_agents.agents.prompts.loader import load_named_prompt
 from dd_agents.cli_init import DEFAULT_FOCUS_AREAS, VALID_DEAL_TYPES
 
 if TYPE_CHECKING:
@@ -407,77 +407,10 @@ class DataRoomAnalyzer:
     # ------------------------------------------------------------------
 
     def _build_system_prompt(self, buyer: str, target: str) -> str:
-        return (
-            "You are a senior M&A due diligence analyst specializing in technology acquisitions.\n\n"
-            f"You are analyzing a data room for a potential deal where **{buyer}** is the buyer "
-            f"and **{target}** is the target company.\n\n"
-            "## Your Task\n\n"
-            "Given the buyer name, target name, data room directory structure, and file metadata, "
-            "produce a complete deal configuration JSON object. You must:\n\n"
-            "1. **Resolve official entities**: Find the full legal names, stock ticker/exchange "
-            "(if public), corporate structure. E.g., 'Acme' -> 'Acme Corporation' (ACME, NYSE).\n"
-            "2. **Discover org structure**: From reference file names and folder patterns, identify "
-            "subsidiaries, parent entities, d.b.a. names. E.g., 'WidgetCo' -> WidgetCo Holdings LLC, "
-            "WidgetCo Inc., Sprocket Technologies Inc. (d.b.a. GearHub).\n"
-            "3. **Find historical names**: Look for clues in file names suggesting previous company "
-            "names, rebranding history. E.g., folder names or files mentioning 'OldBrandName', 'PriorCo'.\n"
-            "4. **Detect acquired entities**: Look for merged/acquired company references in file "
-            "names and folder structure.\n"
-            "5. **Generate entity name variants**: Produce ALL plausible contract-matching variants -- "
-            "full legal, abbreviations, with/without Inc./Corp./Ltd./ULC, historical names, subsidiaries, "
-            "d.b.a. names. Be comprehensive.\n"
-            "6. **Choose focus areas**: Based on document types found (MSAs, DPAs, Order Forms, NDAs, "
-            "SOWs, POs, amendments), pick the most relevant analysis areas from this list:\n"
-            "   - change_of_control_clauses\n"
-            "   - ip_ownership\n"
-            "   - revenue_recognition\n"
-            "   - customer_concentration\n"
-            "   - auto_renewal_terms\n"
-            "   - data_privacy_compliance\n"
-            "   - liability_caps\n"
-            "   - non_compete_agreements\n"
-            "7. **Infer deal type**: From context clues (default to 'acquisition' if unclear). "
-            f"Valid types: {', '.join(VALID_DEAL_TYPES)}. "
-            "Use 'asset_sale' when the deal involves an Asset Purchase Agreement (APA) where "
-            "specific assets are being purchased rather than shares/equity — common in "
-            "receivership, bankruptcy, or distressed sales.\n"
-            "8. **Write deal notes**: Summarize what the data room contains.\n\n"
-            "## Output Format\n\n"
-            "Return ONLY a raw JSON object (no markdown fences, no explanation, no preamble). "
-            "The JSON must conform to this structure:\n\n"
-            "{\n"
-            '  "config_version": "1.0.0",\n'
-            '  "buyer": {\n'
-            '    "name": "<official legal name>",\n'
-            '    "ticker": "<stock ticker or empty string>",\n'
-            '    "exchange": "<exchange name or empty string>",\n'
-            '    "notes": "<any relevant notes>"\n'
-            "  },\n"
-            '  "target": {\n'
-            '    "name": "<official legal name>",\n'
-            '    "subsidiaries": ["<subsidiary1>", ...],\n'
-            '    "previous_names": [{"name": "<old name>", "period": "<date range>", "notes": ""}],\n'
-            '    "acquired_entities": [{"name": "<entity>", "acquisition_date": "", "deal_type": "", '
-            '"notes": ""}],\n'
-            '    "entity_name_variants_for_contract_matching": ["<variant1>", "<variant2>", ...],\n'
-            '    "notes": "<summary of target>"\n'
-            "  },\n"
-            '  "deal": {\n'
-            '    "type": "<deal_type>",\n'
-            '    "focus_areas": ["<area1>", "<area2>", ...],\n'
-            '    "notes": "<summary of data room contents>"\n'
-            "  },\n"
-            '  "entity_aliases": {\n'
-            '    "canonical_to_variants": {"<canonical>": ["<variant1>", ...]}\n'
-            "  }\n"
-            "}\n\n"
-            "IMPORTANT: Every field above is required. entity_name_variants_for_contract_matching "
-            "must contain at least the target name. focus_areas must have at least one entry.\n\n"
-            "Do NOT use any tools. Do NOT attempt to read files or browse the filesystem. "
-            "All the information you need is provided in the user message below. "
-            "Respond with ONLY the JSON object."
-            "\n\n" + NO_FABRICATION
-        )
+        body = load_named_prompt("auto_config", "entity_resolution")
+        body = body.replace("{buyer}", buyer).replace("{target}", target)
+        body = body.replace("{VALID_DEAL_TYPES}", ", ".join(VALID_DEAL_TYPES))
+        return body + "\n\n" + NO_FABRICATION
 
     def _build_user_prompt(
         self,
@@ -546,33 +479,9 @@ class DataRoomAnalyzer:
     # ------------------------------------------------------------------
 
     def _build_buyer_strategy_system_prompt(self, buyer: str, target: str) -> str:
-        return (
-            M_AND_A_STRATEGIST + f"**Buyer**: {buyer}\n"
-            f"**Target**: {target}\n\n"
-            "## Rules\n\n"
-            "- Every synergy and risk must cite specific capabilities from the buyer documents.\n"
-            "- Do NOT use generic boilerplate like 'technology synergies'. Be specific about "
-            "named products, markets, and capabilities.\n"
-            "- Frame risks as 'what matters to THIS buyer' not 'generic DD concerns'.\n"
-            "- The `notes` field must include explicit file path references directing the "
-            "Acquirer Intelligence Agent to read buyer context files.\n\n"
-            "## Output Format\n\n"
-            "Return ONLY a raw JSON object with a single key `buyer_strategy` containing:\n\n"
-            "{\n"
-            '  "buyer_strategy": {\n'
-            '    "thesis": "<1-3 paragraph strategic rationale>",\n'
-            '    "key_synergies": ["<specific synergy 1>", ...],\n'
-            '    "integration_priorities": ["<priority 1>", ...],\n'
-            '    "risk_tolerance": "conservative|moderate|aggressive",\n'
-            '    "focus_areas": ["<buyer-specific risk area 1>", ...],\n'
-            '    "budget_range": "<deal economics if known, else empty string>",\n'
-            '    "notes": "<strategic context and file references for agents>"\n'
-            "  }\n"
-            "}\n\n"
-            "IMPORTANT: Do NOT use any tools. All information you need is provided "
-            "in the user message. Respond with ONLY the JSON object."
-            "\n\n" + NO_FABRICATION
-        )
+        body = load_named_prompt("auto_config", "buyer_strategy")
+        body = body.replace("{buyer}", buyer).replace("{target}", target)
+        return body + "\n\n" + NO_FABRICATION
 
     def _build_buyer_strategy_prompt(
         self,
@@ -624,29 +533,7 @@ class DataRoomAnalyzer:
     # ------------------------------------------------------------------
 
     def _build_spa_system_prompt(self) -> str:
-        return (
-            M_AND_A_LAWYER_SPA + "## Your Task\n\n"
-            "Extract the following from the SPA text:\n"
-            "1. **Purchase price** and structure (cash, stock, earnout)\n"
-            "2. **Payment waterfall** mechanics (debt repayment, expenses, escrow)\n"
-            "3. **Escrow terms** and holdback periods\n"
-            "4. **Non-compete/restricted periods**\n"
-            "5. **Closing conditions** and regulatory requirements\n"
-            "6. **Entity structure** (holding companies, share classes, acquisition vehicles)\n"
-            "7. **Material defined terms** (Business definition, key products)\n"
-            "8. **Knowledge holders** (named individuals with disclosure obligations)\n\n"
-            "## Output Format\n\n"
-            "Return ONLY a raw JSON object:\n\n"
-            "{\n"
-            '  "budget_range": "<purchase price and payment waterfall summary>",\n'
-            '  "spa_notes": "<entity structure, non-compete, closing conditions, key defined terms>",\n'
-            '  "additional_entity_variants": ["<entity1>", "<entity2>"],\n'
-            '  "key_executives": [{"name": "<name>", "title": "<title>", "company": "<company>"}]\n'
-            "}\n\n"
-            "IMPORTANT: Do NOT use any tools. All information you need is provided "
-            "in the user message. Respond with ONLY the JSON object."
-            "\n\n" + NO_FABRICATION
-        )
+        return load_named_prompt("auto_config", "spa_extraction") + "\n\n" + NO_FABRICATION
 
     def _build_spa_extraction_prompt(
         self,
