@@ -17,7 +17,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from dd_agents.agents.base import BaseAgentRunner
+from dd_agents.agents.base import READONLY_TOOLS, BaseAgentRunner
 
 logger = logging.getLogger(__name__)
 
@@ -87,11 +87,8 @@ class ExecutiveSynthesisOutput(BaseModel):
 # Read-only tools — this agent should never modify pipeline outputs
 # ---------------------------------------------------------------------------
 
-EXECUTIVE_SYNTHESIS_TOOLS: list[str] = [
-    "Read",
-    "Glob",
-    "Grep",
-]
+# Shared read-only tool set (audit §2.3) — single source of truth in base.py.
+EXECUTIVE_SYNTHESIS_TOOLS: list[str] = list(READONLY_TOOLS)
 
 
 class ExecutiveSynthesisAgent(BaseAgentRunner):
@@ -113,16 +110,19 @@ class ExecutiveSynthesisAgent(BaseAgentRunner):
         return "executive_synthesis"
 
     def get_system_prompt(self) -> str:
+        from dd_agents.agents.prompt_constants import COMPLIANCE_FRAMING, SEVERITY_PREAMBLE
+
         return (
             "You are a senior M&A partner conducting a final review of due diligence "
             "findings. Your role is to apply professional judgment to re-evaluate "
             "severity classifications and produce a calibrated Go/No-Go recommendation. "
             "No-Go requires truly exceptional circumstances. Most deals are Conditional Go. "
             "You produce a structured JSON analysis — never modify source files."
+            "\n\n" + SEVERITY_PREAMBLE + "\n\n" + COMPLIANCE_FRAMING
         )
 
     def get_tools(self) -> list[str]:
-        return list(EXECUTIVE_SYNTHESIS_TOOLS)
+        return list(READONLY_TOOLS)
 
     def build_prompt(self, state: dict[str, Any]) -> str:
         """Build executive synthesis prompt from deal config + P0/P1 findings."""

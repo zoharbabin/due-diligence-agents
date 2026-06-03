@@ -27,6 +27,7 @@ from dd_agents.models.finding import (
     MergedSubjectOutput,
 )
 from dd_agents.models.governance import GovernanceEdge, GovernanceGraph
+from dd_agents.reporting.severity_resolver import resolve_severity
 from dd_agents.utils.constants import NON_SUBJECT_STEMS, SEVERITY_ORDER, SEVERITY_P3
 from dd_agents.utils.naming import subject_safe_name as compute_safe_name
 
@@ -45,11 +46,22 @@ class FindingMerger:
         timestamp: str = "",
         file_inventory: list[str] | None = None,
         file_precedence: dict[str, float] | None = None,
+        user_overrides_by_agent: dict[str, dict[str, str]] | None = None,
+        allow_user_downgrade_of_dealbreakers: bool = False,
+        config_hash: str = "",
+        prompt_version: str = "",
     ) -> None:
         self.run_id = run_id or datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         self.timestamp = timestamp or datetime.now(UTC).isoformat()
         self._file_index = self._build_file_index(file_inventory or [])
         self._file_precedence: dict[str, float] = file_precedence or {}
+        # Per-agent user severity overrides (category -> P-level) and the AD-3a
+        # safety bound. Applied deterministically by the single severity resolver.
+        self._user_overrides_by_agent: dict[str, dict[str, str]] = user_overrides_by_agent or {}
+        self._allow_user_downgrade_of_dealbreakers = allow_user_downgrade_of_dealbreakers
+        # Provenance stamped onto every finding (audit §8.1).
+        self._config_hash = config_hash
+        self._prompt_version = prompt_version
 
     # ------------------------------------------------------------------
     # File inventory index for citation path resolution
@@ -591,7 +603,9 @@ class FindingMerger:
         )
         winner = dict(sorted_group[0])
         winner.setdefault("metadata", {})
-        winner["metadata"]["contributing_agents"] = [a for a in {f.get("agent", "") for f in group} if a]
+        # sorted() for deterministic output ordering (set iteration order is
+        # non-deterministic and produced diff noise across otherwise-identical runs).
+        winner["metadata"]["contributing_agents"] = sorted({f.get("agent", "") for f in group} - {""})
         return winner
 
     def _source_precedence(self, finding: dict[str, Any]) -> float:
@@ -1282,6 +1296,23 @@ class FindingMerger:
                 else ("severity_escalated" if meta.get("severity_disagreement") else "kept")
             )
             original_sev = self._normalize_severity(str(raw_severity))
+
+            # --- Single severity authority (audit AD-3) ---
+            # `severity` so far reflects LLM assignment + citation downgrade.
+            # Resolve deterministically: recalibration (down-only) then bounded
+            # user override. This is the ONE place severity is finalised.
+            resolution = resolve_severity(
+                llm_severity=str(original_sev),
+                post_citation_severity=str(severity),
+                title=title,
+                description=description,
+                category=str(f.get("category", "uncategorized")),
+                metadata=meta,
+                user_overrides=self._user_overrides_by_agent.get(agent, {}),
+                allow_user_downgrade_of_dealbreakers=self._allow_user_downgrade_of_dealbreakers,
+            )
+            severity = self._normalize_severity(resolution.severity)
+
             meta["provenance"] = {
                 "agent_name": agent,
                 "contributing_agents": contributing if isinstance(contributing, list) else [agent],
@@ -1289,7 +1320,11 @@ class FindingMerger:
                 "citation_verified": not has_synthetic,
                 "original_severity": original_sev,
                 "recalibrated": severity != original_sev,
-                "recalibration_reason": ("citation_downgrade" if severity != original_sev else ""),
+                "recalibration_reason": resolution.reason,
+                "severity_source": resolution.source,
+                "severity_chain": resolution.chain,
+                "config_hash": self._config_hash,
+                "prompt_version": self._prompt_version,
             }
 
             try:
@@ -1652,3 +1687,62 @@ class FindingMerger:
                         finding.severity.value,
                         finding.id,
                     )
+
+    def detect_tamper_signals(
+        self,
+        findings_by_subject: dict[str, list[dict[str, Any]]],
+        documents_by_subject: dict[str, int] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Deterministic output-side tamper check (audit §7.2).
+
+        Read-only, additive helper — does NOT mutate the merge/severity flow.
+        Scans each finding's title/description and citation ``exact_quote`` text
+        for prompt-injection patterns (reuses
+        :data:`SAFETY_FLOOR_NEGATION_PATTERNS`). When matched, emits a
+        synthetic P1 ``document_integrity`` finding for the subject so the
+        possible tampering surfaces in the report. Clean findings → ``[]``.
+
+        ``documents_by_subject`` is accepted for forward compatibility (e.g.
+        documents-but-zero-findings checks) but is not required for the
+        injection-pattern scan.
+        """
+        from dd_agents.agents.prompt_constants import SAFETY_FLOOR_NEGATION_PATTERNS
+
+        del documents_by_subject  # reserved; not needed for the pattern scan
+
+        signals: list[dict[str, Any]] = []
+        for subject in sorted(findings_by_subject):
+            for f in findings_by_subject[subject]:
+                if not isinstance(f, dict):
+                    continue
+                texts: list[str] = [
+                    str(f.get("title", "")),
+                    str(f.get("description", "")),
+                ]
+                for cite in f.get("citations", []) or []:
+                    if isinstance(cite, dict):
+                        texts.append(str(cite.get("exact_quote", "")))
+                haystack = "\n".join(t for t in texts if t)
+                matched = next(
+                    (p.pattern for p in SAFETY_FLOOR_NEGATION_PATTERNS if p.search(haystack)),
+                    None,
+                )
+                if matched is None:
+                    continue
+                signals.append(
+                    {
+                        "severity": Severity.P1.value,
+                        "category": "document_integrity",
+                        "title": "Possible document tampering / prompt injection detected",
+                        "description": (
+                            "Source text associated with this finding contains an "
+                            "instruction-like pattern aimed at the analysis agent "
+                            f"(matched: {matched!r}). Treat the underlying document as "
+                            "untrusted evidence and verify integrity with the data-room owner."
+                        ),
+                        "subject": subject,
+                        "source_finding_id": str(f.get("finding_id", f.get("id", ""))),
+                        "metadata": {"tamper": True, "detector": "detect_tamper_signals"},
+                    }
+                )
+        return signals

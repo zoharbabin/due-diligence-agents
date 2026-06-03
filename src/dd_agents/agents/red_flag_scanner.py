@@ -11,7 +11,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from dd_agents.agents.base import BaseAgentRunner
+from dd_agents.agents.base import READONLY_TOOLS, BaseAgentRunner
 from dd_agents.utils.constants import SEVERITY_P0, SEVERITY_P1, SEVERITY_P2, SEVERITY_P3
 
 # ---------------------------------------------------------------------------
@@ -44,11 +44,8 @@ CATEGORY_LABELS: dict[str, str] = {
 # Tools available to the Red Flag Scanner
 # ---------------------------------------------------------------------------
 
-RED_FLAG_TOOLS: list[str] = [
-    "Read",
-    "Glob",
-    "Grep",
-]
+# Shared read-only tool set (audit §2.3) — single source of truth in base.py.
+RED_FLAG_TOOLS: list[str] = list(READONLY_TOOLS)
 
 # ---------------------------------------------------------------------------
 # Signal classification
@@ -161,7 +158,7 @@ class RedFlagScannerAgent(BaseAgentRunner):
         )
 
     def get_tools(self) -> list[str]:
-        return list(RED_FLAG_TOOLS)
+        return list(READONLY_TOOLS)
 
     def build_prompt(self, state: dict[str, Any]) -> str:
         """Build a targeted prompt for the Red Flag Scanner.

@@ -25,14 +25,15 @@ All source lives under `src/dd_agents/`. Each package has one job:
 | `hooks/` | Pre/post tool-use guards (allow/block) | `pre_tool.py` → guard functions |
 | `persistence/` | Three-tier data lifecycle | `tiers.py` → `TierManager` |
 | `knowledge/` | Deal knowledge base (compounds across runs) | `base.py` → `DealKnowledgeBase` |
+| `customization/` | User-editable agent personas/profiles (`dd-config/`) | `loader.py` → `resolve_chain()`, `profiles/*.md` |
 | `extraction/` | PDF/Office text extraction pipeline | `pipeline.py` → fallback chain |
 | `entity_resolution/` | Cross-document name deduplication | `matcher.py` → `EntityResolver` |
 | `inventory/` | Data room scanning and classification | `discovery.py`, `subjects.py` |
 | `validation/` | QA audit + DoD checks (fail-closed) | `dod.py`, `numerical_audit.py` |
-| `search/` | Contract search with citation verification | `engine.py` |
+| `search/` | Contract search with citation verification | `runner.py` → `SearchRunner` |
 | `tools/` | MCP server + custom tool implementations | `mcp_server.py` |
 | `chat/` | Interactive chat mode | `engine.py` |
-| `cli.py` | Click CLI (16 commands) | `dd-agents` entry point |
+| `cli.py` | Click CLI command groups | `dd-agents` entry point |
 
 ## Design Rules
 
@@ -48,6 +49,11 @@ These are mechanical constraints, not guidelines:
 8. **Quality gates are fail-closed** — validation failures block the pipeline. No bypass.
 9. **Tests before implementation** — write test file in `tests/unit/` first. Tests define the contract.
 10. **Strict types** — `mypy --strict` must pass. No `type: ignore` without justification.
+11. **One safety floor, appended last** — every assembled prompt ends with `assemble_safety_floor()` (`agents/prompt_constants.py`): anti-sub-agent constraints, citation mandate, anti-fabrication, untrusted-document rule. It is concatenated after all user customization, so config can never remove it. Wrap untrusted data-room content with `wrap_untrusted()`.
+12. **One severity authority** — final severity is decided once by `resolve_severity()` (`reporting/severity_resolver.py`) in the merge write path: `llm → recalibration (down-only) → bounded user_override`. Records `metadata.provenance.severity_source` + `severity_chain`. `computed_metrics._recalibrate_severity` is a read-only guard that no-ops when `severity_source` is set. Never re-derive severity elsewhere.
+13. **Severity thresholds are constants** — TfC/CoC/ARR numbers live only in `agents/severity_thresholds.py`. Build threshold strings via f-strings off them; never hardcode the literal in prose.
+14. **User-editable agent config is data under `dd-config/`** — one folder, one format (YAML front-matter + markdown), one merge rule (`customization/loader.py:resolve_chain`: built-in → profile `extends` chain → `dd-config/agents/{agent}.md` → deal). Inspect with `dd-agents agents describe|list|validate|preview`.
+15. **Provenance is one hash** — `persistence/provenance.py:compute_provenance_hash` (config + prompt_version + persona hashes). Resume is fail-closed: a checkpoint whose provenance drifted is rejected. All config hashing routes through `compute_config_hash` (never raw file bytes).
 
 ## Key Patterns
 
@@ -105,7 +111,8 @@ Full list: grep `DD_` in `src/dd_agents/utils/constants.py` and `src/dd_agents/s
 | Doc | When to read |
 |-----|-------------|
 | `docs/plan/PLAN.md` | First time touching this codebase — executive overview of WHY |
-| `docs/plan/01-architecture-decisions.md` | When questioning a design choice — 7 ADRs with rationale |
+| `docs/plan/01-architecture-decisions.md` | When questioning a design choice — ADRs with rationale |
+| `docs/agent-customization.md` | Customizing agent personas/severity/profiles via `dd-config/` |
 | `docs/user-guide/cli-reference.md` | Adding/modifying CLI commands |
 | `docs/user-guide/deal-configuration.md` | Changing config schema or adding config options |
 | `docs/search-guide.md` | Working on search module — chunking, citation, precedence |

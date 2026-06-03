@@ -19,6 +19,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Read-only tool set shared by all synthesis agents (executive_synthesis,
+# acquirer_intelligence, red_flag_scanner, narrative_generation).  Synthesis
+# agents only read merged findings and write their structured output via the
+# SDK text stream — they never need Write/Edit/Bash.  Defined once here so the
+# four agents stay in lock-step (audit §2.3).
+READONLY_TOOLS: tuple[str, ...] = ("Read", "Glob", "Grep")
+
 # ---------------------------------------------------------------------------
 # Optional SDK import -- graceful degradation when not installed
 # ---------------------------------------------------------------------------
@@ -333,21 +340,13 @@ class BaseAgentRunner(ABC):
         # treats it as developer instructions.  User-prompt-level rules were
         # observed to be ignored, so this constraint MUST be in the system prompt.
         base_system = self.get_system_prompt()
-        from dd_agents.agents.prompt_constants import JSON_OUTPUT_CONSTRAINT
+        from dd_agents.agents.prompt_constants import assemble_safety_floor
 
-        system_prompt = (
-            f"{base_system}\n\n"
-            "CRITICAL CONSTRAINTS (NEVER VIOLATE):\n"
-            "1. You do NOT have access to the Agent tool. NEVER attempt to spawn "
-            "sub-agents, background agents, or parallel agents. You are a single "
-            "agent — process all subjects yourself, sequentially, in this session.\n"
-            "2. You do NOT have access to the Bash tool. Do not attempt shell commands.\n"
-            "3. Do NOT read or validate existing output files before writing. Write "
-            "fresh output directly. If a file exists at the output path, overwrite it.\n"
-            "4. Do NOT summarize progress or produce status reports. Write JSON files "
-            "and move to the next subject immediately.\n"
-            f"5. {JSON_OUTPUT_CONSTRAINT}"
-        )
+        # The safety floor (CRITICAL CONSTRAINTS + citation mandate +
+        # anti-fabrication + untrusted-document rule) is appended LAST and is
+        # non-removable: it is concatenated here in the runner, not an
+        # overridable method, so no agent or config layer can opt out.
+        system_prompt = f"{base_system}\n\n{assemble_safety_floor(self.get_agent_type())}"
 
         # Build hooks and MCP server for the agent
         from dd_agents.hooks.factory import build_hooks_for_agent
@@ -686,3 +685,19 @@ class BaseAgentRunner(ABC):
                     logger.warning("Failed to save raw output to %s: %s", raw_output_path, exc)
 
         return results
+
+
+class SynthesisAgentBase(BaseAgentRunner):
+    """Base for synthesis agents that only read merged findings.
+
+    Defaults :meth:`get_tools` to the shared read-only set (audit §2.3) so the
+    synthesis agents (executive_synthesis, acquirer_intelligence,
+    red_flag_scanner, narrative_generation) do not each re-declare the same
+    list.  Concrete synthesis agents may keep using the module-level
+    ``READONLY_TOOLS`` constant directly; this base is offered as a thin,
+    behavior-preserving alternative.  ``get_agent_name`` / ``get_system_prompt``
+    remain abstract.
+    """
+
+    def get_tools(self) -> list[str]:
+        return list(READONLY_TOOLS)

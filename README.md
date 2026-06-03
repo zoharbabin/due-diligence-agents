@@ -125,13 +125,30 @@ dd-agents health --data-room ./data_room                    # Check knowledge ba
 dd-agents annotate --data-room ./data_room "Confirmed with counsel"  # Add analyst notes
 ```
 
+### Customize the Agents (no code required)
+
+Inspect, audit, and tailor each specialist's persona, focus areas, and severity
+calibration — by editing markdown, not Python. Safety rules can never be removed.
+
+```bash
+dd-agents agents list                          # See every specialist and its status
+dd-agents agents describe --agent legal        # Read an agent's persona + safety floor
+dd-agents agents validate ./my-project         # Lint your dd-config/ customizations
+dd-agents agents preview --agent legal --project-dir ./my-project  # Exact assembled prompt
+```
+
+Drop a `dd-config/agents/legal.md` next to your deal config to override personas,
+add focus areas, or adjust severity — optionally inheriting a bundled deal-type
+profile (`saas`, `regulated-fintech`, …). See
+[Agent Customization](docs/agent-customization.md).
+
 ## Quick Start
 
 **Prerequisites:** Python 3.12+ and an [Anthropic API key](https://console.anthropic.com/).
 
 ```bash
 # 1. Install
-pip install dd-agents[pdf]
+pip install 'dd-agents[pdf]'
 
 # 2. Set your API key
 export ANTHROPIC_API_KEY="sk-ant-..."
@@ -165,12 +182,12 @@ Output appears at `{data_room_path}/_dd/forensic-dd/runs/latest/report/dd_report
   "config_version": "1.0.0",
   "buyer": { "name": "Acme Corp" },
   "target": { "name": "Target Inc" },
-  "deal": { "type": "acquisition" },
+  "deal": { "type": "acquisition", "focus_areas": ["change_of_control", "ip_ownership"] },
   "data_room": { "path": "./data_room" }
 }
 ```
 
-Everything else (`entity_aliases`, `judge`, `execution`, `buyer_strategy`, etc.) is optional and enhances analysis when provided. See [Deal Configuration](docs/user-guide/deal-configuration.md) for the full schema.
+`deal.focus_areas` must list at least one area. Everything else (`entity_aliases`, `judge`, `execution`, `buyer_strategy`, etc.) is optional and enhances analysis when provided. See [Deal Configuration](docs/user-guide/deal-configuration.md) for the full schema.
 </details>
 
 See the [Getting Started guide](docs/user-guide/getting-started.md) for a complete walkthrough with the included sample data room.
@@ -309,7 +326,7 @@ _dd/forensic-dd/
         legal/                    # Per-subject findings from each agent
         finance/
         commercial/
-        product_tech/
+        producttech/
         merged/                   # Deduplicated cross-domain findings
       report/
         dd_report.html            # Interactive HTML report
@@ -327,7 +344,7 @@ _dd/forensic-dd/
 ## Installation
 
 ```bash
-pip install dd-agents[pdf]      # Recommended (includes PDF extraction via pymupdf)
+pip install 'dd-agents[pdf]'      # Recommended (includes PDF extraction via pymupdf)
 ```
 
 <details>
@@ -342,9 +359,9 @@ docker pull zoharbabin/due-diligence-agents:latest
 
 # Extras
 pip install dd-agents           # Core only (no PDF extraction)
-pip install dd-agents[vector]   # + semantic search via ChromaDB
-pip install dd-agents[ocr]      # + OCR for scanned documents (English)
-pip install dd-agents[glm-ocr]  # + multilingual OCR (100+ languages, Apple Silicon)
+pip install 'dd-agents[vector]'   # + semantic search via ChromaDB
+pip install 'dd-agents[ocr]'      # + OCR for scanned documents (English)
+pip install 'dd-agents[glm-ocr]'  # + multilingual OCR (100+ languages, Apple Silicon)
 ```
 </details>
 

@@ -44,6 +44,9 @@ _dd/
 _index/
 _findings/
 _inventory/
+# Bare findings/ written under a data room during a run (e.g. the quickstart
+# example) — must never be committed as it would alter the shipped sample.
+examples/**/findings/
 
 # Data room files (prevent accidental commit of customer documents)
 data_room/

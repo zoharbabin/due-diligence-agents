@@ -126,11 +126,17 @@ class JudgeAgent(BaseAgentRunner):
         return "judge"
 
     def get_system_prompt(self) -> str:
+        from dd_agents.agents.prompt_constants import (
+            SEVERITY_PREAMBLE,
+            build_citation_mandate,
+        )
+
         return (
             "You are the Judge agent for forensic M&A due diligence. "
             "Your role is to verify specialist findings through risk-based "
             "sampling, citation verification, contextual validation, financial "
             "accuracy checks, cross-agent consistency, and completeness review."
+            "\n\n" + SEVERITY_PREAMBLE + "\n\n" + build_citation_mandate("legal")
         )
 
     def get_tools(self) -> list[str]:

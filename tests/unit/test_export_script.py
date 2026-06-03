@@ -151,3 +151,122 @@ except NameError:
         result = run_export_script(code, out)
         assert result["status"] == "ok"
         assert result["file_count"] == 1
+
+
+class TestExportScriptSandboxEscape:
+    """Security regression: the export sandbox must block code-execution escapes.
+
+    The AST module-denylist alone is insufficient because the preamble provides
+    ``os`` (for ``os.chdir``). These tests lock the call-surface denylist that
+    closes the arbitrary-shell / filesystem-escape hole found in the release audit.
+    """
+
+    import pytest
+
+    _ESCAPES = [
+        "import os; os.system('echo x > /tmp/should_not_exist_dd.txt')",
+        "import os; os.popen('echo x').read()",
+        "os.system('echo x')",  # os comes from the preamble, no import
+        "eval(\"__import__('os').system('echo x')\")",
+        "exec(\"import os; os.system('echo x')\")",
+        "__import__('os').system('echo x')",
+        "getattr(os, 'system')('echo x')",
+        "import importlib; importlib.import_module('os').system('echo x')",
+        "import subprocess; subprocess.run(['echo', 'x'])",
+        "import ctypes",
+        "os.fork()",
+        "os.execv('/bin/sh', ['/bin/sh'])",
+    ]
+
+    @pytest.mark.parametrize("code", _ESCAPES)
+    def test_escape_attempt_is_blocked(self, code: str, tmp_path: Path) -> None:
+        from dd_agents.tools.run_export_script import run_export_script
+
+        result = run_export_script(code, tmp_path)
+        assert result.get("error") == "blocked_import", f"escape not blocked: {code!r} -> {result}"
+
+    def test_legitimate_export_still_works(self, tmp_path: Path) -> None:
+        from dd_agents.tools.run_export_script import run_export_script
+
+        code = "import openpyxl\nwb = openpyxl.Workbook()\nwb.save(str(OUTPUT_DIR / 'ok.xlsx'))"
+        result = run_export_script(code, tmp_path)
+        assert result.get("status") == "ok"
+        assert result.get("file_count") == 1
+
+
+class TestExportScriptNoFalsePositives:
+    """Regression (Copilot #202 C7): blocked attribute names on a benign receiver
+    must NOT be rejected — only sensitive module receivers (os/importlib/...)."""
+
+    import pytest
+
+    @pytest.mark.parametrize(
+        "code",
+        [
+            "class W:\n    def system(self):\n        return 1\nW().system()",
+            "class Pool:\n    def spawnl(self):\n        return 1\nPool().spawnl()",
+            "class Doc:\n    def popen(self):\n        return 1\nDoc().popen()",
+        ],
+    )
+    def test_benign_same_named_method_allowed(self, code: str, tmp_path: Path) -> None:
+        from dd_agents.tools.run_export_script import run_export_script
+
+        result = run_export_script(code, tmp_path)
+        assert result.get("error") != "blocked_import", f"false positive: {code!r}"
+
+    @pytest.mark.parametrize(
+        "code",
+        [
+            "o = os\no.system('echo x')",
+            "import os as p\np.popen('echo x')",
+        ],
+    )
+    def test_aliased_os_still_blocked(self, code: str, tmp_path: Path) -> None:
+        from dd_agents.tools.run_export_script import run_export_script
+
+        assert run_export_script(code, tmp_path).get("error") == "blocked_import"
+
+    @pytest.mark.parametrize(
+        "code",
+        [
+            # getattr of a module-attr name on a BENIGN receiver must not trip
+            # the scan (Copilot #202 C11) — workbook.system / doc.popen are not
+            # the os module.
+            "class W:\n    def system(self):\n        return 1\ngetattr(W(), 'system')()",
+            "class Doc:\n    def popen(self):\n        return 1\ngetattr(Doc(), 'popen')()",
+            "wb = object()\ngetattr(wb, 'spawnl')",
+        ],
+    )
+    def test_getattr_module_attr_on_benign_receiver_allowed(self, code: str, tmp_path: Path) -> None:
+        from dd_agents.tools.run_export_script import run_export_script
+
+        result = run_export_script(code, tmp_path)
+        assert result.get("error") != "blocked_import", f"false positive: {code!r}"
+
+    @pytest.mark.parametrize(
+        "code",
+        [
+            # getattr of a module-attr name on a SENSITIVE receiver stays blocked.
+            "getattr(os, 'system')('echo x')",
+            "o = os\ngetattr(o, 'popen')('echo x')",
+        ],
+    )
+    def test_getattr_module_attr_on_sensitive_receiver_blocked(self, code: str, tmp_path: Path) -> None:
+        from dd_agents.tools.run_export_script import run_export_script
+
+        assert run_export_script(code, tmp_path).get("error") == "blocked_import"
+
+    @pytest.mark.parametrize(
+        "code",
+        [
+            # Dynamic-exec builtins are dangerous on ANY receiver — always block,
+            # even when the receiver is not a sensitive module.
+            "wb = object()\ngetattr(wb, '__import__')",
+            "getattr(__builtins__, 'eval')",
+            "getattr(__builtins__, 'exec')",
+        ],
+    )
+    def test_getattr_exec_builtin_blocked_any_receiver(self, code: str, tmp_path: Path) -> None:
+        from dd_agents.tools.run_export_script import run_export_script
+
+        assert run_export_script(code, tmp_path).get("error") == "blocked_import"

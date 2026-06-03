@@ -33,6 +33,7 @@ from dd_agents.reporting.html_analysis import (
 )
 from dd_agents.reporting.html_base import render_css, render_js, render_nav_bar
 from dd_agents.reporting.html_compliance import ComplianceRenderer
+from dd_agents.reporting.html_config_panel import ConfigPanelRenderer
 from dd_agents.reporting.html_cross import CrossRefRenderer
 from dd_agents.reporting.html_cross_domain import CrossDomainRenderer
 from dd_agents.reporting.html_dashboard import DashboardRenderer
@@ -244,6 +245,7 @@ class HTMLReportGenerator:
             GovernanceGraphRenderer(computed, merged_data, renderer_config),
             GapRenderer(computed, merged_data, renderer_config),
             SubjectRenderer(computed, merged_data, renderer_config),
+            ConfigPanelRenderer(computed, merged_data, renderer_config),
             MethodologyRenderer(computed, merged_data, renderer_config),
             QualityRenderer(computed, merged_data, renderer_config, run_dir=run_dir),
             DiffRenderer(computed, merged_data, renderer_config, run_dir=run_dir),

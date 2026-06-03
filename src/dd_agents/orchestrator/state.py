@@ -85,6 +85,12 @@ class PipelineState:
     # --- Configuration ------------------------------------------------------
     deal_config: dict[str, Any] | None = None
     config_hash: str = ""
+    # Provenance (audit §8.1): prompt builder version + per-agent persona hashes
+    # + combined provenance hash. Used to stamp findings and to fail-closed on
+    # checkpoint resume if config/personas drifted. Defaulted for old checkpoints.
+    prompt_version: str = "unknown"
+    persona_hashes: dict[str, str] = field(default_factory=dict)
+    provenance_hash: str = ""
     execution_mode: str = "full"  # "full" or "incremental"
     judge_enabled: bool = True
     prior_run_id: str | None = None
@@ -187,6 +193,9 @@ class PipelineState:
             "project_dir": str(self.project_dir),
             "deal_config": self.deal_config,
             "config_hash": self.config_hash,
+            "prompt_version": self.prompt_version,
+            "persona_hashes": self.persona_hashes,
+            "provenance_hash": self.provenance_hash,
             "execution_mode": self.execution_mode,
             "judge_enabled": self.judge_enabled,
             "prior_run_id": self.prior_run_id,
@@ -242,6 +251,9 @@ class PipelineState:
             project_dir=Path(data.get("project_dir", "")),
             deal_config=data.get("deal_config"),
             config_hash=data.get("config_hash", ""),
+            prompt_version=data.get("prompt_version", "unknown"),
+            persona_hashes=data.get("persona_hashes", {}),
+            provenance_hash=data.get("provenance_hash", ""),
             execution_mode=data.get("execution_mode", "full"),
             judge_enabled=data.get("judge_enabled", True),
             prior_run_id=data.get("prior_run_id"),

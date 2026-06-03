@@ -1454,6 +1454,13 @@ def _run_chat_query(
     help="Disable document tools (findings-only mode).",
 )
 @click.option(
+    "-q",
+    "--question",
+    "question",
+    default=None,
+    help="Ask a single question non-interactively and exit (scriptable; no TTY needed).",
+)
+@click.option(
     "--verbose",
     "-v",
     is_flag=True,
@@ -1467,6 +1474,7 @@ def chat(
     max_turns: int | None,
     no_limit: bool,
     no_tools: bool,
+    question: str | None,
     verbose: bool,
 ) -> None:
     """Interactive chat about due diligence findings.
@@ -1481,6 +1489,7 @@ def chat(
         dd-agents chat --report _dd/forensic-dd/runs/latest
         dd-agents chat --no-tools
         dd-agents chat --no-limit --max-cost 25.0
+        dd-agents chat --question "What are the top risks?"
     """
     if verbose:
         logging.basicConfig(level=logging.WARNING, format="%(name)s: %(message)s")
@@ -1536,6 +1545,20 @@ def chat(
     except Exception as exc:
         _print_error("Chat Init Error", str(exc))
         raise SystemExit(1) from exc
+
+    # Headless mode: answer one question, print it, and exit (scriptable).
+    if question is not None:
+        try:
+            response = asyncio.run(engine.ask(question))
+            click.echo(response.text)
+        finally:
+            try:
+                asyncio.run(engine.close())
+            except Exception as exc:  # noqa: BLE001
+                if verbose:
+                    console.print(f"[dim]Session close warning: {exc}[/dim]")
+            _terminate_child_processes()
+        return
 
     # Print banner
     mode_label = "findings + documents" if config.enable_tools else "findings only"
@@ -1883,6 +1906,151 @@ def templates_show(template_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# agents group (§6.1/§6.4) — introspect, describe, validate, preview
+# ---------------------------------------------------------------------------
+
+
+@main.group()
+def agents() -> None:
+    """Inspect, describe, validate, and preview specialist agents."""
+
+
+def _load_optional_deal_config(config: Path | None) -> object | None:
+    """Load a deal config if *config* is provided; exit on error."""
+    if config is None:
+        return None
+    try:
+        return load_deal_config(config)
+    except (ConfigFileNotFoundError, ConfigParseError, ConfigValidationError) as exc:
+        _print_error("Config Error", str(exc))
+        raise SystemExit(1) from exc
+
+
+@agents.command("list")
+@click.option(
+    "--config",
+    "config",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Optional deal-config.json to reflect disabled agents and model tiers.",
+)
+def agents_list(config: Path | None) -> None:
+    """List all specialist agents and their enabled/disabled status."""
+    from dd_agents.agents.introspection import list_agents
+
+    deal_config = _load_optional_deal_config(config)
+    for summary in list_agents(deal_config):  # type: ignore[arg-type]
+        model = f" [{summary.model}]" if summary.model else ""
+        console.print(f"[bold]{summary.name}[/bold] ({summary.display_name}) — {summary.status}{model}")
+
+
+@agents.command("describe")
+@click.option("--agent", "agent_name", required=True, help="Agent name (e.g. legal, finance).")
+@click.option(
+    "--format",
+    "fmt",
+    type=click.Choice(["text", "md"]),
+    default="text",
+    show_default=True,
+    help="text: rendered for the terminal. md: raw markdown.",
+)
+def agents_describe(agent_name: str, fmt: str) -> None:
+    """Describe an agent's persona, focus areas, and safety floor."""
+    from dd_agents.agents.introspection import describe_agent
+
+    try:
+        text = describe_agent(agent_name)
+    except KeyError as exc:
+        _print_error("Unknown Agent", str(exc))
+        raise SystemExit(1) from exc
+
+    if fmt == "md":
+        click.echo(text)
+    else:
+        from rich.markdown import Markdown
+
+        console.print(Markdown(text))
+
+
+@agents.command("validate")
+@click.argument(
+    "project_dir",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+def agents_validate(project_dir: Path) -> None:
+    """Lint dd-config/ customizations under PROJECT_DIR (fail-closed)."""
+    from dd_agents.agents.introspection import validate_customizations
+
+    issues = validate_customizations(project_dir)
+    if not issues:
+        console.print("[bold green]No customization issues found.[/bold green]")
+        return
+
+    has_error = False
+    for issue in issues:
+        if issue.level == "error":
+            has_error = True
+            err_console.print(f"[bold red]error:[/bold red] {issue.message}")
+        else:
+            err_console.print(f"[yellow]warning:[/yellow] {issue.message}")
+
+    if has_error:
+        raise SystemExit(1)
+
+
+@agents.command("preview")
+@click.option("--agent", "agent_name", required=True, help="Agent name to preview.")
+@click.option(
+    "--config",
+    "config",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Optional deal-config.json; its directory is used as the project dir.",
+)
+@click.option(
+    "--project-dir",
+    "project_dir_opt",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=None,
+    help="Directory containing dd-config/ (defaults to --config's dir, else cwd).",
+)
+@click.option(
+    "--output",
+    "-o",
+    "output",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Write the assembled prompt to a file instead of stdout.",
+)
+def agents_preview(
+    agent_name: str,
+    config: Path | None,
+    project_dir_opt: Path | None,
+    output: Path | None,
+) -> None:
+    """Print the fully assembled prompt for an agent (byte-exact to pipeline).
+
+    Resolves ``dd-config/`` overrides from --project-dir, else --config's
+    directory, else the current directory — so a preview reflects exactly what
+    the pipeline would send, including any dd-config customizations.
+    """
+    from dd_agents.agents.introspection import preview_prompt
+
+    project_dir = project_dir_opt or (config.parent if config is not None else Path.cwd())
+    try:
+        prompt = preview_prompt(agent_name, project_dir=project_dir)
+    except KeyError as exc:
+        _print_error("Unknown Agent", str(exc))
+        raise SystemExit(1) from exc
+
+    if output is not None:
+        output.write_text(prompt, encoding="utf-8")
+        console.print(f"Wrote assembled prompt for {agent_name} to {output}")
+    else:
+        click.echo(prompt)
+
+
+# ---------------------------------------------------------------------------
 # knowledge log command (Issue #180)
 # ---------------------------------------------------------------------------
 
@@ -1897,7 +2065,10 @@ def templates_show(template_id: str) -> None:
 )
 @click.option("--limit", type=int, default=20, show_default=True, help="Number of recent entries to show.")
 @click.option(
-    "--type", "interaction_type", default=None, help="Filter by type: pipeline_run, search, query, annotation."
+    "--type",
+    "interaction_type",
+    default=None,
+    help="Filter by type: pipeline_run, search, query, annotation, knowledge_compilation, chat.",
 )
 def log_cmd(data_room: Path, limit: int, interaction_type: str | None) -> None:
     """Show the analysis chronicle — timeline of all interactions.

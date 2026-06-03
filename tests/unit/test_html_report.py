@@ -674,3 +674,50 @@ class TestHTMLReportGenerator:
 
         content = out.read_text(encoding="utf-8")
         assert "Overall Risk: Clean" in content
+
+
+def test_xss_escaped_across_all_user_fields(tmp_path: Path) -> None:
+    """Comprehensive XSS: <script> in EVERY user-controllable field must be escaped.
+
+    Extends test_html_escaping to category, citation quote/location, and all gap
+    fields — the renderers a release audit flagged for raw-interpolation review.
+    """
+    xss = "<script>alert(1)</script>"
+    merged = {
+        "subj": {
+            "subject": "S " + xss,
+            "findings": [
+                {
+                    "severity": "P1",
+                    "category": xss + "_cat",
+                    "title": "T " + xss,
+                    "description": "D " + xss,
+                    "confidence": "high",
+                    "agent": "legal",
+                    "citations": [
+                        {
+                            "source_type": "contract",
+                            "source_path": "a.pdf",
+                            "exact_quote": "Q " + xss,
+                            "location": "S1 " + xss,
+                        }
+                    ],
+                    "metadata": {"provenance": {"severity_source": "llm"}},
+                }
+            ],
+            "gaps": [
+                {
+                    "gap_type": "Missing_Doc",
+                    "missing_item": "M " + xss,
+                    "why_needed": "W " + xss,
+                    "risk_if_missing": "R " + xss,
+                    "agent": "legal",
+                }
+            ],
+        }
+    }
+    out = tmp_path / "r.html"
+    HTMLReportGenerator().generate(merged, out)
+    html = out.read_text(encoding="utf-8")
+    assert html.count("<script>alert(1)</script>") == 0
+    assert "&lt;script&gt;" in html  # escaping demonstrably happened

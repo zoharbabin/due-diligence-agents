@@ -2397,3 +2397,104 @@ class TestDeterministicVerification:
         adjusted = PipelineEngine._deterministic_finding_verification(findings, tmp_path, "legal", "acme")
         assert adjusted == 0
         assert findings[0]["verified"] is True
+
+
+# =========================================================================
+# Prompt architecture audit fixes (§1.4, §2.1, §2.2, §3.1)
+# =========================================================================
+
+
+class TestDomainGuidanceInjection:
+    """§2.2 — descriptor.domain_robustness must reach the assembled prompt."""
+
+    def test_legal_domain_robustness_injected(
+        self,
+        builder: PromptBuilder,
+        sample_subjects: list[SubjectEntry],
+    ) -> None:
+        prompt = builder.build_specialist_prompt(
+            agent_name="legal",
+            subjects=sample_subjects,
+            deal_config={
+                "config_version": "1.0.0",
+                "buyer": {"name": "Buyer Co"},
+                "target": {"name": "Target Co"},
+                "deal": {"type": "acquisition"},
+            },
+        )
+        assert "LEGAL-SPECIFIC EXTRACTION GUIDANCE" in prompt
+        # Source header uses uppercase "COC" (specialists.py).
+        assert "COC SUBTYPE CLASSIFICATION" in prompt
+
+    def test_finance_domain_robustness_injected(
+        self,
+        builder: PromptBuilder,
+        sample_subjects: list[SubjectEntry],
+    ) -> None:
+        prompt = builder.build_specialist_prompt(
+            agent_name="finance",
+            subjects=sample_subjects,
+            deal_config={
+                "config_version": "1.0.0",
+                "buyer": {"name": "Buyer Co"},
+                "target": {"name": "Target Co"},
+                "deal": {"type": "acquisition"},
+            },
+        )
+        assert "FINANCE-SPECIFIC EXTRACTION GUIDANCE" in prompt
+
+
+class TestFocusAreaInjection:
+    """§3.1 — canonical focus_areas list must be surfaced in the prompt."""
+
+    def test_legal_focus_areas_surfaced(
+        self,
+        builder: PromptBuilder,
+        sample_subjects: list[SubjectEntry],
+    ) -> None:
+        prompt = builder.build_specialist_prompt(
+            agent_name="legal",
+            subjects=sample_subjects,
+        )
+        assert "YOUR FOCUS AREAS (canonical)" in prompt
+        # Every canonical focus-area token appears humanized (underscores -> spaces).
+        for area in LEGAL_FOCUS_AREAS:
+            humanized = area.replace("_", " ")
+            assert humanized in prompt, f"focus area {humanized!r} missing from legal prompt"
+        # The existing hand-written SPECIALIST_FOCUS sentence is preserved.
+        assert "SPECIALIST FOCUS" in prompt
+
+
+class TestSharedPersonas:
+    """§2.1 — shared persona constants are non-empty and used at call sites."""
+
+    def test_constants_non_empty(self) -> None:
+        from dd_agents.agents import personas
+
+        for name in (
+            "DD_LEGAL_ANALYST",
+            "DD_ANALYST",
+            "M_AND_A_STRATEGIST",
+            "M_AND_A_LAWYER_SPA",
+        ):
+            value = getattr(personas, name)
+            assert isinstance(value, str)
+            assert value, f"{name} must be non-empty"
+
+    def test_legal_analyst_in_analyzer_prompt(self) -> None:
+        from dd_agents.agents.personas import DD_LEGAL_ANALYST
+
+        # The analyzer's chunked-analysis system prompt opens with the shared persona.
+        assert DD_LEGAL_ANALYST == "You are a meticulous legal due-diligence analyst"
+        assembled = DD_LEGAL_ANALYST + " reviewing subject contracts.\n\n"
+        assert DD_LEGAL_ANALYST in assembled
+
+
+class TestSynthesisAgentRubric:
+    """§1.4 — synthesis/grader agents share the explicit severity & citation rubric."""
+
+    def test_judge_prompt_has_citation_mandate(self) -> None:
+        agent = JudgeAgent.__new__(JudgeAgent)
+        prompt = JudgeAgent.get_system_prompt(agent)
+        assert "MANDATORY Citation Requirements" in prompt
+        assert "P0" in prompt  # SEVERITY_PREAMBLE

@@ -135,6 +135,14 @@ class DealInfo(BaseModel):
     type: DealType = Field(description="Deal type: acquisition, merger, etc.")
     focus_areas: list[str] = Field(min_length=1, description="Key areas of focus for due diligence")
     notes: str = Field(default="", description="Additional notes about the deal")
+    output_language: str = Field(
+        default="en",
+        description=(
+            "ISO language code for finding prose (audit AD-4). Agents read source "
+            "documents in any language and quote verbatim in the original, but write "
+            "finding descriptions in this language. Default 'en'."
+        ),
+    )
 
 
 class SamplingRates(BaseModel):
@@ -229,6 +237,10 @@ class AgentCustomization(BaseModel):
         default_factory=dict,
         description="Category-to-severity overrides, e.g. {'change_of_control': 'P2'}",
     )
+    persona: str | None = Field(
+        default=None,
+        description="Replaces the agent's built-in persona when set via '## Persona (replaces default)'",
+    )
 
 
 class SpecialistsConfig(BaseModel):
@@ -239,6 +251,19 @@ class SpecialistsConfig(BaseModel):
     disabled: list[str] = Field(default_factory=list, description="Agent names to disable for this run")
     customizations: dict[str, AgentCustomization] = Field(
         default_factory=dict, description="Per-agent customization keyed by agent name"
+    )
+    allow_user_downgrade_of_dealbreakers: bool = Field(
+        default=False,
+        description=(
+            "Safety bound for user severity_overrides (audit AD-3a). When False "
+            "(default), a user override may not downgrade a deal-breaker finding "
+            "(one currently at P0 or P1) below the P1 floor. When True, such a "
+            "downgrade is permitted but is still CLAMPED to P1 — never below — so "
+            "a genuine deal-breaker can never be silenced. A tamper/integrity "
+            "finding is never downgradable in either mode. Escalations are always "
+            "allowed, and non-deal-breaker findings (P2/P3) can be freely "
+            "re-ranked regardless of this flag."
+        ),
     )
 
 

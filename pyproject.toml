@@ -32,6 +32,7 @@ dependencies = [
     "pydantic>=2.0",
     "openpyxl>=3.1.3",
     "networkx>=3.0",
+    "numpy>=1.24",
     "rapidfuzz>=3.0",
     "markitdown[docx,xlsx,pptx]>=0.1",
     "xlrd>=2.0",
@@ -39,6 +40,7 @@ dependencies = [
     "click>=8.0",
     "rich>=13.0",
     "prompt-toolkit>=3.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
@@ -83,6 +85,12 @@ select = ["E", "F", "I", "N", "UP", "B", "SIM", "TCH"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+# Per-test timeout (pytest-timeout). A unit test must never block on a real
+# network/SDK/subprocess call; the "thread" method interrupts even C-level
+# blocking I/O so a transient SDK-session stall can't wedge CI indefinitely.
+# e2e/eval tests legitimately run longer — override with @pytest.mark.timeout.
+timeout = 120
+timeout_method = "thread"
 markers = [
     "e2e: end-to-end tests (require API key, slow)",
     "eval: agent quality evaluation tests (require API key)",

@@ -18,6 +18,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from dd_agents.reporting.recommendation_templates import generate_recommendations
+from dd_agents.reporting.severity_resolver import recalibration_cap
 from dd_agents.reporting.verdict import compute_verdict, generate_executive_takeaways
 from dd_agents.utils.constants import (
     SEVERITY_ORDER,
@@ -67,45 +68,9 @@ _NOISE_PATTERNS: list[str] = [
 # Post-hoc severity recalibration — deterministic rules for known false-positive patterns
 # ---------------------------------------------------------------------------
 
-_RECALIBRATION_RULES: list[dict[str, object]] = [
-    {
-        "name": "competitor_only_coc",
-        "max_severity": "P3",
-        "title_patterns": ["competitor"],
-        "text_patterns": ["change of control", "change-of-control", " coc ", "coc ", "coc_"],
-        "require_all": True,
-        "reason": "Competitor-only CoC: buyer rarely competes with target's customers",
-    },
-    {
-        "name": "auditor_independence",
-        "max_severity": "P2",
-        "text_patterns": ["auditor independence", "professional independence", "independence requirements"],
-        "require_all": False,
-        "reason": "Standard auditor/professional independence clause",
-    },
-    {
-        "name": "transaction_fee",
-        "max_severity": "P1",
-        "text_patterns": ["transaction fee", "management fee", "advisory fee"],
-        "require_all": False,
-        "reason": "Transaction/advisory fee: known cost, not structural deal-blocker",
-    },
-    {
-        "name": "tfc_cap",
-        "max_severity": "P2",
-        "text_patterns": ["termination for convenience", "terminate without cause"],
-        "category_patterns": ["tfc", "convenience_termination"],
-        "require_all": False,
-        "reason": "TfC: valuation concern, not deal-blocking",
-    },
-    {
-        "name": "speculative_language",
-        "max_severity": "P2",
-        "text_patterns": ["may contain", "must be verified", "appears to", "potentially", "cannot confirm"],
-        "require_all": False,
-        "reason": "Speculative/unconfirmed: cap severity until verified",
-    },
-]
+# Recalibration rules now live in reporting.severity_resolver (single home,
+# audit AD-3). Re-exported here so this module's read-path guard and any
+# existing importers keep working unchanged.
 
 # Pattern for stripping leading data-room folder numeric prefixes from safe names
 _DISPLAY_NAME_PREFIX_RE = re.compile(r"^\d+_\d+_")
@@ -1121,55 +1086,30 @@ class ReportDataComputer:
 
     @staticmethod
     def _recalibrate_severity(finding: dict[str, Any]) -> dict[str, Any]:
-        """Apply deterministic severity recalibration rules to a finding.
+        """Apply deterministic severity recalibration to a finding (read-path guard).
 
-        Pattern-matches title, description, and category against known
-        false-positive patterns.  If current severity is more severe than the
-        rule's cap, the finding is downgraded and annotated with an audit trail.
-        When multiple rules match, the mildest cap (highest P-number) wins.
+        Authority for severity is the merge-time resolver
+        (:func:`reporting.severity_resolver.resolve_severity`, audit AD-3). When
+        a finding already carries ``metadata.provenance.severity_source`` it was
+        resolved there and this method MUST NOT touch it again (prevents the old
+        double-downgrade). For legacy/unresolved findings it falls back to the
+        same shared matcher so behaviour is unchanged.
         """
+        provenance = finding.get("metadata", {})
+        if isinstance(provenance, dict):
+            prov = provenance.get("provenance", {})
+            if isinstance(prov, dict) and prov.get("severity_source"):
+                return finding  # already authoritative — read-only guard
+
         current_sev = str(finding.get("severity", SEVERITY_P3))
         if current_sev not in SEVERITY_ORDER:
             return finding
 
-        title_lower = str(finding.get("title", "")).lower()
-        desc_lower = str(finding.get("description", "")).lower()
-        text_combined = f"{title_lower} {desc_lower}"
-        cat_lower = str(finding.get("category", "")).lower()
-
-        best_cap: str | None = None
-        best_reason: str = ""
-
-        for rule in _RECALIBRATION_RULES:
-            max_sev = str(rule.get("max_severity", SEVERITY_P3))
-            require_all = bool(rule.get("require_all", False))
-
-            # Collect which pattern groups are specified and whether they match
-            group_results: list[bool] = []
-
-            title_pats = rule.get("title_patterns")
-            if isinstance(title_pats, list) and title_pats:
-                group_results.append(any(p.lower() in title_lower for p in title_pats))
-
-            text_pats = rule.get("text_patterns")
-            if isinstance(text_pats, list) and text_pats:
-                group_results.append(any(p.lower() in text_combined for p in text_pats))
-
-            cat_pats = rule.get("category_patterns")
-            if isinstance(cat_pats, list) and cat_pats:
-                group_results.append(any(p.lower() in cat_lower for p in cat_pats))
-
-            if not group_results:
-                continue
-
-            matched = all(group_results) if require_all else any(group_results)
-            if not matched:
-                continue
-
-            # This rule matches — check if its cap is milder than current best
-            if best_cap is None or SEVERITY_ORDER.get(max_sev, 3) > SEVERITY_ORDER.get(best_cap, 3):
-                best_cap = max_sev
-                best_reason = str(rule.get("reason", ""))
+        best_cap, best_reason = recalibration_cap(
+            str(finding.get("title", "")),
+            str(finding.get("description", "")),
+            str(finding.get("category", "")),
+        )
 
         if best_cap is None:
             return finding
@@ -1279,9 +1219,18 @@ class ReportDataComputer:
             if not isinstance(gaps, list):
                 gaps = []
 
-            total_findings += len(findings)
+            # Count only material findings — exclude "domain_reviewed_no_issues"
+            # placeholders so the headline total matches the severity breakdown
+            # (which skips them at the severity loop below). The numerical
+            # manifest (N003) remains the authoritative cross-check.
+            counted_findings = [
+                f
+                for f in findings
+                if isinstance(f, dict) and str(f.get("category", "")).lower() != "domain_reviewed_no_issues"
+            ]
+            total_findings += len(counted_findings)
             total_gaps += len(gaps)
-            subject_finding_counts[csn] = len(findings)
+            subject_finding_counts[csn] = len(counted_findings)
 
             # Governance
             gov = data.get("governance_resolution_pct")

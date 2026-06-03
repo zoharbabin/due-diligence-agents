@@ -20,6 +20,8 @@ import logging
 import os  # noqa: TCH003 - used at module level for env var reads
 from typing import TYPE_CHECKING, Any
 
+from dd_agents.agents.personas import DD_LEGAL_ANALYST
+from dd_agents.agents.prompt_constants import NO_FABRICATION
 from dd_agents.models.enums import Confidence
 from dd_agents.models.search import (
     SearchCitation,
@@ -679,7 +681,7 @@ class SearchAnalyzer:
         column_names_list = ", ".join(f'"{col.name}"' for col in self._prompts.columns)
 
         return (
-            "You are a meticulous legal due-diligence analyst reviewing subject contracts.\n\n"
+            DD_LEGAL_ANALYST + " reviewing subject contracts.\n\n"
             "## Critical Requirements\n\n"
             "You MUST answer EVERY question listed below. Do not skip any question.\n"
             f"Your response MUST contain exactly these keys: {column_names_list}.\n"
@@ -965,7 +967,7 @@ class SearchAnalyzer:
                 )
 
         synthesis_system = (
-            "You are a meticulous legal due-diligence analyst resolving conflicting "
+            DD_LEGAL_ANALYST + " resolving conflicting "
             "findings from a chunked document analysis.\n\n"
             "## Rules\n"
             "- Amendments and addenda override base agreements they modify\n"
@@ -973,6 +975,7 @@ class SearchAnalyzer:
             "- Look at the doc_type and citation evidence to determine which answer is correct\n"
             "- Combine partial information from multiple chunks into a unified answer\n"
             "- Preserve ALL relevant citations from chunks that support the winning answer\n"
+            "\n\n" + NO_FABRICATION
         )
 
         synthesis_user = (
@@ -1061,11 +1064,12 @@ class SearchAnalyzer:
         )
 
         validation_system = (
-            "You are a meticulous legal due-diligence analyst performing a follow-up review.\n\n"
+            DD_LEGAL_ANALYST + " performing a follow-up review.\n\n"
             "Previous analysis could NOT find answers to the questions below.\n"
             "Pay special attention to schedules, exhibits, annexes, and definitions sections.\n"
             "Previous analysis did not find answers to these questions — re-examine carefully.\n\n"
             f"## Questions to Answer\n\n{column_descriptions}\n"
+            "\n\n" + NO_FABRICATION
         )
 
         validation_user = f"# Subject: {subject.name}\n\n" + "\n".join(doc_parts)

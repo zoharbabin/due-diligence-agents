@@ -289,3 +289,35 @@ class TestFileAnnotation:
         id2 = file_annotation(kb, "First note", None, TIMESTAMP)
         assert id1 != id2
         assert len(kb.list_articles(ArticleType.ANNOTATION)) == 2
+
+
+def test_clause_article_id_sanitizes_unsafe_category_chars() -> None:
+    """Regression: clause categories with spaces/punctuation must yield a valid
+    KnowledgeArticle id (only alnum/_/-/. allowed). Exposed live when richer
+    findings surfaced categories like 'change of control' into clause compilation.
+    """
+    from dd_agents.knowledge.articles import ArticleType, KnowledgeArticle
+    from dd_agents.knowledge.compiler import _clause_article_id
+
+    for category in [
+        "change of control",
+        "IP Ownership / FTO",
+        "revenue recognition (ASC 606)",
+        "   ",
+    ]:
+        article_id = _clause_article_id(category)
+        # Must construct without raising the id-validator ValueError.
+        art = KnowledgeArticle(
+            id=article_id,
+            article_type=ArticleType.CLAUSE_SUMMARY,
+            title="t",
+            content={},
+            tags=[],
+            created_by="x",
+            updated_by="x",
+        )
+        assert art.id == article_id
+        assert " " not in article_id
+    # Deterministic + collision-free for distinct categories.
+    assert _clause_article_id("change of control") == _clause_article_id("Change Of Control")
+    assert _clause_article_id("data_privacy") != _clause_article_id("change of control")

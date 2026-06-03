@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING, Any
 
 from rich.table import Table
 
+from dd_agents.agents.personas import M_AND_A_LAWYER_SPA, M_AND_A_STRATEGIST
+from dd_agents.agents.prompt_constants import NO_FABRICATION
 from dd_agents.cli_init import DEFAULT_FOCUS_AREAS, VALID_DEAL_TYPES
 
 if TYPE_CHECKING:
@@ -474,6 +476,7 @@ class DataRoomAnalyzer:
             "Do NOT use any tools. Do NOT attempt to read files or browse the filesystem. "
             "All the information you need is provided in the user message below. "
             "Respond with ONLY the JSON object."
+            "\n\n" + NO_FABRICATION
         )
 
     def _build_user_prompt(
@@ -544,9 +547,7 @@ class DataRoomAnalyzer:
 
     def _build_buyer_strategy_system_prompt(self, buyer: str, target: str) -> str:
         return (
-            "You are a senior M&A strategist synthesizing buyer context documents "
-            "into a structured acquisition strategy.\n\n"
-            f"**Buyer**: {buyer}\n"
+            M_AND_A_STRATEGIST + f"**Buyer**: {buyer}\n"
             f"**Target**: {target}\n\n"
             "## Rules\n\n"
             "- Every synergy and risk must cite specific capabilities from the buyer documents.\n"
@@ -570,6 +571,7 @@ class DataRoomAnalyzer:
             "}\n\n"
             "IMPORTANT: Do NOT use any tools. All information you need is provided "
             "in the user message. Respond with ONLY the JSON object."
+            "\n\n" + NO_FABRICATION
         )
 
     def _build_buyer_strategy_prompt(
@@ -623,8 +625,7 @@ class DataRoomAnalyzer:
 
     def _build_spa_system_prompt(self) -> str:
         return (
-            "You are a senior M&A lawyer extracting structured deal terms from a Share Purchase Agreement (SPA).\n\n"
-            "## Your Task\n\n"
+            M_AND_A_LAWYER_SPA + "## Your Task\n\n"
             "Extract the following from the SPA text:\n"
             "1. **Purchase price** and structure (cash, stock, earnout)\n"
             "2. **Payment waterfall** mechanics (debt repayment, expenses, escrow)\n"
@@ -644,6 +645,7 @@ class DataRoomAnalyzer:
             "}\n\n"
             "IMPORTANT: Do NOT use any tools. All information you need is provided "
             "in the user message. Respond with ONLY the JSON object."
+            "\n\n" + NO_FABRICATION
         )
 
     def _build_spa_extraction_prompt(

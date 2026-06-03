@@ -12,6 +12,21 @@ import pytest
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Exempt legitimately-long tiers from the default per-test timeout.
+
+    ``pyproject.toml`` sets ``timeout = 120`` so a transient SDK/network/subprocess
+    stall can never wedge a unit-test run indefinitely. But ``e2e``/``eval``/``slow``
+    tests (e.g. a full 9-agent pipeline run) legitimately exceed that, so clear the
+    timeout for them unless they set their own ``@pytest.mark.timeout`` override.
+    """
+    long_markers = {"e2e", "eval", "slow", "local"}
+    for item in items:
+        marks = {m.name for m in item.iter_markers()}
+        if marks & long_markers and item.get_closest_marker("timeout") is None:
+            item.add_marker(pytest.mark.timeout(0))
+
+
 # ---------------------------------------------------------------------------
 # Config fixtures
 # ---------------------------------------------------------------------------

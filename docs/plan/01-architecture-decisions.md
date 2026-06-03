@@ -273,3 +273,112 @@ async def run_pipeline(project_dir: Path, resume: bool = False):
 - GLM-OCR adds ~1.5 GB model download on first use (cached thereafter)
 - Claude vision incurs API cost but only triggers on files where all local methods fail
 - Shared constants and helpers (`_constants.py`, `_helpers.py`) eliminate duplication across 4 extraction modules
+
+---
+
+## Agent-Prompt Architecture Decisions (AD-1 .. AD-5)
+
+These five decisions come from the agent-prompt audit and govern how agent
+prompts are customized, kept safe, and made auditable. They use the `AD-N`
+labels referenced throughout the source (e.g. `severity_resolver.py`,
+`customization/loader.py`).
+
+### AD-1: One Customization Format, One Merge Rule
+
+**Status**: Accepted
+
+**Context**: Per-agent customization could plausibly be expressed in several
+overlapping ways (inline config, markdown files, profiles), and each layer could
+invent its own merge semantics. That path leads to a combinatorial, untestable
+set of "who wins" rules.
+
+**Decision**: There is exactly one merge rule, applied lowest-to-highest:
+built-in default → `extends` profile chain → `dd-config/agents/{agent}.md` →
+`deal-config.json`. Scalars are last-writer-wins, lists concatenate-and-dedup,
+text concatenates, maps merge key-by-key. Implemented once in
+`customization/loader.py` (`resolve_chain`, `_merge`).
+
+**Rationale**: A single deterministic fold is testable and predictable. The same
+`AgentCustomization` shape backs both the inline and markdown forms, so they
+compose without special cases.
+
+### AD-2: Non-Removable Safety Floor
+
+**Status**: Accepted
+
+**Context**: If safety rules (citation mandate, anti-fabrication,
+untrusted-document handling, anti-sub-agent constraints) were an overridable
+prompt method, a customization layer could weaken or delete them.
+
+**Decision**: The safety floor is an enumerated block assembled by
+`assemble_safety_floor()` in `agents/prompt_constants.py` and concatenated
+**last** — after all user customization — by the prompt assembler, not by an
+overridable method. The user contract is documented verbatim: "You can add
+guidance and adjust focus and severity. You cannot remove a safety rule — those
+are always enforced." A deny-list (`SAFETY_FLOOR_NEGATION_PATTERNS`) additionally
+rejects customization text that attempts to negate the floor, enforced at load
+time and by `dd-agents agents validate`.
+
+**Rationale**: Mechanical position (concatenated last by the builder) is the only
+reliable enforcement; prose "MUST" has no power (see ADR-01). The deny-list closes
+the residual gap where editable text trails the floor.
+
+### AD-3: Single Severity Authority (with AD-3a bound)
+
+**Status**: Accepted
+
+**Context**: A finding's severity was decided in up to four uncoordinated places
+(LLM assignment, prompt-time hints, post-merge recalibration, an unused
+executive-synthesis override), producing unpredictable final values.
+
+**Decision**: `resolve_severity()` in `reporting/severity_resolver.py` is the
+single deterministic authority, run once in the merge write path, in a fixed
+order where later stages have higher authority: LLM → recalibration (down-only) →
+user override. Each stage records a `severity_source` and appends to an auditable
+`severity_chain`.
+
+**AD-3a (the bound)**: A user severity override may always escalate. It may
+**downgrade** a P0 dealbreaker only when `forensic_dd.specialists.
+allow_user_downgrade_of_dealbreakers` is true, and even then never below P1.
+Tamper / prompt-injection / document-integrity findings can never be downgraded
+by a user override.
+
+**Rationale**: One ordered pure function makes severity reproducible and
+explainable; the bound keeps user control from silently suppressing genuine
+dealbreakers or integrity findings.
+
+### AD-4: Output Language Is a First-Class Config Field
+
+**Status**: Accepted
+
+**Context**: Data rooms are frequently multilingual, but finding prose needs to
+be readable by the deal team, and verbatim quotes must stay in the original
+language for citation integrity.
+
+**Decision**: `deal.output_language` (`DealInfo` in `models/config.py`, default
+`en`) controls the language of finding descriptions only. Agents read source
+documents in any language and quote verbatim in the original; they write
+descriptions in the configured language.
+
+**Rationale**: Separating prose language from quote language preserves citation
+fidelity while making reports readable for the target audience.
+
+### AD-5: `dd-config/` Markdown Format
+
+**Status**: Accepted
+
+**Context**: A non-developer M&A analyst needs to build reusable, reviewable
+agent personas without editing JSON or Python.
+
+**Decision**: Customization can live in a `dd-config/agents/{agent}.md` folder of
+YAML-front-matter + markdown files, with a fixed front-matter key set
+(`agent`, `status`, `model_profile`, `extends`) and exactly four `##` headings
+(`Persona (replaces default)`, `Additional Focus Areas`, `Additional
+Instructions`, `Severity Overrides`). A bundled profile library
+(`customization/profiles/`) provides deal-shape starting points reachable via
+`extends`. Parsing and resolution are fail-closed in `customization/loader.py`.
+
+**Rationale**: Markdown is git-friendly and human-readable; the fixed schema
+keeps files lintable (`dd-agents agents validate`) and folds cleanly into the
+AD-1 merge rule. Absence of `dd-config/` leaves the pipeline unchanged
+(back-compatible, opt-in).

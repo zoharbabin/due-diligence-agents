@@ -317,31 +317,40 @@ class TestJsonOutputConstraint:
         tmp_run_dir: Path,
         run_id: str,
     ) -> None:
-        """The CRITICAL CONSTRAINTS block (built in _spawn_agent) references
-        JSON_OUTPUT_CONSTRAINT for constraint #5.  Verify the constant contains
-        the expected rules and that _spawn_agent references it."""
-        import inspect
+        """The JSON-only rule reaches the agent via the safety floor (AD-2).
 
-        from dd_agents.agents.prompt_constants import JSON_OUTPUT_CONSTRAINT
+        ``JSON_OUTPUT_CONSTRAINT`` is embedded in ``CRITICAL_CONSTRAINTS``, which
+        the non-removable safety floor includes; ``_spawn_agent`` appends the
+        floor. Verify the rule is present in the assembled floor."""
+        from dd_agents.agents.prompt_constants import (
+            CRITICAL_CONSTRAINTS,
+            JSON_OUTPUT_CONSTRAINT,
+            assemble_safety_floor,
+        )
 
         # The constant itself must contain the JSON output rules
         assert "valid JSON object" in JSON_OUTPUT_CONSTRAINT
         assert "markdown fences" in JSON_OUTPUT_CONSTRAINT or "```json" in JSON_OUTPUT_CONSTRAINT
 
-        # _spawn_agent must reference the shared constant
-        src = inspect.getsource(BaseAgentRunner._spawn_agent)
-        assert "JSON_OUTPUT_CONSTRAINT" in src
+        # JSON_OUTPUT_CONSTRAINT is embedded in CRITICAL_CONSTRAINTS...
+        assert JSON_OUTPUT_CONSTRAINT in CRITICAL_CONSTRAINTS
+        # ...and the assembled floor (appended by _spawn_agent) carries it.
+        assert "single valid JSON object" in assemble_safety_floor("legal")
 
     def test_constraint_5_is_present(self) -> None:
-        """Constraint #5 references JSON_OUTPUT_CONSTRAINT in _spawn_agent."""
+        """The JSON-only constraint is present in the assembled safety floor."""
         import inspect
 
-        from dd_agents.agents.prompt_constants import JSON_OUTPUT_CONSTRAINT
+        from dd_agents.agents.prompt_constants import (
+            JSON_OUTPUT_CONSTRAINT,
+            assemble_safety_floor,
+        )
 
+        # _spawn_agent assembles the floor (which embeds the JSON constraint).
         src = inspect.getsource(BaseAgentRunner._spawn_agent)
-        assert "JSON_OUTPUT_CONSTRAINT" in src
-        # Verify the constant itself has the expected content
+        assert "assemble_safety_floor" in src
         assert "MUST be a single valid JSON object" in JSON_OUTPUT_CONSTRAINT
+        assert "MUST be a single valid JSON object" in assemble_safety_floor("legal")
 
 
 # ===========================================================================

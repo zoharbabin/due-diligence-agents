@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 # ---------------------------------------------------------------------------
 
 _MODEL_PRICING: dict[str, dict[str, float]] = {
+    "claude-opus-4-8": {"input": 15.0, "output": 75.0},
     "claude-opus-4-6": {"input": 15.0, "output": 75.0},
     "claude-sonnet-4-6": {"input": 3.0, "output": 15.0},
     "claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.0},
@@ -85,7 +86,7 @@ def get_model_profiles() -> dict[str, ModelProfile]:
             name="premium",
             specialist_model="claude-sonnet-4-6",
             judge_model="claude-sonnet-4-6",
-            executive_synthesis_model="claude-opus-4-6",
+            executive_synthesis_model="claude-opus-4-8",
             red_flag_scanner_model="claude-sonnet-4-6",
         ),
     }

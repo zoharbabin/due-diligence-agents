@@ -8,21 +8,23 @@ deal. There are three ways to create one.
 
 ## Minimal Config (Required Fields Only)
 
-Only 4 fields are required to run the pipeline:
+The smallest config that passes `dd-agents validate` and runs the pipeline:
 
 ```json
 {
   "config_version": "1.0.0",
   "buyer": { "name": "Acme Corp" },
   "target": { "name": "Target Inc" },
-  "deal": { "type": "acquisition" },
+  "deal": { "type": "acquisition", "focus_areas": ["change_of_control", "ip_ownership"] },
   "data_room": { "path": "./data_room" }
 }
 ```
 
-Everything else is optional and enhances analysis when provided. The pipeline will
-use defaults for all unspecified fields (Judge enabled, standard model profile,
-full execution mode, all 9 specialists active).
+`deal.focus_areas` must list at least one focus area (it steers the analysis);
+the other top-level keys above are all required. Everything else is optional and
+enhances analysis when provided. The pipeline uses defaults for all unspecified
+fields (Judge enabled, standard model profile, full execution mode, all 9
+specialists active).
 
 ## Auto-Generation with AI
 
@@ -269,6 +271,11 @@ Used by agents for organizational risk analysis and key-person dependency detect
 `customer_concentration`, `auto_renewal_terms`, `data_privacy_compliance`,
 `liability_caps`, `non_compete_agreements`.
 
+`deal.output_language` is the ISO language code for finding prose (default
+`en`). Agents read source documents in any language and quote verbatim in the
+original; this field controls only the language the finding descriptions are
+written in. See `DealInfo` in `models/config.py`.
+
 ### execution
 
 - `execution_mode`: `full` (default) or `incremental` (reuses prior extraction)
@@ -312,7 +319,7 @@ Text extraction (non-scanned PDFs) uses a separate chain: pymupdf → pdftotext 
 Controls which Claude models are used:
 
 - `profile`: preset model tier — see table below
-- `overrides`: per-agent model IDs, e.g. `{"legal": "claude-opus-4-6"}`
+- `overrides`: per-agent model IDs, e.g. `{"legal": "claude-opus-4-8"}`
 - `budget_limit_usd`: optional hard spending cap per run
 
 Model assignments per profile:
@@ -336,13 +343,42 @@ Controls the forensic DD specialist agents:
 
 - `enabled`: enable/disable the entire forensic DD pipeline (default: true)
 - `specialists.disabled`: list of agent names to skip (e.g. `["hr", "esg"]`)
-- `specialists.customizations`: per-agent overrides with additional focus areas or instructions, keyed by agent name
+- `specialists.customizations`: per-agent overrides keyed by agent name (see below)
+- `specialists.allow_user_downgrade_of_dealbreakers`: safety bound (default: false). When false, a user `severity_overrides` entry may not lower a P0 dealbreaker below P1, and tamper/injection findings can never be downgraded (audit AD-3a). Set true to permit downgrading P0 dealbreakers (still never below P1).
 - `cross_domain.enabled`: enable neurosymbolic cross-domain analysis (default: true)
 - `cross_domain.max_pass2_budget_usd`: maximum spend on cross-domain pass-2 agent calls (default: 5.0)
-- `cross_domain.min_trigger_severity`: minimum finding severity to trigger cross-domain verification — `P0`, `P1`, `P2`, or `P3` (default: `P1`)
+- `cross_domain.min_trigger_severity`: minimum finding severity to trigger cross-domain verification — `P0`, `P1`, `P2`, or `P3` (default: `P2`)
 - `cross_domain.disabled_rules`: list of trigger rule IDs to skip (default: `[]`)
 
-Available specialist names: `legal`, `finance`, `commercial`, `producttech`, `cybersecurity`, `hr`, `tax`, `regulatory`, `esg`. External agents registered via pip entry-points are also configurable here.
+Available specialist names: `legal`, `finance`, `commercial`, `producttech`, `cybersecurity`, `hr`, `tax`, `regulatory`, `esg`. External agents registered via pip entry-points are also configurable here. Run `dd-agents agents list` to see the live roster.
+
+Each entry under `specialists.customizations` is keyed by agent name and accepts
+the `AgentCustomization` fields (`models/config.py`):
+
+- `extra_focus_areas`: list of focus areas **appended** to the agent's defaults
+- `extra_instructions`: free text **appended** to the agent's specialist focus
+- `severity_overrides`: map of finding category → target severity (`P0`–`P3`), e.g. `{"change_of_control": "P1"}`. Subject to the dealbreaker bound above.
+- `persona`: **replaces** the agent's built-in persona when set
+
+```json
+"specialists": {
+  "disabled": ["hr"],
+  "allow_user_downgrade_of_dealbreakers": false,
+  "customizations": {
+    "legal": {
+      "extra_focus_areas": ["most-favored-nation clauses"],
+      "extra_instructions": "Prioritize change-of-control consent on top-10 customers.",
+      "severity_overrides": {"change_of_control": "P1"}
+    }
+  }
+}
+```
+
+The same customization can be expressed as version-controlled markdown files in
+a `dd-config/` folder, with a bundled profile library and an `extends` chain.
+See [Agent Customization](../agent-customization.md). The markdown and inline
+forms compose under one merge rule (inline `deal-config.json` has highest
+precedence).
 
 ### precedence (optional)
 

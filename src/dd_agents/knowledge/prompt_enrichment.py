@@ -67,12 +67,30 @@ AGENT_DOMAIN_CATEGORIES: dict[str, set[str]] = {
     },
 }
 
-# Sub-budget proportions for max_chars allocation.
+# Sub-budget proportions for max_chars allocation (audit §3.4).
+# Rationale: entity profiles are the most decision-relevant prior-run context
+# (40%); finding lineage shows how risks evolved across runs (20%); known
+# contradictions and document relationships are equally weighted cross-checks
+# (15% each); prior free-form insights are the lowest-signal tail (10%).
+# To retune, change the proportions and re-run the enrichment evals.
 _BUDGET_ENTITY_PROFILES = 0.40
 _BUDGET_LINEAGE = 0.20
 _BUDGET_CONTRADICTIONS = 0.15
 _BUDGET_DOC_RELATIONSHIPS = 0.15
 _BUDGET_PRIOR_INSIGHTS = 0.10
+
+# Proportions must sum to 1.0 — guards against a retune silently dropping budget.
+assert (
+    abs(
+        _BUDGET_ENTITY_PROFILES
+        + _BUDGET_LINEAGE
+        + _BUDGET_CONTRADICTIONS
+        + _BUDGET_DOC_RELATIONSHIPS
+        + _BUDGET_PRIOR_INSIGHTS
+        - 1.0
+    )
+    < 1e-9
+)
 
 # Minimum total chars to return (below this, return None).
 _MIN_USEFUL_CHARS = 100

@@ -162,9 +162,9 @@ class RunManager:
         framework_version = "unknown"
 
         if deal_config:
-            import hashlib
+            from dd_agents.persistence.provenance import compute_config_hash
 
-            config_hash = hashlib.sha256(json.dumps(deal_config, sort_keys=True).encode()).hexdigest()
+            config_hash = compute_config_hash(deal_config)
             execution = deal_config.get("execution", {})
             raw_mode = execution.get("execution_mode", "full")
             exec_mode = (

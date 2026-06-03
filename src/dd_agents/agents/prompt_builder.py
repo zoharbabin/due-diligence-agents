@@ -16,6 +16,13 @@ from dd_agents.agents.prompt_constants import (
     JSON_OUTPUT_CONSTRAINT,
     TFC_SEVERITY_CALIBRATION,
 )
+from dd_agents.agents.severity_thresholds import (
+    ARR_MISMATCH_P1_PCT,
+    ARR_MISMATCH_P2_PCT,
+    COC_AUTOTERM_REVENUE_PCT,
+    COC_REVENUE_PCT,
+    TFC_REVENUE_PCT,
+)
 from dd_agents.models.enums import AgentName
 from dd_agents.utils.constants import SEVERITY_P0, SEVERITY_P1
 
@@ -47,9 +54,9 @@ SPECIALIST_FOCUS: dict[AgentType, str] = {
         "Write gap files for EVERY missing document detected.\n\n"
         "SEVERITY CALIBRATION (Legal):\n"
         "- CoC notification-only = P2 (routine administrative step)\n"
-        "- CoC consent-required affecting >5% revenue = P1\n"
+        f"- CoC consent-required affecting >{COC_REVENUE_PCT}% revenue = P1\n"
         "- CoC competitor-only restriction = P3 (buyer rarely competes with customers)\n"
-        "- CoC auto-terminate, no cure, >20% revenue = P0\n"
+        f"- CoC auto-terminate, no cure, >{COC_AUTOTERM_REVENUE_PCT}% revenue = P0\n"
         "- CoC termination-right with >=60d cure = P1 (not P0)\n" + TFC_SEVERITY_CALIBRATION + "\n"
         "- Termination for Cause (standard, mutual) = P3\n"
         "- Standard non-compete with reasonable scope = P3\n"
@@ -74,7 +81,7 @@ SPECIALIST_FOCUS: dict[AgentType, str] = {
     ),
     AgentType.FINANCE: (
         "Cross-reference every subject's contract values against the Revenue Cube and any "
-        "financial reference data. Flag ARR mismatches >5%. Check discount levels against "
+        f"financial reference data. Flag ARR mismatches >{ARR_MISMATCH_P1_PCT}%. Check discount levels against "
         "Pricing Guidelines. Identify one-time fees incorrectly counted as recurring ARR. "
         "Flag minimum commitment shortfalls. IMPORTANT: You MUST analyze ALL subjects, not "
         "just those with dedicated financial documents. For subjects with only contract files, "
@@ -89,7 +96,7 @@ SPECIALIST_FOCUS: dict[AgentType, str] = {
         "documentation, unexplained revenue variances. Write gap files.\n\n"
         "SEVERITY CALIBRATION (Finance):\n"
         "- Intercompany payable/receivable in full acquisitions = P3 (eliminated at closing)\n"
-        "- ARR mismatch 2-5% = P2; ARR mismatch >5% = P1\n"
+        f"- ARR mismatch {ARR_MISMATCH_P2_PCT}-{ARR_MISMATCH_P1_PCT}% = P2; ARR mismatch >{ARR_MISMATCH_P1_PCT}% = P1\n"
         "- One-time fee miscounted as recurring (>$100K) = P1\n"
         "- Standard discount within guidelines = P3\n"
         "- Missing financial audit for trailing twelve months = P1\n\n"
@@ -124,7 +131,7 @@ SPECIALIST_FOCUS: dict[AgentType, str] = {
         "Write gap files for EVERY missing document detected.\n\n"
         "SEVERITY CALIBRATION (Commercial):\n"
         "- Standard renewal approaching (<90 days) = P2\n"
-        "- Auto-renew with termination-for-convenience on >10% revenue customer = P1\n"
+        f"- Auto-renew with termination-for-convenience on >{TFC_REVENUE_PCT}% revenue customer = P1\n"
         "- Expired contract still in operation = P1\n"
         "- Standard volume discount = P3\n"
         "- Customer churn risk with active replacement options = P2\n" + TFC_SEVERITY_CALIBRATION + "\n\n"
@@ -386,27 +393,49 @@ def _get_agent_customization(
     return None
 
 
-def apply_deal_config_customizations(
+def _strip_trailing_citation_mandate(text: str) -> str:
+    """Remove a trailing ``### MANDATORY Citation Requirements`` block.
+
+    Each agent's ``domain_robustness()`` text ends with the citation mandate
+    (via ``build_citation_mandate``). Since the non-removable safety floor
+    appends the authoritative, domain-specific mandate last, injecting the
+    domain-guidance copy too duplicated the block. Trim it here so the prompt
+    carries the mandate exactly once (the floor's copy). The descriptor method
+    itself is unchanged (introspection/tests still see the full text).
+    """
+    marker = "### MANDATORY Citation Requirements"
+    idx = text.find(marker)
+    if idx == -1:
+        return text
+    return text[:idx].rstrip()
+
+
+def render_customization(
     base_prompt: str,
-    deal_config: DealConfig | None,
+    cust: AgentCustomization | None,
     agent_name: str,
 ) -> str:
-    """Apply deal-config customizations to a specialist prompt.
+    """Append a resolved :class:`AgentCustomization`'s content to *base_prompt*.
 
-    Customizations are read from
-    ``deal_config.forensic_dd.specialists.customizations[agent_name]``.
+    Pure renderer (no config lookup). Used by both the deal-config path and the
+    ``dd-config/`` markdown path, so the two surfaces render identically.
 
-    - ``extra_focus_areas``: appended as a bullet list under a new heading.
-    - ``extra_instructions``: appended verbatim after the focus areas.
+    - ``persona``: prepended PERSONA OVERRIDE section (safety floor still last).
+    - ``extra_focus_areas``: appended as a bullet list.
+    - ``extra_instructions``: appended verbatim.
     - ``severity_overrides``: injected as calibration rules.
 
-    Returns *base_prompt* unchanged when no customizations exist.
+    Returns *base_prompt* unchanged when *cust* is ``None`` or empty.
     """
-    cust = _get_agent_customization(deal_config, agent_name)
     if cust is None:
         return base_prompt
 
     additions: list[str] = []
+
+    if cust.persona:
+        # KISS persona replace: prepend a PERSONA OVERRIDE section. The safety
+        # floor still appends last (see build_specialist_prompt), so this is safe.
+        additions.append(f"## PERSONA OVERRIDE ({agent_name})\n\n{cust.persona}")
 
     if cust.extra_focus_areas:
         lines = [f"## ADDITIONAL FOCUS AREAS ({agent_name})\n"]
@@ -428,6 +457,57 @@ def apply_deal_config_customizations(
         return base_prompt
 
     return base_prompt + "\n\n---\n\n" + "\n\n---\n\n".join(additions)
+
+
+def apply_deal_config_customizations(
+    base_prompt: str,
+    deal_config: DealConfig | None,
+    agent_name: str,
+) -> str:
+    """Apply *deal_config* inline customizations to a specialist prompt.
+
+    Back-compat wrapper: reads
+    ``deal_config.forensic_dd.specialists.customizations[agent_name]`` and
+    renders it via :func:`render_customization`. The ``dd-config/`` markdown
+    path is applied separately in :meth:`PromptBuilder.build_specialist_prompt`
+    via :func:`resolve_agent_customization`.
+    """
+    return render_customization(base_prompt, _get_agent_customization(deal_config, agent_name), agent_name)
+
+
+def resolve_agent_customization(
+    project_dir: Path | None,
+    deal_config: DealConfig | None,
+    agent_name: str,
+) -> AgentCustomization | None:
+    """Fold ``dd-config/`` markdown + deal-config inline into one customization.
+
+    This is the single entry point that makes the documented ``dd-config/``
+    workflow actually reach the assembled prompt (audit fix). Layer order
+    (lowest→highest precedence): bundled profile ``extends`` chain →
+    ``{project_dir}/dd-config/agents/{agent}.md`` → deal-config inline
+    ``customizations[agent]``. Returns ``None`` when nothing customizes *agent*.
+
+    Falls back to the deal-config-only customization if the loader is
+    unavailable or errors, so a malformed ``dd-config/`` never breaks a run.
+    """
+    deal_cust = _get_agent_customization(deal_config, agent_name)
+    if project_dir is None:
+        return deal_cust
+
+    dd_config_dir = Path(project_dir) / "dd-config"
+    if not dd_config_dir.is_dir():
+        return deal_cust  # no dd-config/ → inline-only (back-compat)
+
+    try:
+        from dd_agents.customization.loader import resolve_chain
+
+        profiles_dir = Path(__file__).parent.parent / "customization" / "profiles"
+        resolved = resolve_chain(agent_name, dd_config_dir, deal_cust, profiles_dir)
+        return resolved.customization
+    except Exception:  # noqa: BLE001 — never let customization break prompt assembly
+        logger.warning("dd-config resolution failed for agent '%s'; using inline only", agent_name, exc_info=True)
+        return deal_cust
 
 
 # ---------------------------------------------------------------------------
@@ -452,6 +532,13 @@ class PromptBuilder:
         self.run_id = run_id
         self.prompt_version = self.PROMPT_VERSION
         self.max_listed_files: int = self.MAX_LISTED_FILES
+        # Build-time preamble cache (audit §4.1a).  The static preamble
+        # (role + deal context) is identical across batches in a run — only
+        # the subject list changes — so memoize it per (agent, config) on the
+        # instance.  Byte-identity is preserved because the cached string is
+        # the exact output of the deterministic builder for the same inputs;
+        # per-call layers (customizations, safety floor) still apply unchanged.
+        self._role_section_cache: dict[str, str] = {}
 
     # ------------------------------------------------------------------
     # Specialist prompt
@@ -533,8 +620,8 @@ class PromptBuilder:
             "### P0 — Genuine Deal-Stoppers (max 2-3 per entity)",
             "Reserved for issues that would cause a reasonable acquirer to walk away or ",
             "fundamentally renegotiate the deal price.",
-            "Examples: undisclosed fraud, regulatory prohibition, auto-termination of >20% "
-            "revenue on CoC with no cure, material IP ownership dispute.",
+            f"Examples: undisclosed fraud, regulatory prohibition, auto-termination of "
+            f">{COC_AUTOTERM_REVENUE_PCT}% revenue on CoC with no cure, material IP ownership dispute.",
             "Anti-examples: routine CoC notifications, standard consent requirements, approaching "
             "renewal deadlines, TfC clauses (valuation concern, not deal-stopper), "
             "competitor-only CoC restrictions (buyer rarely competes with customers).",
@@ -542,7 +629,8 @@ class PromptBuilder:
             "### P1 — Material Risk Requiring Pre-Close Negotiation",
             "Issues that require specific deal protection (indemnity, escrow, price adjustment) "
             "but do not fundamentally threaten the deal.",
-            "Examples: consent-required assignment for >5% revenue customers, ARR mismatch >5%, "
+            f"Examples: consent-required assignment for >{COC_REVENUE_PCT}% revenue customers, "
+            f"ARR mismatch >{ARR_MISMATCH_P1_PCT}%, "
             "missing DPA for EU data, expired security certifications.",
             "",
             "### P2 — Moderate Risk, Post-Close Remediation",
@@ -669,8 +757,15 @@ class PromptBuilder:
         subjects = self._coerce_subjects(subjects)
         sections: list[str] = []
 
-        # 1. Role & deal context
-        sections.append(self._build_role_section(agent_name, deal_config))
+        # Section ordering is intentional (audit §3.2, highest-recall tail):
+        # the subject/file listing sits in the MIDDLE (section 2) while the
+        # severity rubric (5b), output format (6), and citation/robustness
+        # mandates (8) come LAST so the model reads them most recently. The
+        # non-removable safety floor is appended after all sections (below) and
+        # must remain the true last layer — do not move it.
+        # 1. Role & deal context (memoized per agent+config — audit §4.1a;
+        #    byte-identical to the un-cached build for the same inputs).
+        sections.append(self._cached_role_section(agent_name, deal_config))
 
         # 2. Subject list (with optional precedence annotations)
         sections.append(self._build_subject_list(agent_name, subjects, file_precedence))
@@ -699,10 +794,28 @@ class PromptBuilder:
             from dd_agents.agents.registry import AgentRegistry
 
             descriptor = AgentRegistry.get(agent_name)
-            # Append registry specialist_focus only when it adds content
-            # beyond what SPECIALIST_FOCUS already provides.
-            if descriptor.citation_examples:
-                sections.append(f"## CITATION EXAMPLES ({agent_name})\n\n{descriptor.citation_examples}")
+            # NOTE: descriptor.citation_examples is the citation mandate; it is
+            # NOT injected as its own section here because the non-removable
+            # safety floor (appended last) already carries the authoritative,
+            # domain-specific mandate. Injecting it here too produced the
+            # citation block 3x in the assembled prompt (audit finding). The
+            # field is retained on the descriptor for introspection/describe.
+
+            # 5a-bis. Canonical focus areas (§3.1). The descriptor carries the
+            # authoritative focus_areas list; surface it (humanized) so the agent
+            # references the canonical taxonomy alongside the hand-written
+            # SPECIALIST_FOCUS sentence above.
+            if descriptor.focus_areas:
+                focus_lines = "\n".join(f"- {area.replace('_', ' ')}" for area in descriptor.focus_areas)
+                sections.append(f"## YOUR FOCUS AREAS (canonical)\n\n{focus_lines}")
+
+            # 5b. Domain-specific extraction guidance (descriptor field was captured at
+            # registration but never injected — audit §2.2). This carries each agent's
+            # keyword/extraction playbook (e.g. Legal CoC subtypes) into the prompt.
+            # Strip the trailing citation mandate the domain_robustness text ends
+            # with — the safety floor is the single authoritative copy (dedup).
+            if descriptor.domain_robustness:
+                sections.append(_strip_trailing_citation_mandate(descriptor.domain_robustness))
         except KeyError:
             pass  # Unknown agent — no descriptor supplement
 
@@ -739,9 +852,21 @@ class PromptBuilder:
             sections[1] = self._build_subject_list(agent_name, subjects, file_precedence)
             prompt = "\n\n---\n\n".join(sections)
 
-        # Apply deal-config customizations (extra focus areas, instructions,
-        # severity overrides) as a final pass over the assembled prompt.
-        prompt = apply_deal_config_customizations(prompt, deal_config, agent_name)
+        # Apply customizations (persona / focus / instructions / severity) as a
+        # pass over the assembled prompt. This folds the ``dd-config/`` markdown
+        # path (profiles via ``extends`` → dd-config/agents/{agent}.md) together
+        # with the deal-config inline form, so BOTH surfaces reach the prompt.
+        # User content is appended here, so the safety floor (next) lands
+        # structurally AFTER it and cannot be overridden. NOTE: the truncation
+        # guard above re-joins only ``sections`` — the floor is appended
+        # afterwards and is therefore outside the truncation boundary.
+        resolved_cust = resolve_agent_customization(self.project_dir, deal_config, agent_name)
+        prompt = render_customization(prompt, resolved_cust, agent_name)
+
+        # Non-removable safety floor — TRUE last layer (audit AD-2 / §7.1).
+        from dd_agents.agents.prompt_constants import assemble_safety_floor
+
+        prompt = f"{prompt}\n\n---\n\n{assemble_safety_floor(agent_name)}"
 
         return prompt
 
@@ -1220,6 +1345,32 @@ class PromptBuilder:
     # Internal helpers
     # ------------------------------------------------------------------
 
+    def _cached_role_section(self, agent_name: str, deal_config: DealConfig | None) -> str:
+        """Return the role/deal-context section, memoized per (agent, config).
+
+        Build-time preamble cache (audit §4.1a): within a run the static
+        preamble does not vary across batches, so the deterministic output of
+        :meth:`_build_role_section` is cached on the instance.  The cache key
+        folds the agent name, run id, and a stable digest of the deal config so
+        distinct configs never collide.  The returned string is byte-identical
+        to calling :meth:`_build_role_section` directly.
+        """
+        if deal_config is None:
+            config_key = "none"
+        else:
+            dump = getattr(deal_config, "model_dump_json", None)
+            try:
+                config_key = dump(exclude_none=False) if callable(dump) else repr(deal_config)
+            except Exception:  # noqa: BLE001 — never let cache keying break prompt assembly
+                config_key = repr(deal_config)
+        key = f"{agent_name}\x00{self.run_id}\x00{config_key}"
+        cached = self._role_section_cache.get(key)
+        if cached is not None:
+            return cached
+        built = self._build_role_section(agent_name, deal_config)
+        self._role_section_cache[key] = built
+        return built
+
     def _build_role_section(self, agent_name: str, deal_config: DealConfig | None) -> str:
         lines = [
             f"# {agent_name.upper()} SPECIALIST AGENT",
@@ -1238,6 +1389,15 @@ class PromptBuilder:
                     f"Focus areas: {', '.join(deal_config.deal.focus_areas)}",
                 ]
             )
+            # Output language (audit AD-4): only emit when non-default so the
+            # English-default prompt is byte-unchanged for existing configs.
+            output_language = getattr(deal_config.deal, "output_language", "en")
+            if output_language and output_language != "en":
+                lines.append(
+                    f"Output language: write all finding prose in '{output_language}'. "
+                    "Read source documents in any language and quote verbatim in the "
+                    "original language for citations."
+                )
             if deal_config.target.subsidiaries:
                 lines.append(f"Subsidiaries: {', '.join(deal_config.target.subsidiaries)}")
             if deal_config.buyer_strategy:
@@ -1405,12 +1565,17 @@ class PromptBuilder:
         if not reference_files:
             return "## GLOBAL REFERENCE FILES\n\nNo reference files assigned."
 
+        from dd_agents.agents.prompt_constants import wrap_untrusted
+
         lines = ["## GLOBAL REFERENCE FILES assigned to you", ""]
         for idx, ref in enumerate(reference_files, 1):
+            # The description is derived from document content (untrusted): wrap
+            # it in provenance delimiters so the agent treats it as evidence,
+            # never as instructions (audit §7.1). Path/category stay outside.
             lines.append(
                 f"Reference {idx}: {ref.file_path}\n"
                 f"  Category: {ref.category} / {ref.subcategory}\n"
-                f"  Description: {ref.description}"
+                f"  Description: {wrap_untrusted(ref.description)}"
             )
             if ref.text_path:
                 lines.append(f"  Pre-extracted at: {ref.text_path}")

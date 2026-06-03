@@ -58,8 +58,12 @@ nav:
     - CLI Reference: user-guide/cli-reference.md
     - Troubleshooting: user-guide/troubleshooting.md
   - Guides:
+    - Agent Customization: agent-customization.md
     - Contract Search: search-guide.md
     - Knowledge Architecture: knowledge-architecture.md
+  - Trust & Safety:
+    - System Card: system-card.md
+    - Eval Datasheet: eval-datasheet.md
   - Architecture:
     - Executive Plan: plan/PLAN.md
     - Architecture Decisions: plan/01-architecture-decisions.md
