@@ -1,6 +1,6 @@
 # 01 -- Architecture Decision Records
 
-> **Historical note**: This is a design spec. The SDK version floor is now `>= 0.1.56` (not 0.1.39). The specialist count grew from 4 to 9 via `AgentRegistry`. See `CLAUDE.md` for the current state.
+> **Historical design spec.** Retained for the ADR *rationale* (the WHY). For current specifics the code is authoritative: the SDK floor lives in `pyproject.toml`, the canonical pipeline steps in `orchestrator/steps.py`, and the active agent set in `AgentRegistry` (the specialist count grew from 4 to 9; the former Reporting Lead agent was replaced by `validation/pre_merge.py` in v0.4.0). See `CLAUDE.md` for the current state.
 
 Seven ADRs defining the foundational technical choices for the Due Diligence Agent SDK.
 
@@ -25,13 +25,13 @@ M&A deal activity reached approximately $4.9 trillion in 2025, up 36-40% year-ov
 
 This is the **enforcement paradox** (i.e., the retrospective finding that all 17 quality failures in production were instruction-following failures where the LLM ignored prose-based "MUST"/"BLOCKING" constraints — the LLM that must follow the rules is also the entity that decides whether to follow them). Markdown emphasis ("MUST", "BLOCKING", "CRITICAL") has zero enforcement power.
 
-**Decision**: Migrate to `claude-agent-sdk` v0.1.39+ as a standalone Python application. The SDK wraps the Claude Code CLI as a subprocess, providing programmatic control over agent lifecycle while preserving Claude Code's full tool ecosystem (Read, Write, Edit, Bash, Glob, Grep, WebFetch).
+**Decision**: Migrate to `claude-agent-sdk` (see `pyproject.toml` for the pinned floor) as a standalone Python application. The SDK wraps the Claude Code CLI as a subprocess, providing programmatic control over agent lifecycle while preserving Claude Code's full tool ecosystem (Read, Write, Edit, Bash, Glob, Grep, WebFetch).
 
-> **Version enforcement**: `pyproject.toml` pins `claude-agent-sdk >= 0.1.39`. The orchestrator validates the installed SDK version at startup and raises `RuntimeError` if the minimum version is not met. This prevents silent behavioral regressions from older SDK builds.
+> **Version enforcement**: `pyproject.toml` pins the `claude-agent-sdk` minimum version (see that file for the current floor). The orchestrator validates the installed SDK version at startup and raises `RuntimeError` if the minimum version is not met. This prevents silent behavioral regressions from older SDK builds.
 
 **Rationale**:
 
-1. **Control inversion**: Python is the orchestrator, agents are workers. The 35-step pipeline is a Python state machine. Agents cannot skip steps because they do not control the flow.
+1. **Control inversion**: Python is the orchestrator, agents are workers. The pipeline is a Python state machine (see `orchestrator/steps.py` for the canonical step list). Agents cannot skip steps because they do not control the flow.
 2. **Deterministic enforcement**: Validation gates are `if/else` in Python, not "MUST" in markdown. Coverage verification counts files on disk. Schema validation uses Pydantic. Numerical audit re-derives values from source files.
 3. **Hook-enforced boundaries**: PreToolUse hooks block dangerous operations programmatically. Stop hooks prevent agents from finishing before processing all subjects. PostToolUse hooks validate output after every write.
 4. **Focused prompts**: Each agent receives a bounded prompt (< 80K tokens) with only its relevant rules, instead of the full 3,102-line specification. This is well within reliable instruction-following range.
@@ -57,7 +57,7 @@ from claude_agent_sdk import (
 ```
 
 Key SDK constructs used:
-- `query()` for one-shot agent invocations (specialists, Judge, Reporting Lead)
+- `query()` for one-shot agent invocations (specialists, Judge, and the synthesis agents)
 - `ClaudeAgentOptions` for per-agent configuration (tools, hooks, model, budget, cwd)
 - `HookMatcher` for registering PreToolUse, PostToolUse, and Stop hooks
 - `@tool` + `create_sdk_mcp_server()` for in-process custom MCP tools
@@ -131,7 +131,7 @@ Key SDK constructs used:
 
 **Status**: Accepted
 
-**Context**: Each subject's contracts form a governance hierarchy. An MSA governs Order Forms, Amendments modify MSAs, SOWs reference MSAs, etc. The Legal agent builds this graph from explicit text linkages. The orchestrator needs to validate the graph (cycle detection, unreachable nodes, conflict identification) and the Reporting Lead needs to traverse it for the governance_resolved_pct metric.
+**Context**: Each subject's contracts form a governance hierarchy. An MSA governs Order Forms, Amendments modify MSAs, SOWs reference MSAs, etc. The Legal agent builds this graph from explicit text linkages. The orchestrator needs to validate the graph (cycle detection, unreachable nodes, conflict identification) and deterministic pre-merge validation (`validation/pre_merge.py`, which replaced the former Reporting Lead agent in v0.4.0) traverses it for the governance_resolved_pct metric.
 
 At typical scale: 200 subjects x ~3-5 governance edges each = ~600-1,000 edges total.
 
@@ -180,7 +180,7 @@ At typical scale: 200 subjects x ~3-5 governance edges each = ~600-1,000 edges t
 | `SubjectJSON` | agent-prompts.md section 4c | Per-subject agent output |
 | `CoverageManifest` | coverage-manifest.schema.json | Step 17 coverage gate |
 | `AuditEntry` | audit-entry.schema.json | Agent audit logs |
-| `NumericalManifest` | numerical-validation.md section 1 | Step 27 numerical gate |
+| `NumericalManifest` | numerical-validation.md section 1 | Numerical-audit gate (see `orchestrator/steps.py`) |
 | `QualityScores` | quality-score.schema.json | Judge output |
 | `SpotCheck` | quality-score.schema.json (nested) | Judge output |
 | `Contradiction` | quality-score.schema.json (nested) | Judge output |
@@ -210,9 +210,9 @@ At typical scale: 200 subjects x ~3-5 governance edges each = ~600-1,000 edges t
 
 **Status**: Accepted
 
-**Context**: In the Skill architecture, the "DD Master" (Claude Code itself) drives the 35-step pipeline. It decides when to proceed, when to retry, when to validate, and when to stop. The DD Master is an LLM interpreting a 638-line SKILL.md file -- it can skip steps, miscount outputs, or proceed past failed gates. All 17 retrospective failures were control-flow failures, not analytical failures.
+**Context**: In the Skill architecture, the "DD Master" (Claude Code itself) drives the multi-step pipeline. It decides when to proceed, when to retry, when to validate, and when to stop. The DD Master is an LLM interpreting a 638-line SKILL.md file -- it can skip steps, miscount outputs, or proceed past failed gates. All 17 retrospective failures were control-flow failures, not analytical failures.
 
-**Decision**: The orchestrator is a Python async state machine. Each of the 35 pipeline steps is a Python function. Transitions are code. Agents are invoked at specific steps (15-16 for specialists, 19-22 for Judge, 23 for Reporting Lead) and their outputs are validated by Python before the pipeline advances.
+**Decision**: The orchestrator is a Python async state machine. Each pipeline step is a Python function. Transitions are code. Agents are invoked at specific steps and their outputs are validated by Python before the pipeline advances. (Canonical step numbers live in `orchestrator/steps.py`; the deterministic pre-merge validation that replaced the former Reporting Lead agent in v0.4.0 lives in `validation/pre_merge.py`.)
 
 **Pattern**:
 ```python
@@ -258,7 +258,7 @@ async def run_pipeline(project_dir: Path, resume: bool = False):
 
 **Status**: Accepted (2026-02-24)
 
-**Context**: Production runs on two data rooms (431 + 432 files) revealed that a single-pass extraction approach cannot handle the diversity of real-world PDF formats: text-based, scanned, watermark-only overlays, missing-ToUnicode CMap fonts, and encrypted documents. Each failure mode requires a different extraction strategy. Attempting all methods sequentially on every file wasted time on known-bad PDFs.
+**Context**: Production runs on two data rooms of differing size and format revealed that a single-pass extraction approach cannot handle the diversity of real-world PDF formats: text-based, scanned, watermark-only overlays, missing-ToUnicode CMap fonts, and encrypted documents. Each failure mode requires a different extraction strategy. Attempting all methods sequentially on every file wasted time on known-bad PDFs.
 
 **Decision**: Add pre-inspection routing and a deeper fallback chain with vision-based extractors.
 

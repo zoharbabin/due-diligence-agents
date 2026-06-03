@@ -2,8 +2,9 @@
 
 > Lessons learned, requirements, edge cases, and best practices from building
 > and operating the `dd-agents` forensic due-diligence pipeline against
-> real-world M&A data rooms (Data Room A: 431 files / 183 customers;
-> Data Room B: 995 files / 37 customers).
+> real-world M&A data rooms of differing size and format (referenced below as
+> Data Room A and Data Room B — a few-hundred-file room and a ~thousand-file
+> room).
 
 ---
 
@@ -494,8 +495,8 @@ while keeping attribution accurate:
    file misattributions from the LLM merge phase. When found, the
    citation's `file_path` and `page` are automatically corrected.
 
-**Production results (Data Room B, 37 customers):**
-- 244 citations verified (99.6%)
+**Production results (Data Room B):**
+- citations verified at a high-90s% rate
 - 1 citation unverified (OCR artifact, score 71)
 - 136 citations unverifiable (no exact_quote provided — expected)
 
@@ -597,7 +598,7 @@ return "High", "high", "HIGH", "Medium", etc. unpredictably.
 **Lesson learned:** Normalize at EVERY point where LLM output is consumed,
 not just at the initial parse. We initially added `.upper()` at parse time
 (Phase 1) and merge time (Phase 2), but missed the synthesis pass (Phase 3)
-and validation pass (Phase 4). This caused 53% of confidence values in the
+and validation pass (Phase 4). This caused roughly half of confidence values in the
 a production retest to remain mixed-case.
 
 **Fix (final):** Confidence normalization is now centralized in the Pydantic
@@ -761,25 +762,27 @@ Every extraction produces a quality entry:
 
 ```python
 tracker.get_stats() → {
-    "total": 995,
-    "by_method": {"primary": 990, "fallback_ocr": 2, ...},
+    "total": 1000,                      # illustrative — a ~thousand-file room
+    "by_method": {"primary": 990, "fallback_ocr": 2, ...},  # illustrative
     "avg_confidence": 0.89,
     "total_bytes": 45_000_000,
     "failed": 0,
 }
 ```
 
-### 10.4 Real-World Extraction Profile (Data Room B, 995 files)
+### 10.4 Real-World Extraction Profile (Data Room B)
+
+Representative distribution for a ~thousand-file room (percentages, not exact counts):
 
 ```
-primary (pymupdf/markitdown):  990 files (99.5%)  conf 0.9
-fallback_pdftotext:              1 file  (0.1%)   conf 0.7
-fallback_markitdown:             3 files (0.3%)   conf 0.5
-fallback_ocr:                    1 file  (0.1%)   conf 0.6
-failed:                          0 files (0.0%)
+primary (pymupdf/markitdown):  ~99.5%  conf 0.9
+fallback_pdftotext:             ~0.1%  conf 0.7
+fallback_markitdown:            ~0.3%  conf 0.5
+fallback_ocr:                   ~0.1%  conf 0.6
+failed:                          0.0%
 ```
 
-Extraction time: ~33 seconds for 995 files (33 ms/file average).
+Extraction time: tens of seconds for a ~thousand-file room (~tens of ms/file average).
 
 ---
 
@@ -789,7 +792,7 @@ Extraction time: ~33 seconds for 995 files (33 ms/file average).
 
 | | |
 |---|---|
-| **Symptom** | 21 files in Data Room A with 0-89 bytes extracted across runs |
+| **Symptom** | a handful of files in Data Room A with near-zero bytes extracted across runs |
 | **Root cause** | Cache gate `st_size > 0` accepts 1-byte newline |
 | **Fix** | `st_size >= _SCANNED_PDF_THRESHOLD` (100 bytes) |
 | **Lesson** | Cache quality gates must match extraction quality thresholds |
@@ -816,7 +819,7 @@ Extraction time: ~33 seconds for 995 files (33 ms/file average).
 
 | | |
 |---|---|
-| **Symptom** | 53% of confidence values mixed-case in Data Room B Details sheet |
+| **Symptom** | roughly half of confidence values mixed-case in Data Room B Details sheet |
 | **Root cause** | `.upper()` added at Phase 1 (parse) and Phase 2 (merge) but missed Phase 3 (synthesis) and Phase 4 (validation) |
 | **Fix** | Added `.upper()` to all 4 code paths that read `confidence` from LLM JSON |
 | **Lesson** | Normalize external data at EVERY ingestion point, not just the "main" one |
@@ -857,12 +860,12 @@ Extraction time: ~33 seconds for 995 files (33 ms/file average).
 | **Fix** | Added `_is_cached_output_readable()` to cache gate; also deleted stale `.md` output files to force immediate re-extraction |
 | **Lesson** | Cache gates must be upgraded alongside extraction logic. When deploying new quality checks, delete stale outputs for affected files |
 
-### Bug I: DocuSign Watermark-Only PDFs Accepted as Valid Extraction
+### Bug I: E-Signature Watermark-Only PDFs Accepted as Valid Extraction
 
 | | |
 |---|---|
-| **Symptom** | 3 scanned PDFs (Data Room A) extracted only repeating DocuSign envelope IDs — every page identical (`DocuSign Envelope ID: XXXXXXXX-...`). Passed density checks because watermarks are valid ASCII text |
-| **Root cause** | pymupdf/pdftotext can only read the transparent DocuSign overlay on scanned PDFs, not the actual page content underneath. Text passes `_MIN_CHARS_PER_PAGE` because watermark text is dense enough |
+| **Symptom** | scanned PDFs (Data Room A) extracted only repeating e-signature envelope IDs — every page identical (e.g. `<E-Signature> Envelope ID: XXXXXXXX-...`). Passed density checks because watermarks are valid ASCII text |
+| **Root cause** | pymupdf/pdftotext can only read the transparent e-signature overlay on scanned PDFs, not the actual page content underneath. Text passes `_MIN_CHARS_PER_PAGE` because watermark text is dense enough |
 | **Fix** | Added `_is_watermark_only()` heuristic — uses `Counter` to detect when >50% of non-blank, non-marker lines are identical repeated strings. Integrated as guard on pymupdf and pdftotext steps |
 | **Lesson** | Density checks (chars/page) are necessary but not sufficient. Repetitive content detection is a separate quality gate |
 
@@ -888,9 +891,9 @@ Extraction time: ~33 seconds for 995 files (33 ms/file average).
 
 | | |
 |---|---|
-| **Symptom** | 13 of 56 pages in a PandaDoc-generated PDF extracted as ASCII control characters (0x01-0x1F). pymupdf reports confidence 0.9 despite 46% control characters on affected pages. 12.4% control characters across full document |
+| **Symptom** | a subset of pages in a document-generator-produced PDF extracted as ASCII control characters (0x01-0x1F). pymupdf reports confidence 0.9 despite a high control-character ratio on affected pages |
 | **Root cause** | PDF uses `Identity-H` CID-keyed fonts (Cambria, Calibri) without `/ToUnicode` CMap entries. pymupdf's `get_text()` returns raw CID codes as control bytes. The first 9 pages use Arial fonts with valid ToUnicode → clean text. `_is_readable_text()` only samples the first 10K chars (clean pages), missing the corruption |
-| **Discovery** | Pre-inspection of all 426 PDFs in 3.5 seconds (8ms/file avg) correctly identifies exactly 1 file with this issue + 18 scanned PDFs with no fonts |
+| **Discovery** | Pre-inspection of all PDFs in a few seconds (single-digit ms/file avg) correctly identifies the affected file plus the scanned PDFs with no fonts |
 | **Fix** | `_inspect_pdf()` pre-inspection classifies PDFs before extraction. Identity-H fonts only flagged when BOTH Identity-H encoding AND control-char corruption (>1%) detected in extracted text. 25/26 Identity-H PDFs extract normally. Truly garbled PDFs route to GLM-OCR. Control-char gate also applied as defense-in-depth on pymupdf/pdftotext output. See §16.9 for library comparison |
 | **Lesson** | PDF text extraction quality depends on font encoding metadata, not just content density. Pre-inspection of font tables can predict extraction failures before attempting extraction |
 
@@ -905,7 +908,7 @@ Extraction time: ~33 seconds for 995 files (33 ms/file average).
 | Empty PDF (0 bytes) | All methods fail → confidence 0.0, recorded as failed |
 | Encrypted PDF | pymupdf/pdftotext fail → markitdown may succeed → OCR as last resort |
 | PDF with missing ToUnicode CMap | pymupdf returns control bytes (0x01-0x1F) → control-char check rejects → GLM-OCR renders and extracts visually. All 7 text extraction libraries fail; only image-based OCR works (see §16.9) |
-| PDF with watermark-only overlay | pymupdf extracts only DocuSign/watermark text → `_is_watermark_only()` detects >50% identical lines → GLM-OCR |
+| PDF with watermark-only overlay | pymupdf extracts only e-signature/watermark text → `_is_watermark_only()` detects >50% identical lines → GLM-OCR |
 | PDF with only images | pymupdf returns ~0 chars → density check fails → OCR triggered |
 | Scanned PDF → markitdown binary dump | markitdown returns raw PDF binary → `_is_readable_text()` rejects (< 85% printable) → OCR triggered |
 | Multi-page scanned PDF with headers | Total chars > 100 but chars/page < 50 → density check catches it |
@@ -1041,9 +1044,9 @@ Single-chunk customers get a standard prompt. Multi-chunk customers get:
 | `_CONTROL_CHAR_THRESHOLD` | 0.01 (1%) | ASCII control-char gate for ToUnicode CMap corruption |
 | `CONFIDENCE_FAILURE` | 0.0 | Shared constant — extraction failure (all extractors) |
 | `CONFIDENCE_FALLBACK_READ` | 0.5 | Shared constant — direct text read confidence |
-| `_CONFIDENCE_CLAUDE_VISION` | 0.65 | Claude vision last-resort confidence |
-| `_CONFIDENCE_LAYOUT` | 0.85 | Layout-aware PDF extraction with table detection |
-| `_CONFIDENCE_GLM_OCR` | 0.8 | GLM-OCR confidence (higher than pytesseract) |
+| `CONFIDENCE_CLAUDE_VISION` | 0.65 | Claude vision last-resort confidence |
+| `CONFIDENCE_LAYOUT_PDF` | 0.85 | Layout-aware PDF extraction with table detection |
+| `CONFIDENCE_GLM_OCR` | 0.8 | GLM-OCR confidence (higher than pytesseract) |
 | `QUOTE_MATCH_THRESHOLD` | 80 (0-100) | Citation verification fuzzy match minimum |
 | `OCR_PAGE_TIMEOUT` | 30 seconds | Per-page timeout for pytesseract |
 | `OCR_LAST_PAGE_CAP` | 50 pages | Maximum pages for OCR processing |
@@ -1090,7 +1093,7 @@ where expected chars is derived from file size and per-format ratios (§14.5).
 ### 14.5 Expected Text-to-File-Size Ratios (Confidence Scaling)
 
 Used by `_scale_confidence()` to penalize sparse extractions. Calibrated
-from production data room medians (432 files).
+from production data room medians (a few-hundred-file room).
 
 | Format | Ratio | Notes |
 |--------|-------|-------|
@@ -1484,9 +1487,8 @@ Throughput (measured on Apple M3 Max, 36 GB, macOS 15.3):
 | bf16 / 1600px / 150 DPI | 0.08 | 189s | Default — too slow |
 | bf16 / 1600px / 300 DPI | 0.01 | >1600s | Hallucination, unusable |
 
-Key performance findings from dd-agents testing (production data room,
-OEM Agreement — 16-page scanned contract, hardest PDF in
-the data room):
+Key performance findings from dd-agents testing (benchmarked on a
+~16-page scanned contract, among the hardest PDFs encountered):
 - **Image tokens are the bottleneck:** 300 DPI = ~6,064 tokens/page
   (17s prefill). 150 DPI + 720px cap = ~1,000 tokens (1s prefill)
 - **4-bit quantization = 2x faster than bf16** with zero quality loss
@@ -1522,9 +1524,9 @@ the data room):
 - Multiple deployment options — mlx-vlm (Apple Silicon, simplest),
   Ollama (cross-platform), vLLM/SGLang (Linux GPU servers)
 - Fine-tunable via LLaMA-Factory for domain-specific document layouts
-- **Tested against hardest production PDF:** Won 5/6 artifact checks vs
-  pytesseract (0 losses), found all 12 key legal terms, 50.7K chars
-  extracted vs pytesseract's 46.7K for the same 16-page scanned contract
+- **Tested against a hard scanned contract:** Won 5/6 artifact checks vs
+  pytesseract (0 losses), found all targeted key legal terms, and extracted
+  ~8% more characters than pytesseract for the same scanned contract
 
 **Weaknesses:**
 - **Image-based processing only** — PDFs are rendered to images before
@@ -1655,18 +1657,17 @@ speed (9.4s/2pp), and VRAM (1.5 GB).
   3. Non-English documents appear (Korean, Japanese, Chinese contracts)
   4. pytesseract output quality is insufficient (low density, garbled
      text from complex layouts)
-- **Quality results (tested):** Against the hardest scanned PDF in a
-  production data room (OEM Agreement, 16 pages):
+- **Quality results (tested):** Against a hard ~16-page scanned contract:
   - pytesseract artifacts fixed: "THISAGREEMENT" → "THIS AGREEMENT",
     "White4labeled" → "White-labeled", "= Definitions" → "1. Definitions",
     "#TAQMND" garbage eliminated, "# computer program" → "a computer
     program". Score: GLM-OCR 5, pytesseract 0, ties 1
-  - All 12 key legal terms found (Effective Date, Channel Partner,
-    Licensor, Licensee, Product Name, Territory, Confidential Information,
-    Intellectual Property, Termination, Governing Law, indemnif,
-    limitation of liability)
-  - Total chars: GLM-OCR 50.7K vs pytesseract 46.7K (more complete)
-- **Resolution vs quantization A/B test** (OEM Amendment, 2 pages):
+  - All targeted key legal terms found (e.g. effective date, parties,
+    product/territory definitions, confidential information, intellectual
+    property, termination, governing law, indemnification, limitation of
+    liability)
+  - Extracted ~8% more characters than pytesseract (more complete)
+- **Resolution vs quantization A/B test** (a 2-page amendment):
 
   | Config | Errors (4 checked) | Speed | Image size |
   |--------|-------------------|-------|-----------|
@@ -1683,8 +1684,8 @@ speed (9.4s/2pp), and VRAM (1.5 GB).
 
 ### 16.8 Head-to-Head Recommendation
 
-**Production update (Data Room A, 432 files):** GLM-OCR integrated and
-deployed as Step 4 in the fallback chain. 19 scanned PDFs successfully
+**Production update (Data Room A):** GLM-OCR integrated and
+deployed as Step 4 in the fallback chain. The scanned PDFs successfully
 extracted via GLM-OCR (mlx-vlm backend, 8-bit model, 1024px, 200 DPI).
 Also verified to correctly extract PDFs with missing ToUnicode CMaps
 (Bug L) since pypdfium2 renders pages visually (font glyph outlines are
@@ -1742,10 +1743,10 @@ pymupdf) and 40s on the problem file. It also lacks page markers
 **Font analysis confirms root cause:**
 - Page 1 fonts (Arial): `/ToUnicode 918 0 R` present → text extraction works
 - Page 10 fonts (Cambria, Calibri): no `/ToUnicode` entry → garbled output
-- PDF producer: PandaDoc/PDF4U (bfo.com) omitted the mapping table
+- PDF producer: a document-generation tool omitted the mapping table
 - Visual rendering works perfectly — font glyph outlines are intact
 
-**Pre-inspection benchmark (426 PDFs in 3.5 seconds):**
+**Pre-inspection benchmark (all PDFs in a few seconds):**
 A pymupdf-based font inspection (check `/ToUnicode` + `Identity-H` on
 all fonts across all pages) correctly identifies:
 - 1 file missing ToUnicode (the exact problem file)
@@ -2063,7 +2064,7 @@ Reading order detection is particularly important for:
 5. Install PaddleOCR alongside pytesseract for multi-language OCR
 
 **Phase 2 — Validate and promote:**
-1. Run both old and new chains on all 1,426 files (431 + 995)
+1. Run both old and new chains on all files across both data rooms
 2. Compare extraction quality: character count, table preservation,
    page marker accuracy, citation correctness
 3. If new chain is equal or better on all files, promote to primary
@@ -2262,7 +2263,7 @@ Production deployment: 8-bit model, 1024px max dimension, 200 DPI.
 - **PP-StructureV3 vs MinerU on our data rooms:** Both score well on
   OmniDocBench, but how do they perform specifically on M&A contracts
   (dense legal text, pricing tables, signature pages)? Run both on the
-  1,426 files and compare.
+  all files across both rooms and compare.
 
 - **Docling vs markitdown on Office documents:** Measure table structure
   preservation, page marker accuracy, and extraction completeness for
@@ -2279,7 +2280,7 @@ Production deployment: 8-bit model, 1024px max dimension, 200 DPI.
   JSON parse failures and malformed responses in production logs.
 
 - **VLM extraction accuracy vs cost:** Compare Claude vision, Qwen2.5-VL,
-  and traditional OCR on the 26 scanned PDFs in our data rooms. What is
+  and traditional OCR on the scanned PDFs in our data rooms. What is
   the accuracy uplift per dollar of additional API cost?
 
 ---

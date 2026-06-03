@@ -1436,7 +1436,7 @@ All errors are persisted in `{RUN_DIR}/metadata.json` for post-run analysis:
       "category": "agent_context",
       "severity": "recovered",
       "agent": "legal",
-      "message": "Agent legal: silent context exhaustion detected. Missing 5 of 182 subjects outputs.",
+      "message": "Agent legal: silent context exhaustion detected. Missing 5 of N subjects outputs.",
       "recovery_action": "Re-spawning for 5 remaining subjects",
       "outcome": "recovered",
       "subjects_affected": ["acme_corp", "beta_inc", "delta_llc", "epsilon_co", "zeta_group"]

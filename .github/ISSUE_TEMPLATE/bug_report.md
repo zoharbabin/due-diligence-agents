@@ -26,4 +26,4 @@ labels: bug
 
 - **OS**: <!-- e.g., macOS 14.5, Ubuntu 24.04 -->
 - **Python version**: <!-- e.g., 3.12.3 -->
-- **dd-agents version**: <!-- e.g., 0.1.0 -->
+- **dd-agents version**: <!-- output of `dd-agents version` -->

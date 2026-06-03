@@ -388,14 +388,15 @@ Each deal has its own log directory. No global log file that could leak deal nam
 Console output during `dd-agents run` shows progress without exposing deal data to other terminal sessions. Subject names and finding details are logged to the per-deal log file only. Console shows step progress and summary counts.
 
 ```
-[Step  4/35] File discovery               182 subjects, 431 files
-[Step  5/35] Bulk extraction              429/431 extracted (2 OCR fallback)
-[Step  7/35] Entity resolution            182 matched, 0 unresolved
-[Step 16/35] Spawning specialists         4 agents (legal, finance, commercial, producttech)
-[Step 17/35] Coverage validation          PASS (all 182 subjects covered)
-[Step 28/35] QA audit                     PASS (16/16 checks)
-[Step 30/35] Excel generation             Due_Diligence_Report_20260221_093000.xlsx
-[Step 35/35] Shutdown                     Complete in 47m 23s ($8.42 total)
+# illustrative — step numbers/counts shown for shape only; see orchestrator/steps.py
+[discovery]   File discovery               N subjects, M files
+[extraction]  Bulk extraction              (M-k)/M extracted (k OCR fallback)
+[entity-res]  Entity resolution            N matched, 0 unresolved
+[specialists] Spawning specialists         specialist agents (per active set)
+[coverage]    Coverage validation          PASS (all subjects covered)
+[qa-audit]    QA audit                     PASS (all checks)
+[excel]       Excel generation             Due_Diligence_Report_<timestamp>.xlsx
+[shutdown]    Shutdown                     Complete
 ```
 
 ---
