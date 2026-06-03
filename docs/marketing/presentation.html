@@ -273,7 +273,7 @@
             <li>Every survivor <b>traced to a page and a quote</b></li>
           </ul>
           <hr class="sp">
-          <p class="small">This isn't a prototype. It's an open-source package (<span class="mono">pip install dd-agents</span>), 60k+ lines, 3,000+ tests, strict-typed, Apache-2.0 — running on real deal data rooms.</p>
+          <p class="small">This isn't a prototype. It's an open-source package (<span class="mono">pip install dd-agents</span>), 60k+ lines, 4,000+ tests, strict-typed, Apache-2.0 — running on real deal data rooms.</p>
         </div>
       </div>
     </div>
@@ -586,9 +586,9 @@
     <h2>Most of what AI finds is noise. The work is killing it.</h2>
     <div class="two" style="margin-top:18px">
       <div>
-        <p style="font-size:17px;color:#dde5f5">Four agents across hundreds of documents produce <b style="color:#fff">thousands of findings.</b> Without classification, the real risks drown.</p>
-        <div class="flowstep"><div class="n">1</div><div><div class="t">Noise filter (15 patterns)</div><div class="d">"extraction failed," "binary file" — process artifacts, not findings. Removed.</div></div></div>
-        <div class="flowstep"><div class="n">2</div><div><div class="t">Data-quality filter (14 patterns)</div><div class="d">"records unavailable" — real gaps, but not material risks. Routed to an appendix.</div></div></div>
+        <p style="font-size:17px;color:#dde5f5">Nine agents across hundreds of documents produce <b style="color:#fff">thousands of findings.</b> Without classification, the real risks drown.</p>
+        <div class="flowstep"><div class="n">1</div><div><div class="t">Noise filter</div><div class="d">"extraction failed," "binary file" — process artifacts, not findings. Removed.</div></div></div>
+        <div class="flowstep"><div class="n">2</div><div><div class="t">Data-quality filter</div><div class="d">"records unavailable" — real gaps, but not material risks. Routed to an appendix.</div></div></div>
         <div class="flowstep"><div class="n">3</div><div><div class="t">Material findings</div><div class="d">What survives both filters. These drive the verdict.</div></div></div>
       </div>
       <div>
@@ -617,9 +617,9 @@
       <div class="card"><div class="lead" style="color:var(--red)">Gate · Extraction</div><p>Halts if document text extraction systemically fails.</p></div>
       <div class="card"><div class="lead" style="color:var(--red)">Gate · Coverage</div><p>Every counterparty must be analyzed by every agent. Auto-respawn for gaps.</p></div>
       <div class="card"><div class="lead" style="color:var(--red)">Gate · Numerical audit</div><p>6 layers: source traceability, re-derivation, cross-source &amp; cross-format consistency.</p></div>
-      <div class="card"><div class="lead" style="color:var(--red)">Gate · QA audit</div><p>17 structural checks — manifests, citations, domain coverage, report sheets.</p></div>
+      <div class="card"><div class="lead" style="color:var(--red)">Gate · QA audit</div><p>18 structural checks — manifests, citations, domain coverage, report sheets.</p></div>
       <div class="card"><div class="lead" style="color:var(--red)">Gate · Post-generation</div><p>Excel must match the numerical manifest cell-for-cell before release.</p></div>
-      <div class="card tint-r"><div class="lead">Agent guardrails</div><p>Path-locked to the output dir. 24 blocked shell patterns. Turn limits with hard kill. Agents have tools, not shell freedom.</p></div>
+      <div class="card tint-r"><div class="lead">Agent guardrails</div><p>Path-locked to the output dir. 50+ blocked shell patterns. Turn limits with hard kill. Agents have tools, not shell freedom.</p></div>
     </div>
     <div class="callout r"><p>Plus <b>31 Definition-of-Done checks</b> at the end and atomic, read-only handling of your data room — the tool <b>never modifies your files</b>, sends nothing home, and writes only to a separate <span class="mono">_dd/</span> directory.</p></div>
   </div>
@@ -789,8 +789,8 @@ Executive synthesis:   <span class="r">Opus</span>    <span class="cm">($15 / M 
     <div class="big-quote">The gap between an AI demo and a system a deal team can <span class="grad-g">put its name on</span> is entirely engineering.</div>
     <p class="sub" style="margin-top:24px">74% → 95% accuracy came from extraction, chunking, citation verification, deterministic gates, and cross-domain synthesis — not from a bigger model. That discipline is what makes this usable for real M&amp;A.</p>
     <div class="grid g3" style="margin-top:10px;max-width:880px">
-      <div class="card"><div class="lead">Try it live</div><p class="small">Interactive sample report — no install:<br><span class="mono" style="color:var(--cyan)">zoharbabin.github.io/<br>due-diligence-agents</span></p></div>
-      <div class="card"><div class="lead">The code</div><p class="small"><span class="mono">pip install dd-agents</span><br>Apache-2.0 · 3,000+ tests · open source</p></div>
+      <div class="card"><div class="lead">Try it live</div><p class="small">Interactive sample report — no install:<br><span class="mono" style="color:var(--cyan)">zoharbabin.github.io/<br>due-diligence-agents/sample-report/</span></p></div>
+      <div class="card"><div class="lead">The code</div><p class="small"><span class="mono">pip install dd-agents</span><br>Apache-2.0 · 4,000+ tests · open source</p></div>
       <div class="card tint-p"><div class="lead">Next step</div><p class="small">A working session on a real (or synthetic) data room — a live run, end-to-end.</p></div>
     </div>
     <hr class="sp" style="margin:30px 0 18px">
