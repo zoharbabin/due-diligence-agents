@@ -1699,7 +1699,7 @@ class PromptBuilder:
     def robustness_instructions() -> str:
         """Return common LLM robustness mitigations appended to every specialist prompt.
 
-        These instructions implement mitigations from ``docs/plan/22-llm-robustness.md``:
+        These instructions implement research-informed LLM robustness mitigations:
         - Structured output enforcement (AG-4, S-3)
         - Answer normalization (AG-8)
         - Citation format requirements (S-1, S-4)

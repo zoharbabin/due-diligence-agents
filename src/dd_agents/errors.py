@@ -4,8 +4,6 @@ Defines structured error records, severity/category enums, and domain-specific
 exception classes used throughout the pipeline.  These are distinct from the
 ``PipelineError`` in ``orchestrator.state`` (which is a runtime exception) and
 the config-related errors in ``config.py``.
-
-Reference: ``docs/plan/12-error-recovery.md`` section 1.
 """
 
 from __future__ import annotations

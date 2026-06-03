@@ -7,13 +7,10 @@ PR or this test goes red.
 
 Scope is deliberately narrow to stay false-positive-free:
   * Only the *primary* user-facing docs are scanned (README, DOCKERHUB, the
-    mkdocs site under docs/ excluding the historical ``docs/plan/`` specs and
-    point-in-time marketing recordings).
+    mkdocs site under docs/, excluding point-in-time marketing recordings).
   * Only a handful of stable, code-derivable invariants are asserted.
   * MCP @tool annotations are checked for the structural contracts CLAUDE.md
     promises (a non-empty description; read/write side-effect honesty).
-  * Every docs/plan/*.md spec (except PLAN.md) must carry a "historical" banner,
-    so its intentionally-stale specifics can't be mistaken for current truth.
 
 Ground truth is read from code at test time — never hardcoded here — so the
 guard tracks the code, not a second copy of the numbers.
@@ -28,8 +25,8 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-# Primary, current-state docs. Excludes docs/plan/** (historical specs, banner-
-# framed) and docs/marketing/** (point-in-time recordings/decks).
+# Primary, current-state docs. Excludes docs/marketing/** (point-in-time
+# recordings/decks).
 _PRIMARY_DOCS = [
     "README.md",
     "DOCKERHUB.md",
@@ -232,23 +229,3 @@ def test_side_effecting_tool_descriptions_declare_their_effect(name: str, must_c
     assert any(k in desc for k in must_contain), (
         f"{name} description does not declare its write/side-effect (looked for any of {must_contain}): {tools[name]!r}"
     )
-
-
-# --------------------------------------------------------------------------- #
-# Plan docs must be marked historical (so stale specifics can't read as current)
-# --------------------------------------------------------------------------- #
-def test_plan_specs_carry_a_historical_banner() -> None:
-    """Every docs/plan/*.md (except the PLAN.md overview) must declare near the
-    top that it is a historical design spec — code is authoritative. These docs
-    intentionally contain drifted step numbers / file paths; the banner is what
-    keeps a reader from mistaking them for current truth, so its presence is a
-    contract. PLAN.md is the living overview and is exempt."""
-    plan_dir = REPO_ROOT / "docs" / "plan"
-    missing: list[str] = []
-    for md in sorted(plan_dir.glob("*.md")):
-        if md.name == "PLAN.md":
-            continue
-        head = "".join(md.read_text(encoding="utf-8").splitlines(keepends=True)[:12]).lower()
-        if "historical" not in head:
-            missing.append(md.name)
-    assert not missing, f"plan specs missing a 'historical' banner in their first lines: {missing}"

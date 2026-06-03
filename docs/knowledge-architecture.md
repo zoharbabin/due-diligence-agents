@@ -473,4 +473,4 @@ Every major design decision maps to published research or production retrospecti
 
 ---
 
-*For implementation details, see the spec docs in `docs/plan/`. For the 38-step pipeline specification, see `docs/plan/05-orchestrator.md`. For search module details, see `docs/search-guide.md`.*
+*For implementation details, the code under `src/dd_agents/` is authoritative (see the Architecture Map in `CLAUDE.md` for orientation). For search module details, see `docs/search-guide.md`.*

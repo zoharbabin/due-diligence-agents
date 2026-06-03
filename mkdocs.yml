@@ -64,9 +64,6 @@ nav:
   - Trust & Safety:
     - System Card: system-card.md
     - Eval Datasheet: eval-datasheet.md
-  - Architecture:
-    - Executive Plan: plan/PLAN.md
-    - Architecture Decisions: plan/01-architecture-decisions.md
   - Contributing: contributing.md
   - Sample Report: https://zoharbabin.github.io/due-diligence-agents/sample-report/
 

@@ -351,8 +351,7 @@ def split_by_table_rows(
 ) -> list[FileSegment]:
     """Split tabular markdown at row boundaries, repeating headers in each segment.
 
-    Implements E-4 from ``docs/plan/22-llm-robustness.md``: large spreadsheet
-    output is split by rows (not characters) with the table header block
+    Large spreadsheet output is split by rows (not characters) with the table header block
     (sheet heading + column letters + separator) prepended to every segment
     so the LLM never sees data rows without column context.
 

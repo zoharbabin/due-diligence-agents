@@ -5,8 +5,6 @@ document relationships, and obligations. Supports queries like:
 - "What happens if Company X triggers a change of control?"
 - "Which contracts have conflicting governing law?"
 - "What's the total liability cap across Customer Y's contracts?"
-
-Spec: docs/plan/21-ontology-and-reasoning.md §2-4
 """
 
 from __future__ import annotations

@@ -3,8 +3,6 @@
 Defines the typed vocabulary for contract documents, clause types,
 obligation tracking, and relationship reasoning. Built on NetworkX
 for graph operations.
-
-Spec: docs/plan/21-ontology-and-reasoning.md
 """
 
 from __future__ import annotations

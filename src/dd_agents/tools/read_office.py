@@ -5,7 +5,7 @@ returns structured text content.  Uses openpyxl for Excel and markitdown
 for Word/PowerPoint.  Falls back to pre-extracted markdown in index/text/
 when primary reading fails.
 
-Excel-specific enhancements (E-1 through E-3 from docs/plan/22-llm-robustness.md):
+Excel-specific enhancements for LLM robustness:
 
 - **E-1 Date conversion**: ``datetime`` cells render as ISO-8601 (``YYYY-MM-DD``)
   instead of Python's verbose ``2022-03-01 00:00:00``.

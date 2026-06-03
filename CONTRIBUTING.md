@@ -85,9 +85,8 @@ beginner-friendly tasks.
 
 ## Developer Onboarding
 
-1. Read [`docs/plan/PLAN.md`](docs/plan/PLAN.md) for the executive overview.
-2. Read [`docs/plan/01-architecture-decisions.md`](docs/plan/01-architecture-decisions.md) for key architectural choices.
-3. Read [`CLAUDE.md`](CLAUDE.md) for current architecture, commands, and code style.
+1. Read [`CLAUDE.md`](CLAUDE.md) — the Architecture Map, Design Rules, and Key Patterns are the fast orientation to the codebase, commands, and code style.
+2. The code under `src/dd_agents/` is authoritative for current behavior; each package's entry point is listed in the Architecture Map.
 
 ### Autonomous Implementation (Claude Code)
 

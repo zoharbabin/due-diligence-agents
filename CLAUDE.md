@@ -112,7 +112,7 @@ Docs are a contract with the reader. Edit them by the same rules as code.
 
 **Core directives:**
 1. **Zero drift.** Every claim must match current code. Verify against source before writing; never describe intended behavior as if shipped.
-2. **No secrets, ever.** No real company names, people (except the author, Zohar Babin), financials, PII, tokens, or internal hostnames — in any doc, including `docs/plan/` and marketing. See Sensitive Data Policy.
+2. **No secrets, ever.** No real company names, people (except the author, Zohar Babin), financials, PII, tokens, or internal hostnames — in any doc, including marketing. See Sensitive Data Policy.
 3. **Remove what rots.** Delete or re-frame docs that no longer reflect the code. A stale doc is worse than no doc.
 4. **Point, don't duplicate.** Link to the one authoritative source (a file path, `.env.example`, another doc) instead of copying facts that will drift.
 
@@ -121,14 +121,14 @@ Docs are a contract with the reader. Edit them by the same rules as code.
 - Hardcoded line counts and file counts.
 - Exhaustive tool-name / CLI-command / env-var lists and env-var **default-value** tables — defer to `.env.example` and `grep DD_ src/dd_agents/utils/constants.py`.
 - Dependency lists — defer to `pyproject.toml`.
-- Architecture diagrams in many places — keep one, in a plan doc; elsewhere link to it.
+- Architecture diagrams duplicated in many places — prefer the `CLAUDE.md` Architecture Map (text, source-referenced) and link to it.
 - No standalone changelog file — GitHub Releases is the changelog.
 
 Instead, reference **stable contracts**: interface/class names, file paths, enum names. Those are what the code-drift guard can check.
 
 **Structure (user-facing docs):** one-line description → copy-paste commands (zero prose) → single-line architecture-map annotations → mechanical design rules ("if X, route to Y") → exact how-tos with file paths + function names → key patterns (signatures, pipeline stages) → environment (required vs optional, defer full list to `.env.example`) → reference guide (*when* to read which doc). CLAUDE.md (this file) is the worked example.
 
-**Architecture-count claims** (specialists, total agents, pipeline steps, blocking gates, Excel sheets) and the **published Docker image name** are the few numbers docs may state — because `tests/unit/test_docs_drift.py` derives them from code and **fails CI** if a doc drifts. If you add a specialist / agent / step / gate / sheet, the docs that cite the count must change in the same PR or the gate blocks you. Same file enforces: every MCP `@tool` has a non-empty description; side-effecting tools (`save_memory`, `flag_finding`, `extract_document`, `run_export_script`) declare their write/effect in the description the model sees; and every `docs/plan/*.md` spec (except `PLAN.md`) carries a "historical" banner near the top, so its intentionally-stale step numbers and file paths can't be mistaken for current truth.
+**Architecture-count claims** (specialists, total agents, pipeline steps, blocking gates, Excel sheets) and the **published Docker image name** are the few numbers docs may state — because `tests/unit/test_docs_drift.py` derives them from code and **fails CI** if a doc drifts. If you add a specialist / agent / step / gate / sheet, the docs that cite the count must change in the same PR or the gate blocks you. Same file enforces: every MCP `@tool` has a non-empty description, and side-effecting tools (`save_memory`, `flag_finding`, `extract_document`, `run_export_script`) declare their write/effect in the description the model sees.
 
 **Tool annotations** (`tools/mcp_server.py`): the `@tool(name, description, schema)` description must match runtime behavior and name any side effect / write. Keep read-only and writing tools distinct; never bury a destructive action behind a generic flag.
 
@@ -136,20 +136,16 @@ Instead, reference **stable contracts**: interface/class names, file paths, enum
 
 | Doc | When to read |
 |-----|-------------|
-| `docs/plan/PLAN.md` | First time touching this codebase — executive overview of WHY |
-| `docs/plan/01-architecture-decisions.md` | When questioning a design choice — ADRs with rationale |
 | `docs/agent-customization.md` | Customizing agent personas/severity/profiles via `dd-config/` |
 | `docs/user-guide/cli-reference.md` | Adding/modifying CLI commands |
 | `docs/user-guide/deal-configuration.md` | Changing config schema or adding config options |
 | `docs/search-guide.md` | Working on search module — chunking, citation, precedence |
 | `docs/knowledge-architecture.md` | Working on knowledge base — research foundations |
-| `docs/plan/12-error-recovery.md` | Adding error handling — 15 error scenarios with patterns |
 
-Plan docs (`docs/plan/02-22`) are **historical design specs**. Code is authoritative for current behavior; plan docs explain design rationale only.
+The Architecture Map and Key Patterns above are the fast orientation to the codebase; the code under `src/dd_agents/` is authoritative for current behavior.
 
 ## Don't Do This
 
-- Don't implement without reading the relevant plan doc for WHY context
 - Don't create aggregate finding files — always per-subject
 - Don't use `hookSpecificOutput` wrapper — flat format only
 - Don't modify PERMANENT tier during runs
@@ -158,7 +154,7 @@ Plan docs (`docs/plan/02-22`) are **historical design specs**. Code is authorita
 - Don't frame the tool as replacing advisors — it accelerates their work
 - Don't add dependencies without checking `pyproject.toml` for existing alternatives
 - Don't hardcode release versions, counts, or env-var defaults in docs — see Documentation Standards
-- Don't describe planned/unshipped behavior in present tense — re-frame stale plan docs as historical
+- Don't describe planned/unshipped behavior as if it ships — docs reflect current code only
 
 ## CI/CD
 

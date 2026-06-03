@@ -137,4 +137,3 @@ This mapping is descriptive and not a claim of formal certification.
 
 - [Agent Customization](agent-customization.md) — what users can and cannot change
 - [Eval Datasheet](eval-datasheet.md) — the golden eval set and metrics
-- [Architecture Decisions](plan/01-architecture-decisions.md) — design rationale

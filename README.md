@@ -411,7 +411,7 @@ All core dependencies use permissive open-source licenses (Apache 2.0, MIT, BSD)
 | [CLI Reference](docs/user-guide/cli-reference.md) | Complete command reference |
 | [Troubleshooting](docs/user-guide/troubleshooting.md) | Common errors, exit codes, recovery steps |
 | [Search Guide](docs/search-guide.md) | Contract search for legal teams |
-| [Architecture & Design](docs/plan/PLAN.md) | System architecture and design documents |
+| [Agent Customization](docs/agent-customization.md) | Tailor agent personas, focus areas, and severity (no code) |
 
 ## Contributing
 

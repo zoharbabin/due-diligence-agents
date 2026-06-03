@@ -16,21 +16,10 @@ Start here if you're using the tool:
 
 ## Architecture & Design
 
-Start with [PLAN.md](plan/PLAN.md) for the system architecture overview. The `plan/` directory contains the design documents from the build phase. These are historical specs — the code in `src/dd_agents/` is authoritative for current behavior. The plan docs explain *why* the system was designed this way.
-
-Key architecture docs:
-
-| Doc | Topic |
-|-----|-------|
-| [System Architecture](plan/02-system-architecture.md) | Persistence tiers, pipeline state machine |
-| [Orchestrator](plan/05-orchestrator.md) | 38-step pipeline, blocking gates, checkpoint/resume |
-| [Agents](plan/06-agents.md) | 13 AI agents, specialist domains, extensible registry |
-| [Tools & Hooks](plan/07-tools-and-hooks.md) | MCP tools, PreToolUse/Stop hooks |
-| [Extraction](plan/08-extraction.md) | PDF/Office extraction, OCR, chunking |
-| [Reporting](plan/10-reporting.md) | HTML + Excel report generation |
-| [Cross-Document Analysis](plan/20-cross-document-analysis.md) | Cross-domain trigger rules, neurosymbolic reasoning |
-| [Ontology & Reasoning](plan/21-ontology-and-reasoning.md) | Domain dependency graph, symbolic triggers |
-| [LLM Robustness](plan/22-llm-robustness.md) | Search, chunking, citation verification |
+The code under `src/dd_agents/` is the authoritative source for current behavior.
+For a fast orientation, read the **Architecture Map** and **Key Patterns** in
+[`CLAUDE.md`](../CLAUDE.md) (repo root) — it annotates each package and its entry
+point and is kept in sync with the code.
 
 ## Knowledge Base
 
