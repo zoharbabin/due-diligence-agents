@@ -57,6 +57,28 @@ specialists plus any installed via the `dd_agents.specialists` entry-point group
 Use `dd-agents agents list` to see the live set rather than relying on a
 hardcoded list.
 
+## Read (and fork) the built-in prompts — they're markdown
+
+The built-in prompt prose is not buried in Python. Every specialist's persona,
+focus, and domain guidance lives as editable markdown under
+`src/dd_agents/agents/prompts/specialists/{agent}.md` (with `## Role`,
+`## Specialist Focus`, `## Domain Guidance` sections). Synthesis prompts
+(`prompts/synthesis/`), the contract-search column templates (`prompts/search/`),
+and the auto-config prompts (`prompts/auto_config/`) live there too. Severity
+numbers appear as named placeholders like `{COC_REVENUE_PCT}` resolved from
+`agents/severity_thresholds.py`, so a threshold is changed in exactly one place.
+
+This means you can **audit the baseline by reading markdown** — `dd-agents agents
+describe --agent legal` prints the exact file path at the bottom of its output.
+To make a built-in change your firm's permanent default (not just a per-deal
+override), edit that markdown directly in your fork. The one rule: the
+non-removable **safety floor** is code-enforced and is intentionally *not* in
+editable markdown — no prompt edit can weaken it.
+
+For a *per-deal* change (the common case), don't touch the built-ins — drop a
+`dd-config/agents/{agent}.md` override as described below; it layers on top of
+the markdown baseline.
+
 ---
 
 ## The `dd-config/` folder

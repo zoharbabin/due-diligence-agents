@@ -20,6 +20,7 @@ All source lives under `src/dd_agents/`. Each package has one job:
 |---------|---------|-------------|
 | `orchestrator/` | 38-step async pipeline with checkpoint/resume | `engine.py` → `PipelineEngine.run()` |
 | `agents/` | Specialist agent runners + extensible registry | `base.py` → `BaseAgentRunner` (abstract) |
+| `agents/prompts/` | Built-in prompt prose as editable markdown (specialists, synthesis, search, auto-config) | `loader.py` → `load_builtin_specialist()` |
 | `models/` | Pydantic v2 schemas for all data | `__init__.py` re-exports ~100 classes |
 | `reporting/` | HTML + Excel report generation | `html_base.py` → `SectionRenderer` (abstract) |
 | `hooks/` | Pre/post tool-use guards (allow/block) | `pre_tool.py` → guard functions |
@@ -51,22 +52,24 @@ These are mechanical constraints, not guidelines:
 10. **Strict types** — `mypy --strict` must pass. No `type: ignore` without justification.
 11. **One safety floor, appended last** — every assembled prompt ends with `assemble_safety_floor()` (`agents/prompt_constants.py`): anti-sub-agent constraints, citation mandate, anti-fabrication, untrusted-document rule. It is concatenated after all user customization, so config can never remove it. Wrap untrusted data-room content with `wrap_untrusted()`.
 12. **One severity authority** — final severity is decided once by `resolve_severity()` (`reporting/severity_resolver.py`) in the merge write path: `llm → recalibration (down-only) → bounded user_override`. Records `metadata.provenance.severity_source` + `severity_chain`. `computed_metrics._recalibrate_severity` is a read-only guard that no-ops when `severity_source` is set. Never re-derive severity elsewhere.
-13. **Severity thresholds are constants** — TfC/CoC/ARR numbers live only in `agents/severity_thresholds.py`. Build threshold strings via f-strings off them; never hardcode the literal in prose.
+13. **Severity thresholds are constants** — TfC/CoC/ARR numbers live only in `agents/severity_thresholds.py`. In Python build threshold strings via f-strings off them; in prompt markdown use `{COC_REVENUE_PCT}`-style placeholders resolved by `agents/prompts/loader.py:resolve_thresholds`. Never hardcode the literal number in prose.
 14. **User-editable agent config is data under `dd-config/`** — one folder, one format (YAML front-matter + markdown), one merge rule (`customization/loader.py:resolve_chain`: built-in → profile `extends` chain → `dd-config/agents/{agent}.md` → deal). Inspect with `dd-agents agents describe|list|validate|preview`.
 15. **Provenance is one hash** — `persistence/provenance.py:compute_provenance_hash` (config + prompt_version + persona hashes). Resume is fail-closed: a checkpoint whose provenance drifted is rejected. All config hashing routes through `compute_config_hash` (never raw file bytes).
+16. **Built-in prompt prose is editable markdown** — specialist personas/focus/domain-guidance, synthesis roles, search-column templates, and auto-config prompts live in `agents/prompts/**/*.md` (the base layer the `dd-config/` chain stacks onto), loaded via `agents/prompts/loader.py`. The safety floor (rule 11) is the exception — it stays code-enforced, never in editable markdown. Editing a prompt's prose must keep assembled output stable or re-capture `tests/golden/` via `scripts/capture_prompt_golden.py` and bump `PromptBuilder.PROMPT_VERSION`.
 
 ## Key Patterns
 
 ### Adding a new specialist agent
 
-1. Create `src/dd_agents/agents/{domain}.py`
-2. Subclass `BaseAgentRunner` — implement three abstract methods:
+1. Write the prose in `src/dd_agents/agents/prompts/specialists/{domain}.md` (`## Role` / `## Specialist Focus` / `## Domain Guidance`; use `{COC_REVENUE_PCT}`-style placeholders for severity numbers — rule 13)
+2. Create `src/dd_agents/agents/{domain}.py`, subclass `BaseAgentRunner`, and back the prompt methods with the loader:
    ```python
    def get_agent_name(self) -> str: ...      # e.g. "legal"
-   def get_system_prompt(self) -> str: ...   # domain-specific prompt
+   def get_system_prompt(self) -> str:        # load prose + code-append SEVERITY_PREAMBLE
+       return load_builtin_specialist("legal").role + " " + SEVERITY_PREAMBLE
    def get_tools(self) -> list[str]: ...     # allowed MCP tools
    ```
-3. Register via `AgentRegistry.register(AgentDescriptor(...))` at module level
+3. Register via `AgentRegistry.register(AgentDescriptor(...))` at module level (source `specialist_focus`/`domain_robustness` from `load_builtin_specialist`)
 4. Agent auto-discovered when module imported (built-in) or via `dd_agents.specialists` entry-point (external)
 
 ### Adding a new HTML report section
