@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from dd_agents.agents.prompt_constants import SAFETY_FLOOR_NEGATION_PATTERNS, assemble_safety_floor
+from dd_agents.agents.prompts.loader import PROMPTS_DIR
 from dd_agents.agents.registry import AgentRegistry
 
 if TYPE_CHECKING:
@@ -99,6 +100,24 @@ def describe_agent(name: str) -> str:
 
     # The non-removable safety floor (includes the citation mandate).
     parts += ["## Safety Floor (always enforced)", "", assemble_safety_floor(name), ""]
+
+    # Point the reader at the editable source-of-truth markdown for this agent's
+    # built-in persona/focus/domain guidance (the safety floor is code-enforced
+    # and not editable).
+    builtin_md = PROMPTS_DIR / "specialists" / f"{name}.md"
+    if builtin_md.is_file():
+        # parents[3] is the repo's ``src/`` dir, so the displayed path reads
+        # ``src/dd_agents/agents/prompts/specialists/{name}.md`` — copy-paste findable.
+        rel = builtin_md.relative_to(PROMPTS_DIR.parents[3])
+        parts += [
+            "---",
+            "",
+            f"*Built-in persona, focus, and domain guidance are editable markdown at `{rel}`.*",
+            "*Override per deal without code via `dd-config/agents/"
+            + name
+            + ".md` — see `docs/agent-customization.md`.*",
+            "",
+        ]
 
     return "\n".join(parts)
 

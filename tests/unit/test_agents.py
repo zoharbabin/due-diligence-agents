@@ -1463,6 +1463,43 @@ class TestTurnLimitEnforcement:
 
         assert "exceeded soft limit" in caplog.text
 
+    @pytest.mark.asyncio
+    async def test_timeout_breaks_stalled_stream_and_preserves_partial(
+        self,
+        tmp_project: Path,
+        tmp_run_dir: Path,
+        run_id: str,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A stalled SDK stream (no further messages) is bounded by timeout_seconds
+        rather than hanging forever; partial output collected so far is returned.
+
+        Regression: timeout_seconds was previously declared but never enforced —
+        the async-for loop awaited the next message indefinitely (0% CPU hang)."""
+        import asyncio
+
+        import dd_agents.agents.base as base_mod
+
+        _, mock_am, _, _ = self._patch_sdk(monkeypatch)
+
+        async def stalled_query(prompt: str, options: object) -> object:  # type: ignore[misc]
+            yield mock_am("partial before stall")
+            # Now stall indefinitely — simulates a hung Bedrock stream.
+            await asyncio.sleep(3600)
+            yield mock_am("never reached")
+
+        monkeypatch.setattr(base_mod, "_query", stalled_query)
+        agent = LegalAgent(tmp_project, tmp_run_dir, run_id)
+        agent.timeout_seconds = 1  # bound the stall to 1s
+
+        with caplog.at_level(logging.ERROR, logger="dd_agents.agents.base"):
+            out = await asyncio.wait_for(agent._spawn_agent("test"), timeout=20)
+
+        assert "partial before stall" in out  # partial output preserved
+        assert "never reached" not in out
+        assert "timed out" in caplog.text.lower() or "timeout" in caplog.text.lower()
+
 
 # =========================================================================
 # Issue #58: Judge score extraction and threshold tests
@@ -2471,15 +2508,19 @@ class TestSharedPersonas:
     def test_constants_non_empty(self) -> None:
         from dd_agents.agents import personas
 
-        for name in (
-            "DD_LEGAL_ANALYST",
-            "DD_ANALYST",
-            "M_AND_A_STRATEGIST",
-            "M_AND_A_LAWYER_SPA",
-        ):
+        # DD_LEGAL_ANALYST / DD_ANALYST remain shared fragments composed at multiple
+        # search/query call sites. The former M_AND_A_* openers were single-call-site
+        # and now live in the editable auto-config prompt markdown.
+        for name in ("DD_LEGAL_ANALYST", "DD_ANALYST"):
             value = getattr(personas, name)
             assert isinstance(value, str)
             assert value, f"{name} must be non-empty"
+
+    def test_auto_config_openers_in_markdown(self) -> None:
+        from dd_agents.agents.prompts.loader import load_named_prompt
+
+        assert "senior M&A strategist" in load_named_prompt("auto_config", "buyer_strategy")
+        assert "senior M&A lawyer" in load_named_prompt("auto_config", "spa_extraction")
 
     def test_legal_analyst_in_analyzer_prompt(self) -> None:
         from dd_agents.agents.personas import DD_LEGAL_ANALYST

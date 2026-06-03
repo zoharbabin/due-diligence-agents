@@ -91,12 +91,9 @@ class AcquirerIntelligenceAgent(BaseAgentRunner):
         return "acquirer_intelligence"
 
     def get_system_prompt(self) -> str:
-        return (
-            "You are the Acquirer Intelligence analyst for forensic M&A due diligence. "
-            "Your role is to synthesise pre-merged findings through the buyer's strategic "
-            "lens, assessing how due diligence findings impact the acquisition thesis. "
-            "You produce a structured JSON analysis — never modify source files."
-        )
+        from dd_agents.agents.prompts.loader import load_named_prompt
+
+        return load_named_prompt("synthesis", "acquirer_intelligence")
 
     def get_tools(self) -> list[str]:
         return list(READONLY_TOOLS)

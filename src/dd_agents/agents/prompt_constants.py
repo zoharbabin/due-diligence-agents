@@ -293,8 +293,14 @@ def wrap_untrusted(content: str) -> str:
 # ---------------------------------------------------------------------------
 
 SAFETY_FLOOR_NEGATION_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(r"ignore (all |the )?(previous |safety )?(rules|instructions)", re.IGNORECASE),
-    re.compile(r"do not cite", re.IGNORECASE),
+    # "ignore/disregard/override [up to 3 stacked modifiers] rules/instructions"
+    re.compile(
+        r"(?:ignore|disregard|override|forget)\s+(?:\w+\s+){0,3}(?:rules?|instructions?|guidelines?)", re.IGNORECASE
+    ),
+    # "do not / don't / never <report|cite|flag|mention|write|create> ..."
+    re.compile(r"(?:do not|don't|never)\s+(?:report|cite|flag|mention|write|create|disclose)", re.IGNORECASE),
+    # "mark/treat/classify everything|all ... as P3" (severity suppression)
+    re.compile(r"(?:mark|treat|classify|rate|set)\s+(?:everything|all|every finding|all findings)", re.IGNORECASE),
     re.compile(r"fabricate", re.IGNORECASE),
     re.compile(r"never write not_found", re.IGNORECASE),
 )

@@ -1,0 +1,29 @@
+---
+id: change_of_control
+name: Change of Control Analysis
+description: Analyze customer contracts for consent and notice requirements triggered specifically by a change of control or ownership of the service provider. These prompts are designed to exclude assignment/transfer-only provisions that would not be triggered under a share acquisition.
+---
+
+### Consent Required (Change of Control)
+
+Does this agreement require consent, approval, or waiver from the customer specifically upon a change of control or change in ownership of the service provider (such as a sale of shares, merger, amalgamation, or acquisition)? Do NOT include consent requirements that are triggered only by assignment or transfer of the agreement itself. Focus exclusively on provisions that are triggered by a change in who owns or controls the contracting party, not by transfer of contractual rights or obligations. If consent is required, state "Yes". If consent is not required, state "No". Pin point the section reference (if available) and page number in the agreement in your response.
+
+### Consent Clause Summary
+
+If this agreement requires consent upon a change of control or change in ownership of the service provider (such as a sale of shares, merger, amalgamation, or acquisition), summarize the relevant clause that creates this requirement and provide the section reference and page number where it appears. Do not include clauses that only require consent for assignment or transfer of the agreement itself.
+
+### Notice Required (Change of Control)
+
+Does this agreement require notice to the customer specifically upon a change of control or change in ownership of the service provider (such as a sale of shares, merger, amalgamation, or acquisition)? Do NOT include notice requirements that are triggered only by assignment or transfer of the agreement itself. If notice is required, state "Yes". If notice is not required, state "No". Pin point the section reference (if available) and page number in the agreement in your response.
+
+### Notice Clause Summary
+
+If this agreement requires notice upon a change of control or change in ownership of the service provider (such as a sale of shares, merger, amalgamation, or acquisition), summarize the relevant clause that creates this requirement and provide the section reference and page number where it appears. Do not include clauses that only require notice for assignment or transfer of the agreement itself.
+
+### Termination for Convenience
+
+Does this agreement grant the customer a right to terminate without cause (termination for convenience, termination at will, or termination in the customer's sole/absolute discretion) with or without a notice period? This is critical for M&A due diligence because a termination-for-convenience right allows the customer to exit the contract at any time regardless of whether a change of control occurs, creating significant revenue risk for an acquirer. If such a right exists, state "Yes" and specify: (1) who holds the right (customer only, or mutual), (2) the required notice period (if any), (3) whether any termination fee, penalty, or wind-down payment applies, and (4) the section reference and page number. If no termination-for-convenience right exists, state "No".
+
+### Termination for Convenience Summary
+
+If this agreement grants the customer a right to terminate without cause (termination for convenience, termination at will, or termination in the customer's sole/absolute discretion), summarize the relevant clause including: who holds the right, the notice period required, any termination fees or penalties, and any wind-down or transition obligations. Provide the section reference and page number where the clause appears. Also note if the termination right is asymmetric (customer-only vs. mutual) and whether it could be exercised in response to a change of control even though it is not explicitly triggered by one.

@@ -18,11 +18,9 @@ from dd_agents.agents.prompt_builder import (
     AgentType,
 )
 from dd_agents.agents.prompt_constants import (
-    GAP_NOT_FOUND,
     SEVERITY_PREAMBLE,
-    TFC_SEVERITY_RULE,
-    build_citation_mandate,
 )
+from dd_agents.agents.prompts.loader import load_builtin_specialist
 
 # ---------------------------------------------------------------------------
 # Focus area constants per specialist
@@ -197,107 +195,11 @@ class LegalAgent(BaseAgentRunner):
         return "legal"
 
     def get_system_prompt(self) -> str:
-        return (
-            "You are the Legal specialist agent for forensic M&A due diligence. "
-            "Focus on governance graphs, change-of-control clauses, assignment "
-            "restrictions, termination rights, IP ownership, data privacy, "
-            "indemnification, liability caps, warranties, and dispute resolution. " + SEVERITY_PREAMBLE
-        )
+        return load_builtin_specialist("legal").role + " " + SEVERITY_PREAMBLE
 
     @staticmethod
     def domain_robustness() -> str:
-        """Legal-specific robustness mitigations (AG-7: high-difficulty provisions)."""
-        return (
-            "## LEGAL-SPECIFIC EXTRACTION GUIDANCE\n\n"
-            #
-            "### Change of Control (AG F1: 0.82 -- HIGH difficulty)\n\n"
-            "DEFINITION: A clause triggered when ownership or control of a party "
-            "changes, typically through acquisition, merger, or transfer of voting power.\n"
-            "KEYWORDS: change of control, acquisition, merger, transfer of ownership, "
-            "voting control, controlling interest, beneficial ownership, successor\n"
-            "COMMON FORMULATIONS:\n"
-            "- 'In the event of a Change of Control of [Party]...'\n"
-            "- Sometimes embedded in termination or assignment clauses\n"
-            "- May use 'change in management' or 'change in beneficial ownership'\n"
-            f"{GAP_NOT_FOUND}\n\n"
-            "COC SUBTYPE CLASSIFICATION — classify each CoC clause as one of:\n"
-            "1. **notification-only**: Party must notify counterparty of CoC. "
-            "Routine administrative step, no consent needed.\n"
-            "2. **consent-required**: Assignment or continuation requires prior written "
-            "consent from counterparty. Assess cure period and revenue at risk.\n"
-            "3. **termination-right**: Counterparty gains a right (but not obligation) to "
-            "terminate upon CoC. Assess notice period and cure window.\n"
-            "4. **auto-termination**: Contract automatically terminates upon CoC with "
-            "no cure. Most severe subtype.\n"
-            "5. **competitor-only**: Termination or restriction triggered ONLY if the "
-            "acquirer is a competitor of the counterparty. In most acquisitions, the buyer "
-            "is NOT a competitor to the target's customers. Competitor-only CoC = P3 unless "
-            "deal config shows the buyer operates in the same market as a significant "
-            "customer.\n\n"
-            "For each CoC finding, your description MUST include:\n"
-            "- The CoC subtype (one of the 5 above)\n"
-            "- Which party holds the right (counterparty or mutual)\n"
-            "- Cure period / negotiation window (if any)\n"
-            "- Revenue impact estimate (if determinable)\n\n"
-            #
-            "### Anti-Assignment (AG F1: 0.88 -- MEDIUM-HIGH difficulty)\n\n"
-            "DEFINITION: A clause restricting either party from assigning or "
-            "transferring rights or obligations under the agreement without consent.\n"
-            "KEYWORDS: assignment, transfer, delegate, successor, assign rights, "
-            "consent required, written consent, non-assignable\n"
-            "COMMON FORMULATIONS:\n"
-            "- 'Neither party may assign this Agreement without prior written consent'\n"
-            "- 'This Agreement shall be binding upon successors and permitted assigns'\n"
-            "- May have carve-outs for affiliates or corporate reorganizations\n"
-            f"{GAP_NOT_FOUND}\n\n"
-            #
-            "### Termination Clauses — Subtype Classification\n\n"
-            "Classify each termination clause as one of:\n"
-            "- **TfCause (Termination for Cause)**: Triggered by material breach, "
-            "insolvency, or specific default events. Standard mutual TfCause with "
-            "reasonable cure period = P3. Broad or subjective 'cause' definition = P1.\n"
-            "- **TfC (Termination for Convenience)**: Either party may terminate "
-            "without cause, typically with a notice period. " + TFC_SEVERITY_RULE + "\n"
-            "- **Termination on CoC**: Termination right triggered by change of control. "
-            "Classify under CoC subtypes above, not here.\n"
-            "- **Termination on Insolvency**: Triggered by bankruptcy or insolvency. "
-            "Standard protective clause = P3.\n"
-            "- **Mutual vs Unilateral**: Note whether termination right is mutual or "
-            "held by one party only. Unilateral TfC held by counterparty = higher risk.\n\n"
-            "For each termination finding, extract:\n"
-            "- Termination subtype\n"
-            "- Notice period required\n"
-            "- Early termination fees or refund provisions\n"
-            "- Which party holds the right\n"
-            "- Cure period (for TfCause)\n\n"
-            #
-            "### Cap on Liability (AG F1: 0.67 -- VERY HIGH difficulty)\n\n"
-            "DEFINITION: A contractual clause limiting the maximum aggregate liability "
-            "of one or both parties, typically expressed as a fixed dollar amount, "
-            "a multiple of fees paid, or 'direct damages only'.\n"
-            "WHAT TO EXTRACT:\n"
-            "- The cap amount (absolute $ or formula)\n"
-            "- Which parties are capped\n"
-            "- What is excluded from the cap (IP indemnity, confidentiality breach, "
-            "willful misconduct)\n"
-            "- Whether the cap is mutual or asymmetric\n"
-            "KEYWORDS: liability cap, limitation of liability, aggregate liability, "
-            "maximum liability, direct damages, consequential damages, exclusion of "
-            "liability, cap on damages, total liability shall not exceed\n"
-            "COMMON FORMULATIONS:\n"
-            "- 'In no event shall [Party]'s aggregate liability exceed [amount]'\n"
-            "- 'The total liability of either party shall be limited to [formula]'\n"
-            "- Sometimes embedded in indemnification clauses, not a standalone section\n"
-            f"{GAP_NOT_FOUND} Do NOT fabricate "
-            "a liability cap that does not exist.\n\n"
-            #
-            "### Exclusivity (AG F1: 0.86 -- HIGH difficulty)\n\n"
-            "DEFINITION: A clause granting one party exclusive rights within a "
-            "defined scope (territory, product line, customer segment).\n"
-            "KEYWORDS: exclusive, exclusivity, sole provider, sole supplier, "
-            "exclusive license, non-exclusive, exclusive distribution, exclusive right\n"
-            f"{GAP_NOT_FOUND}\n\n" + build_citation_mandate("legal")
-        )
+        return load_builtin_specialist("legal").domain_guidance
 
     def get_tools(self) -> list[str]:
         return list(SPECIALIST_TOOLS)
@@ -321,44 +223,11 @@ class FinanceAgent(BaseAgentRunner):
         return "finance"
 
     def get_system_prompt(self) -> str:
-        return (
-            "You are the Finance specialist agent for forensic M&A due diligence. "
-            "Focus on payment terms, pricing compliance, revenue recognition, "
-            "financial commitments, penalties, and insurance requirements. " + SEVERITY_PREAMBLE
-        )
+        return load_builtin_specialist("finance").role + " " + SEVERITY_PREAMBLE
 
     @staticmethod
     def domain_robustness() -> str:
-        """Finance-specific robustness mitigations (E-1 through E-4, AG-7)."""
-        return (
-            "## FINANCE-SPECIFIC EXTRACTION GUIDANCE\n\n"
-            #
-            "### Cap on Liability (AG F1: 0.67 -- VERY HIGH difficulty)\n\n"
-            "DEFINITION: A contractual clause limiting the maximum aggregate liability.\n"
-            "When found, extract: cap amount (absolute $ or formula), which parties "
-            "are capped, exclusions from the cap, mutual vs asymmetric.\n"
-            "KEYWORDS: liability cap, limitation of liability, aggregate liability, "
-            "maximum liability, direct damages, total liability shall not exceed\n"
-            f"{GAP_NOT_FOUND}\n\n"
-            #
-            "### Insurance (AG F1: 0.98 -- LOW difficulty)\n\n"
-            "KEYWORDS: insurance, indemnity insurance, professional liability, "
-            "errors and omissions, cyber insurance, policy limits\n\n"
-            #
-            "### Financial Data Handling\n\n"
-            "- Excel date serial numbers (e.g. 44621) should be treated as "
-            "ISO-8601 dates. If you see a 5-digit integer in a date column, "
-            "it is likely an Excel date serial.\n"
-            "- ALWAYS verify currency units. '$120' could be $120 or $120,000 "
-            "depending on column headers. Include the column header context "
-            "in your citation.\n"
-            "- For large spreadsheets (>100 rows), process in chunks of 50 rows. "
-            "Read header + first 10 rows to understand structure first.\n"
-            "- When cross-referencing contract values against reference data, "
-            "cite BOTH the contract clause AND the spreadsheet cell/row.\n"
-            "- Normalize all currency values to full units (not thousands) before "
-            "comparison.\n\n" + build_citation_mandate("finance")
-        )
+        return load_builtin_specialist("finance").domain_guidance
 
     def get_tools(self) -> list[str]:
         return list(SPECIALIST_TOOLS)
@@ -375,58 +244,11 @@ class CommercialAgent(BaseAgentRunner):
         return "commercial"
 
     def get_system_prompt(self) -> str:
-        return (
-            "You are the Commercial specialist agent for forensic M&A due diligence. "
-            "Focus on SLA compliance, renewal terms, volume commitments, "
-            "exclusivity, territory restrictions, and customer satisfaction. " + SEVERITY_PREAMBLE
-        )
+        return load_builtin_specialist("commercial").role + " " + SEVERITY_PREAMBLE
 
     @staticmethod
     def domain_robustness() -> str:
-        """Commercial-specific robustness mitigations (AG-7: medium-high provisions)."""
-        return (
-            "## COMMERCIAL-SPECIFIC EXTRACTION GUIDANCE\n\n"
-            #
-            "### Most Favored Nation (AG F1: 0.90 -- MEDIUM-HIGH difficulty)\n\n"
-            "DEFINITION: A clause guaranteeing one party pricing or terms at least "
-            "as favorable as those offered to any other customer.\n"
-            "KEYWORDS: most favored nation, MFN, most favored customer, best price, "
-            "price parity, most favorable terms, price protection\n"
-            "COMMON FORMULATIONS:\n"
-            "- 'Supplier shall ensure that pricing is no less favorable than...'\n"
-            "- 'Customer shall receive the benefit of any more favorable terms...'\n"
-            "- May appear in pricing schedules or appendices rather than main body\n"
-            f"{GAP_NOT_FOUND}\n\n"
-            #
-            "### Exclusivity (AG F1: 0.86 -- HIGH difficulty)\n\n"
-            "DEFINITION: A clause granting one party exclusive rights within a scope.\n"
-            "KEYWORDS: exclusive, exclusivity, sole provider, sole supplier, "
-            "exclusive license, non-exclusive, exclusive right\n"
-            f"{GAP_NOT_FOUND}\n\n"
-            #
-            "### Termination for Convenience (AG F1: 0.93 -- MEDIUM difficulty)\n\n"
-            "DEFINITION: A clause allowing either party to terminate the agreement "
-            "without cause, typically with a notice period.\n"
-            "KEYWORDS: termination for convenience, terminate without cause, "
-            "terminate at will, right to terminate, notice period, termination notice\n"
-            "WHAT TO EXTRACT:\n"
-            "- Which parties can terminate for convenience\n"
-            "- Notice period required\n"
-            "- Financial consequences (early termination fees, refunds)\n"
-            "- Whether TfC survives through a change of control\n"
-            f"{GAP_NOT_FOUND}\n\n"
-            "CRITICAL TfC VALUATION GUIDANCE:\n" + TFC_SEVERITY_RULE + "\n\n"
-            #
-            "### Commercial Citation Enforcement\n\n"
-            "For each contract clause finding, cite the specific contract file and "
-            "section/clause number. For pricing findings, cite the rate card or "
-            "contract schedule with the exact pricing language. For renewal or "
-            "termination findings, cite the renewal clause with exact quoted language "
-            "including notice periods and dates. For customer concentration findings, "
-            "cite the revenue data source document (spreadsheet tab, row, cell value). "
-            "If a finding cannot be backed by a citation from the data room files, "
-            "do NOT produce it — write a gap instead.\n\n" + build_citation_mandate("commercial")
-        )
+        return load_builtin_specialist("commercial").domain_guidance
 
     def get_tools(self) -> list[str]:
         return list(SPECIALIST_TOOLS)
@@ -451,65 +273,11 @@ class ProductTechAgent(BaseAgentRunner):
         return "producttech"
 
     def get_system_prompt(self) -> str:
-        return (
-            "You are the ProductTech specialist agent for forensic M&A due diligence. "
-            "Focus on product scope, technology stack, integration requirements, "
-            "support obligations, documentation, and training requirements. " + SEVERITY_PREAMBLE
-        )
+        return load_builtin_specialist("producttech").role + " " + SEVERITY_PREAMBLE
 
     @staticmethod
     def domain_robustness() -> str:
-        """ProductTech-specific robustness mitigations.
-
-        Note: No provisions from the AG study fall under ProductTech.
-        Guidance focuses on DPA/security-specific extraction.
-        """
-        return (
-            "## PRODUCTTECH-SPECIFIC EXTRACTION GUIDANCE\n\n"
-            #
-            "### Data Processing Agreements (DPA)\n\n"
-            "KEYWORDS: data processing agreement, DPA, data controller, data processor, "
-            "subprocessor, personal data, GDPR, data protection, data subject rights, "
-            "cross-border transfer, standard contractual clauses, SCCs\n"
-            "WHAT TO EXTRACT:\n"
-            "- Controller vs processor designation for each party\n"
-            "- Subprocessor list and notification obligations\n"
-            "- Data residency / cross-border transfer mechanisms\n"
-            "- Data breach notification timeframes\n"
-            "- Data retention and deletion obligations\n"
-            f"{GAP_NOT_FOUND} Missing DPAs "
-            "are a material compliance risk.\n\n"
-            #
-            "### Security and Compliance Evidence\n\n"
-            "KEYWORDS: SOC 2, SOC2, ISO 27001, penetration test, vulnerability scan, "
-            "security audit, compliance certification, encryption, access control\n"
-            "WHAT TO EXTRACT:\n"
-            "- Security certifications claimed and their validity dates\n"
-            "- Audit report references and scope\n"
-            "- Encryption standards (at rest, in transit)\n"
-            "- Incident response SLAs\n"
-            f"{GAP_NOT_FOUND} Do NOT assume security standards are met "
-            "without documentary evidence.\n\n"
-            #
-            "### ProductTech Citation Enforcement\n\n"
-            "Technical documents (SOC2 reports, pentest results, architecture diagrams, "
-            "SLAs) ARE quotable — they contain specific text you can cite verbatim.\n\n"
-            "**How to cite technical documents:**\n"
-            "- SOC2/audit reports: quote the control ID, test description, or exception text\n"
-            "- Pentest reports: quote the finding ID, severity rating, and remediation status\n"
-            "- Architecture docs: quote the component description, technology name, or version\n"
-            "- SLA documents: quote the uptime percentage, response time, or penalty clause\n"
-            "- Product specs: quote the feature description, requirement, or acceptance criteria\n\n"
-            "**STRICT RULE: Every ProductTech finding MUST have a citation.**\n"
-            "If you cannot copy verbatim text from a specific document, you do NOT "
-            "have evidence for the finding. In that case:\n"
-            "1. Do NOT write the finding\n"
-            "2. Write a GAP instead with gap_type 'Missing_Doc' or 'Missing_Data'\n"
-            "3. Absence of a document (e.g., no SOC2 report) is a GAP, not a finding\n\n"
-            "Findings without citations are AUTOMATICALLY DOWNGRADED to P3 during merge. "
-            "A P1 finding downgraded to P3 is worthless — invest the extra turn to read "
-            "the source document and copy the exact quote.\n\n" + build_citation_mandate("producttech")
-        )
+        return load_builtin_specialist("producttech").domain_guidance
 
     def get_tools(self) -> list[str]:
         return list(SPECIALIST_TOOLS)
@@ -531,85 +299,11 @@ class CybersecurityAgent(BaseAgentRunner):
         return "cybersecurity"
 
     def get_system_prompt(self) -> str:
-        return (
-            "You are the Cybersecurity specialist agent for forensic M&A due diligence. "
-            "Focus on data breach history, access control policies, encryption standards, "
-            "incident response plans, vulnerability management, penetration testing results, "
-            "SOC 2/ISO 27001 compliance, third-party vendor security reviews, network "
-            "segmentation, and security governance frameworks. " + SEVERITY_PREAMBLE
-        )
+        return load_builtin_specialist("cybersecurity").role + " " + SEVERITY_PREAMBLE
 
     @staticmethod
     def domain_robustness() -> str:
-        """Cybersecurity-specific robustness mitigations."""
-        return (
-            "## CYBERSECURITY-SPECIFIC EXTRACTION GUIDANCE\n\n"
-            #
-            "### Data Breach History\n\n"
-            "KEYWORDS: data breach, security incident, unauthorized access, data exposure, "
-            "notification, breach disclosure, compromised records, PII exposure\n"
-            "WHAT TO EXTRACT:\n"
-            "- Date and scope of any disclosed breaches\n"
-            "- Type of data compromised (PII, financial, health, credentials)\n"
-            "- Notification timeline and regulatory filings\n"
-            "- Remediation actions taken\n"
-            "- Ongoing litigation or regulatory actions from breaches\n"
-            f"{GAP_NOT_FOUND}\n\n"
-            #
-            "### Access Controls & Identity Management\n\n"
-            "KEYWORDS: multi-factor authentication, MFA, SSO, RBAC, role-based access, "
-            "privileged access management, PAM, identity governance, least privilege\n"
-            "WHAT TO EXTRACT:\n"
-            "- MFA enforcement status (all users, admins only, not implemented)\n"
-            "- Access review frequency and process\n"
-            "- Privileged account management approach\n"
-            "- SSO integration and identity provider\n"
-            f"{GAP_NOT_FOUND}\n\n"
-            #
-            "### Encryption Standards\n\n"
-            "KEYWORDS: encryption at rest, encryption in transit, TLS, AES-256, "
-            "key management, HSM, certificate management, data classification\n"
-            "WHAT TO EXTRACT:\n"
-            "- Encryption algorithms for data at rest and in transit\n"
-            "- Key management practices and rotation schedule\n"
-            "- Certificate management and expiry tracking\n"
-            "- Data classification policy and handling requirements\n"
-            f"{GAP_NOT_FOUND}\n\n"
-            #
-            "### Incident Response\n\n"
-            "KEYWORDS: incident response plan, IRP, security operations center, SOC, "
-            "SIEM, detection, response time, tabletop exercise, playbook\n"
-            "WHAT TO EXTRACT:\n"
-            "- Documented incident response plan and last review date\n"
-            "- Mean time to detect (MTTD) and mean time to respond (MTTR)\n"
-            "- Tabletop exercise frequency and findings\n"
-            "- SOC coverage (24/7, business hours, outsourced)\n"
-            f"{GAP_NOT_FOUND}\n\n"
-            #
-            "### Compliance Certifications\n\n"
-            "KEYWORDS: SOC 2, SOC2, ISO 27001, ISO 27701, PCI DSS, HIPAA, "
-            "FedRAMP, NIST CSF, compliance audit, certification expiry\n"
-            "WHAT TO EXTRACT:\n"
-            "- Current certifications and validity dates\n"
-            "- Scope of each certification (which systems/services covered)\n"
-            "- Exceptions or qualifications noted in audit reports\n"
-            "- Planned certifications and timeline\n"
-            f"{GAP_NOT_FOUND} Expired or missing certifications "
-            "are a material risk for regulated customers.\n\n"
-            #
-            "### Cybersecurity Citation Enforcement\n\n"
-            "Security documents (pentest reports, audit certifications, incident logs, "
-            "security policies) ARE quotable — they contain specific text you can cite.\n\n"
-            "**How to cite cybersecurity documents:**\n"
-            "- Pentest reports: quote finding ID, CVSS score, and remediation status\n"
-            "- SOC 2/ISO reports: quote control ID, test description, or exception text\n"
-            "- Security policies: quote policy name, version, effective date, and key clause\n"
-            "- Incident reports: quote incident ID, timeline, impact assessment\n"
-            "- Compliance matrices: quote requirement ID, status, and evidence reference\n\n"
-            "**STRICT RULE: Every Cybersecurity finding MUST have a citation.**\n"
-            "If you cannot copy verbatim text from a specific document, you do NOT "
-            "have evidence for the finding. Write a GAP instead.\n\n" + build_citation_mandate("cybersecurity")
-        )
+        return load_builtin_specialist("cybersecurity").domain_guidance
 
     def get_tools(self) -> list[str]:
         return list(SPECIALIST_TOOLS)
@@ -626,46 +320,11 @@ class HRAgent(BaseAgentRunner):
         return "hr"
 
     def get_system_prompt(self) -> str:
-        return (
-            "You are the HR / People specialist agent for forensic M&A due diligence. "
-            "Focus on workforce composition, compensation structures, benefits liabilities, "
-            "key talent retention, organizational structure, labor compliance, collective "
-            "bargaining agreements, and succession planning. " + SEVERITY_PREAMBLE
-        )
+        return load_builtin_specialist("hr").role + " " + SEVERITY_PREAMBLE
 
     @staticmethod
     def domain_robustness() -> str:
-        """HR-specific robustness mitigations."""
-        return (
-            "## HR-SPECIFIC EXTRACTION GUIDANCE\n\n"
-            "### Compensation & Benefits\n\n"
-            "KEYWORDS: compensation, salary, bonus, equity, stock options, RSU, ESOP, "
-            "pension, 401k, benefits, golden parachute, severance, deferred compensation\n"
-            "WHAT TO EXTRACT:\n"
-            "- Executive compensation packages (base, bonus, equity, perks)\n"
-            "- Pension and post-retirement benefit obligations (funded status)\n"
-            "- CoC-triggered acceleration clauses and golden parachutes\n"
-            "- Deferred compensation arrangements and vesting schedules\n"
-            f"{GAP_NOT_FOUND}\n\n"
-            "### Key Talent & Retention Risk\n\n"
-            "KEYWORDS: key person, key employee, retention, non-compete, non-solicit, "
-            "flight risk, succession, notice period, garden leave, earn-out\n"
-            "WHAT TO EXTRACT:\n"
-            "- Key personnel identified in agreements or org charts\n"
-            "- Non-compete/non-solicit scope and enforceability\n"
-            "- Retention mechanisms: unvested equity, earn-outs, stay bonuses\n"
-            "- Single-point-of-failure roles without succession plans\n"
-            f"{GAP_NOT_FOUND}\n\n"
-            "### Labor Compliance\n\n"
-            "KEYWORDS: contractor, independent contractor, 1099, W-2, misclassification, "
-            "WARN Act, collective bargaining, union, labor board, wage, overtime\n"
-            "WHAT TO EXTRACT:\n"
-            "- Worker classification methodology and potential misclassification\n"
-            "- Union/CBA exposure and upcoming negotiations\n"
-            "- Outstanding labor claims or proceedings\n"
-            "- Multi-jurisdiction compliance status\n"
-            f"{GAP_NOT_FOUND}\n\n" + build_citation_mandate("hr")
-        )
+        return load_builtin_specialist("hr").domain_guidance
 
     def get_tools(self) -> list[str]:
         return list(SPECIALIST_TOOLS)
@@ -685,46 +344,11 @@ class TaxAgent(BaseAgentRunner):
         return "tax"
 
     def get_system_prompt(self) -> str:
-        return (
-            "You are the Tax specialist agent for forensic M&A due diligence. "
-            "Focus on income tax compliance, transfer pricing, NOL and tax attributes, "
-            "sales/use tax exposure, international tax structures, deal structure tax "
-            "implications, tax provisions and reserves, and tax controversy. " + SEVERITY_PREAMBLE
-        )
+        return load_builtin_specialist("tax").role + " " + SEVERITY_PREAMBLE
 
     @staticmethod
     def domain_robustness() -> str:
-        """Tax-specific robustness mitigations."""
-        return (
-            "## TAX-SPECIFIC EXTRACTION GUIDANCE\n\n"
-            "### Tax Attributes & NOLs\n\n"
-            "KEYWORDS: net operating loss, NOL, tax credit, carryforward, carryback, "
-            "Section 382, Section 383, ownership change, built-in gain, tax attribute\n"
-            "WHAT TO EXTRACT:\n"
-            "- NOL carryforward amounts by jurisdiction and expiration\n"
-            "- Section 382 limitation calculations or risk factors\n"
-            "- R&D credits and other carryforward tax attributes\n"
-            "- Built-in gain/loss positions from prior acquisitions\n"
-            f"{GAP_NOT_FOUND}\n\n"
-            "### Transfer Pricing\n\n"
-            "KEYWORDS: transfer pricing, intercompany, arm's length, OECD guidelines, "
-            "advance pricing agreement, APA, thin capitalization, BEPS, Country-by-Country\n"
-            "WHAT TO EXTRACT:\n"
-            "- Intercompany transaction types and values\n"
-            "- Transfer pricing methodology and documentation\n"
-            "- APA status and remaining term\n"
-            "- Permanent establishment risk factors\n"
-            f"{GAP_NOT_FOUND}\n\n"
-            "### Indirect Tax & Sales Tax\n\n"
-            "KEYWORDS: sales tax, use tax, VAT, GST, nexus, economic nexus, Wayfair, "
-            "tax exemption, tax-exempt, marketplace facilitator\n"
-            "WHAT TO EXTRACT:\n"
-            "- Jurisdictions with established nexus (physical and economic)\n"
-            "- Sales tax collection and remittance compliance\n"
-            "- Exposure estimates for uncollected tax\n"
-            "- Voluntary disclosure agreements or amnesty participation\n"
-            f"{GAP_NOT_FOUND}\n\n" + build_citation_mandate("tax")
-        )
+        return load_builtin_specialist("tax").domain_guidance
 
     def get_tools(self) -> list[str]:
         return list(SPECIALIST_TOOLS)
@@ -741,46 +365,11 @@ class RegulatoryAgent(BaseAgentRunner):
         return "regulatory"
 
     def get_system_prompt(self) -> str:
-        return (
-            "You are the Regulatory specialist agent for forensic M&A due diligence. "
-            "Focus on license transferability, antitrust/competition analysis, data privacy "
-            "regulation, financial regulation, healthcare regulation, AML/sanctions "
-            "compliance, government contracts, and industry-specific regulatory requirements. " + SEVERITY_PREAMBLE
-        )
+        return load_builtin_specialist("regulatory").role + " " + SEVERITY_PREAMBLE
 
     @staticmethod
     def domain_robustness() -> str:
-        """Regulatory-specific robustness mitigations."""
-        return (
-            "## REGULATORY-SPECIFIC EXTRACTION GUIDANCE\n\n"
-            "### License & Permit Transferability\n\n"
-            "KEYWORDS: license, permit, authorization, approval, consent, novation, "
-            "transferability, regulatory approval, change of control, assignability\n"
-            "WHAT TO EXTRACT:\n"
-            "- All material licenses, permits, and regulatory approvals\n"
-            "- Transfer mechanisms (automatic, consent required, re-application)\n"
-            "- Timeline and cost estimates for transfer\n"
-            "- Consequences of non-transferability on operations\n"
-            f"{GAP_NOT_FOUND}\n\n"
-            "### Antitrust & Competition\n\n"
-            "KEYWORDS: HSR, Hart-Scott-Rodino, merger control, market concentration, "
-            "HHI, competition authority, antitrust, second request, waiting period\n"
-            "WHAT TO EXTRACT:\n"
-            "- Filing requirements by jurisdiction (HSR, EU, other)\n"
-            "- Market share and concentration analysis\n"
-            "- Potential remedies or divestiture requirements\n"
-            "- Timeline impact on deal closing\n"
-            f"{GAP_NOT_FOUND}\n\n"
-            "### Sector-Specific Regulation\n\n"
-            "KEYWORDS: HIPAA, PCI-DSS, GLBA, FCC, FDA, SEC, FINRA, OCC, "
-            "AML, BSA, OFAC, sanctions, export control, ITAR, EAR\n"
-            "WHAT TO EXTRACT:\n"
-            "- Applicable sector-specific regulatory frameworks\n"
-            "- Compliance program status and gaps\n"
-            "- Outstanding investigations or enforcement actions\n"
-            "- Consent decrees or settlement obligations\n"
-            f"{GAP_NOT_FOUND}\n\n" + build_citation_mandate("regulatory")
-        )
+        return load_builtin_specialist("regulatory").domain_guidance
 
     def get_tools(self) -> list[str]:
         return list(SPECIALIST_TOOLS)
@@ -797,46 +386,11 @@ class ESGAgent(BaseAgentRunner):
         return "esg"
 
     def get_system_prompt(self) -> str:
-        return (
-            "You are the ESG specialist agent for forensic M&A due diligence. "
-            "Focus on environmental contamination, environmental permits, climate and "
-            "carbon risk, hazardous materials, supply chain sustainability, ESG governance, "
-            "social impact, ESG disclosure obligations, and biodiversity/land use. " + SEVERITY_PREAMBLE
-        )
+        return load_builtin_specialist("esg").role + " " + SEVERITY_PREAMBLE
 
     @staticmethod
     def domain_robustness() -> str:
-        """ESG-specific robustness mitigations."""
-        return (
-            "## ESG-SPECIFIC EXTRACTION GUIDANCE\n\n"
-            "### Environmental Contamination\n\n"
-            "KEYWORDS: contamination, remediation, Superfund, CERCLA, Phase I, Phase II, "
-            "environmental site assessment, ESA, brownfield, PFAS, PCB, asbestos\n"
-            "WHAT TO EXTRACT:\n"
-            "- Known contamination sites and remediation status\n"
-            "- Phase I/II ESA findings and recommendations\n"
-            "- CERCLA/Superfund PRP exposure and allocation\n"
-            "- Environmental insurance coverage and adequacy\n"
-            f"{GAP_NOT_FOUND}\n\n"
-            "### Climate & Carbon Risk\n\n"
-            "KEYWORDS: carbon, emissions, Scope 1, Scope 2, Scope 3, carbon pricing, "
-            "net zero, climate risk, TCFD, transition risk, physical risk, stranded assets\n"
-            "WHAT TO EXTRACT:\n"
-            "- Carbon emissions profile (Scope 1, 2, 3)\n"
-            "- Exposure to carbon pricing or emissions trading\n"
-            "- Climate-related financial risks (physical and transition)\n"
-            "- Net zero commitments and progress\n"
-            f"{GAP_NOT_FOUND}\n\n"
-            "### ESG Governance & Disclosure\n\n"
-            "KEYWORDS: CSRD, SASB, GRI, TCFD, ESG report, sustainability report, "
-            "ESG governance, board oversight, materiality assessment, double materiality\n"
-            "WHAT TO EXTRACT:\n"
-            "- Mandatory ESG reporting obligations by jurisdiction\n"
-            "- Current disclosure practices and framework alignment\n"
-            "- Board-level ESG oversight structures\n"
-            "- Material ESG risks not currently disclosed\n"
-            f"{GAP_NOT_FOUND}\n\n" + build_citation_mandate("esg")
-        )
+        return load_builtin_specialist("esg").domain_guidance
 
     def get_tools(self) -> list[str]:
         return list(SPECIALIST_TOOLS)

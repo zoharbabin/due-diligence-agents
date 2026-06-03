@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -173,8 +174,6 @@ def make_finding_dict(
 
 def _has_api_credentials() -> bool:
     """Check if Claude API credentials are available (direct or Bedrock)."""
-    import os
-
     if os.environ.get("ANTHROPIC_API_KEY"):
         return True
     if os.environ.get("CLAUDE_CODE_USE_BEDROCK"):
@@ -292,10 +291,12 @@ async def _run_agent_on_contract(
         "subjects": [subject],
     }
 
-    # Reduce budget and turns for eval runs — we only need one contract analyzed
+    # Reduce budget and turns for eval runs — we only need one contract analyzed.
+    # timeout_seconds is enforced by BaseAgentRunner.run (a stalled SDK stream
+    # breaks at this bound instead of hanging); override via DD_EVAL_AGENT_TIMEOUT.
     runner.max_turns = 50
     runner.max_budget_usd = 2.0
-    runner.timeout_seconds = 300
+    runner.timeout_seconds = int(os.environ.get("DD_EVAL_AGENT_TIMEOUT", "300"))
 
     result = await runner.run(state)
 

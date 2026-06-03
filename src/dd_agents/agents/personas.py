@@ -23,14 +23,8 @@ DD_LEGAL_ANALYST: Final[str] = "You are a meticulous legal due-diligence analyst
 # own continuation (e.g. " reviewing the results of ...", ". Answer ...").
 DD_ANALYST: Final[str] = "You are a due diligence analyst"
 
-# Full opening sentence (incl. trailing blank line) for the buyer-strategy
-# synthesis prompt in cli_auto_config.py.
-M_AND_A_STRATEGIST: Final[str] = (
-    "You are a senior M&A strategist synthesizing buyer context documents into a structured acquisition strategy.\n\n"
-)
-
-# Full opening sentence (incl. trailing blank line) for the SPA extraction
-# prompt in cli_auto_config.py.
-M_AND_A_LAWYER_SPA: Final[str] = (
-    "You are a senior M&A lawyer extracting structured deal terms from a Share Purchase Agreement (SPA).\n\n"
-)
+# NOTE: The buyer-strategy and SPA opening lines that formerly lived here as
+# ``M_AND_A_STRATEGIST`` / ``M_AND_A_LAWYER_SPA`` now live in the editable prompt
+# markdown (``agents/prompts/auto_config/buyer_strategy.md`` and
+# ``spa_extraction.md``) — they were single-call-site openers, so the markdown is
+# now their single source of truth.

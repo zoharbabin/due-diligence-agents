@@ -6,6 +6,7 @@ timeout monitoring, and error handling.  Subclassed by each concrete agent.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -407,8 +408,41 @@ class BaseAgentRunner(ABC):
         text_parts: list[str] = []
         msg_count = 0
         exceeded_soft = False
+        # --- Wall-clock enforcement (defense-in-depth) ---
+        # ``timeout_seconds`` bounds the whole SDK session AND any single stalled
+        # ``__anext__`` (a hung Bedrock stream yields no messages and would
+        # otherwise await forever — the cause of 0% CPU hangs). We iterate
+        # manually so we can wrap each message-await in ``asyncio.wait_for`` and
+        # also enforce a total deadline, then ``break`` cleanly (same task-safe
+        # exit the hard-turn limit uses — preserves partial output, lets the
+        # generator close in its own task).
+        deadline = time.monotonic() + self.timeout_seconds
+        agen = _query(prompt=prompt, options=options)
         try:
-            async for message in _query(prompt=prompt, options=options):
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    logger.error(
+                        "Agent %s exceeded timeout of %ds at message %d — stopping with %d partial parts.",
+                        agent_name,
+                        self.timeout_seconds,
+                        msg_count,
+                        len(text_parts),
+                    )
+                    break
+                try:
+                    message = await asyncio.wait_for(agen.__anext__(), timeout=remaining)
+                except StopAsyncIteration:
+                    break
+                except TimeoutError:
+                    logger.error(
+                        "Agent %s timed out after %ds waiting for the next SDK message "
+                        "(stalled stream) — stopping with %d partial parts.",
+                        agent_name,
+                        self.timeout_seconds,
+                        len(text_parts),
+                    )
+                    break
                 msg_count += 1
 
                 # --- Turn enforcement (defense-in-depth, Issue #96) ---
@@ -485,6 +519,18 @@ class BaseAgentRunner(ABC):
                 exc,
                 len(text_parts),
             )
+        finally:
+            # We iterate the generator manually, so we own its cleanup. aclose()
+            # runs in the same task that created/consumed it (the anyio
+            # cancel-scope caveat only applies to closing from a *different*
+            # task), so this is the task-safe way to release the SDK session
+            # after a normal end, a hard-limit break, or a timeout break.
+            aclose = getattr(agen, "aclose", None)
+            if aclose is not None:
+                try:
+                    await aclose()
+                except Exception as close_exc:  # noqa: BLE001
+                    logger.debug("Agent %s: generator aclose() raised %s (ignored)", agent_name, close_exc)
 
         total_text = sum(len(p) for p in text_parts)
         logger.info(
