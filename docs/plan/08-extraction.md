@@ -191,12 +191,13 @@ The quality log lives at `_dd/forensic-dd/index/extraction_quality.json`. It rec
 Extraction is a mandatory gate. The orchestrator checks these conditions before proceeding to step 6:
 
 ```python
-# src/dd_agents/orchestrator/steps/step_05_extraction.py
+# Illustrative — the real method is PipelineEngine._step_05_bulk_extraction
+# in orchestrator/engine.py, using ExtractionPipeline from extraction/pipeline.py.
 
-async def step_05_bulk_extraction(state: PipelineState) -> PipelineState:
+async def _step_05_bulk_extraction(self, state: PipelineState) -> PipelineState:
     """Step 5: Bulk pre-extraction with fallback chain."""
 
-    extractor = DocumentExtractor(
+    pipeline = ExtractionPipeline(
         project_dir=state.project_dir,
         skill_dir=state.project_dir / state.skill_dir,
     )
@@ -205,7 +206,7 @@ async def step_05_bulk_extraction(state: PipelineState) -> PipelineState:
     file_types = _load_file_types(state)
 
     try:
-        results = await extractor.extract_all(files, file_types)
+        results = await pipeline.extract_all(files, file_types)
     except ExtractionPipelineError as e:
         # >50% failure rate -- STOP pipeline
         raise PipelineBlockingError(

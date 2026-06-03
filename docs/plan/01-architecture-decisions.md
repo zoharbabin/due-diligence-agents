@@ -316,8 +316,9 @@ prompt method, a customization layer could weaken or delete them.
 overridable method. The user contract is documented verbatim: "You can add
 guidance and adjust focus and severity. You cannot remove a safety rule — those
 are always enforced." A deny-list (`SAFETY_FLOOR_NEGATION_PATTERNS`) additionally
-rejects customization text that attempts to negate the floor, enforced at load
-time and by `dd-agents agents validate`.
+rejects customization text that attempts to negate the floor, enforced by
+`dd-agents agents validate` (`agents/introspection.py`) and as a runtime
+tamper check in the merge path (`reporting/merge.py`).
 
 **Rationale**: Mechanical position (concatenated last by the builder) is the only
 reliable enforcement; prose "MUST" has no power (see ADR-01). The deny-list closes

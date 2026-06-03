@@ -1838,7 +1838,7 @@ reference to the exact source text that produced it.
   offsets into the extracted `.md` file alongside `page` and `section_ref`
 - ~~Implement citation verification~~ — **DONE** (Issue #5, Issue #24):
   `CitationVerifier` with progressive 4-scope search, whitespace
-  normalization, and cross-file correction. 99.6% verification rate
+  normalization, and cross-file correction. High-90s% verification rate
   in production (Data Room B).
 - Generate interactive HTML review pages where clicking a finding
   highlights the source passage
@@ -1938,7 +1938,7 @@ citation fidelity):
 | ~~P0~~ | ~~Replace pytesseract with GLM-OCR~~ | ~~Medium~~ | — | — | **DONE** — `GlmOcrExtractor` integrated as Step 4 in PDF chain; `OCRBackendRegistry` auto-detects mlx-vlm/Ollama/pytesseract |
 | **P0** | Add layout-aware PDF extraction (MinerU or PP-StructureV3) | High | Low (most PDFs already work) | **High** — tables, reading order, formulas | Medium — page coordinates |
 | ~~P1~~ | ~~Adopt structured LLM output~~ | ~~Medium~~ | — | — | **DONE** — Issue #4, `output_format` on `ClaudeAgentOptions`, constrained decoding |
-| ~~P1~~ | ~~Add citation verification~~ | ~~Medium~~ | — | — | **DONE** — Issue #5, progressive 4-scope search, 99.6% verification rate |
+| ~~P1~~ | ~~Add citation verification~~ | ~~Medium~~ | — | — | **DONE** — Issue #5, progressive 4-scope search, high-90s% verification rate |
 | **P1** | Replace markitdown for Office docs with Docling | Medium | Low | **High** — preserves table structure in XLSX/DOCX | Medium — element-level page refs |
 | **P2** | Add visual grounding (bounding boxes) | High | None | Low | **High** — pixel-precise citations |
 | ~~P2~~ | ~~Parallel chunk analysis~~ | ~~Low~~ | — | — | **DONE** — Issue #21, `asyncio.gather` concurrent chunks |
