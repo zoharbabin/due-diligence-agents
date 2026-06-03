@@ -19,10 +19,6 @@
 
 ---
 
-
-https://github.com/user-attachments/assets/03ae7e38-8280-488c-898a-61c1a361bb7d
-
-
 **[See a sample report](https://zoharbabin.github.io/due-diligence-agents/sample-report/)** — interactive HTML output from a synthetic deal, no install required.
 
 ### 📑 Walkthrough deck
@@ -36,22 +32,12 @@ https://github.com/user-attachments/assets/03ae7e38-8280-488c-898a-61c1a361bb7d
 <a href="https://zoharbabin.github.io/due-diligence-agents/marketing/presentation.html"><strong>▶ Open the interactive walkthrough →</strong></a> · 23 slides · architecture, cross-domain synthesis, trust layer, and ROI · use <kbd>←</kbd>/<kbd>→</kbd> to navigate, <kbd>N</kbd> for speaker notes
 </p>
 
+---
+
 <details>
-<summary><strong>Report Preview</strong> — executive dashboard with Go/No-Go verdict, cross-domain synthesis, filter bar</summary>
-
-<p align="center">
-<img src="docs/marketing/screenshots/01-executive-dashboard.png" alt="Executive Dashboard with Go/No-Go verdict, key takeaways, and severity distribution" width="720">
-</p>
-
-<p align="center">
-<img src="docs/marketing/screenshots/03-cross-domain-synthesis.png" alt="Cross-domain synthesis showing compound risks across entity domains" width="720">
-</p>
-
-<p align="center">
-<img src="docs/marketing/screenshots/06-risk-heatmap.png" alt="9-domain risk heatmap with RAG status and severity breakdown" width="720">
-</p>
-
-See the full [Report Showcase](docs/marketing/REPORT_SHOWCASE.md) for all features.
+<summary><strong>CLI Inteface Walkthrough Recording</strong></summary>
+  
+https://github.com/user-attachments/assets/03ae7e38-8280-488c-898a-61c1a361bb7d
 
 </details>
 
