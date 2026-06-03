@@ -128,7 +128,7 @@ Instead, reference **stable contracts**: interface/class names, file paths, enum
 
 **Structure (user-facing docs):** one-line description → copy-paste commands (zero prose) → single-line architecture-map annotations → mechanical design rules ("if X, route to Y") → exact how-tos with file paths + function names → key patterns (signatures, pipeline stages) → environment (required vs optional, defer full list to `.env.example`) → reference guide (*when* to read which doc). CLAUDE.md (this file) is the worked example.
 
-**Architecture-count claims** (specialists, pipeline steps, Excel sheets) and the **published Docker image name** are the few numbers docs may state — because `tests/unit/test_docs_drift.py` derives them from code and **fails CI** if a doc drifts. If you add a specialist / step / sheet, the docs that cite the count must change in the same PR or the gate blocks you. Same file enforces: every MCP `@tool` has a non-empty description, and side-effecting tools (`save_memory`, `flag_finding`, `extract_document`, `run_export_script`) declare their write/effect in the description the model sees.
+**Architecture-count claims** (specialists, total agents, pipeline steps, blocking gates, Excel sheets) and the **published Docker image name** are the few numbers docs may state — because `tests/unit/test_docs_drift.py` derives them from code and **fails CI** if a doc drifts. If you add a specialist / agent / step / gate / sheet, the docs that cite the count must change in the same PR or the gate blocks you. Same file enforces: every MCP `@tool` has a non-empty description, and side-effecting tools (`save_memory`, `flag_finding`, `extract_document`, `run_export_script`) declare their write/effect in the description the model sees.
 
 **Tool annotations** (`tools/mcp_server.py`): the `@tool(name, description, schema)` description must match runtime behavior and name any side effect / write. Keep read-only and writing tools distinct; never bury a destructive action behind a generic flag.
 
@@ -165,7 +165,7 @@ Plan docs (`docs/plan/02-22`) are **historical design specs**. Code is authorita
 Three workflows in `.github/workflows/`:
 - `ci.yml` — lint, types, unit tests (3.12 + 3.13 matrix), integration, build, E2E
 - `release.yml` — triggered by version tag → PyPI (OIDC) + Docker (GHCR + Docker Hub) + Homebrew formula bump + GitHub Release
-- `pages.yml` — deploys the MkDocs site to GitHub Pages on `docs/` changes to `main`
+- `pages.yml` — builds and deploys the MkDocs site to GitHub Pages on pushes to `main` touching `docs/`, `mkdocs.yml`, or `CONTRIBUTING.md` (also manual via `workflow_dispatch`)
 
 Docs drift is enforced inside the unit gate: `tests/unit/test_docs_drift.py` runs in both workflows (no separate job), so a doc that contradicts code-derived architecture counts, the published Docker image, or MCP tool-annotation contracts fails CI.
 

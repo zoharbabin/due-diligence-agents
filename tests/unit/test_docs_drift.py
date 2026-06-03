@@ -85,6 +85,14 @@ def _pipeline_step_count() -> int:
     return len(list(PipelineStep))
 
 
+def _blocking_gate_count() -> int:
+    """Number of blocking validation gates, derived from the enum so adding or
+    removing a gate trips the docs that headline this as "5 blocking gates"."""
+    from dd_agents.orchestrator.steps import PipelineStep
+
+    return sum(1 for s in PipelineStep if s.is_blocking_gate)
+
+
 def _excel_sheet_count() -> int:
     import json
 
@@ -114,24 +122,8 @@ def _offenders(pattern: str, expected: int) -> dict[str, list[int]]:
     return out
 
 
-def _offenders_near(pattern: str, expected: int, *, context: str, window: int = 40) -> dict[str, list[int]]:
-    """Like :func:`_offenders`, but only counts a match when a *context* word
-    appears within *window* chars on either side. Lets a count phrase be guarded
-    only in its intended context (e.g. "N steps" near "pipeline")."""
-    ctx = re.compile(context, re.IGNORECASE)
-    out: dict[str, list[int]] = {}
-    for f, t in _doc_text().items():
-        wrong: set[int] = set()
-        for m in re.finditer(pattern, t):
-            val = int(m.group(1))
-            if val == expected:
-                continue
-            lo, hi = max(0, m.start() - window), min(len(t), m.end() + window)
-            if ctx.search(t[lo:hi]):
-                wrong.add(val)
-        if wrong:
-            out[f] = sorted(wrong)
-    return out
+# Spelled-out numbers some docs use for the blocking-gate count.
+_NUM_WORDS = {4: "four", 5: "five", 6: "six", 7: "seven"}
 
 
 def test_specialist_count_in_docs_matches_code() -> None:
@@ -152,17 +144,41 @@ def test_total_agent_count_in_docs_matches_code() -> None:
 def test_pipeline_step_count_in_docs_matches_code() -> None:
     n = _pipeline_step_count()
     # Hyphenated "N-step" is always the pipeline. The space form "N steps" is
-    # only counted when "pipeline"/"orchestrator" appears within a short window
-    # on either side, so unrelated uses (e.g. a "10 steps" error-math example)
-    # are not false positives.
-    bad = _offenders(r"\b(\d+)-step\b", n)
-    bad |= _offenders_near(r"\b(\d+) steps?\b", n, context=r"pipeline|orchestrat")
+    # only counted when "pipeline"/"orchestrator" sits IMMEDIATELY adjacent
+    # (directly before or after the count), so unrelated prose that merely
+    # mentions a pipeline in the same sentence (e.g. "5 steps; then the
+    # pipeline runs") is not a false positive, and a "10 steps" math example
+    # is ignored. The (?<![\d.]) lookbehind stops a version-like "1.38-step"
+    # from harvesting its fractional digits.
+    bad = _offenders(r"(?<![\d.])(\d+)-step\b", n)
+    bad |= _offenders(r"(?<![\d.])(\d+) steps?,? (?:async )?(?i:pipeline|orchestrat)", n)
+    bad |= _offenders(r"(?i:pipeline|orchestrat)\w*[^.\n]{0,20}?(?<![\d.])(\d+) steps?\b", n)
     assert not bad, f"Docs cite a pipeline-step count != {n} (code truth): {bad}"
+
+
+def test_blocking_gate_count_in_docs_matches_code() -> None:
+    n = _blocking_gate_count()
+    # The PIPELINE blocking-gate count is always tied to the word "blocking"
+    # ("5 blocking gates", "5 blocking quality gates", "Five blocking gates",
+    # "Five steps are blocking gates"). We deliberately do NOT match bare
+    # "N quality gates" because that phrasing is also used for the unrelated
+    # per-method *extraction* quality gates ("passes through 6 quality gates").
+    digit = _offenders(r"(?<![\d.])(\d+)(?: \w+){0,2} blocking (?:quality )?gates?\b", n)
+    digit |= _offenders(r"(?<![\d.])(\d+) blocking", n)
+    spelled = {
+        f
+        for f, t in _doc_text().items()
+        if re.search(r"\b(four|five|six|seven)\b[^.\n]{0,40}blocking gate", t, re.IGNORECASE)
+        and not re.search(rf"\b{_NUM_WORDS[n]}\b[^.\n]{{0,40}}blocking gate", t, re.IGNORECASE)
+    }
+    assert not digit, f"Docs cite a blocking-gate count != {n} (code truth): {digit}"
+    assert not spelled, f"Docs spell out a blocking-gate count != {n} ({_NUM_WORDS[n]}): {sorted(spelled)}"
 
 
 def test_excel_sheet_count_in_docs_matches_schema() -> None:
     n = _excel_sheet_count()
-    bad = _offenders(r"\b(\d+)[ -]sheets?\b", n)
+    # (?<![\d.]) so a version-like "1.14 sheets" can't harvest "14".
+    bad = _offenders(r"(?<![\d.])(\d+)[ -]sheets?\b", n)
     assert not bad, f"Docs cite an Excel sheet count != {n} (report_schema.json): {bad}"
 
 

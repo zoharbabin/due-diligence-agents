@@ -222,14 +222,14 @@ the assembled rubric and that bare literals do not appear independently.
    (`computed_metrics.py:70-108`), applied in `_recalibrate_severity()` (`:1123`, comparison
    `:1143-1170`). **Downgrades only** (caps via `max_severity`). This *is* enforced.
 3. **Executive-synthesis override** — `SeverityOverride` (`executive_synthesis.py:29-36`).
-   **Verified latent bug:** these recommendations are *recorded and rendered* but **no code
-   anywhere consumes them to mutate a finding's severity** (confirmed across `merge.py` and the
-   orchestrator). The senior-partner re-grade currently has **zero effect** on output severity.
+   **Latent bug at the time (since fixed):** these recommendations *were* recorded and rendered but **no code
+   consumed them to mutate a finding's severity** (confirmed across `merge.py` and the
+   orchestrator). The senior-partner re-grade *had* **zero effect** on output severity — now wired through `resolve_severity()`.
 4. **Report rendering** — displays the merged/recalibrated value.
 
-**Why it matters.** A user who sets `change_of_control: P1` gets only a prompt *hint* the model
-may ignore, which a downgrade rule may later override anyway — it will feel broken. And the
-executive-synthesis override is dead code.
+**Why it mattered.** A user who set `change_of_control: P1` got only a prompt *hint* the model
+may ignore, which a downgrade rule may later override anyway — it felt broken. And the
+executive-synthesis override *was* dead code (now consumed by `resolve_severity()` — see note above).
 
 **Fix (AD-3).** Collapse to **one deterministic post-merge resolver** with recorded
 `severity_source`: `llm` → `recalibration` (down-only) → `user_override` (bounded by AD-3a) →
