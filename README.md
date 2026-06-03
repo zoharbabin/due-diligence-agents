@@ -23,7 +23,7 @@
 https://github.com/user-attachments/assets/03ae7e38-8280-488c-898a-61c1a361bb7d
 
 
-**[See a sample report](https://zoharbabin.github.io/due-diligence-agents/)** — interactive HTML output from a synthetic deal, no install required.
+**[See a sample report](https://zoharbabin.github.io/due-diligence-agents/sample-report/)** — interactive HTML output from a synthetic deal, no install required.
 
 <details>
 <summary><strong>Report Preview</strong> — executive dashboard with Go/No-Go verdict, cross-domain synthesis, filter bar</summary>

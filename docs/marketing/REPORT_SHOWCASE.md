@@ -154,4 +154,4 @@ dd-agents run examples/quickstart/deal-config.json
 open _dd/forensic-dd/runs/latest/report/dd_report.html
 ```
 
-Or **[view the sample report](https://zoharbabin.github.io/due-diligence-agents/)** — no install required.
+Or **[view the sample report](https://zoharbabin.github.io/due-diligence-agents/sample-report/)** — no install required.
