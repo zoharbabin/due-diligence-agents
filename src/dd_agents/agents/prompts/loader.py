@@ -105,13 +105,23 @@ def _split_front_matter(raw: str) -> tuple[dict[str, Any], str]:
     return meta, parts[2]
 
 
-def _split_sections(body: str) -> dict[str, str]:
-    """Split a Markdown body into ``{heading: content}`` on ``## Heading`` lines."""
+#: The exactly-three top-level section headings a specialist prompt file carries.
+#: We split ONLY on these so the section bodies may themselves contain ``##``/``###``
+#: markdown (the domain-guidance prose is richly sub-headed) without being mis-split.
+_SPECIALIST_HEADINGS: frozenset[str] = frozenset({"Role", "Specialist Focus", "Domain Guidance"})
+
+
+def _split_sections(body: str, known_headings: frozenset[str] = _SPECIALIST_HEADINGS) -> dict[str, str]:
+    """Split a Markdown body into ``{heading: content}`` on ``## <known heading>`` lines.
+
+    Only ``## `` lines whose text is in *known_headings* start a new section; any
+    other ``##``/``###`` line is ordinary content within the current section.
+    """
     sections: dict[str, str] = {}
     current: str | None = None
     buf: list[str] = []
     for line in body.splitlines():
-        if line.startswith("## "):
+        if line.startswith("## ") and line[3:].strip() in known_headings:
             if current is not None:
                 sections[current] = "\n".join(buf).strip("\n")
             current = line[3:].strip()
