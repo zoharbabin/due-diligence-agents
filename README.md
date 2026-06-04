@@ -1,4 +1,7 @@
 <p align="center">
+  <img src="docs/marketing/assets/logo.svg" alt="Due Diligence Agents logo" width="120" height="120">
+</p>
+<p align="center">
   <h1 align="center">Due Diligence Agents</h1>
   <p align="center">
     Find what gets buried in the data room. Open-source integrated M&A due diligence — 9 specialist domains across every contract, cross-referenced with exact citations.

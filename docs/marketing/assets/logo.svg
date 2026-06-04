@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Due Diligence Agents">
+  <title>Due Diligence Agents</title>
+  <defs>
+    <radialGradient id="pupil" cx="43%" cy="39%" r="62%">
+      <stop offset="0%" stop-color="#eff5ff"/>
+      <stop offset="48%" stop-color="#93c5fd"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
+    </radialGradient>
+  </defs>
+    <polygon points="260.7,86.1 361.6,122.8 302.7,221.6 272.8,200.5" fill="#3b82f6" stroke="#0a0f1e" stroke-width="2.5" stroke-linejoin="round"/>
+    <polygon points="368.9,128.9 422.5,221.8 313.9,259.6 304.5,224.2" fill="#6366f1" stroke="#0a0f1e" stroke-width="2.5" stroke-linejoin="round"/>
+    <polygon points="424.2,231.2 405.5,336.9 298.0,296.0 313.6,262.9" fill="#8b5cf6" stroke="#0a0f1e" stroke-width="2.5" stroke-linejoin="round"/>
+    <polygon points="400.8,345.1 318.6,414.1 262.5,313.6 295.7,298.3" fill="#ec4899" stroke="#0a0f1e" stroke-width="2.5" stroke-linejoin="round"/>
+    <polygon points="309.7,417.3 202.3,417.3 223.9,304.3 259.2,313.9" fill="#f97316" stroke="#0a0f1e" stroke-width="2.5" stroke-linejoin="round"/>
+    <polygon points="193.4,414.1 111.2,345.1 200.4,272.4 221.3,302.4" fill="#f59e0b" stroke="#0a0f1e" stroke-width="2.5" stroke-linejoin="round"/>
+    <polygon points="106.5,336.9 87.8,231.2 202.9,232.8 199.5,269.2" fill="#84cc16" stroke="#0a0f1e" stroke-width="2.5" stroke-linejoin="round"/>
+    <polygon points="89.5,221.8 143.1,128.9 230.2,204.0 204.2,229.8" fill="#10b981" stroke="#0a0f1e" stroke-width="2.5" stroke-linejoin="round"/>
+    <polygon points="150.4,122.8 251.3,86.1 269.6,199.6 233.2,202.7" fill="#06b6d4" stroke="#0a0f1e" stroke-width="2.5" stroke-linejoin="round"/>
+  <circle cx="256" cy="256" r="52" fill="url(#pupil)"/>
+  <circle cx="256" cy="256" r="52" fill="none" stroke="#0a0f1e" stroke-width="3" opacity="0.5"/>
+  <circle cx="242" cy="242" r="14" fill="#ffffff" opacity="0.9"/>
+</svg>

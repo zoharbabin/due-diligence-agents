@@ -7,6 +7,8 @@ repo_name: zoharbabin/due-diligence-agents
 
 theme:
   name: material
+  logo: marketing/assets/logo.svg
+  favicon: marketing/assets/logo-32.png
   palette:
     - scheme: default
       primary: indigo
