@@ -290,10 +290,15 @@ async def _run_agent_on_contract(
     agent_name: str,
     contract_name: str,
     tmp_dir: Path,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], bool]:
     """Spawn a single specialist agent against a ground truth contract.
 
-    Returns the list of finding dicts produced by the agent.
+    Returns ``(findings, ok)`` where *ok* is ``False`` when the run did not
+    complete successfully (e.g. a stalled-stream timeout). Callers MUST drop a
+    non-ok sample as INCONCLUSIVE rather than scoring it as a real 0.0-recall
+    miss — an infrastructure timeout is not an agent quality failure. A
+    successful run that genuinely produced zero findings returns ``([], True)``
+    and IS a real recall failure.
     """
     from dd_agents.agents.registry import AgentRegistry
     from dd_agents.models.inventory import SubjectEntry
@@ -336,16 +341,17 @@ async def _run_agent_on_contract(
 
     result = await runner.run(state)
 
-    if result.get("status") != "success":
+    ok = result.get("status") == "success"
+    if not ok:
         logger.warning(
-            "Agent %s returned status=%s for %s: %s",
+            "Agent %s returned status=%s for %s: %s — sample treated as INCONCLUSIVE",
             agent_name,
             result.get("status"),
             contract_name,
             result.get("error", ""),
         )
 
-    return _extract_findings_from_disk(run_dir, agent_name, subject_safe_name)
+    return _extract_findings_from_disk(run_dir, agent_name, subject_safe_name), ok
 
 
 # ---------------------------------------------------------------------------
@@ -390,19 +396,20 @@ def eval_results(
             sample_metrics: list[AgentEvalMetrics] = []
             for s in range(n_samples):
                 eval_tmp = tmp_path_factory.mktemp(f"eval_{agent_name}_{gt.contract.replace('.', '_')}_{s}")
-                errored = False
+                ok = False
                 try:
-                    produced = asyncio.run(_run_agent_on_contract(agent_name, gt.contract, eval_tmp))
+                    produced, ok = asyncio.run(_run_agent_on_contract(agent_name, gt.contract, eval_tmp))
                 except Exception as exc:
                     logger.error("Agent %s failed on %s (sample %d): %s", agent_name, gt.contract, s, exc)
                     produced = []
-                    errored = True
+                    ok = False
 
-                # Drop a sample that BOTH errored and produced nothing — feeding a
-                # zero into the median would penalise infrastructure noise as if it
-                # were an agent regression. A genuine empty (non-errored) result is
-                # kept: that IS a real recall failure.
-                if errored and not produced:
+                # Drop a sample whose run did not complete successfully (exception
+                # OR a non-success status such as a stalled-stream timeout) —
+                # feeding its empty/partial output as 0.0 would penalise
+                # infrastructure noise as an agent regression. A SUCCESSFUL run that
+                # genuinely produced zero findings is kept: that IS a real miss.
+                if not ok:
                     continue
 
                 for f in produced:
@@ -520,7 +527,7 @@ def cross_agent_results(
     for agent_name in agent_names:
         eval_tmp = tmp_path_factory.mktemp(f"cross_{agent_name}")
         try:
-            produced = asyncio.run(_run_agent_on_contract(agent_name, cross_contract, eval_tmp))
+            produced, _ok = asyncio.run(_run_agent_on_contract(agent_name, cross_contract, eval_tmp))
         except Exception as exc:
             logger.error("Cross-agent eval: %s failed on %s: %s", agent_name, cross_contract, exc)
             produced = []

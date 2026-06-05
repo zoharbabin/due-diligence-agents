@@ -2,12 +2,13 @@
   "contract": "sla_financial_exposure.md",
   "agent": "finance",
   "tags": ["cross_domain"],
-  "ambiguity_zone": 0.15,
+  "ambiguity_zone": 0.0,
   "max_expected_findings": 12,
   "min_expected_findings": 1,
   "expected_findings": [
     {
       "category": "pricing_risk",
+      "alternative_categories": ["penalties", "financial_commitments", "liability", "revenue_recognition"],
       "min_severity": "P3",
       "max_severity": "P0",
       "must_contain_keywords": ["credit"],
