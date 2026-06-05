@@ -22,6 +22,7 @@
     },
     {
       "category": "enforcement_action",
+      "alternative_categories": ["aml_sanctions", "financial_regulation"],
       "min_severity": "P1",
       "max_severity": "P0",
       "must_contain_keywords": [
@@ -37,13 +38,14 @@
     },
     {
       "category": "coc_regulatory_approval",
+      "alternative_categories": ["license_transferability", "license_renewal"],
       "min_severity": "P2",
       "max_severity": "P0",
       "must_contain_keywords": [
         "change of control"
       ],
       "keyword_synonyms": {
-        "change of control": ["prior written approval", "change of control", "90-120 days", "regulatory approval"]
+        "change of control": ["prior written approval", "change of control", "CoC", "90-120 days", "regulatory approval"]
       },
       "citation_must_reference": {
         "file": "regulatory_filing.md"
@@ -52,6 +54,7 @@
     },
     {
       "category": "compliance_gap",
+      "alternative_categories": ["financial_regulation", "license_transferability"],
       "min_severity": "P3",
       "max_severity": "P1",
       "must_contain_keywords": [

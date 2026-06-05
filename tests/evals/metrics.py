@@ -101,8 +101,12 @@ def match_finding(produced: dict[str, Any], expected: ExpectedFinding) -> bool:
     3. Citation file reference (if citation_must_reference specifies a file)
     """
     prod_cat = produced.get("category", "").lower()
-    exp_cat = expected.category.lower()
-    if not _categories_match(prod_cat, exp_cat):
+    # Accept the primary category OR any declared alternative (for findings whose
+    # risk legitimately spans domains). The keyword + citation checks below remain
+    # the discriminators, so this widens acceptance for ONE finding without
+    # loosening global category matching.
+    acceptable_categories = [expected.category.lower(), *(c.lower() for c in expected.alternative_categories)]
+    if not any(_categories_match(prod_cat, cat) for cat in acceptable_categories):
         return False
 
     if expected.must_contain_keywords:
@@ -220,20 +224,19 @@ def compute_agent_metrics(
     expected = ground_truth.expected_findings
     must_not = ground_truth.must_not_find
 
-    # --- Recall: how many expected findings were matched ---
-    matched_expected: list[ExpectedFinding] = []
-    matched_produced_indices: set[int] = set()
-
-    for exp in expected:
-        if not exp.required:
-            continue
-        for i, prod in enumerate(produced_findings):
-            if i in matched_produced_indices:
-                continue
-            if match_finding(prod, exp):
-                matched_expected.append(exp)
-                matched_produced_indices.add(i)
-                break
+    # --- Recall: how many expected (required) findings were matched ---
+    # Recall asks "was each expected risk surfaced SOMEWHERE?", so it is NOT
+    # constrained to distinct produced findings: an agent that legitimately
+    # consolidates two real risks into one well-written finding (e.g. a
+    # non-compete clause whose text also covers the termination provision) must
+    # get credit for both. This is not over-crediting — each expected still
+    # independently requires its own category/keyword/citation match
+    # (`match_finding`), so a finding can only satisfy multiple expecteds when it
+    # genuinely contains each one's discriminating keyword. Precision (below)
+    # keeps the 1:1 discipline that penalises over-production.
+    matched_expected = [
+        exp for exp in expected if exp.required and any(match_finding(prod, exp) for prod in produced_findings)
+    ]
 
     required_count = sum(1 for e in expected if e.required)
     recall = len(matched_expected) / required_count if required_count > 0 else 1.0

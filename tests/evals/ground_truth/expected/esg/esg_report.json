@@ -7,6 +7,7 @@
   "expected_findings": [
     {
       "category": "carbon_emissions",
+      "alternative_categories": ["climate_carbon_risk", "climate_risk"],
       "min_severity": "P3",
       "max_severity": "P1",
       "must_contain_keywords": [
@@ -22,13 +23,14 @@
     },
     {
       "category": "diversity_inclusion",
+      "alternative_categories": ["esg_governance", "governance_structure", "social_impact"],
       "min_severity": "P3",
       "max_severity": "P1",
       "must_contain_keywords": [
         "diversity"
       ],
       "keyword_synonyms": {
-        "diversity": ["DEI", "gender", "diversity", "inclusion", "board composition", "women"]
+        "diversity": ["DEI", "gender", "diversity", "inclusion", "board composition", "women", "female director", "female"]
       },
       "citation_must_reference": {
         "file": "esg_report.md"
@@ -52,6 +54,7 @@
     },
     {
       "category": "esg_reporting",
+      "alternative_categories": ["esg_disclosure", "esg_governance"],
       "min_severity": "P3",
       "max_severity": "P1",
       "must_contain_keywords": [

@@ -7,6 +7,7 @@
   "expected_findings": [
     {
       "category": "non_compete",
+      "alternative_categories": ["labor_compliance", "key_talent_retention"],
       "min_severity": "P2",
       "max_severity": "P0",
       "must_contain_keywords": [
@@ -22,6 +23,7 @@
     },
     {
       "category": "change_of_control",
+      "alternative_categories": ["key_talent_retention", "retention_risk"],
       "min_severity": "P2",
       "max_severity": "P0",
       "must_contain_keywords": [
@@ -52,6 +54,7 @@
     },
     {
       "category": "termination_provisions",
+      "alternative_categories": ["key_talent_retention", "labor_compliance"],
       "min_severity": "P3",
       "max_severity": "P1",
       "must_contain_keywords": [

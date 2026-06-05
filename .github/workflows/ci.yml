@@ -191,6 +191,10 @@ jobs:
         run: pytest tests/evals/ -v --tb=short -m "eval" --junitxml=results/evals.xml
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Median-of-3 sampling de-noises single-draw LLM variance so a one-off
+          # unlucky run doesn't flake the (non-blocking) eval signal. Recall and
+          # false-positive floors stay hard — see tests/evals/test_eval_robustness.py.
+          DD_EVAL_SAMPLES: "3"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

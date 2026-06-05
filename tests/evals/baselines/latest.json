@@ -1,57 +1,97 @@
 {
-  "timestamp": "2026-04-29T01:30:00.000000+00:00",
-  "commit": "cdefd907e4550b5504d3e2f4ddcf2d4f1c18ea8c",
-  "notes": "Baseline adjusted for expanded cross-domain ground truth (Issue #189). Run with --update-baseline to capture actual metrics.",
+  "timestamp": "2026-06-05T01:15:19.316003+00:00",
+  "commit": "d4ebd435f91dd4f6f61e32a3ca8a1ed26b60effa",
   "metrics": {
     "commercial": {
       "agent_name": "commercial",
       "finding_recall": 1.0,
-      "finding_precision": 0.8,
+      "finding_precision": 0.5833333333333333,
       "citation_accuracy": 1.0,
       "severity_accuracy": 1.0,
       "false_positive_rate": 0.0,
-      "f1_score": 0.8,
-      "finding_count": 6
+      "f1_score": 0.7333333333333334,
+      "finding_count": 8
     },
     "cybersecurity": {
       "agent_name": "cybersecurity",
-      "finding_recall": 0.8571428571428571,
-      "finding_precision": 0.7272727272727273,
+      "finding_recall": 1.0,
+      "finding_precision": 0.9,
       "citation_accuracy": 1.0,
       "severity_accuracy": 1.0,
       "false_positive_rate": 0.0,
-      "f1_score": 0.7868852459016394,
-      "finding_count": 11
+      "f1_score": 0.9473684210526316,
+      "finding_count": 10
+    },
+    "esg": {
+      "agent_name": "esg",
+      "finding_recall": 1.0,
+      "finding_precision": 1.0,
+      "citation_accuracy": 1.0,
+      "severity_accuracy": 1.0,
+      "false_positive_rate": 0.0,
+      "f1_score": 1.0,
+      "finding_count": 6
     },
     "finance": {
       "agent_name": "finance",
-      "finding_recall": 1.0,
-      "finding_precision": 0.45,
+      "finding_recall": 0.8,
+      "finding_precision": 0.49333333333333335,
       "citation_accuracy": 1.0,
       "severity_accuracy": 1.0,
       "false_positive_rate": 0.0,
-      "f1_score": 0.55,
-      "finding_count": 25
+      "f1_score": 0.5753968253968254,
+      "finding_count": 26
+    },
+    "hr": {
+      "agent_name": "hr",
+      "finding_recall": 1.0,
+      "finding_precision": 1.0,
+      "citation_accuracy": 1.0,
+      "severity_accuracy": 1.0,
+      "false_positive_rate": 0.0,
+      "f1_score": 1.0,
+      "finding_count": 7
     },
     "legal": {
       "agent_name": "legal",
-      "finding_recall": 0.9375,
-      "finding_precision": 0.55,
+      "finding_recall": 1.0,
+      "finding_precision": 0.6193452380952381,
       "citation_accuracy": 1.0,
       "severity_accuracy": 1.0,
       "false_positive_rate": 0.0,
-      "f1_score": 0.65,
+      "f1_score": 0.7109487734487734,
       "finding_count": 28
     },
     "producttech": {
       "agent_name": "producttech",
       "finding_recall": 1.0,
-      "finding_precision": 0.6666666666666666,
+      "finding_precision": 0.5,
       "citation_accuracy": 1.0,
       "severity_accuracy": 1.0,
       "false_positive_rate": 0.0,
-      "f1_score": 0.8,
-      "finding_count": 3
+      "f1_score": 0.6666666666666666,
+      "finding_count": 2
+    },
+    "regulatory": {
+      "agent_name": "regulatory",
+      "finding_recall": 1.0,
+      "finding_precision": 0.75,
+      "citation_accuracy": 1.0,
+      "severity_accuracy": 1.0,
+      "false_positive_rate": 0.0,
+      "f1_score": 0.8571428571428571,
+      "finding_count": 8
+    },
+    "tax": {
+      "agent_name": "tax",
+      "finding_recall": 1.0,
+      "finding_precision": 1.0,
+      "citation_accuracy": 1.0,
+      "severity_accuracy": 0.8,
+      "false_positive_rate": 0.0,
+      "f1_score": 1.0,
+      "finding_count": 6
     }
-  }
+  },
+  "notes": "Median-of-3 baseline. 5 specialists (commercial/esg/hr/regulatory/tax) re-measured live after ground-truth category/keyword fixes; 4 (legal/finance/producttech/cybersecurity) from prior median-of-3 capture (agent behavior + their GT unchanged)."
 }

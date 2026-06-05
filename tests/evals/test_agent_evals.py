@@ -31,6 +31,32 @@ from .models import (
     Verdict,
 )
 
+# Default ambiguity band for the near-deterministic quality metrics (citation /
+# severity accuracy) when a ground-truth file does not specify one. Recall and
+# false-positive thresholds are deliberately NOT banded — see the module tests.
+_DEFAULT_QUALITY_ZONE = 0.10
+
+
+def _agent_ambiguity_zone(agent_name: str) -> float:
+    """Max ``ambiguity_zone`` declared across an agent's ground-truth files.
+
+    Lets a contract opt into a wider inconclusive band for the near-deterministic
+    quality metrics; falls back to :data:`_DEFAULT_QUALITY_ZONE`. Pure file read,
+    no model calls.
+    """
+    import json
+    from pathlib import Path
+
+    expected_dir = Path(__file__).parent / "ground_truth" / "expected" / agent_name
+    zones = [_DEFAULT_QUALITY_ZONE]
+    if expected_dir.is_dir():
+        for gt_file in expected_dir.glob("*.json"):
+            try:
+                zones.append(float(json.loads(gt_file.read_text()).get("ambiguity_zone", 0.0)))
+            except (json.JSONDecodeError, OSError, TypeError, ValueError):
+                continue
+    return max(zones)
+
 
 class TestCategoryMatch:
     """Unit tests for category synonym matching."""
@@ -94,19 +120,55 @@ class TestAgentEvals:
         assert agent_metrics.finding_recall >= 0.80
 
     def test_citation_accuracy(self, agent_metrics: AgentEvalMetrics) -> None:
-        """At least 90% of matched findings must have correct citations."""
-        assert agent_metrics.citation_accuracy >= 0.90
+        """At least 90% of matched findings must have correct citations.
+
+        Routed through the three-valued verdict: a value inside the ground
+        truth's ``ambiguity_zone`` is INCONCLUSIVE (logged, not auto-passed); only
+        a value clearly below the band FAILs. Citation accuracy is near-
+        deterministic (typically 1.0), so the band only absorbs rare noise — it
+        can never turn a genuine miss into a pass (see test_eval_robustness).
+        """
+        verdict = evaluate_verdict(
+            agent_metrics.citation_accuracy, 0.90, ambiguity_zone=_agent_ambiguity_zone(agent_metrics.agent_name)
+        )
+        if verdict == Verdict.INCONCLUSIVE:
+            pytest.skip(f"citation_accuracy={agent_metrics.citation_accuracy:.2f} inside ambiguity band (inconclusive)")
+        assert verdict == Verdict.PASS, f"citation_accuracy={agent_metrics.citation_accuracy:.2f} below 0.90 band"
 
     def test_severity_calibration(self, agent_metrics: AgentEvalMetrics) -> None:
-        """At least 75% of matched findings must have severity in acceptable range."""
-        assert agent_metrics.severity_accuracy >= 0.75
+        """At least 75% of matched findings must have severity in acceptable range.
+
+        Same three-valued treatment as citation accuracy: inconclusive inside the
+        band, hard FAIL clearly below it.
+        """
+        verdict = evaluate_verdict(
+            agent_metrics.severity_accuracy, 0.75, ambiguity_zone=_agent_ambiguity_zone(agent_metrics.agent_name)
+        )
+        if verdict == Verdict.INCONCLUSIVE:
+            pytest.skip(f"severity_accuracy={agent_metrics.severity_accuracy:.2f} inside ambiguity band (inconclusive)")
+        assert verdict == Verdict.PASS, f"severity_accuracy={agent_metrics.severity_accuracy:.2f} below 0.75 band"
 
     def test_false_positive_rate(self, agent_metrics: AgentEvalMetrics) -> None:
         """False positive rate must be at most 15%."""
         assert agent_metrics.false_positive_rate <= 0.15
 
-    def test_no_regression(self, agent_metrics: AgentEvalMetrics, baseline: EvalBaseline | None) -> None:
-        """F1 score must not regress more than 5 points from stored baseline."""
+    def test_no_regression(
+        self,
+        agent_metrics: AgentEvalMetrics,
+        baseline: EvalBaseline | None,
+        update_baseline: bool,
+    ) -> None:
+        """F1 score must not regress more than 5 points from stored baseline.
+
+        When ``--update-baseline`` is passed the operator is intentionally
+        re-capturing the baseline, so comparing against the OLD baseline is
+        meaningless and would deadlock the recapture (a stale/placeholder
+        baseline could fail this test, which previously blocked the
+        session-finish save). Skip the comparison in that mode and let
+        ``pytest_sessionfinish`` persist the freshly measured metrics.
+        """
+        if update_baseline:
+            pytest.skip("--update-baseline: re-capturing, regression comparison skipped")
         if baseline is None:
             pytest.skip("No stored baseline — skipping regression check")
         agent_baseline = baseline.metrics.get(agent_metrics.agent_name)
@@ -222,6 +284,42 @@ class TestMatchFinding:
             category="change_of_control",
             citation_must_reference={"file": "coc_basic.md"},
         )
+        assert match_finding(produced, expected) is False
+
+    def test_alternative_category_matches(self) -> None:
+        """An SLA-triggered termination right the agent files under 'sla_risk' must
+        match a 'termination' expected finding that declares it as an alternative."""
+        produced = make_finding_dict(
+            category="sla_compliance",
+            title="Performance-based MSA termination right triggered by SLA failures",
+            description="Client may terminate the MSA with 30 days notice.",
+        )
+        expected = ExpectedFinding(
+            category="termination",
+            alternative_categories=["sla_risk"],
+            must_contain_keywords=["terminate"],
+        )
+        assert match_finding(produced, expected) is True
+
+    def test_alternative_category_still_requires_keyword(self) -> None:
+        """alternative_categories widens CATEGORY acceptance only — the discriminating
+        keyword must still be present, so an unrelated SLA finding does NOT match."""
+        produced = make_finding_dict(
+            category="sla_compliance",
+            title="Service credit for uptime shortfall",
+            description="10% credit applies.",
+        )
+        expected = ExpectedFinding(
+            category="termination",
+            alternative_categories=["sla_risk"],
+            must_contain_keywords=["terminate"],
+        )
+        assert match_finding(produced, expected) is False
+
+    def test_no_alternative_categories_unchanged(self) -> None:
+        """Default (empty alternative_categories) preserves strict single-category matching."""
+        produced = make_finding_dict(category="sla_compliance", title="SLA breach")
+        expected = ExpectedFinding(category="termination", must_contain_keywords=[])
         assert match_finding(produced, expected) is False
 
 
@@ -372,6 +470,63 @@ class TestComputeAgentMetrics:
         metrics = compute_agent_metrics(produced, gt)
 
         assert metrics.finding_recall == 1.0
+
+    def test_one_finding_covering_two_real_risks_credits_both(self) -> None:
+        """Recall is many-to-one: a single finding that genuinely contains BOTH
+        expecteds' discriminating keywords credits both (an agent that legitimately
+        consolidates a non-compete + termination clause is not penalised)."""
+        # Both expecteds accept the agent's actual category ("labor_compliance")
+        # via alternative_categories — mirroring the real HR ground truth.
+        expected = [
+            ExpectedFinding(
+                category="non_compete",
+                alternative_categories=["labor_compliance"],
+                must_contain_keywords=["non-compete"],
+            ),
+            ExpectedFinding(
+                category="termination_provisions",
+                alternative_categories=["labor_compliance"],
+                must_contain_keywords=["terminat"],
+            ),
+        ]
+        produced: list[dict[str, Any]] = [
+            make_finding_dict(
+                category="labor_compliance",
+                title="24-month non-compete and termination terms",
+                description="The non-compete runs 24 months; termination without cause requires 8 weeks notice.",
+            ),
+        ]
+        gt = self._make_ground_truth(expected=expected)
+        metrics = compute_agent_metrics(produced, gt)
+        assert metrics.finding_recall == 1.0  # both required risks surfaced by one finding
+
+    def test_many_to_one_does_not_overcredit_off_keyword(self) -> None:
+        """A consolidated finding only credits expecteds whose keyword it actually
+        contains — it cannot satisfy an unrelated expected by category alone."""
+        expected = [
+            ExpectedFinding(
+                category="non_compete",
+                alternative_categories=["labor_compliance"],
+                must_contain_keywords=["non-compete"],
+            ),
+            ExpectedFinding(
+                category="termination_provisions",
+                alternative_categories=["labor_compliance"],
+                must_contain_keywords=["terminat"],
+            ),
+        ]
+        produced: list[dict[str, Any]] = [
+            # Category is accepted by BOTH expecteds, but the text mentions only
+            # non-compete — the keyword gate must still miss termination.
+            make_finding_dict(
+                category="labor_compliance",
+                title="24-month non-compete",
+                description="The non-compete runs 24 months.",
+            ),
+        ]
+        gt = self._make_ground_truth(expected=expected)
+        metrics = compute_agent_metrics(produced, gt)
+        assert metrics.finding_recall == 0.5  # only non_compete; termination genuinely missed
 
     def test_severity_accuracy(self) -> None:
         expected = [

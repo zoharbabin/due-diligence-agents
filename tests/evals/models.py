@@ -385,6 +385,13 @@ class ExpectedFinding(BaseModel):
     """A single expected finding that the agent should produce."""
 
     category: str = Field(description="Finding category (e.g. change_of_control, ip_ownership)")
+    alternative_categories: list[str] = Field(
+        default_factory=list,
+        description="Additional acceptable categories for THIS finding when a risk legitimately "
+        "spans domains (e.g. an SLA-triggered termination right an agent may file under 'sla_risk'). "
+        "Matching still requires the must_contain_keywords + citation, so this widens category "
+        "acceptance for one finding without weakening global category matching.",
+    )
     min_severity: str = Field(default="P3", description="Minimum acceptable severity (inclusive)")
     max_severity: str = Field(default="P0", description="Maximum acceptable severity (inclusive)")
     must_contain_keywords: list[str] = Field(

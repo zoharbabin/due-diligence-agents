@@ -2,7 +2,7 @@
   "contract": "sla_financial_exposure.md",
   "agent": "commercial",
   "tags": ["cross_domain"],
-  "ambiguity_zone": 0.15,
+  "ambiguity_zone": 0.0,
   "max_expected_findings": 12,
   "min_expected_findings": 1,
   "expected_findings": [

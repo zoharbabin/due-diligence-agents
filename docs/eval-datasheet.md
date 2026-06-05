@@ -23,7 +23,12 @@ The golden set lives under `tests/evals/ground_truth/`:
   - `expected_findings` — the findings an agent should produce, each with a
     `category`, a severity **range** (`min_severity`/`max_severity`),
     `must_contain_keywords` (with optional `keyword_synonyms`), a
-    `citation_must_reference` file, and a `required` flag.
+    `citation_must_reference` file, and a `required` flag. An optional
+    `alternative_categories` list accepts additional categories for a single
+    finding whose risk legitimately spans domains (e.g. an SLA-triggered
+    termination right an agent may file under `sla_risk` rather than
+    `termination`); the keyword + citation checks still gate the match, so this
+    widens category acceptance for one finding without weakening global matching.
   - `expected_gaps` — gap types the agent should report (e.g. `Missing_Doc`).
   - `must_not_find` — adversarial guards: categories the agent must **not**
     report on this document, each with a `reason`. These catch false positives
@@ -39,8 +44,15 @@ The golden set lives under `tests/evals/ground_truth/`:
 Per-agent metrics are computed by `tests/evals/metrics.py` and stored as the
 baseline in `tests/evals/baselines/latest.json`:
 
-- `finding_recall` — fraction of required expected findings that were produced.
-- `finding_precision` — fraction of produced findings that were expected.
+- `finding_recall` — fraction of required expected findings that were surfaced.
+  Recall is **many-to-one**: one produced finding that legitimately covers two
+  expected risks (e.g. a clause whose text addresses both a non-compete and a
+  termination provision) credits both — each expected still independently
+  requires its own category, keyword, and citation match, so a finding only
+  satisfies multiple expecteds when it genuinely contains each one's
+  discriminating keyword.
+- `finding_precision` — fraction of produced findings that were expected
+  (1:1 matched, so over-production still lowers precision).
 - `citation_accuracy` — fraction of findings whose citation references the
   correct source.
 - `severity_accuracy` — fraction of findings whose severity falls in the
@@ -83,20 +95,50 @@ run. See `.github/workflows/ci.yml` for the exact job wiring.
 
 ---
 
+## Handling non-determinism (median-of-N)
+
+LLM agents are stochastic, so a single run's recall/precision/F1 swings between
+runs. The `eval_results` fixture (`tests/evals/conftest.py`) collapses that noise
+by sampling each (agent, contract) pair `DD_EVAL_SAMPLES` times and taking the
+**median** of each metric via `aggregate_metrics_median`:
+
+- `DD_EVAL_SAMPLES=1` (default) — one sample; identical cost and behavior to a
+  single run, for fast local iteration.
+- CI main sets `DD_EVAL_SAMPLES=3` — the median of three runs removes the
+  single-unlucky-draw swing. Median (not best-of-N) is deliberate: one lucky
+  high draw cannot rescue a genuinely degraded agent.
+
+A sample that both errored and produced nothing is dropped (infrastructure
+noise, not an agent miss); if fewer than a majority of samples succeed, that
+contract is reported inconclusive and excluded from the aggregate rather than
+counted as a zero.
+
+The near-deterministic quality metrics (citation accuracy, severity calibration)
+are evaluated through a three-valued verdict (`evaluate_verdict`): a value inside
+a small ambiguity band is **inconclusive** (logged, not auto-passed), only a
+value clearly below the band fails. **Required-recall (≥0.80) and
+false-positive-rate (≤0.15) are never banded** — a missed required finding or a
+forbidden finding is exactly what the suite exists to catch, so those stay hard
+asserts. See `tests/evals/test_eval_robustness.py` for the anti-masking
+invariants (a value below `threshold - zone` can never become non-FAIL).
+
+---
+
 ## The F1 regression gate
 
-`test_agent_evals.py` enforces hard per-agent thresholds (recall, citation
-accuracy, severity accuracy, false-positive rate) and a **no-regression** check:
-an agent's `f1_score` must not fall more than 0.05 below its stored baseline in
-`tests/evals/baselines/latest.json`. If there is no baseline for an agent, the
-regression check is skipped.
+`test_agent_evals.py` enforces hard per-agent thresholds (recall, false-positive
+rate) plus banded quality metrics (citation, severity), and a **no-regression**
+check: an agent's median `f1_score` must not fall more than 0.05 below its stored
+baseline in `tests/evals/baselines/latest.json`. If there is no baseline for an
+agent, the regression check is skipped. The baseline is captured with the same
+median-of-N methodology so the comparison is apples-to-apples.
 
 To intentionally move the baseline (after a deliberate, reviewed change), re-run
 the eval tier with `--update-baseline` so `latest.json` captures the new
 metrics, and commit the updated baseline:
 
 ```bash
-pytest tests/evals/ -m eval --update-baseline
+DD_EVAL_SAMPLES=3 pytest tests/evals/ -m eval --update-baseline
 ```
 
 ---

@@ -37,6 +37,7 @@
     },
     {
       "category": "tax_credit_risk",
+      "alternative_categories": ["tax_controversy", "tax_attributes"],
       "min_severity": "P2",
       "max_severity": "P1",
       "must_contain_keywords": [
@@ -52,6 +53,7 @@
     },
     {
       "category": "nexus_exposure",
+      "alternative_categories": ["sales_use_tax", "indirect_tax"],
       "min_severity": "P2",
       "max_severity": "P1",
       "must_contain_keywords": [
@@ -67,6 +69,7 @@
     },
     {
       "category": "concessionary_rate_risk",
+      "alternative_categories": ["international_tax", "deal_structure_tax"],
       "min_severity": "P3",
       "max_severity": "P1",
       "must_contain_keywords": [

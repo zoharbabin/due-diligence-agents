@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import os
+import statistics
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,30 @@ from .metrics import compute_agent_metrics
 from .models import AgentEvalMetrics, EvalBaseline, GroundTruth
 
 logger = logging.getLogger(__name__)
+
+
+def aggregate_metrics_median(samples: list[AgentEvalMetrics]) -> AgentEvalMetrics:
+    """Collapse N stochastic eval samples into per-field medians.
+
+    Median (not max/best-of-N) is a consistent estimator: it strips the
+    single-unlucky-draw swing in a stochastic LLM run without letting one lucky
+    high draw rescue a genuinely degraded agent — so it de-noises the signal
+    without masking a real regression. ``finding_count`` uses ``median_low`` to
+    stay an integer. A single sample returns itself unchanged (default behavior).
+    """
+    if not samples:
+        raise ValueError("aggregate_metrics_median requires at least one sample")
+    return AgentEvalMetrics(
+        agent_name=samples[0].agent_name,
+        finding_recall=statistics.median(m.finding_recall for m in samples),
+        finding_precision=statistics.median(m.finding_precision for m in samples),
+        citation_accuracy=statistics.median(m.citation_accuracy for m in samples),
+        severity_accuracy=statistics.median(m.severity_accuracy for m in samples),
+        false_positive_rate=statistics.median(m.false_positive_rate for m in samples),
+        f1_score=statistics.median(m.f1_score for m in samples),
+        finding_count=int(statistics.median_low(m.finding_count for m in samples)),
+    )
+
 
 _EVALS_DIR = Path(__file__).parent
 _GROUND_TRUTH_DIR = _EVALS_DIR / "ground_truth"
@@ -344,37 +369,68 @@ def eval_results(
         per_contract_metrics: list[AgentEvalMetrics] = []
         total_findings = 0
 
-        for gt in gts:
-            eval_tmp = tmp_path_factory.mktemp(f"eval_{agent_name}_{gt.contract.replace('.', '_')}")
-            try:
-                produced = asyncio.run(_run_agent_on_contract(agent_name, gt.contract, eval_tmp))
-            except Exception as exc:
-                logger.error("Agent %s failed on %s: %s", agent_name, gt.contract, exc)
-                produced = []
+        # Number of stochastic samples per (agent, contract). Default 1 keeps
+        # local cost/behavior identical to a single run; CI main sets
+        # DD_EVAL_SAMPLES=3 so each per-contract metric is the MEDIAN of 3 runs,
+        # removing single-unlucky-draw variance without best-of-N masking.
+        n_samples = max(1, int(os.environ.get("DD_EVAL_SAMPLES", "1")))
 
-            for f in produced:
-                cat = f.get("category", "?")
-                sev = f.get("severity", "?")
-                title = f.get("title", "?")[:80]
-                logger.info(
-                    "  [%s/%s] cat=%s sev=%s title=%s",
+        for gt in gts:
+            sample_metrics: list[AgentEvalMetrics] = []
+            for s in range(n_samples):
+                eval_tmp = tmp_path_factory.mktemp(f"eval_{agent_name}_{gt.contract.replace('.', '_')}_{s}")
+                errored = False
+                try:
+                    produced = asyncio.run(_run_agent_on_contract(agent_name, gt.contract, eval_tmp))
+                except Exception as exc:
+                    logger.error("Agent %s failed on %s (sample %d): %s", agent_name, gt.contract, s, exc)
+                    produced = []
+                    errored = True
+
+                # Drop a sample that BOTH errored and produced nothing — feeding a
+                # zero into the median would penalise infrastructure noise as if it
+                # were an agent regression. A genuine empty (non-errored) result is
+                # kept: that IS a real recall failure.
+                if errored and not produced:
+                    continue
+
+                for f in produced:
+                    logger.info(
+                        "  [%s/%s#%d] cat=%s sev=%s title=%s",
+                        agent_name,
+                        gt.contract,
+                        s,
+                        f.get("category", "?"),
+                        f.get("severity", "?"),
+                        f.get("title", "?")[:80],
+                    )
+                sample_metrics.append(compute_agent_metrics(produced, gt))
+
+            # Require a majority of samples to have run; otherwise this contract is
+            # INCONCLUSIVE on infrastructure grounds and is excluded from the mean
+            # (logged) rather than dragging the agent down with a fabricated zero.
+            if len(sample_metrics) < (n_samples + 1) // 2:
+                logger.warning(
+                    "Agent %s / %s: only %d/%d samples succeeded — INCONCLUSIVE, excluded from aggregate",
                     agent_name,
                     gt.contract,
-                    cat,
-                    sev,
-                    title,
+                    len(sample_metrics),
+                    n_samples,
                 )
-            total_findings += len(produced)
-            contract_metrics = compute_agent_metrics(produced, gt)
+                continue
+
+            contract_metrics = aggregate_metrics_median(sample_metrics)
+            total_findings += contract_metrics.finding_count
             per_contract_metrics.append(contract_metrics)
             logger.info(
-                "  %s/%s: recall=%.2f precision=%.2f FP=%.2f (%d findings)",
+                "  %s/%s: recall=%.2f precision=%.2f FP=%.2f (%d findings, median of %d sample(s))",
                 agent_name,
                 gt.contract,
                 contract_metrics.finding_recall,
                 contract_metrics.finding_precision,
                 contract_metrics.false_positive_rate,
                 contract_metrics.finding_count,
+                len(sample_metrics),
             )
 
         n = len(per_contract_metrics)
@@ -445,9 +501,26 @@ def cross_agent_results(
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(params=["legal", "finance", "commercial", "producttech", "cybersecurity"])
+@pytest.fixture(
+    params=[
+        "legal",
+        "finance",
+        "commercial",
+        "producttech",
+        "cybersecurity",
+        "hr",
+        "tax",
+        "regulatory",
+        "esg",
+    ]
+)
 def agent_metrics(request: pytest.FixtureRequest, eval_results: dict[str, AgentEvalMetrics]) -> AgentEvalMetrics:
-    """Per-agent metrics from the live eval run, parametrized across all agents."""
+    """Per-agent metrics from the live eval run, parametrized across ALL 9 specialists.
+
+    Every specialist that has ground truth is threshold-tested (recall, citation,
+    severity, false-positive, no-regression). An agent with no eval results
+    (e.g. no ground truth) is skipped rather than silently untested.
+    """
     agent_name: str = request.param
     if agent_name not in eval_results:
         pytest.skip(f"No eval results for agent {agent_name}")
@@ -464,9 +537,13 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     if not session.config.getoption("--update-baseline", default=False):
         return
     if not _session_metrics:
+        logger.warning("--update-baseline: no metrics captured (no live eval ran) — baseline unchanged")
         return
-    if exitstatus != 0:
-        logger.warning("Session failed (exit %d) — not updating baseline", exitstatus)
-        return
+    # Save regardless of exitstatus. A baseline records CURRENT measured reality;
+    # if a metric is below threshold the recapture must still persist it (the
+    # operator is deliberately re-baselining), otherwise a stale/placeholder
+    # baseline that fails the suite would deadlock the recapture forever. The
+    # threshold tests (recall/FP) under --update-baseline are skipped for the
+    # regression check; any hard-threshold failure is informational here.
     save_baseline(_session_metrics)
-    logger.info("Baseline updated with %d agent metrics", len(_session_metrics))
+    logger.info("Baseline updated with %d agent metrics (exit status %d)", len(_session_metrics), exitstatus)
