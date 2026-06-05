@@ -7,14 +7,24 @@
   "expected_findings": [
     {
       "category": "compensation_structure",
-      "alternative_categories": ["compensation_analysis", "key_talent_retention"],
+      "alternative_categories": [
+        "compensation_analysis",
+        "key_talent_retention"
+      ],
       "min_severity": "P3",
       "max_severity": "P1",
       "must_contain_keywords": [
         "bonus"
       ],
       "keyword_synonyms": {
-        "bonus": ["salary", "compensation", "RSU", "equity", "signing bonus", "incentive"]
+        "bonus": [
+          "salary",
+          "compensation",
+          "RSU",
+          "equity",
+          "signing bonus",
+          "incentive"
+        ]
       },
       "citation_must_reference": {
         "file": "executive_severance.md"
@@ -23,14 +33,24 @@
     },
     {
       "category": "termination_provisions",
-      "alternative_categories": ["key_talent_retention", "labor_compliance", "severance"],
+      "alternative_categories": [
+        "key_talent_retention",
+        "labor_compliance",
+        "severance"
+      ],
       "min_severity": "P2",
       "max_severity": "P0",
       "must_contain_keywords": [
         "severance"
       ],
       "keyword_synonyms": {
-        "severance": ["termination", "without cause", "18 months", "salary continuation", "pay in lieu"]
+        "severance": [
+          "termination",
+          "without cause",
+          "18 months",
+          "salary continuation",
+          "pay in lieu"
+        ]
       },
       "citation_must_reference": {
         "file": "executive_severance.md"
@@ -39,14 +59,23 @@
     },
     {
       "category": "change_of_control",
-      "alternative_categories": ["key_talent_retention", "retention_risk"],
+      "alternative_categories": [
+        "key_talent_retention",
+        "retention_risk"
+      ],
       "min_severity": "P2",
       "max_severity": "P0",
       "must_contain_keywords": [
         "accelerat"
       ],
       "keyword_synonyms": {
-        "accelerat": ["acceleration", "double-trigger", "change of control", "2x base", "vest in full"]
+        "accelerat": [
+          "acceleration",
+          "double-trigger",
+          "change of control",
+          "2x base",
+          "vest in full"
+        ]
       },
       "citation_must_reference": {
         "file": "executive_severance.md"
@@ -55,14 +84,22 @@
     },
     {
       "category": "non_compete",
-      "alternative_categories": ["labor_compliance", "key_talent_retention"],
+      "alternative_categories": [
+        "labor_compliance",
+        "key_talent_retention"
+      ],
       "min_severity": "P3",
       "max_severity": "P1",
       "must_contain_keywords": [
         "non-compet"
       ],
       "keyword_synonyms": {
-        "non-compet": ["non-competition", "restrictive covenant", "12 months", "solicit"]
+        "non-compet": [
+          "non-competition",
+          "restrictive covenant",
+          "12 months",
+          "solicit"
+        ]
       },
       "citation_must_reference": {
         "file": "executive_severance.md"

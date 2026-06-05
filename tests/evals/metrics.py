@@ -207,37 +207,57 @@ def evaluate_verdict(
         return Verdict.INCONCLUSIVE
 
 
-def _max_bipartite_matching(produced: list[dict[str, Any]], expected: list[ExpectedFinding]) -> int:
-    """Maximum number of *expected* findings matchable to DISTINCT produced findings.
+#: How many expected findings a single produced finding may be credited against.
+#: K=1 would be strict 1:1 (penalises an agent that legitimately consolidates two
+#: related risks into one well-written finding); unbounded many-to-one lets ONE
+#: keyword-stuffed finding fake N distinct risks. K=2 credits genuine
+#: consolidation (a clause covering both a non-compete AND a termination
+#: provision) while still capping a single finding well below a multi-risk slate.
+_MAX_EXPECTED_PER_FINDING = 2
 
-    Standard augmenting-path bipartite matching (Kuhn's algorithm), stdlib only.
-    An edge exists when ``match_finding(produced[i], expected[j])`` holds. Because
-    each produced finding can be assigned to at most one expected, a single
-    keyword-stuffed finding can satisfy only one expected (caps over-credit),
-    while an agent that genuinely produces N distinct findings for N expecteds is
-    credited in full regardless of match order.
+
+def _max_bipartite_matching(
+    produced: list[dict[str, Any]], expected: list[ExpectedFinding], capacity: int = _MAX_EXPECTED_PER_FINDING
+) -> int:
+    """Max *expected* findings matchable, each produced finding usable up to *capacity* times.
+
+    Capacity-constrained bipartite matching via augmenting paths (Kuhn's
+    algorithm with per-produced-node capacity), stdlib only. An edge exists when
+    ``match_finding(produced[i], expected[j])`` holds. With ``capacity``=2 a
+    produced finding can satisfy at most two expecteds — crediting an agent that
+    genuinely consolidates two related risks into one finding, while a single
+    keyword-stuffed finding still cannot fake three or more distinct risks. The
+    keyword + citation gate on every edge means a finding only counts toward an
+    expected whose discriminating content it actually contains.
     """
-    if not produced or not expected:
+    if not produced or not expected or capacity < 1:
         return 0
-    # adjacency: produced index -> list of expected indices it can satisfy
-    adj: dict[int, list[int]] = {
-        i: [j for j, e in enumerate(expected) if match_finding(p, e)] for i, p in enumerate(produced)
-    }
-    expected_to_produced: dict[int, int] = {}
+    # Capacity-K is modeled by giving each produced finding K interchangeable
+    # "slots" (node ids p*capacity .. p*capacity+K-1) and running plain 1:1
+    # maximum matching over the slots. This is provably equivalent to per-node
+    # capacity K and far simpler to reason about than capacity-augmenting paths.
+    # adjacency: slot id -> expected indices the underlying finding can satisfy
+    adj: dict[int, list[int]] = {}
+    for p_idx, p in enumerate(produced):
+        edges = [j for j, e in enumerate(expected) if match_finding(p, e)]
+        for k in range(capacity):
+            adj[p_idx * capacity + k] = edges
 
-    def _augment(p_idx: int, visited: set[int]) -> bool:
-        for e_idx in adj[p_idx]:
+    expected_to_slot: dict[int, int] = {}
+
+    def _augment(slot: int, visited: set[int]) -> bool:
+        for e_idx in adj[slot]:
             if e_idx in visited:
                 continue
             visited.add(e_idx)
-            if e_idx not in expected_to_produced or _augment(expected_to_produced[e_idx], visited):
-                expected_to_produced[e_idx] = p_idx
+            if e_idx not in expected_to_slot or _augment(expected_to_slot[e_idx], visited):
+                expected_to_slot[e_idx] = slot
                 return True
         return False
 
-    for p_idx in range(len(produced)):
-        _augment(p_idx, set())
-    return len(expected_to_produced)
+    for slot in adj:
+        _augment(slot, set())
+    return len(expected_to_slot)
 
 
 def compute_agent_metrics(

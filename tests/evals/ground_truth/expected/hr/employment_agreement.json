@@ -7,14 +7,22 @@
   "expected_findings": [
     {
       "category": "non_compete",
-      "alternative_categories": ["labor_compliance", "key_talent_retention"],
+      "alternative_categories": [
+        "labor_compliance",
+        "key_talent_retention"
+      ],
       "min_severity": "P2",
       "max_severity": "P0",
       "must_contain_keywords": [
         "non-compet"
       ],
       "keyword_synonyms": {
-        "non-compet": ["non-competition", "non-compete", "restrictive covenant", "24 months"]
+        "non-compet": [
+          "non-competition",
+          "non-compete",
+          "restrictive covenant",
+          "24 months"
+        ]
       },
       "citation_must_reference": {
         "file": "employment_agreement.md"
@@ -23,14 +31,23 @@
     },
     {
       "category": "change_of_control",
-      "alternative_categories": ["key_talent_retention", "retention_risk"],
+      "alternative_categories": [
+        "key_talent_retention",
+        "retention_risk"
+      ],
       "min_severity": "P2",
       "max_severity": "P0",
       "must_contain_keywords": [
         "accelerat"
       ],
       "keyword_synonyms": {
-        "accelerat": ["acceleration", "single-trigger", "double-trigger", "severance", "change of control"]
+        "accelerat": [
+          "acceleration",
+          "single-trigger",
+          "double-trigger",
+          "severance",
+          "change of control"
+        ]
       },
       "citation_must_reference": {
         "file": "employment_agreement.md"
@@ -45,7 +62,13 @@
         "salary"
       ],
       "keyword_synonyms": {
-        "salary": ["compensation", "bonus", "equity", "stock option", "vesting"]
+        "salary": [
+          "compensation",
+          "bonus",
+          "equity",
+          "stock option",
+          "vesting"
+        ]
       },
       "citation_must_reference": {
         "file": "employment_agreement.md"
@@ -54,14 +77,23 @@
     },
     {
       "category": "termination_provisions",
-      "alternative_categories": ["key_talent_retention", "labor_compliance"],
+      "alternative_categories": [
+        "key_talent_retention",
+        "labor_compliance"
+      ],
       "min_severity": "P3",
       "max_severity": "P1",
       "must_contain_keywords": [
         "terminat"
       ],
       "keyword_synonyms": {
-        "terminat": ["termination", "without cause", "notice period", "severance", "pay in lieu"]
+        "terminat": [
+          "termination",
+          "without cause",
+          "notice period",
+          "severance",
+          "pay in lieu"
+        ]
       },
       "citation_must_reference": {
         "file": "employment_agreement.md"

@@ -506,10 +506,37 @@ class TestComputeAgentMetrics:
         metrics = compute_agent_metrics(produced, gt)
         assert metrics.finding_recall == 1.0
 
-    def test_single_stuffed_finding_cannot_overcredit(self) -> None:
-        """Anti-masking: ONE finding stuffed with multiple expecteds' keywords can
-        satisfy only ONE expected under 1:1 bipartite matching (caps recall at 1/N),
-        so keyword-stuffing cannot fake coverage of distinct risks."""
+    def test_one_finding_consolidating_two_risks_credits_both(self) -> None:
+        """A single finding that genuinely covers TWO related risks (both keywords
+        present) credits both — capacity-K matching (K=2) rewards legitimate
+        consolidation rather than penalising a well-written combined finding."""
+        expected = [
+            ExpectedFinding(
+                category="non_compete",
+                alternative_categories=["labor_compliance"],
+                must_contain_keywords=["non-compete"],
+            ),
+            ExpectedFinding(
+                category="termination_provisions",
+                alternative_categories=["labor_compliance"],
+                must_contain_keywords=["terminat"],
+            ),
+        ]
+        produced: list[dict[str, Any]] = [
+            make_finding_dict(
+                category="labor_compliance",
+                title="Restrictive covenants and exit terms",
+                description="24-month non-compete; termination without cause requires 8 weeks notice.",
+            ),
+        ]
+        gt = self._make_ground_truth(expected=expected)
+        metrics = compute_agent_metrics(produced, gt)
+        assert metrics.finding_recall == 1.0  # one finding legitimately covers both
+
+    def test_single_stuffed_finding_capped_below_full_slate(self) -> None:
+        """Anti-masking: ONE finding stuffed with THREE expecteds' keywords is
+        capped at K=2 credits — it cannot fake coverage of a full 3-risk slate
+        (recall caps at 2/3, never 1.0)."""
         expected = [
             ExpectedFinding(
                 category="non_compete",
@@ -537,7 +564,7 @@ class TestComputeAgentMetrics:
         ]
         gt = self._make_ground_truth(expected=expected)
         metrics = compute_agent_metrics(produced, gt)
-        assert metrics.finding_recall == pytest.approx(1 / 3)  # only one expected can be credited
+        assert metrics.finding_recall == pytest.approx(2 / 3)  # capped at K=2, cannot reach 1.0
 
     def test_match_requires_keyword_not_just_category(self) -> None:
         """A finding only credits expecteds whose keyword it actually contains —
