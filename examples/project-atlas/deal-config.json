@@ -1,0 +1,96 @@
+{
+  "config_version": "1.0.0",
+  "buyer": {
+    "name": "Summit Industrial Group",
+    "notes": "Strategic industrial/logistics acquirer (Project Atlas)"
+  },
+  "target": {
+    "name": "Northwind Logistics Software",
+    "entity_name_variants_for_contract_matching": [
+      "Northwind Logistics Software, Inc.",
+      "Northwind Logistics Software",
+      "Northwind Logistics",
+      "Northwind",
+      "Provider"
+    ],
+    "notes": "B2B cloud freight-management / TMS SaaS for mid-market shippers and 3PLs; ~$41.2M ARR; Delaware C-corp, HQ Columbus, Ohio"
+  },
+  "entity_aliases": {
+    "canonical_to_variants": {
+      "Northwind Logistics Software": [
+        "Northwind Logistics Software, Inc.",
+        "Northwind Logistics",
+        "Northwind",
+        "Provider"
+      ],
+      "Meridian Freight Corporation": ["Meridian Freight", "Meridian"],
+      "Cobalt Retail Group": ["Cobalt Retail", "Cobalt"],
+      "Harbor Foods Distribution, LLC": ["Harbor Foods", "Harbor"],
+      "Granite Manufacturing Co.": ["Granite Manufacturing", "Granite"],
+      "Tidewater Distribution N.V.": ["Tidewater Distribution", "Tidewater"]
+    },
+    "short_name_guard": ["NW", "MF"],
+    "exclusions": ["N/A", "TBD", "Various", "Unknown", "None"]
+  },
+  "data_room": {
+    "path": "examples/project-atlas/sample_data_room",
+    "groups": {
+      "Target": {
+        "label": "Target Company",
+        "subjects": ["Northwind_Logistics"]
+      }
+    },
+    "reference_dir": "_reference"
+  },
+  "source_of_truth": {
+    "subject_database": null
+  },
+  "key_executives": [
+    {
+      "name": "Executive A",
+      "title": "CEO",
+      "company": "Northwind Logistics Software",
+      "notes": "Co-founder"
+    },
+    {
+      "name": "Executive C",
+      "title": "VP Corporate Development",
+      "company": "Summit Industrial Group",
+      "notes": "Deal lead, Project Atlas"
+    }
+  ],
+  "deal": {
+    "type": "acquisition",
+    "focus_areas": [
+      "change_of_control_clauses",
+      "revenue_recognition",
+      "customer_concentration",
+      "ip_ownership",
+      "data_privacy"
+    ],
+    "notes": "100% acquisition of Northwind Logistics Software by Summit Industrial Group; expected close Q3 2026. Project codename: Atlas."
+  },
+  "judge": {
+    "enabled": false,
+    "max_iteration_rounds": 1,
+    "score_threshold": 70,
+    "sampling_rates": { "p0": 0.0, "p1": 0.0, "p2": 0.0, "p3": 0.0 },
+    "ocr_completeness_check": false,
+    "cross_agent_contradiction_check": false
+  },
+  "execution": {
+    "execution_mode": "full",
+    "staleness_threshold": 3,
+    "force_full_on_config_change": true
+  },
+  "reporting": {
+    "report_schema_override": null,
+    "include_diff_sheet": false,
+    "include_metadata_sheet": true
+  },
+  "forensic_dd": {
+    "enabled": true,
+    "specialists": { "disabled": [] },
+    "cross_domain": { "enabled": true }
+  }
+}
