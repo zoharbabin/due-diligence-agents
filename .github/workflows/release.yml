@@ -138,7 +138,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Update Docker Hub description
-        uses: peter-evans/dockerhub-description@v4
+        # NOTE: DOCKERHUB_TOKEN must be a Docker Hub Personal Access Token with
+        # Read/Write/Delete scope — the repo-description API (PATCH /v2/repositories/...)
+        # rejects push-only tokens with 403. A push-scoped token is enough for
+        # `docker push` but NOT for updating the description.
+        uses: peter-evans/dockerhub-description@v5
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
