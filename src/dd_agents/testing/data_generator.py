@@ -181,7 +181,7 @@ class SyntheticDataRoomGenerator:
         ref_dir.mkdir(parents=True, exist_ok=True)
         (ref_dir / "buyer_overview.md").write_text(
             "# Buyer Company Overview\n\n"
-            "Company: Meridian Holdings\n"
+            "Company: Summit Industrial Group\n"
             "Industry: Enterprise SaaS\n"
             "Revenue: $500M ARR\n"
             "Headquarters: Generic City, ST\n",

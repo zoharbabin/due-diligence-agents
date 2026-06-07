@@ -42,8 +42,8 @@ class TestPreAgentPipeline:
     def test_config_loading(self, e2e_deal_config: Path) -> None:
         """Step 1: Config loads and validates."""
         config = load_deal_config(e2e_deal_config)
-        assert config.buyer.name == "Meridian Holdings"
-        assert config.target.name == "NovaBridge Solutions"
+        assert config.buyer.name == "Summit Industrial Group"
+        assert config.target.name == "Northwind Logistics Software"
         assert config.deal.type.value == "acquisition"
 
     def test_tier_management(self, e2e_project_dir: Path) -> None:
@@ -61,10 +61,10 @@ class TestPreAgentPipeline:
         discovery = FileDiscovery()
         files = discovery.discover(e2e_project_dir)
 
-        # Should find at least 6 subject files + 1 reference
+        # Should find the Northwind subject files + 1 reference
         assert len(files) >= 6
         paths = [f.path for f in files]
-        assert any("acme" in p.lower() for p in paths)
+        assert any("meridian" in p.lower() for p in paths)
 
     def test_subject_registry(self, e2e_project_dir: Path) -> None:
         """Step 5: Subject registry builds correctly."""
@@ -74,13 +74,11 @@ class TestPreAgentPipeline:
         builder = SubjectRegistryBuilder()
         subjects, counts = builder.build(e2e_project_dir, files)
 
-        # Should find 3 subjects: Acme, Beta, Gamma
-        assert len(subjects) >= 3
+        # Atlas has one target subject: Northwind Logistics
+        assert len(subjects) >= 1
         subject_names = [s.name for s in subjects]
-        assert any("Acme" in n for n in subject_names)
-        assert any("Beta" in n for n in subject_names)
-        assert any("Gamma" in n for n in subject_names)
-        assert counts.total_subjects >= 3
+        assert any("Northwind" in n for n in subject_names)
+        assert counts.total_subjects >= 1
 
     def test_run_manager_lifecycle(self, e2e_project_dir: Path) -> None:
         """Run manager creates and finalizes runs correctly."""
@@ -105,7 +103,7 @@ class TestPreAgentPipeline:
         cache = ExtractionCache(cache_path)
 
         # First file
-        test_file = e2e_project_dir / "GroupA" / "Acme Corp" / "contract_acme.pdf.md"
+        test_file = e2e_project_dir / "Northwind_Logistics" / "msa_meridian_freight.pdf.md"
         assert test_file.exists()
 
         file_key = str(test_file)
@@ -415,11 +413,10 @@ class TestLiveAgentValidation:
         assert html_path.exists(), "dd_report.html not found"
         content = html_path.read_text(encoding="utf-8")
         assert "<html" in content.lower()
-        # Check that subject names appear
+        # Check that the subject + a key customer appear
         content_lower = content.lower()
-        assert "acme" in content_lower, "Acme Corp not in HTML report"
-        assert "beta" in content_lower, "Beta Inc not in HTML report"
-        assert "gamma" in content_lower, "Gamma LLC not in HTML report"
+        assert "northwind" in content_lower, "Northwind (subject) not in HTML report"
+        assert "meridian" in content_lower, "Meridian (hero CoC customer) not in HTML report"
 
     @skip_no_api_key
     def test_excel_report_generated(self, live_pipeline_result: tuple[object, Path]) -> None:
@@ -477,8 +474,8 @@ class TestLiveAgentValidation:
         assert len(content_files) >= 1, "Knowledge dir is empty"
 
     @skip_no_api_key
-    def test_all_subjects_covered(self, live_pipeline_result: tuple[object, Path]) -> None:
-        """All 3 subjects (Acme, Beta, Gamma) appear in merged output."""
+    def test_subject_covered(self, live_pipeline_result: tuple[object, Path]) -> None:
+        """The Northwind subject appears in merged output."""
         _, project_dir = live_pipeline_result
         run_dir = _get_run_dir(project_dir)
         if run_dir is None:
@@ -489,9 +486,44 @@ class TestLiveAgentValidation:
             pytest.skip("No merged dir")
 
         filenames = {f.stem.lower() for f in merged_dir.glob("*.json") if f.parent == merged_dir}
-        assert any("acme" in n for n in filenames), f"Acme not in merged: {filenames}"
-        assert any("beta" in n for n in filenames), f"Beta not in merged: {filenames}"
-        assert any("gamma" in n for n in filenames), f"Gamma not in merged: {filenames}"
+        assert any("northwind" in n for n in filenames), f"Northwind not in merged: {filenames}"
+
+    @skip_no_api_key
+    def test_hero_cross_domain_finding(self, live_pipeline_result: tuple[object, Path]) -> None:
+        """The hero Legal->Finance change-of-control finding is surfaced and cited.
+
+        This is the whole point of the golden Atlas deal: the agents must connect the
+        Meridian change-of-control clause (Legal) to its ~30%-of-ARR concentration
+        (Finance) and surface it as a high-severity, cited finding.
+        """
+        _, project_dir = live_pipeline_result
+        run_dir = _get_run_dir(project_dir)
+        if run_dir is None:
+            pytest.skip("No run directory found")
+
+        merged_dir = run_dir / "findings" / "merged"
+        if not merged_dir.exists():
+            pytest.skip("No merged dir")
+
+        hero = None
+        for f in merged_dir.glob("*.json"):
+            data = json.loads(f.read_text(encoding="utf-8"))
+            items = data.get("findings", []) if isinstance(data, dict) else data
+            for it in items:
+                if not isinstance(it, dict):
+                    continue
+                blob = json.dumps(it).lower()
+                if "change" in blob and "control" in blob and "meridian" in blob:
+                    hero = it
+                    break
+            if hero:
+                break
+
+        assert hero is not None, "hero change-of-control finding (Meridian) not found in merged output"
+        assert hero.get("severity") in {"P0", "P1"}, f"hero finding should be high-severity, got {hero.get('severity')}"
+        # Forensic proof: it must cite the source.
+        citations = hero.get("citations") or hero.get("evidence") or []
+        assert citations, "hero finding must carry a citation to the source document"
 
 
 # ---------------------------------------------------------------------------

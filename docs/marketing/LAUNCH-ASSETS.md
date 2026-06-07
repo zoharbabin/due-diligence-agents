@@ -45,6 +45,14 @@ cross-domain finding is **real and reproducible**, not staged.
 maker first comment · full video scripts · X thread (7 tweets) · LinkedIn post · 3 supporter-DM
 templates · 6 gallery-image specs.
 
+## Screenshots (`screenshots/`)
+Refreshed from the **real** Atlas report (via Playwright against the live HTML):
+`01-executive-dashboard` (Conditional Go verdict, Summit→Northwind), `02-domain-overview`
+(per-domain finding counts), `03-cross-domain-synthesis` (Northwind P0, 44 findings, Domain
+Interaction Matrix), `04-action-items`. The remaining legacy shots (deal-breakers, risk-heatmap,
+filter-bar, integration-playbook, mobile-view) are best recaptured in the screen-recording
+session — see `recordings/screen-recording-guide.md`.
+
 ## Still to produce (creative/manual)
 - Connect-the-dots **motion graphic** (brand signature — built in motion software, not screen-recorded).
 - **Avatar clips** (3 specialist reviewers) + **founder on-camera** beat.
