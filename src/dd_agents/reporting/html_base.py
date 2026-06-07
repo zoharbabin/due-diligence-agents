@@ -743,6 +743,8 @@ table.sortable th { background: var(--bg-tertiary); cursor: pointer; user-select
 table.sortable th:hover { background: var(--border-light); }
 table.sortable th::after { content: ' \\2195'; color: #ccc; font-size: 0.8em; }
 table.sortable tr:hover td { background: var(--bg-tertiary); }
+table.sortable caption { caption-side: top; text-align: left; font-size: 0.78em;
+  color: var(--text-muted); padding: 0 0 6px; }
 
 /* Arrow toggle */
 .arrow { font-size: 0.8em; transition: transform 0.2s; display: inline-block; }
