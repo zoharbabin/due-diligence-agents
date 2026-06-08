@@ -1580,11 +1580,15 @@ class TestExtractJsonText:
         raw = "No JSON here at all"
         assert SearchAnalyzer._extract_json_text(raw) == raw
 
-    def test_brace_inside_string_value(self) -> None:
-        """A ``}`` inside a quoted value must not end the object early (#216)."""
-        raw = '{"col": {"answer": "see section 12.3} for details", "confidence": "high"}}'
+    def test_brace_inside_string_value_with_trailing(self) -> None:
+        """A ``}`` inside a quoted value + trailing data: string-awareness is
+        load-bearing here (a naive brace counter would stop early and leave
+        unbalanced trailing data that json.loads rejects). (#216)
+        """
+        raw = '{"col": {"answer": "see section 12.3} for details", "confidence": "high"}}\n\ntrailing prose'
         result = SearchAnalyzer._extract_json_text(raw)
         assert json.loads(result)["col"]["answer"] == "see section 12.3} for details"
+        assert "trailing prose" not in result
 
     def test_valid_json_with_trailing_prose(self) -> None:
         """Valid JSON followed by trailing prose — return just the JSON (#216)."""
@@ -1592,11 +1596,23 @@ class TestExtractJsonText:
         result = SearchAnalyzer._extract_json_text(raw)
         assert json.loads(result) == {"col": {"answer": "YES"}}
 
-    def test_leading_timestamp_stripped(self) -> None:
-        """A leading ``[HH:MM:SS]`` CLI timestamp is stripped before the JSON (#216)."""
+    def test_leading_timestamp_handled(self) -> None:
+        """A leading ``[HH:MM:SS]`` CLI timestamp (brace-free preamble) is
+        skipped by the first-brace search, leaving clean JSON. (#216)
+        """
         raw = '[11:06:06] {"col": {"answer": "NO"}}'
         result = SearchAnalyzer._extract_json_text(raw)
         assert json.loads(result) == {"col": {"answer": "NO"}}
+
+    def test_unbalanced_truncated_returns_brace_onward(self) -> None:
+        """Truncated/unbalanced input: return from the first brace so the
+        caller's json.loads surfaces the error (no silent wrong object). (#216)
+        """
+        raw = '{"col": {"answer": "YES, see section 12.3'
+        result = SearchAnalyzer._extract_json_text(raw)
+        assert result.startswith("{")
+        with pytest.raises(json.JSONDecodeError):
+            json.loads(result)
 
 
 # ===================================================================
@@ -2622,19 +2638,25 @@ class TestStructuredOutputWiring:
 
 
 class TestStructuredOutputFallback:
-    """The analyzer must degrade to prompt-instructed JSON, not emit garbage."""
+    """The analyzer must degrade to prompt-instructed JSON, not emit garbage.
 
-    def _reset_latch(self) -> None:
-        import dd_agents.search.analyzer as mod
+    The latch is a per-instance attribute (``analyzer._structured_output_unsupported``),
+    so no module-global reset is needed between tests.
+    """
 
-        mod._STRUCTURED_OUTPUT_UNSUPPORTED = False
-
-    def test_is_structured_output_error_detects_markers(self) -> None:
+    def test_is_structured_output_error_only_schema_signals(self) -> None:
+        """Only schema-specific signals latch — NOT generic transient errors (#216 audit)."""
         from dd_agents.search.analyzer import _is_structured_output_error
 
-        assert _is_structured_output_error(RuntimeError("Command failed with exit code 1"))
+        # Schema rejections (latch).
         assert _is_structured_output_error(RuntimeError("Structured output error: '{1,64}$'"))
-        assert _is_structured_output_error(RuntimeError("Claude returned error: None"))
+        assert _is_structured_output_error(
+            RuntimeError("input_schema.properties: Property keys should match pattern '^[a-zA-Z0-9_.-]{1,64}$'")
+        )
+        assert _is_structured_output_error(RuntimeError("output_format not supported"))
+        # Transient / unrelated errors (must NOT latch).
+        assert not _is_structured_output_error(RuntimeError("Command failed with exit code 1"))
+        assert not _is_structured_output_error(RuntimeError("Claude returned error: None"))
         assert not _is_structured_output_error(RuntimeError("Prompt is too long"))
 
     def test_looks_like_json(self) -> None:
@@ -2648,7 +2670,6 @@ class TestStructuredOutputFallback:
     @pytest.mark.asyncio
     async def test_call_claude_falls_back_to_prompt_json(self, tmp_path: Path) -> None:
         """When structured output errors, retry WITHOUT output_format and succeed."""
-        self._reset_latch()
         analyzer = _make_analyzer(tmp_path)
         good = json.dumps({"Consent Required": {"answer": "YES", "confidence": "HIGH", "citations": []}})
 
@@ -2657,7 +2678,7 @@ class TestStructuredOutputFallback:
         async def fake_sdk(system: str, user: str, output_schema: dict[str, Any] | None) -> str:
             calls.append(output_schema)
             if output_schema is not None:
-                raise RuntimeError("Command failed with exit code 1")
+                raise RuntimeError("Structured output error: schema rejected")
             return good
 
         with patch.object(analyzer, "_sdk_query", side_effect=fake_sdk):
@@ -2667,11 +2688,11 @@ class TestStructuredOutputFallback:
         # First attempt had a schema (failed), second had None (fallback).
         assert calls[0] is not None
         assert calls[1] is None
+        assert analyzer._structured_output_unsupported is True
 
     @pytest.mark.asyncio
     async def test_latch_skips_structured_after_first_failure(self, tmp_path: Path) -> None:
         """Once unsupported is latched, later calls skip the structured attempt."""
-        self._reset_latch()
         analyzer = _make_analyzer(tmp_path)
         good = json.dumps({"Consent Required": {"answer": "NO", "confidence": "LOW", "citations": []}})
         schema_seen: list[bool] = []
@@ -2679,7 +2700,7 @@ class TestStructuredOutputFallback:
         async def fake_sdk(system: str, user: str, output_schema: dict[str, Any] | None) -> str:
             schema_seen.append(output_schema is not None)
             if output_schema is not None:
-                raise RuntimeError("Command failed with exit code 1")
+                raise RuntimeError("Structured output error: schema rejected")
             return good
 
         with patch.object(analyzer, "_sdk_query", side_effect=fake_sdk):
@@ -2691,9 +2712,46 @@ class TestStructuredOutputFallback:
         assert schema_seen == [False]
 
     @pytest.mark.asyncio
+    async def test_latch_is_per_instance(self, tmp_path: Path) -> None:
+        """Latching one analyzer must NOT affect a concurrent analyzer (#216 audit)."""
+        d1 = tmp_path / "deal1"
+        d2 = tmp_path / "deal2"
+        d1.mkdir()
+        d2.mkdir()
+        a1 = _make_analyzer(d1)
+        a2 = _make_analyzer(d2)
+        good = json.dumps({"Consent Required": {"answer": "NO", "confidence": "LOW", "citations": []}})
+
+        async def fail_schema(system: str, user: str, output_schema: dict[str, Any] | None) -> str:
+            if output_schema is not None:
+                raise RuntimeError("Structured output error: schema rejected")
+            return good
+
+        with patch.object(a1, "_sdk_query", side_effect=fail_schema):
+            await a1._call_claude("s", "u", output_schema={"type": "object"})
+
+        assert a1._structured_output_unsupported is True
+        assert a2._structured_output_unsupported is False  # independent instance
+
+    @pytest.mark.asyncio
+    async def test_transient_error_does_not_latch(self, tmp_path: Path) -> None:
+        """A transient (non-schema) error must NOT disable structured output (#216 audit)."""
+        analyzer = _make_analyzer(tmp_path)
+
+        async def fake_sdk(system: str, user: str, output_schema: dict[str, Any] | None) -> str:
+            raise RuntimeError("Claude returned error: None")  # transient, no text
+
+        with (
+            patch.object(analyzer, "_sdk_query", side_effect=fake_sdk),
+            pytest.raises(RuntimeError, match="Claude returned error"),
+        ):
+            await analyzer._call_claude("s", "u", output_schema={"type": "object"})
+        # The latch must remain OFF — structured output is still attempted next time.
+        assert analyzer._structured_output_unsupported is False
+
+    @pytest.mark.asyncio
     async def test_non_structured_error_propagates(self, tmp_path: Path) -> None:
         """A genuine (non-structured) error must NOT be swallowed by the fallback."""
-        self._reset_latch()
         analyzer = _make_analyzer(tmp_path)
 
         async def fake_sdk(system: str, user: str, output_schema: dict[str, Any] | None) -> str:

@@ -24,7 +24,6 @@ import asyncio
 import json
 import logging
 import os  # noqa: TCH003 - used at module level for env var reads
-import re  # noqa: TCH003 - used at module level for the timestamp regex
 from typing import TYPE_CHECKING, Any
 
 from dd_agents.agents.personas import DD_LEGAL_ANALYST
@@ -65,25 +64,21 @@ _OUTPUT_COST_PER_MTOK = 15.0
 # Error messages that indicate non-transient failures (don't retry).
 _NON_TRANSIENT_ERRORS = ("Prompt is too long", "context length", "too many tokens")
 
-# Process-wide latch: set once when the SDK/CLI rejects ``output_format``
-# (json_schema constrained decoding) — e.g. on AWS Bedrock, where the CLI
-# exits with an error. Once unsupported, every subsequent call skips the
-# structured-output attempt and goes straight to prompt-instructed JSON, so
-# we pay the failing round-trip at most once. See Issue #216.
-_STRUCTURED_OUTPUT_UNSUPPORTED = False
-
-# Substrings that mark an SDK/CLI error as "this backend can't do output_format"
-# rather than a transient/content failure.
+# Substrings that mark an SDK/CLI error as a *schema* rejection ("this backend
+# can't do output_format") rather than a transient/content failure. Kept
+# narrow (Issue #216 audit): generic markers like "command failed" or "claude
+# returned error" are raised for ANY error (rate limits, overloads), so
+# matching them would wrongly disable structured output after one unrelated
+# hiccup. Only schema-specific signals — including the typed "Structured
+# output error:" we raise ourselves when the backend errors AND returns
+# non-JSON text — flip the latch.
 _STRUCTURED_OUTPUT_ERROR_MARKERS = (
     "structured output error",
-    "command failed with exit code",
     "output_format",
     "json_schema",
-    "claude returned error",
+    "input_schema",
+    "should match pattern",  # Bedrock: property-key pattern rejection
 )
-
-
-_LEADING_TIMESTAMP_RE = re.compile(r"^\[\d{1,2}:\d{2}:\d{2}\]\s*")
 
 
 def _is_structured_output_error(exc: Exception) -> bool:
@@ -228,6 +223,14 @@ class SearchAnalyzer:
         self._text_dir = text_dir
         self._concurrency = concurrency
         self._max_retries = max_retries
+        # Per-instance latch (Issue #216): set once when this backend rejects
+        # ``output_format`` (json_schema). Instance-scoped — not a module
+        # global — so concurrent analyzers for different deals in one process
+        # never cross-contaminate. Guarded by ``_latch_lock`` so the
+        # concurrent read-modify-write under asyncio.gather is race-free and
+        # the failing structured round-trip is paid at most once.
+        self._structured_output_unsupported = False
+        self._latch_lock = asyncio.Lock()
 
     # ------------------------------------------------------------------
     # Cost estimation
@@ -646,13 +649,16 @@ class SearchAnalyzer:
         API keys need to be managed by this code.
 
         When *output_schema* is provided we first try ``output_format``
-        (json_schema constrained decoding). If the SDK/CLI rejects that
-        feature — as the AWS Bedrock CLI does, exiting with an error (Issue
-        #216) — we transparently fall back to prompt-instructed JSON. The
-        system prompt already names the exact required keys, and
-        ``_extract_json_text`` strips any preamble/fences, so the fallback
-        produces the same parseable JSON. The unsupported state is latched
-        process-wide so we pay the failing round-trip at most once.
+        (json_schema constrained decoding). If this backend rejects that
+        feature — as AWS Bedrock does, because the search column names become
+        schema property keys that violate Bedrock's ``^[a-zA-Z0-9_.-]{1,64}$``
+        rule (Issue #216) — we transparently fall back to prompt-instructed
+        JSON. The system prompt already names the exact required keys, and
+        ``_extract_json_text`` strips any timestamp/fence/preamble and extracts
+        the balanced object, so the fallback yields the same parseable JSON.
+        The unsupported state is latched per-instance (guarded by an
+        asyncio.Lock) so the failing round-trip is paid at most once and
+        concurrent analyzers for different deals never cross-contaminate.
 
         Parameters
         ----------
@@ -671,21 +677,21 @@ class SearchAnalyzer:
             If the SDK returns an error or the response contains no text,
             even after the prompt-instructed-JSON fallback.
         """
-        global _STRUCTURED_OUTPUT_UNSUPPORTED  # noqa: PLW0603
-
-        want_structured = output_schema is not None and not _STRUCTURED_OUTPUT_UNSUPPORTED
+        want_structured = output_schema is not None and not self._structured_output_unsupported
         if want_structured:
             try:
                 return await self._sdk_query(system_prompt, user_prompt, output_schema)
             except RuntimeError as exc:
                 if not _is_structured_output_error(exc):
                     raise
-                _STRUCTURED_OUTPUT_UNSUPPORTED = True
-                logger.warning(
-                    "Structured output (output_format) unavailable on this backend "
-                    "(%s); falling back to prompt-instructed JSON for the rest of the run.",
-                    exc,
-                )
+                async with self._latch_lock:
+                    if not self._structured_output_unsupported:
+                        self._structured_output_unsupported = True
+                        logger.warning(
+                            "Structured output (output_format) unavailable on this backend "
+                            "(%s); falling back to prompt-instructed JSON for the rest of the run.",
+                            exc,
+                        )
         # No schema requested, or structured output is known-unsupported: rely
         # on the prompt's explicit JSON-key contract + _extract_json_text.
         return await self._sdk_query(system_prompt, user_prompt, output_schema=None)
@@ -734,6 +740,13 @@ class SearchAnalyzer:
                     if text_parts:
                         logger.warning("Claude returned error but text was captured; using partial response")
                         break
+                    # No text at all. If a schema was requested, a hard error
+                    # with no output is most likely the backend rejecting the
+                    # schema (e.g. Bedrock exits non-zero) — raise a typed error
+                    # so the caller latches + falls back (Issue #216). Without a
+                    # schema this is a genuine failure, surfaced as-is.
+                    if output_schema is not None:
+                        raise RuntimeError(f"Structured output error: {message.result}")
                     raise RuntimeError(f"Claude returned error: {message.result}")
         except RuntimeError as exc:
             if "cancel scope" in str(exc).lower():
@@ -1082,7 +1095,10 @@ class SearchAnalyzer:
 
         try:
             raw_text = await self._call_claude(synthesis_system, synthesis_user, output_schema=schema)
-            data: dict[str, Any] = json.loads(raw_text)
+            # Route through _extract_json_text (not raw json.loads) so the
+            # prompt-instructed-JSON fallback path works here too (Issue #216):
+            # the fallback's output may carry a timestamp/fence/preamble.
+            data: dict[str, Any] = json.loads(self._extract_json_text(raw_text))
         except Exception as exc:
             logger.warning("Synthesis pass failed for %s: %s — keeping merged results", subject.name, exc)
             return merged
@@ -1171,7 +1187,9 @@ class SearchAnalyzer:
 
         try:
             raw_text = await self._call_claude(validation_system, validation_user, output_schema=schema)
-            data: dict[str, Any] = json.loads(raw_text)
+            # Route through _extract_json_text so the prompt-instructed-JSON
+            # fallback path is handled here too (Issue #216).
+            data: dict[str, Any] = json.loads(self._extract_json_text(raw_text))
         except Exception as exc:
             logger.warning("Validation pass failed for %s: %s — keeping current results", subject.name, exc)
             return result
@@ -1327,17 +1345,14 @@ class SearchAnalyzer:
         the prompt-instructed-JSON fallback used when a backend rejects
         constrained decoding (Issue #216). Handles:
 
-        - A leading ``[HH:MM:SS]`` SDK timestamp prefix.
         - Markdown code fences (```json ... ```).
-        - Preamble prose before the first ``{``.
+        - Preamble prose (including a leading ``[HH:MM:SS]`` SDK timestamp)
+          before the first ``{`` — skipped by the first-brace search.
         - **Trailing** prose or a second concatenated object after the first
           JSON object (brace-balanced extraction), which prompt-instructed
           models sometimes emit and which broke a naive ``cleaned[brace:]``.
         """
         cleaned = raw.strip()
-
-        # Strip a leading "[HH:MM:SS] " timestamp the CLI sometimes prepends.
-        cleaned = _LEADING_TIMESTAMP_RE.sub("", cleaned, count=1).strip()
 
         # Strip markdown code fences (safety net).
         if cleaned.startswith("```"):

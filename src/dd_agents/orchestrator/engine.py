@@ -17,7 +17,6 @@ import contextlib
 import json
 import logging
 import time
-import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -4096,22 +4095,36 @@ class PipelineEngine:
     def _log_pipeline_to_chronicle(self, state: PipelineState) -> None:
         """Append a PIPELINE_RUN entry to the analysis chronicle (best-effort).
 
-        Writes to the SAME knowledge dir the CLI/chat read from
-        (``<project>/_dd/forensic-dd/knowledge/chronicle.jsonl``). Never blocks
-        the pipeline — failures are logged at debug.
+        Idempotent on ``run_id``: a resume that re-executes step 36 will NOT
+        write a second entry for the same run. Writes to the SAME knowledge dir
+        the CLI/chat read from (sourced from ``DealKnowledgeBase.knowledge_dir``,
+        not a hand-spelled path). Never blocks the pipeline — failures are
+        logged at debug.
         """
         try:
+            from dd_agents.knowledge.base import DealKnowledgeBase
             from dd_agents.knowledge.chronicle import (
                 AnalysisChronicle,
                 AnalysisLogEntry,
                 FindingsSummary,
                 InteractionType,
+                _generate_entry_id,
             )
+
+            kb = DealKnowledgeBase(self.project_dir)
+            chronicle_path = kb.knowledge_dir / "chronicle.jsonl"
+            chronicle_path.parent.mkdir(parents=True, exist_ok=True)
+            chronicle = AnalysisChronicle(chronicle_path)
+
+            # Idempotency: skip if this run already has a PIPELINE_RUN entry
+            # (e.g. step 36 re-ran after a resume). Best-effort read.
+            for existing in chronicle.read_by_type(InteractionType.PIPELINE_RUN):
+                if existing.details.get("run_id") == state.run_id:
+                    logger.debug("Chronicle already has run %s — skipping duplicate", state.run_id)
+                    return
 
             counts = self._compute_finding_counts(state)
             gap_counts = self._compute_gap_counts(state)
-            chronicle_path = self.project_dir / "_dd" / "forensic-dd" / "knowledge" / "chronicle.jsonl"
-            chronicle_path.parent.mkdir(parents=True, exist_ok=True)
             buyer = (state.deal_config or {}).get("buyer", {})
             target = (state.deal_config or {}).get("target", {})
             title = "Pipeline run"
@@ -4119,7 +4132,7 @@ class PipelineEngine:
                 acquirer = buyer.get("name") if isinstance(buyer, dict) else None
                 title = f"Pipeline run: {acquirer + ' → ' if acquirer else ''}{target['name']}"
             entry = AnalysisLogEntry(
-                id=uuid.uuid4().hex[:12],
+                id=_generate_entry_id(),
                 timestamp=datetime.now(tz=UTC).isoformat(),
                 interaction_type=InteractionType.PIPELINE_RUN,
                 title=title[:200],
@@ -4140,7 +4153,7 @@ class PipelineEngine:
                 cost_usd=round(self.cost_tracker.total_cost(), 4),
                 user_initiated=True,
             )
-            AnalysisChronicle(chronicle_path).append(entry)
+            chronicle.append(entry)
         except Exception as exc:  # noqa: BLE001 — chronicle logging must never block
             logger.debug("Failed to log pipeline run to chronicle: %s", exc)
 

@@ -72,3 +72,21 @@ class TestPipelineChronicle:
         state.run_dir = tmp_path / "nonexistent"
         # Must not raise even with no merged findings.
         engine._log_pipeline_to_chronicle(state)
+
+    def test_idempotent_on_resume(self, tmp_path: Path) -> None:
+        """Re-running step 36 for the same run_id writes exactly ONE entry (#216 audit)."""
+        engine = _make_engine(tmp_path)
+        state = PipelineState(project_dir=tmp_path.resolve())
+        state.run_id = "run_resume_001"
+        state.run_dir = tmp_path / "_dd" / "forensic-dd" / "runs" / "run_resume_001"
+        state.run_dir.mkdir(parents=True, exist_ok=True)
+        state.subject_safe_names = ["acme"]
+        _seed_merged_findings(state.run_dir)
+
+        engine._log_pipeline_to_chronicle(state)
+        engine._log_pipeline_to_chronicle(state)  # simulates a resume re-running step 36
+
+        chronicle = tmp_path.resolve() / "_dd" / "forensic-dd" / "knowledge" / "chronicle.jsonl"
+        lines = [ln for ln in chronicle.read_text(encoding="utf-8").splitlines() if ln.strip()]
+        run_entries = [ln for ln in lines if "run_resume_001" in ln]
+        assert len(run_entries) == 1
