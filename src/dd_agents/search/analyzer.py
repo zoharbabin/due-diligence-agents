@@ -7,9 +7,15 @@ Implements lessons from the Addleshaw Goddard RAG Report (2024):
 - Full audit trail of all files processed, skipped, and every column answered
 - 4-phase analysis: map (per chunk) → merge → synthesis → validation
 
-Structured output (Issue #4): All LLM calls use ``output_format`` on
-``ClaudeAgentOptions`` with a dynamically-built JSON Schema.  Constrained
-decoding guarantees schema-valid JSON — no fragile regex/fallback parsing.
+Structured output (Issue #4): LLM calls prefer ``output_format`` on
+``ClaudeAgentOptions`` with a dynamically-built JSON Schema for constrained
+decoding. Issue #216: some backends (notably AWS Bedrock) reject the schema
+(e.g. property keys with spaces fail Bedrock's ``^[a-zA-Z0-9_.-]{1,64}$``
+rule), so ``_call_claude`` transparently falls back to prompt-instructed JSON
+— the system prompt already names the exact required keys — and
+``_extract_json_text`` robustly recovers the object (timestamp/fence/preamble
+stripping + brace-balanced extraction). This keeps search working on every
+backend (local/cloud parity), not only those that support json_schema.
 """
 
 from __future__ import annotations
@@ -18,6 +24,7 @@ import asyncio
 import json
 import logging
 import os  # noqa: TCH003 - used at module level for env var reads
+import re  # noqa: TCH003 - used at module level for the timestamp regex
 from typing import TYPE_CHECKING, Any
 
 from dd_agents.agents.personas import DD_LEGAL_ANALYST
@@ -57,6 +64,51 @@ _OUTPUT_COST_PER_MTOK = 15.0
 
 # Error messages that indicate non-transient failures (don't retry).
 _NON_TRANSIENT_ERRORS = ("Prompt is too long", "context length", "too many tokens")
+
+# Process-wide latch: set once when the SDK/CLI rejects ``output_format``
+# (json_schema constrained decoding) — e.g. on AWS Bedrock, where the CLI
+# exits with an error. Once unsupported, every subsequent call skips the
+# structured-output attempt and goes straight to prompt-instructed JSON, so
+# we pay the failing round-trip at most once. See Issue #216.
+_STRUCTURED_OUTPUT_UNSUPPORTED = False
+
+# Substrings that mark an SDK/CLI error as "this backend can't do output_format"
+# rather than a transient/content failure.
+_STRUCTURED_OUTPUT_ERROR_MARKERS = (
+    "structured output error",
+    "command failed with exit code",
+    "output_format",
+    "json_schema",
+    "claude returned error",
+)
+
+
+_LEADING_TIMESTAMP_RE = re.compile(r"^\[\d{1,2}:\d{2}:\d{2}\]\s*")
+
+
+def _is_structured_output_error(exc: Exception) -> bool:
+    """True if *exc* indicates the backend rejected ``output_format``."""
+    msg = str(exc).lower()
+    return any(marker in msg for marker in _STRUCTURED_OUTPUT_ERROR_MARKERS)
+
+
+def _looks_like_json(text: str) -> bool:
+    """Does *text* contain a parseable JSON object?
+
+    Used only to distinguish a real structured answer from a non-JSON error
+    fragment (e.g. a regex like ``{1,64}$``). Strips markdown fences/preamble
+    the same way ``SearchAnalyzer._extract_json_text`` does, then attempts a
+    real ``json.loads`` — heuristics on braces alone produce false positives.
+    Full validation still happens in ``_parse_response``.
+    """
+    cleaned = SearchAnalyzer._extract_json_text(text)
+    if not cleaned:
+        return False
+    try:
+        return isinstance(json.loads(cleaned), dict)
+    except (json.JSONDecodeError, ValueError):
+        return False
+
 
 # Document type inference from filename keywords.
 _DOC_TYPE_KEYWORDS: dict[str, str] = {
@@ -593,6 +645,15 @@ class SearchAnalyzer:
         (``CLAUDE_CODE_USE_BEDROCK``, AWS credentials, etc.), so no
         API keys need to be managed by this code.
 
+        When *output_schema* is provided we first try ``output_format``
+        (json_schema constrained decoding). If the SDK/CLI rejects that
+        feature — as the AWS Bedrock CLI does, exiting with an error (Issue
+        #216) — we transparently fall back to prompt-instructed JSON. The
+        system prompt already names the exact required keys, and
+        ``_extract_json_text`` strips any preamble/fences, so the fallback
+        produces the same parseable JSON. The unsupported state is latched
+        process-wide so we pay the failing round-trip at most once.
+
         Parameters
         ----------
         system_prompt:
@@ -600,17 +661,42 @@ class SearchAnalyzer:
         user_prompt:
             The user prompt for the LLM.
         output_schema:
-            Optional JSON Schema dict.  When provided, the SDK uses
-            constrained decoding to guarantee the response conforms to
-            the schema.  Passed as
-            ``output_format={"type": "json_schema", "schema": schema}``
-            on ``ClaudeAgentOptions``.
+            Optional JSON Schema dict.  When provided and supported by the
+            backend, the SDK uses constrained decoding to guarantee the
+            response conforms to the schema.
 
         Raises
         ------
         RuntimeError
-            If the SDK returns an error or the response contains no text.
+            If the SDK returns an error or the response contains no text,
+            even after the prompt-instructed-JSON fallback.
         """
+        global _STRUCTURED_OUTPUT_UNSUPPORTED  # noqa: PLW0603
+
+        want_structured = output_schema is not None and not _STRUCTURED_OUTPUT_UNSUPPORTED
+        if want_structured:
+            try:
+                return await self._sdk_query(system_prompt, user_prompt, output_schema)
+            except RuntimeError as exc:
+                if not _is_structured_output_error(exc):
+                    raise
+                _STRUCTURED_OUTPUT_UNSUPPORTED = True
+                logger.warning(
+                    "Structured output (output_format) unavailable on this backend "
+                    "(%s); falling back to prompt-instructed JSON for the rest of the run.",
+                    exc,
+                )
+        # No schema requested, or structured output is known-unsupported: rely
+        # on the prompt's explicit JSON-key contract + _extract_json_text.
+        return await self._sdk_query(system_prompt, user_prompt, output_schema=None)
+
+    async def _sdk_query(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        output_schema: dict[str, Any] | None,
+    ) -> str:
+        """Single SDK round-trip. Sets ``output_format`` iff *output_schema* given."""
         from claude_agent_sdk import (
             AssistantMessage,
             ClaudeAgentOptions,
@@ -636,6 +722,7 @@ class SearchAnalyzer:
         options = ClaudeAgentOptions(**options_kwargs)
 
         text_parts: list[str] = []
+        errored = False
         try:
             async for message in query(prompt=user_prompt, options=options):
                 if isinstance(message, AssistantMessage):
@@ -643,6 +730,7 @@ class SearchAnalyzer:
                         if isinstance(block, TextBlock):
                             text_parts.append(block.text)
                 elif isinstance(message, ResultMessage) and message.is_error:
+                    errored = True
                     if text_parts:
                         logger.warning("Claude returned error but text was captured; using partial response")
                         break
@@ -659,6 +747,11 @@ class SearchAnalyzer:
                 raise
 
         result = "\n".join(text_parts)
+        # When structured output was requested but the backend errored and
+        # returned only non-JSON partial text, surface a typed error so the
+        # caller can fall back rather than parse a garbage fragment (#216).
+        if output_schema is not None and errored and not _looks_like_json(result):
+            raise RuntimeError(f"Structured output error: {result[:200]!r}")
         if not result.strip():
             raise RuntimeError("Claude returned an empty response (no TextBlock content)")
         return result
@@ -1228,18 +1321,23 @@ class SearchAnalyzer:
 
     @staticmethod
     def _extract_json_text(raw: str) -> str:
-        """Extract a JSON object from *raw* model output.
+        """Extract a single JSON object from *raw* model output.
 
-        With structured output (``output_format``), the model is constrained
-        to produce valid JSON.  This method provides a lightweight safety net:
+        Robust safety net for BOTH structured output (``output_format``) and
+        the prompt-instructed-JSON fallback used when a backend rejects
+        constrained decoding (Issue #216). Handles:
 
-        - Strip markdown code fences (```json ... ```)
-        - Skip any preamble text before the first ``{``
-
-        The ``raw_decode`` / ``rfind`` fallback chain was removed in Issue #4
-        because constrained decoding guarantees schema-valid JSON.
+        - A leading ``[HH:MM:SS]`` SDK timestamp prefix.
+        - Markdown code fences (```json ... ```).
+        - Preamble prose before the first ``{``.
+        - **Trailing** prose or a second concatenated object after the first
+          JSON object (brace-balanced extraction), which prompt-instructed
+          models sometimes emit and which broke a naive ``cleaned[brace:]``.
         """
         cleaned = raw.strip()
+
+        # Strip a leading "[HH:MM:SS] " timestamp the CLI sometimes prepends.
+        cleaned = _LEADING_TIMESTAMP_RE.sub("", cleaned, count=1).strip()
 
         # Strip markdown code fences (safety net).
         if cleaned.startswith("```"):
@@ -1254,8 +1352,33 @@ class SearchAnalyzer:
         brace_pos = cleaned.find("{")
         if brace_pos == -1:
             return cleaned
+        cleaned = cleaned[brace_pos:]
 
-        return cleaned[brace_pos:]
+        # Extract the FIRST brace-balanced object, ignoring trailing data
+        # (prose, a duplicate object, etc.). String-aware so braces inside
+        # quoted values don't throw off the depth count.
+        depth = 0
+        in_str = False
+        escaped = False
+        for i, ch in enumerate(cleaned):
+            if in_str:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    in_str = False
+                continue
+            if ch == '"':
+                in_str = True
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return cleaned[: i + 1]
+        # Unbalanced — return as-is and let json.loads surface the error.
+        return cleaned
 
     def _get_text_path(self, source_path: str) -> Path:
         """Convert original file path to extracted text path.

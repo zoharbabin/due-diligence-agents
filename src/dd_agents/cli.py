@@ -137,7 +137,9 @@ def main() -> None:
     "quick_scan",
     is_flag=True,
     default=False,
-    help="Run a quick Red Flag scan only (steps 1-13 + Red Flag Scanner agent).",
+    help="Add a Red Flag Scanner pass to the run — a stoplight (red/amber/green) "
+    "triage signal and top deal-breakers, surfaced in the report alongside the "
+    "full analysis. (The scanner reads merged findings, so the full pipeline runs.)",
 )
 @click.option(
     "--no-knowledge",
@@ -2142,11 +2144,36 @@ def annotate(data_room: Path, entity: str | None, note: str) -> None:
     """
     from dd_agents.knowledge._utils import now_iso
     from dd_agents.knowledge.base import DealKnowledgeBase
+    from dd_agents.knowledge.chronicle import (
+        AnalysisChronicle,
+        AnalysisLogEntry,
+        InteractionType,
+        _generate_entry_id,
+    )
     from dd_agents.knowledge.filing import file_annotation
 
-    kb = DealKnowledgeBase(data_room.resolve())
+    project_dir = data_room.resolve()
+    kb = DealKnowledgeBase(project_dir)
     kb.ensure_dirs()
-    article_id = file_annotation(kb, note, entity, now_iso())
+    ts = now_iso()
+    article_id = file_annotation(kb, note, entity, ts)
+    # Record the annotation in the analysis chronicle so `dd-agents log`
+    # surfaces it (Issue #217 — annotate previously wrote no chronicle entry).
+    try:
+        chronicle = AnalysisChronicle(kb.knowledge_dir / "chronicle.jsonl")
+        chronicle.append(
+            AnalysisLogEntry(
+                id=_generate_entry_id(),
+                timestamp=ts,
+                interaction_type=InteractionType.ANNOTATION,
+                title=f"Annotation: {note[:80]}",
+                details={"note": note, "article_id": article_id},
+                entities_affected=[entity] if entity else [],
+                user_initiated=True,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 — chronicle logging must never block
+        logger.debug("Failed to log annotation to chronicle: %s", exc)
     console.print(f"[green]Annotation saved:[/green] {article_id}")
     if entity:
         console.print(f"  Linked to entity: {entity}")

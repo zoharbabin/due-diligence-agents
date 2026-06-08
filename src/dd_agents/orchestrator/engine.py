@@ -17,6 +17,7 @@ import contextlib
 import json
 import logging
 import time
+import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -3995,8 +3996,13 @@ class PipelineEngine:
             from dd_agents.knowledge.base import DealKnowledgeBase
             from dd_agents.knowledge.compiler import KnowledgeCompiler
 
-            kb_path = state.project_dir / "knowledge"
-            kb = DealKnowledgeBase(kb_path)
+            # Use the project (data-room) root directly so the KB lands at
+            # ``<project>/_dd/forensic-dd/knowledge`` — the SAME location the
+            # CLI knowledge commands (health/log/lineage/query) and chat read
+            # from. Previously this appended ``/knowledge`` (Issue #217), which
+            # nested the KB one level too deep and made compiled knowledge
+            # invisible to every consumer.
+            kb = DealKnowledgeBase(state.project_dir)
             compiler = KnowledgeCompiler(kb)
             result = compiler.compile_from_run(state.run_dir, state.run_id)
             logger.info(
@@ -4079,10 +4085,64 @@ class PipelineEngine:
         return assignments
 
     async def _step_36_update_run_history(self, state: PipelineState) -> PipelineState:
-        """Append entry to run_history.json."""
-        # Already handled in step 32 by RunManager.finalize_run()
+        """Append entry to run_history.json and the analysis chronicle."""
+        # run_history.json is already handled in step 32 by RunManager.finalize_run().
+        # Record a PIPELINE_RUN entry in the analysis chronicle so `dd-agents log`
+        # surfaces this run (Issue #217 — previously the pipeline never wrote one).
+        self._log_pipeline_to_chronicle(state)
         logger.info("Run history updated (via finalize_run)")
         return state
+
+    def _log_pipeline_to_chronicle(self, state: PipelineState) -> None:
+        """Append a PIPELINE_RUN entry to the analysis chronicle (best-effort).
+
+        Writes to the SAME knowledge dir the CLI/chat read from
+        (``<project>/_dd/forensic-dd/knowledge/chronicle.jsonl``). Never blocks
+        the pipeline — failures are logged at debug.
+        """
+        try:
+            from dd_agents.knowledge.chronicle import (
+                AnalysisChronicle,
+                AnalysisLogEntry,
+                FindingsSummary,
+                InteractionType,
+            )
+
+            counts = self._compute_finding_counts(state)
+            gap_counts = self._compute_gap_counts(state)
+            chronicle_path = self.project_dir / "_dd" / "forensic-dd" / "knowledge" / "chronicle.jsonl"
+            chronicle_path.parent.mkdir(parents=True, exist_ok=True)
+            buyer = (state.deal_config or {}).get("buyer", {})
+            target = (state.deal_config or {}).get("target", {})
+            title = "Pipeline run"
+            if isinstance(target, dict) and target.get("name"):
+                acquirer = buyer.get("name") if isinstance(buyer, dict) else None
+                title = f"Pipeline run: {acquirer + ' → ' if acquirer else ''}{target['name']}"
+            entry = AnalysisLogEntry(
+                id=uuid.uuid4().hex[:12],
+                timestamp=datetime.now(tz=UTC).isoformat(),
+                interaction_type=InteractionType.PIPELINE_RUN,
+                title=title[:200],
+                details={
+                    "run_id": state.run_id,
+                    "mode": self._run_options.get("mode", "full"),
+                    "quick_scan": bool(self._run_options.get("quick_scan")),
+                    "gap_count": gap_counts.get("total", 0),
+                },
+                findings_summary=FindingsSummary(
+                    total=counts.get("total", 0),
+                    p0=counts.get(SEVERITY_P0, 0),
+                    p1=counts.get(SEVERITY_P1, 0),
+                    p2=counts.get(SEVERITY_P2, 0),
+                    p3=counts.get(SEVERITY_P3, 0),
+                ),
+                entities_affected=list(state.subject_safe_names),
+                cost_usd=round(self.cost_tracker.total_cost(), 4),
+                user_initiated=True,
+            )
+            AnalysisChronicle(chronicle_path).append(entry)
+        except Exception as exc:  # noqa: BLE001 — chronicle logging must never block
+            logger.debug("Failed to log pipeline run to chronicle: %s", exc)
 
     async def _step_37_save_entity_cache(self, state: PipelineState) -> PipelineState:
         """Persist entity resolution cache to PERMANENT tier."""
