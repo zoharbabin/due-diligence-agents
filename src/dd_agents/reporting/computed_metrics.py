@@ -1580,7 +1580,7 @@ class ReportDataComputer:
             len(material_findings),
             material_by_severity,
             domain_summaries_data,
-            total_contracted_arr,
+            total_risk_exposure,
             len(merged_data),
         )
 
@@ -3438,7 +3438,7 @@ class ReportDataComputer:
         material_count: int,
         material_by_severity: dict[str, int],
         domain_summaries: dict[str, dict[str, Any]],
-        total_contracted_arr: float,
+        total_risk_exposure: float,
         total_subjects: int,
     ) -> list[dict[str, Any]]:
         """Build the Layer-1 KPI strip (Issue #197).
@@ -3446,6 +3446,8 @@ class ReportDataComputer:
         Reuses already-resolved counts only — no severity is re-derived here
         (rule 12). ``intent`` is purely presentational (neutral/critical/good)
         so the renderer can colorize without touching the severity authority.
+        ``total_risk_exposure`` is the de-duplicated at-risk dollars (union of
+        unique at-risk subjects), NOT the full contracted ARR base.
         """
         from dd_agents.reporting.html_base import fmt_currency
 
@@ -3465,9 +3467,9 @@ class ReportDataComputer:
                 "intent": "critical" if domains_at_risk > 0 else "good",
             },
             {
-                "label": "Financial Exposure",
-                "value": fmt_currency(total_contracted_arr),
-                "intent": "neutral",
+                "label": "Revenue at Risk",
+                "value": fmt_currency(total_risk_exposure),
+                "intent": "critical" if total_risk_exposure > 0 else "neutral",
             },
             {"label": "Entities", "value": str(total_subjects), "intent": "neutral"},
         ]

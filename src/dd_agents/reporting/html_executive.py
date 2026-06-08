@@ -26,11 +26,15 @@ _VERDICT_SIGNAL_COLORS: dict[str, str] = {
 }
 
 # Maps the raw deterministic verdict signal (verdict.py SIGNAL_*) to the
-# reader-facing display vocabulary used on the badge.
+# reader-facing display vocabulary used on the badge. Ordered worst→best:
+# No-Go > Proceed with Caution > Conditional Go > Go. CONDITIONAL is the MORE
+# severe tier (P1>=3) so it reads "Proceed with Caution"; PROCEED WITH
+# CONDITIONS (P1>=1) is milder and reads "Conditional Go" — matching the
+# risk-label fallback in _resolve_verdict (High→Caution, Medium/Low→Conditional).
 _VERDICT_DISPLAY_LABEL: dict[str, str] = {
     "NO-GO": "No-Go",
-    "CONDITIONAL": "Conditional Go",
-    "PROCEED WITH CONDITIONS": "Proceed with Caution",
+    "CONDITIONAL": "Proceed with Caution",
+    "PROCEED WITH CONDITIONS": "Conditional Go",
     "PROCEED": "Go",
 }
 

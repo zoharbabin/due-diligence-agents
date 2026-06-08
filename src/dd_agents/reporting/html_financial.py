@@ -106,10 +106,15 @@ class FinancialImpactRenderer(SectionRenderer):
             label = f"{category_labels.get(cat_key, cat_key)} ({contracts})"
             deductions.append({"label": label, "amount": amount})
 
+        # Pass the canonical de-duped Risk-Adjusted ARR as end_value: category
+        # amounts overlap (a subject at risk in two categories counts in both),
+        # so the sequential sum would double-count. risk_adjusted_arr is computed
+        # from the UNION of unique at-risk subjects (computed_metrics.py).
         svg = render_waterfall_chart(
             start_value=total,
             deductions=deductions,
             title="Revenue-at-Risk Waterfall",
+            end_value=d.risk_adjusted_arr,
         )
         if not svg:
             return ""

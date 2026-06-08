@@ -784,21 +784,21 @@ class TestExecutiveSummaryExtended:
         assert "hero-verdict-signal'>No-Go<" in out.read_text(encoding="utf-8")
 
     def test_go_no_go_high(self, tmp_path: Path) -> None:
-        """3+ P1 findings → CONDITIONAL, displayed as "Conditional Go" (Issue #195)."""
+        """3+ P1 (CONDITIONAL, the more severe P1 tier) → "Proceed with Caution" (Issue #195)."""
         findings = [_make_finding(severity="P1") for _ in range(3)]
         merged: dict[str, Any] = {"c": {"subject": "C", "findings": findings, "gaps": []}}
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
         gen.generate(merged, out)
-        assert "hero-verdict-signal'>Conditional Go<" in out.read_text(encoding="utf-8")
+        assert "hero-verdict-signal'>Proceed with Caution<" in out.read_text(encoding="utf-8")
 
     def test_go_no_go_medium(self, tmp_path: Path) -> None:
-        """Single P1 → PROCEED WITH CONDITIONS, displayed as "Proceed with Caution" (Issue #195)."""
+        """Single P1 (PROCEED WITH CONDITIONS, the milder P1 tier) → "Conditional Go" (Issue #195)."""
         merged: dict[str, Any] = {"c": {"subject": "C", "findings": [_make_finding(severity="P1")], "gaps": []}}
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
         gen.generate(merged, out)
-        assert "hero-verdict-signal'>Proceed with Caution<" in out.read_text(encoding="utf-8")
+        assert "hero-verdict-signal'>Conditional Go<" in out.read_text(encoding="utf-8")
 
     def test_go_no_go_clean(self, tmp_path: Path) -> None:
         """Clean risk → PROCEED, displayed as "Go" (Issue #195)."""

@@ -1118,7 +1118,7 @@ class TestExecutiveSummaryRenderer:
         html_out = r.render()
         assert "id='sec-kpi-strip'" in html_out
         assert "Entities" in html_out
-        assert "Financial Exposure" in html_out
+        assert "Revenue at Risk" in html_out
 
     def test_severity_donut_and_bar_aria(self) -> None:
         """Issue #199: a severity donut and an accessible severity bar render."""

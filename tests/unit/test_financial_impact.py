@@ -390,23 +390,20 @@ class TestFinancialImpactRenderer:
         # Entity count folded into the label.
         assert "Change of Control (2)" in result
 
-    def test_waterfall_escapes_malicious_category_label(self) -> None:
-        """SVG waterfall escapes labels end-to-end (XSS parity)."""
-        from dd_agents.reporting.computed_metrics import ReportComputedData
-        from dd_agents.reporting.html_financial import FinancialImpactRenderer
+    def test_waterfall_chart_escapes_label_and_title(self) -> None:
+        """render_waterfall_chart escapes attacker-controlled label + title (XSS)."""
+        from dd_agents.reporting.html_charts import render_waterfall_chart
 
-        data = ReportComputedData(
-            total_contracted_arr=1_000_000.0,
-            risk_adjusted_arr=600_000.0,
-            revenue_data_coverage=1.0,
-            revenue_by_subject={"a": 1_000_000},
-            risk_waterfall={
-                "change_of_control": {"amount": 400_000.0, "contracts": 1, "subjects": ["a"]},
-            },
-            total_subjects=1,
+        svg = render_waterfall_chart(
+            start_value=1_000_000.0,
+            deductions=[{"label": "<script>alert(1)</script>", "amount": 400_000.0}],
+            title="<img src=x onerror=alert(1)>",
         )
-        result = FinancialImpactRenderer(data, {}, {}).render()
-        assert "<script>" not in result
+        assert "<script>alert(1)</script>" not in svg
+        assert "<img src=x" not in svg
+        # Escaped forms are present instead.
+        assert "&lt;script&gt;" in svg
+        assert "&lt;img" in svg
 
     def test_empty_when_no_revenue(self) -> None:
         from dd_agents.reporting.computed_metrics import ReportComputedData
