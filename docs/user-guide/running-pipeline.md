@@ -40,7 +40,7 @@ dd-agents run deal-config.json --mode incremental
 | Option | Description |
 |--------|-------------|
 | `--mode full\|incremental` | Override execution mode from config |
-| `--resume-from N` | Resume from step N (0-35; 0 means start fresh) |
+| `--resume-from N` | Resume from step N (0-38; 0 means start fresh) |
 | `--dry-run` | Validate config and print step plan without executing |
 | `--quick-scan` | Add a Red Flag Scanner stoplight-triage pass to the run (full pipeline still runs; the scanner reads merged findings) |
 | `--model-profile PROFILE` | Override model tier: `economy`, `standard`, `premium` |

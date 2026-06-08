@@ -123,7 +123,7 @@ def main() -> None:
     "resume_from",
     type=int,
     default=0,
-    help="Resume pipeline from a specific step number (0-35).",
+    help="Resume pipeline from a specific step number (0-38).",
 )
 @click.option(
     "--dry-run",
@@ -245,11 +245,11 @@ def run(
     _print_config_summary(deal_config)
 
     # --- Validate resume-from ---
-    if resume_from < 0 or resume_from > 35:
+    if resume_from < 0 or resume_from > 38:
         _print_error(
             "Invalid Option",
-            f"--resume-from must be 0-35, got {resume_from}\n"
-            "  Key steps: 0=start, 6=inventory, 14=prompts, 16=agents, 24=merge, 28=QA, 35=end",
+            f"--resume-from must be 0-38, got {resume_from}\n"
+            "  Key steps: 0=start, 6=inventory, 14=prompts, 16=agents, 24=merge, 31=QA, 33=reports, 38=end",
         )
         raise SystemExit(1)
 

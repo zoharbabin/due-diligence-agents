@@ -33,7 +33,7 @@ dd-agents run CONFIG_PATH [OPTIONS]
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `--mode` | `full\|incremental` | from config | Override execution mode |
-| `--resume-from` | int (0-35) | 0 (beginning) | Resume from a specific step |
+| `--resume-from` | int (0-38) | 0 (beginning) | Resume from a specific step |
 | `--no-narrative` | flag | off | Skip LLM narrative generation (deterministic report only) |
 | `--dry-run` | flag | off | Print step plan without executing |
 | `--quick-scan` | flag | off | Add a Red Flag Scanner stoplight-triage pass (full pipeline runs; scanner reads merged findings) |
