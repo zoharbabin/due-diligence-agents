@@ -125,6 +125,11 @@ dd-agents health --data-room ./data_room                    # Check knowledge ba
 dd-agents annotate --data-room ./data_room "Confirmed with counsel"  # Add analyst notes
 ```
 
+> **Serve a finished report over the network.**
+> [`examples/agno-bindu/`](examples/agno-bindu/) exposes a completed report as a
+> conversational [Bindu](https://github.com/GetBindu/Bindu) A2A agent — ask it for
+> P0 counts, domain risks, or the exact cited clause. Community-contributed example.
+
 ### Customize the Agents (no code required)
 
 Inspect, audit, and tailor each specialist's persona, focus areas, and severity
@@ -439,6 +444,7 @@ All core dependencies use permissive open-source licenses (Apache 2.0, MIT, BSD)
 | [Troubleshooting](docs/user-guide/troubleshooting.md) | Common errors, exit codes, recovery steps |
 | [Search Guide](docs/search-guide.md) | Contract search for legal teams |
 | [Agent Customization](docs/agent-customization.md) | Tailor agent personas, focus areas, and severity (no code) |
+| [Bindu A2A agent (community example)](examples/agno-bindu/README.md) | Serve a completed report as a conversational agent over the A2A protocol |
 
 ## Contributing
 

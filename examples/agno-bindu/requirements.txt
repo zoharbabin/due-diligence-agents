@@ -1,0 +1,16 @@
+# Python deps for the agno + Bindu glue in this example.
+#
+# The due-diligence engine itself (the `dd_agents` package) is NOT listed here —
+# it comes from the parent repo. Install it first with:
+#     uv pip install -e .            # run at the repo root
+# Then install these:
+#     uv pip install -r examples/agno-bindu/requirements.txt
+#
+# Note: this example only reads the dd-agents *finding index* (deterministic,
+# no LLM), so it does not need an Anthropic key — only OPENROUTER_API_KEY for the
+# agno model call.
+bindu>=2026.20
+agno>=2.6,<3
+openai>=1.40
+python-dotenv>=1.0
+rich>=13

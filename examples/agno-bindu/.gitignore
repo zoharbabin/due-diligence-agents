@@ -1,0 +1,7 @@
+.env
+.bindu/
+logs/
+tmp/
+__pycache__/
+*.db
+*.pem
