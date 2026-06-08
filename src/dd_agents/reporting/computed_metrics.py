@@ -19,7 +19,11 @@ from pydantic import BaseModel, Field
 
 from dd_agents.reporting.recommendation_templates import generate_recommendations
 from dd_agents.reporting.severity_resolver import recalibration_cap
-from dd_agents.reporting.verdict import compute_verdict, generate_executive_takeaways
+from dd_agents.reporting.verdict import (
+    VerdictRubric,
+    compute_verdict,
+    generate_executive_takeaways,
+)
 from dd_agents.utils.constants import (
     SEVERITY_ORDER,
     SEVERITY_P0,
@@ -971,7 +975,7 @@ class ReportComputedData(BaseModel):
     # --- Issue #103: Cross-Domain Risk Correlation ---
     cross_domain_risks: list[dict[str, Any]] = Field(
         default_factory=list,
-        description="Compound risk cards for entities with findings across 3+ domains",
+        description="Compound risk cards for entities with findings across 2+ domains",
     )
 
     # --- Issue #189: Cross-Domain Trigger Analysis ---
@@ -1041,6 +1045,11 @@ class ReportComputedData(BaseModel):
     dashboard_findings: list[dict[str, Any]] = Field(
         default_factory=list,
         description="Top-5 material findings by priority score for dashboard layer",
+    )
+    dashboard_kpis: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Layer-1 KPI strip: 3-5 headline metrics (label, value, intent) "
+        "reusing already-resolved severity/exposure/entity counts",
     )
 
     # --- Issue #200: Actionable Recommendations ---
@@ -1180,6 +1189,7 @@ class ReportDataComputer:
         self,
         merged_data: dict[str, Any],
         executive_synthesis: dict[str, Any] | None = None,
+        rubric: VerdictRubric | None = None,
     ) -> ReportComputedData:
         """Compute all metrics in one pass from merged subject output dicts."""
         total_findings = 0
@@ -1472,7 +1482,7 @@ class ReportDataComputer:
                 entity_sevs[csn].append(f.get("severity", SEVERITY_P3))
         cross_domain_risks: list[dict[str, Any]] = []
         for csn, domains in entity_domains.items():
-            if len(domains) >= 3:
+            if len(domains) >= 2:
                 sevs = entity_sevs[csn]
                 score = sum(_SEVERITY_WEIGHTS.get(s, 1.0) for s in sevs)
                 cross_domain_risks.append(
@@ -1529,6 +1539,7 @@ class ReportDataComputer:
             p1_count=severity_counts.get(SEVERITY_P1, 0),
             exposure_pct=float(exposure_pct),
             cross_domain_critical_count=cross_domain_critical,
+            rubric=rubric,
             risk_score=deal_risk_score,
         )
         verdict_dict: dict[str, Any] = {
@@ -1563,6 +1574,15 @@ class ReportDataComputer:
 
         # --- Issue #197: Dashboard top findings (by priority score) ---
         dashboard_findings_list = self._compute_dashboard_findings(material_findings, cross_domain_risks)
+
+        # --- Issue #197: Layer-1 KPI strip (reuses already-resolved counts) ---
+        dashboard_kpis_list = self._compute_dashboard_kpis(
+            len(material_findings),
+            material_by_severity,
+            domain_summaries_data,
+            total_risk_exposure,
+            len(merged_data),
+        )
 
         # --- Issue #200: Actionable recommendations (template-matched) ---
 
@@ -1704,6 +1724,7 @@ class ReportDataComputer:
             # Issue #197: Domain Summaries
             domain_summaries=domain_summaries_data,
             dashboard_findings=dashboard_findings_list,
+            dashboard_kpis=dashboard_kpis_list,
             # Issue #200: Actionable Recommendations
             actionable_recommendations=actionable_recs,
         )
@@ -3411,3 +3432,44 @@ class ReportDataComputer:
 
         scored.sort(key=lambda x: -x[0])
         return [f for _, f in scored[:5]]
+
+    @staticmethod
+    def _compute_dashboard_kpis(
+        material_count: int,
+        material_by_severity: dict[str, int],
+        domain_summaries: dict[str, dict[str, Any]],
+        total_risk_exposure: float,
+        total_subjects: int,
+    ) -> list[dict[str, Any]]:
+        """Build the Layer-1 KPI strip (Issue #197).
+
+        Reuses already-resolved counts only — no severity is re-derived here
+        (rule 12). ``intent`` is purely presentational (neutral/critical/good)
+        so the renderer can colorize without touching the severity authority.
+        ``total_risk_exposure`` is the de-duplicated at-risk dollars (union of
+        unique at-risk subjects), NOT the full contracted ARR base.
+        """
+        from dd_agents.reporting.html_base import fmt_currency
+
+        p0 = material_by_severity.get(SEVERITY_P0, 0)
+        p1 = material_by_severity.get(SEVERITY_P1, 0)
+        domains_at_risk = sum(1 for s in domain_summaries.values() if s.get("rag_status") in ("red", "amber"))
+        return [
+            {"label": "Findings", "value": str(material_count), "intent": "neutral"},
+            {
+                "label": "Critical (P0/P1)",
+                "value": f"{p0} / {p1}",
+                "intent": "critical" if p0 > 0 else "neutral",
+            },
+            {
+                "label": "Domains at Risk",
+                "value": str(domains_at_risk),
+                "intent": "critical" if domains_at_risk > 0 else "good",
+            },
+            {
+                "label": "Revenue at Risk",
+                "value": fmt_currency(total_risk_exposure),
+                "intent": "critical" if total_risk_exposure > 0 else "neutral",
+            },
+            {"label": "Entities", "value": str(total_subjects), "intent": "neutral"},
+        ]

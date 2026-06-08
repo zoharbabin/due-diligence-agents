@@ -334,3 +334,64 @@ class TestVerdictInComputedMetrics:
         merged = self._make_merged([self._make_finding("P0")])
         data = ReportDataComputer().compute(merged)
         assert isinstance(data.executive_takeaways, list)
+
+    def test_valuation_dedup(self) -> None:
+        """One entity's revenue counts once even when at risk across two categories.
+
+        A single subject with both a change-of-control and a termination-for-
+        convenience finding must not have its ARR double-counted in the
+        valuation bridge total exposure.
+        """
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+        merged: dict[str, Any] = {
+            "acme": {
+                "subject": "Acme",
+                "findings": [
+                    {
+                        "severity": "P1",
+                        "title": "Change of control consent required",
+                        "description": "Assignment consent needed on transfer of control",
+                        "agent": "legal",
+                        "category": "change_of_control",
+                        "citations": [],
+                    },
+                    {
+                        "severity": "P1",
+                        "title": "Termination for convenience clause",
+                        "description": "Counterparty may terminate without cause",
+                        "agent": "legal",
+                        "category": "termination",
+                        "citations": [],
+                    },
+                ],
+                "gaps": [],
+                "cross_references": [
+                    {"data_point": "ARR", "reference_value": "$1,000,000"},
+                ],
+            }
+        }
+        data = ReportDataComputer().compute(merged)
+        # Subject ARR counted once across both categories, not 2x.
+        assert data.valuation_bridge["total_exposure"] == 1_000_000.0
+
+    def test_no_revenue_data_gates_bridge(self) -> None:
+        """With no revenue data the valuation bridge is empty and fails closed."""
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+        merged = self._make_merged([self._make_finding("P3")])
+        data = ReportDataComputer().compute(merged)
+        assert data.valuation_bridge == {}
+        # No exposure rule fires → otherwise-clean findings stay PROCEED.
+        assert data.verdict is not None
+        assert data.verdict["signal"] == SIGNAL_PROCEED
+
+    def test_verdict_rubric_override_from_config(self) -> None:
+        """A custom rubric passed into compute() reaches compute_verdict."""
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+        merged = self._make_merged([self._make_finding("P0")])
+        # Raise the NO-GO threshold so a single P0 no longer trips it.
+        data = ReportDataComputer().compute(merged, rubric=VerdictRubric(no_go_p0_min=2))
+        assert data.verdict is not None
+        assert data.verdict["signal"] != SIGNAL_NO_GO

@@ -91,7 +91,7 @@ class QualityRenderer(SectionRenderer):
             agent_scores = qs.get("agent_scores", qs)
             if isinstance(agent_scores, dict):
                 parts.append(
-                    "<table class='sortable'><thead><tr>"
+                    "<table class='sortable'><caption>Quality audit</caption><thead><tr>"
                     "<th scope='col'>Agent</th><th scope='col'>Score</th><th scope='col'>Details</th>"
                     "</tr></thead><tbody>"
                 )
@@ -125,7 +125,7 @@ class QualityRenderer(SectionRenderer):
         parts: list[str] = [
             "<section class='report-section' id='sec-audit-checks'>",
             "<h2>QA Audit Checks</h2>",
-            "<table class='sortable'><thead><tr>"
+            "<table class='sortable'><caption>QA audit checks</caption><thead><tr>"
             "<th scope='col'>Check</th><th scope='col'>Status</th><th scope='col'>Detail</th>"
             "</tr></thead><tbody>",
         ]

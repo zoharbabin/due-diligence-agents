@@ -71,7 +71,7 @@ class FindingsTableRenderer(SectionRenderer):
 
         # Subject-level table
         parts.append(
-            "<table class='subject-table sortable'><thead><tr>"
+            "<table class='subject-table sortable'><caption>Entities ranked by finding severity</caption><thead><tr>"
             "<th scope='col'>Entity</th>"
             f"<th scope='col'>{self.escape(count_key.upper().replace('_', ' '))}</th>"
             "<th scope='col'>Total Findings</th>"

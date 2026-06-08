@@ -30,6 +30,12 @@ def _make_renderer() -> FilterBarRenderer:
     return FilterBarRenderer(data, {}, {})
 
 
+def _make_renderer_with_entities(display_names: dict[str, str]) -> FilterBarRenderer:
+    """Create a FilterBarRenderer carrying entity display names."""
+    data = ReportComputedData(display_names=display_names)
+    return FilterBarRenderer(data, {}, {})
+
+
 class TestFilterBarHTML:
     """Tests for filter bar HTML output."""
 
@@ -123,6 +129,49 @@ class TestFilterBarJS:
         """JS bails early if filter bar element not found."""
         assert "if (!bar) return" in FILTER_BAR_JS
 
+    def test_js_handles_search(self) -> None:
+        """JS wires the free-text search input (Issue #191)."""
+        assert "filter-search" in FILTER_BAR_JS
+        assert "searchText" in FILTER_BAR_JS
+
+    def test_js_handles_entity(self) -> None:
+        """JS wires the entity dropdown (Issue #191)."""
+        assert "filter-entity" in FILTER_BAR_JS
+        assert "activeEntity" in FILTER_BAR_JS
+
+    def test_js_search_and_entity_in_hash(self) -> None:
+        """Search + entity state is shareable via the URL hash."""
+        assert "q=" in FILTER_BAR_JS
+        assert "ent=" in FILTER_BAR_JS
+
+
+class TestFilterBarSearchEntity:
+    """Issue #191: free-text search input + entity dropdown."""
+
+    def test_renders_search_input(self) -> None:
+        html_out = _make_renderer().render()
+        assert "class='filter-search'" in html_out
+        assert "type='search'" in html_out
+        assert "aria-label='Search findings'" in html_out
+
+    def test_renders_entity_select(self) -> None:
+        html_out = _make_renderer_with_entities({"acme_co": "Acme Co", "beta_llc": "Beta"}).render()
+        assert "class='filter-entity'" in html_out
+        assert "<option value=''>All entities</option>" in html_out
+        assert "value='acme_co'" in html_out
+        assert "Acme Co" in html_out
+        assert "value='beta_llc'" in html_out
+
+    def test_entity_select_escapes(self) -> None:
+        html_out = _make_renderer_with_entities({"x": "<script>"}).render()
+        assert "&lt;script&gt;" in html_out
+        assert "<option value='x'><script>" not in html_out
+
+    def test_empty_display_names_only_all_option(self) -> None:
+        html_out = _make_renderer().render()
+        assert "<option value=''>All entities</option>" in html_out
+        assert "<option value='" not in html_out.replace("<option value=''>All entities</option>", "")
+
 
 class TestFilterBarIntegration:
     """Tests for filter bar in full report generation."""
@@ -154,3 +203,21 @@ class TestFilterBarIntegration:
         assert "class='filter-bar'" in content
         assert "data-filter-severity='P0'" in content
         assert "applyFilters" in content
+        # Issue #191: search input, entity dropdown, and per-card entity tag.
+        assert "class='filter-search'" in content
+        assert "class='filter-entity'" in content
+        assert "data-entity=" in content
+
+
+class TestFindingCardEntity:
+    """Issue #191: finding cards carry a data-entity attribute for filtering."""
+
+    def test_finding_card_has_data_entity(self) -> None:
+        from dd_agents.reporting.html_domains import DomainRenderer
+
+        data = ReportComputedData()
+        r = DomainRenderer(data, {})
+        card = r.render_finding_card(
+            {"severity": "P1", "title": "T", "agent": "legal", "_subject_safe_name": "acme_co"}
+        )
+        assert "data-entity='acme_co'" in card

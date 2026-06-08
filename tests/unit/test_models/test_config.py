@@ -533,6 +533,16 @@ class TestDealConfigDefaults:
         assert report_config.report_schema_override is None
         assert report_config.include_diff_sheet is True
         assert report_config.include_metadata_sheet is True
+        assert report_config.verdict is None
+
+    def test_reporting_config_verdict_override(self):
+        """ReportingConfig accepts an optional verdict rubric override (Issue #195)."""
+        report_config = ReportingConfig(verdict={"no_go_p0_min": 2, "high_exposure_pct": 30.0})
+        assert report_config.verdict is not None
+        assert report_config.verdict.no_go_p0_min == 2
+        assert report_config.verdict.high_exposure_pct == 30.0
+        # Unset fields default to None (rubric default applies downstream).
+        assert report_config.verdict.conditional_p1_min is None
 
     def test_forensic_dd_config_defaults(self):
         """ForensicDDConfig should have correct defaults."""

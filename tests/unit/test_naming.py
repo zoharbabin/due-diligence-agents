@@ -93,6 +93,32 @@ class TestSubjectSafeName:
     def test_safe_name_convention(self, input_name: str, expected: str) -> None:
         assert subject_safe_name(input_name) == expected
 
+    @pytest.mark.parametrize(
+        "input_name, expected",
+        [
+            ("Acme PLC", "acme"),
+            ("Acme AG", "acme"),
+            ("Acme N.V.", "acme"),
+            ("Acme NV", "acme"),
+            ("Acme B.V.", "acme"),
+            ("Acme BV", "acme"),
+            ("Acme S.A.S.", "acme"),
+            ("Acme SAS", "acme"),
+            ("Acme ULC", "acme"),
+            ("Acme LP", "acme"),
+            ("Acme L.P.", "acme"),
+            ("Acme S.A.", "acme"),
+            ("Acme SA", "acme"),
+        ],
+    )
+    def test_strips_additional_legal_suffixes(self, input_name: str, expected: str) -> None:
+        assert subject_safe_name(input_name) == expected
+
+    def test_legal_suffix_word_boundary_not_overstripped(self) -> None:
+        # Short suffixes (AG, SA, LP) must not strip mid-word via \b anchoring.
+        assert subject_safe_name("Saga Holdings") == "saga_holdings"
+        assert subject_safe_name("Stage One Ltd.") == "stage_one"
+
     def test_safe_name_empty_string(self) -> None:
         with pytest.raises(ValueError, match="cannot be empty"):
             subject_safe_name("")

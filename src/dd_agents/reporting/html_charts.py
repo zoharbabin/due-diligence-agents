@@ -222,6 +222,7 @@ def render_waterfall_chart(
     deductions: list[dict[str, Any]],
     width: int = 600,
     title: str = "Financial Impact Waterfall",
+    end_value: float | None = None,
 ) -> str:
     """Render an SVG waterfall chart showing financial deductions.
 
@@ -235,11 +236,22 @@ def render_waterfall_chart(
         SVG width in logical pixels.
     title:
         Accessible chart title.
+    end_value:
+        Authoritative final ("Adjusted") value. Use this when the per-category
+        deduction amounts may overlap (e.g. one subject at risk across two
+        categories) so that summing them would double-count: pass the
+        independently de-duplicated total here and it drives the final bar and
+        clamps the intermediate running value. When ``None`` the final value is
+        the sequential ``start_value - sum(deductions)``.
 
     Returns empty string if start_value is zero or no deductions.
     """
     if start_value <= 0 or not deductions:
         return ""
+
+    # Floor the running total at the authoritative de-duped end value (if given)
+    # so overlapping category deductions never drive the chart below the truth.
+    running_floor = max(0.0, end_value) if end_value is not None else 0.0
 
     safe_title = _esc(title)
     bar_height = 28
@@ -300,18 +312,20 @@ def render_waterfall_chart(
                 f"font-size='10' fill='white'>-${amount:,.0f}</text>"
             )
 
-        running = max(0, running - amount)
+        running = max(running_floor, running - amount)
         y += bar_height + spacing
 
-    # End bar (adjusted value)
-    end_w = max(running / start_value * chart_width, 2)
+    # End bar (adjusted value). Prefer the authoritative de-duped end value.
+    final_value = max(0.0, end_value) if end_value is not None else running
+    end_w = max(final_value / start_value * chart_width, 2)
     bars.append(
         f"<text x='{label_width - 8}' y='{y + bar_height / 2 + 4}' "
         f"text-anchor='end' font-size='11' font-weight='600' fill='#333'>Adjusted</text>"
     )
     bars.append(f"<rect x='{label_width}' y='{y}' width='{end_w:.1f}' height='{bar_height}' rx='3' fill='#28a745' />")
     bars.append(
-        f"<text x='{label_width + 8}' y='{y + bar_height / 2 + 4}' font-size='11' fill='white'>${running:,.0f}</text>"
+        f"<text x='{label_width + 8}' y='{y + bar_height / 2 + 4}' "
+        f"font-size='11' fill='white'>${final_value:,.0f}</text>"
     )
 
     svg = (

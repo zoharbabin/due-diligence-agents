@@ -147,6 +147,25 @@ class TestWaterfallChart:
         assert "aria-label='Impact Chart'" in svg
         assert "<title>Impact Chart</title>" in svg
 
+    def test_end_value_overrides_sequential_sum(self) -> None:
+        """end_value drives the Adjusted bar, preventing double-count of overlapping deductions.
+
+        Two $1M deductions sum to $2M (sequential → Adjusted $8M), but the
+        authoritative de-duped end_value is $9M (the same subject in both
+        categories). The chart must show $9M, not $8M.
+        """
+        svg = render_waterfall_chart(
+            10_000_000,
+            [
+                {"label": "Change of Control (1)", "amount": 1_000_000},
+                {"label": "Termination (1)", "amount": 1_000_000},
+            ],
+            end_value=9_000_000,
+        )
+        assert "Adjusted" in svg
+        assert "9,000,000" in svg
+        assert "8,000,000" not in svg
+
 
 class TestTimelineChart:
     """Tests for render_timeline_chart."""

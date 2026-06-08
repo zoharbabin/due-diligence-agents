@@ -366,6 +366,45 @@ class TestFinancialImpactRenderer:
         assert "Change of Control" in result
         assert "Risk-Adjusted ARR" in result
 
+    def test_waterfall_renders_svg_not_css_bars(self) -> None:
+        """Issue #199: the waterfall is now an inline SVG chart, not CSS bars."""
+        from dd_agents.reporting.computed_metrics import ReportComputedData
+        from dd_agents.reporting.html_financial import FinancialImpactRenderer
+
+        data = ReportComputedData(
+            total_contracted_arr=1_000_000.0,
+            risk_adjusted_arr=600_000.0,
+            revenue_data_coverage=1.0,
+            revenue_by_subject={"a": 1_000_000},
+            risk_waterfall={
+                "change_of_control": {"amount": 400_000.0, "contracts": 2, "subjects": ["a"]},
+            },
+            total_subjects=1,
+        )
+        result = FinancialImpactRenderer(data, {}, {}).render()
+        assert "<svg" in result
+        assert "role='img'" in result or 'role="img"' in result
+        assert "Revenue-at-Risk Waterfall" in result
+        # Old CSS-bar markup must be gone.
+        assert "waterfall-bar--total" not in result
+        # Entity count folded into the label.
+        assert "Change of Control (2)" in result
+
+    def test_waterfall_chart_escapes_label_and_title(self) -> None:
+        """render_waterfall_chart escapes attacker-controlled label + title (XSS)."""
+        from dd_agents.reporting.html_charts import render_waterfall_chart
+
+        svg = render_waterfall_chart(
+            start_value=1_000_000.0,
+            deductions=[{"label": "<script>alert(1)</script>", "amount": 400_000.0}],
+            title="<img src=x onerror=alert(1)>",
+        )
+        assert "<script>alert(1)</script>" not in svg
+        assert "<img src=x" not in svg
+        # Escaped forms are present instead.
+        assert "&lt;script&gt;" in svg
+        assert "&lt;img" in svg
+
     def test_empty_when_no_revenue(self) -> None:
         from dd_agents.reporting.computed_metrics import ReportComputedData
         from dd_agents.reporting.html_financial import FinancialImpactRenderer

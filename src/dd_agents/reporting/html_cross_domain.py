@@ -221,7 +221,10 @@ class CrossDomainRenderer(SectionRenderer):
             return
 
         parts.append("<h3>Domain Interaction Matrix</h3>")
-        parts.append("<table class='subject-table sortable'><thead><tr><th scope='col'></th>")
+        parts.append(
+            "<table class='subject-table sortable'><caption>Domain interaction matrix</caption>"
+            "<thead><tr><th scope='col'></th>"
+        )
         for d in active_domains:
             d_display = DOMAIN_DISPLAY.get(d, d.capitalize())
             parts.append(f"<th scope='col'>{self.escape(d_display)}</th>")
@@ -251,7 +254,7 @@ class CrossDomainRenderer(SectionRenderer):
             "when specialist agents identified findings requiring validation by other domains.</p>"
         )
         parts.append(
-            "<table class='subject-table sortable'><thead><tr>"
+            "<table class='subject-table sortable'><caption>Cross-domain verification</caption><thead><tr>"
             "<th scope='col'>Entity</th>"
             "<th scope='col'>Source</th>"
             "<th scope='col'>Target</th>"

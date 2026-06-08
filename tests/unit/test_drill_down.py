@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 from dd_agents.reporting.computed_metrics import ReportComputedData, ReportDataComputer
+from dd_agents.reporting.html_base import fmt_currency
 from dd_agents.reporting.html_domain_summary import DomainSummaryRenderer
 
 
@@ -240,3 +241,94 @@ class TestDomainSummaryEdgeCases:
         assert len(data.dashboard_findings) == 2
         assert data.dashboard_findings[0]["title"] == "Critical issue"
         assert data.dashboard_findings[1]["title"] == "Minor issue"
+
+
+class TestDashboardKpis:
+    """Issue #197: Layer-1 KPI strip computed field."""
+
+    _LABELS = {"Findings", "Critical (P0/P1)", "Domains at Risk", "Revenue at Risk", "Entities"}
+
+    def test_dashboard_kpis_populated(self) -> None:
+        merged: dict[str, Any] = {
+            "a": {"subject": "a", "findings": [_make_finding("P0", agent="legal")], "gaps": []},
+        }
+        data = ReportDataComputer().compute(merged)
+        assert len(data.dashboard_kpis) == 5
+        assert {k["label"] for k in data.dashboard_kpis} == self._LABELS
+
+    def test_kpi_entities_count(self) -> None:
+        merged: dict[str, Any] = {
+            "a": {"subject": "a", "findings": [_make_finding("P1", agent="legal")], "gaps": []},
+            "b": {"subject": "b", "findings": [_make_finding("P2", agent="finance")], "gaps": []},
+        }
+        data = ReportDataComputer().compute(merged)
+        entities = next(k for k in data.dashboard_kpis if k["label"] == "Entities")
+        assert entities["value"] == "2"
+
+    def test_kpi_domains_at_risk(self) -> None:
+        merged: dict[str, Any] = {
+            "a": {
+                "subject": "a",
+                "findings": [
+                    _make_finding("P0", agent="legal"),
+                    _make_finding("P0", agent="finance"),
+                ],
+                "gaps": [],
+            },
+        }
+        data = ReportDataComputer().compute(merged)
+        dar = next(k for k in data.dashboard_kpis if k["label"] == "Domains at Risk")
+        assert dar["value"] == "2"
+        assert dar["intent"] == "critical"
+
+    def test_kpi_critical_intent(self) -> None:
+        merged: dict[str, Any] = {
+            "a": {"subject": "a", "findings": [_make_finding("P0", agent="legal")], "gaps": []},
+        }
+        data = ReportDataComputer().compute(merged)
+        crit = next(k for k in data.dashboard_kpis if k["label"] == "Critical (P0/P1)")
+        assert crit["intent"] == "critical"
+
+    def test_kpi_clean_deal(self) -> None:
+        merged: dict[str, Any] = {"a": {"subject": "a", "findings": [], "gaps": []}}
+        data = ReportDataComputer().compute(merged)
+        assert len(data.dashboard_kpis) == 5
+        findings = next(k for k in data.dashboard_kpis if k["label"] == "Findings")
+        dar = next(k for k in data.dashboard_kpis if k["label"] == "Domains at Risk")
+        crit = next(k for k in data.dashboard_kpis if k["label"] == "Critical (P0/P1)")
+        assert findings["value"] == "0"
+        assert dar["value"] == "0"
+        assert crit["intent"] == "neutral"
+
+    def test_kpi_revenue_at_risk_is_deduped_exposure_not_total_arr(self) -> None:
+        """Revenue at Risk KPI shows the at-risk exposure, NOT the full ARR base."""
+        merged: dict[str, Any] = {
+            "acme": {
+                "subject": "Acme",
+                "findings": [
+                    {
+                        "severity": "P1",
+                        "title": "Change of control consent required",
+                        "description": "Assignment consent needed on transfer of control",
+                        "agent": "legal",
+                        "category": "change_of_control",
+                        "citations": [],
+                    }
+                ],
+                "gaps": [],
+                "cross_references": [{"data_point": "ARR", "reference_value": "$1,000,000"}],
+            },
+            # Beta has revenue but NO findings → contributes to total ARR, not exposure.
+            "beta": {
+                "subject": "Beta",
+                "findings": [],
+                "gaps": [],
+                "cross_references": [{"data_point": "ARR", "reference_value": "$4,000,000"}],
+            },
+        }
+        data = ReportDataComputer().compute(merged)
+        rar = next(k for k in data.dashboard_kpis if k["label"] == "Revenue at Risk")
+        # Only Acme ($1M) is at risk; Beta's $4M is not. KPI must NOT show $5M total.
+        assert "5" not in rar["value"]
+        assert rar["value"] == fmt_currency(1_000_000.0)
+        assert rar["intent"] == "critical"

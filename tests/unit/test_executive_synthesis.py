@@ -281,8 +281,13 @@ class TestRiskScoringWithSynthesis:
 class TestGoNoGoWithSynthesis:
     """Tests for executive summary rendering with synthesis data."""
 
-    def test_go_no_go_uses_synthesis_when_available(self, tmp_path: Path) -> None:
-        """When synthesis is available, its signal replaces mechanical."""
+    def test_badge_is_deterministic_llm_is_supporting_text(self, tmp_path: Path) -> None:
+        """Issue #195: the badge is deterministic; LLM text is supporting only.
+
+        A single P0 yields the deterministic NO-GO verdict (shown as "No-Go"),
+        regardless of the LLM's softer "Conditional Go" — but the LLM rationale
+        and narrative still surface as supporting text beneath the badge.
+        """
         from dd_agents.reporting.html import HTMLReportGenerator
 
         merged: dict[str, Any] = {
@@ -304,8 +309,11 @@ class TestGoNoGoWithSynthesis:
             },
         )
         content = out.read_text(encoding="utf-8")
-        assert "Conditional Go" in content
-        assert "Intercompany payable is trivially resolved" in content
+        # Deterministic badge wins over the LLM's softer signal.
+        assert "hero-verdict-signal'>No-Go<" in content
+        assert "hero-verdict-signal'>Conditional Go<" not in content
+        # LLM narrative is still surfaced as supporting text.
+        assert "The deal is sound overall." in content
 
     def test_go_no_go_fallback_without_synthesis(self, tmp_path: Path) -> None:
         """Deterministic verdict works when no synthesis is provided."""
@@ -322,7 +330,7 @@ class TestGoNoGoWithSynthesis:
         out = tmp_path / "report.html"
         gen.generate(merged, out)
         content = out.read_text(encoding="utf-8")
-        assert "NO-GO" in content
+        assert "hero-verdict-signal'>No-Go<" in content
 
     def test_deal_breakers_uses_synthesis_ranking(self, tmp_path: Path) -> None:
         """When synthesis provides ranked breakers, they are rendered."""
@@ -382,7 +390,7 @@ class TestGoNoGoWithSynthesis:
         assert "This deal presents minimal risk across all domains" in content
 
     def test_partial_synthesis_only_signal(self, tmp_path: Path) -> None:
-        """Synthesis with only go_no_go_signal renders correctly."""
+        """Synthesis with only go_no_go_signal does not override the deterministic badge."""
         from dd_agents.reporting.html import HTMLReportGenerator
 
         merged: dict[str, Any] = {
@@ -400,8 +408,8 @@ class TestGoNoGoWithSynthesis:
             executive_synthesis={"go_no_go_signal": "Go"},
         )
         content = out.read_text(encoding="utf-8")
-        # Signal is used from synthesis — bounded check avoids matching "Go" inside "No-Go"
-        assert ">Go<" in content or "Go</div>" in content
+        # Badge stays deterministic (P0 → No-Go) regardless of the LLM signal (#195).
+        assert "hero-verdict-signal'>No-Go<" in content
         # No narrative section rendered (empty narrative)
         assert "Executive Assessment" not in content
 
@@ -427,8 +435,8 @@ class TestGoNoGoWithSynthesis:
             },
         )
         content = out.read_text(encoding="utf-8")
-        # Signal from synthesis
-        assert "Proceed with Caution" in content
+        # Badge is deterministic (P0 → No-Go), not the LLM's softer signal (#195).
+        assert "hero-verdict-signal'>No-Go<" in content
         # Mechanical deal breakers shown since ranked list is empty
         assert "Mechanical P0 issue" in content
 

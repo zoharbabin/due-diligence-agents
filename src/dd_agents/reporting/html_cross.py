@@ -44,7 +44,7 @@ class CrossRefRenderer(SectionRenderer):
         )
 
         parts.append(
-            "<table class='sortable'><thead><tr>"
+            "<table class='sortable'><caption>Data reconciliation</caption><thead><tr>"
             "<th scope='col'>Entity</th><th scope='col'>Field</th>"
             "<th scope='col'>Contract Value</th><th scope='col'>Reference Value</th>"
             "<th scope='col'>Match</th></tr></thead><tbody>"

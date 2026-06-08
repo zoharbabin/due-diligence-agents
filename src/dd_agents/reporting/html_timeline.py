@@ -78,7 +78,7 @@ class TimelineRenderer(SectionRenderer):
         if findings:
             parts.append("<h3>Contract Date Findings</h3>")
             parts.append(
-                "<table class='subject-table sortable'><thead><tr>"
+                "<table class='subject-table sortable'><caption>Contract date findings</caption><thead><tr>"
                 "<th scope='col'>Severity</th>"
                 "<th scope='col'>Entity</th>"
                 "<th scope='col'>Finding</th>"

@@ -61,7 +61,10 @@ class ProductAdoptionRenderer(SectionRenderer):
         )
 
         # Adoption matrix table
-        parts.append("<table class='subject-table sortable'><thead><tr><th scope='col'>Entity</th>")
+        parts.append(
+            "<table class='subject-table sortable'><caption>Product adoption matrix</caption>"
+            "<thead><tr><th scope='col'>Entity</th>"
+        )
         for prod in products:
             parts.append(f"<th scope='col'>{self.escape(prod)}</th>")
         parts.append("<th scope='col'>Product Count</th></tr></thead><tbody>")
