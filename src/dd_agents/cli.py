@@ -464,9 +464,13 @@ def validate(config_path: Path) -> None:
 
 
 @main.command()
-def version() -> None:
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output version as JSON.")
+def version(as_json: bool) -> None:
     """Print the dd-agents version."""
-    console.print(f"dd-agents {dd_agents.__version__}")
+    if as_json:
+        click.echo(json.dumps({"version": dd_agents.__version__}))
+    else:
+        console.print(f"dd-agents {dd_agents.__version__}")
 
 
 # ---------------------------------------------------------------------------

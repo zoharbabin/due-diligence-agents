@@ -62,7 +62,7 @@ class DiscountAnalysisRenderer(SectionRenderer):
         if any(v > 0 for v in dist.values()):
             parts.append("<h3>Discount Distribution</h3>")
             parts.append(
-                "<table class='subject-table sortable'><thead><tr>"
+                "<table class='subject-table sortable'><caption>Discount distribution</caption><thead><tr>"
                 "<th scope='col'>Bucket</th>"
                 "<th scope='col'>Count</th>"
                 "</tr></thead><tbody>"
@@ -76,7 +76,7 @@ class DiscountAnalysisRenderer(SectionRenderer):
         if top_discounted:
             parts.append("<h3>Top Discounted Entities</h3>")
             parts.append(
-                "<table class='subject-table sortable'><thead><tr>"
+                "<table class='subject-table sortable'><caption>Top discounted entities</caption><thead><tr>"
                 "<th scope='col'>Entity</th>"
                 "<th scope='col'>Discount %</th>"
                 "</tr></thead><tbody>"
@@ -94,7 +94,7 @@ class DiscountAnalysisRenderer(SectionRenderer):
         if findings:
             parts.append("<h3>Pricing Findings</h3>")
             parts.append(
-                "<table class='subject-table sortable'><thead><tr>"
+                "<table class='subject-table sortable'><caption>Pricing findings</caption><thead><tr>"
                 "<th scope='col'>Severity</th>"
                 "<th scope='col'>Entity</th>"
                 "<th scope='col'>Finding</th>"

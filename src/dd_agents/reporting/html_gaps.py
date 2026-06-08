@@ -81,7 +81,7 @@ class GapRenderer(SectionRenderer):
 
             if material_gaps:
                 parts.append(
-                    "<table class='sortable'><thead><tr>"
+                    "<table class='sortable'><caption>Documentation gaps</caption><thead><tr>"
                     "<th scope='col'>Entity</th><th scope='col'>Priority</th><th scope='col'>Type</th>"
                     "<th scope='col'>Missing Item</th><th scope='col'>Risk</th>"
                     "<th scope='col'>Why Needed</th><th scope='col'>Request to Company</th>"
@@ -127,7 +127,7 @@ class GapRenderer(SectionRenderer):
             if noise_gaps:
                 parts.append(
                     f"<h3>Noise Gaps ({len(noise_gaps)})</h3>"
-                    "<table class='sortable'><thead><tr>"
+                    "<table class='sortable'><caption>Noise gaps</caption><thead><tr>"
                     "<th scope='col'>Entity</th><th scope='col'>Missing Item</th>"
                     "<th scope='col'>Risk</th></tr></thead><tbody>"
                 )

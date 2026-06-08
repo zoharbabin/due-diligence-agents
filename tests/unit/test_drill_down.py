@@ -240,3 +240,61 @@ class TestDomainSummaryEdgeCases:
         assert len(data.dashboard_findings) == 2
         assert data.dashboard_findings[0]["title"] == "Critical issue"
         assert data.dashboard_findings[1]["title"] == "Minor issue"
+
+
+class TestDashboardKpis:
+    """Issue #197: Layer-1 KPI strip computed field."""
+
+    _LABELS = {"Findings", "Critical (P0/P1)", "Domains at Risk", "Financial Exposure", "Entities"}
+
+    def test_dashboard_kpis_populated(self) -> None:
+        merged: dict[str, Any] = {
+            "a": {"subject": "a", "findings": [_make_finding("P0", agent="legal")], "gaps": []},
+        }
+        data = ReportDataComputer().compute(merged)
+        assert len(data.dashboard_kpis) == 5
+        assert {k["label"] for k in data.dashboard_kpis} == self._LABELS
+
+    def test_kpi_entities_count(self) -> None:
+        merged: dict[str, Any] = {
+            "a": {"subject": "a", "findings": [_make_finding("P1", agent="legal")], "gaps": []},
+            "b": {"subject": "b", "findings": [_make_finding("P2", agent="finance")], "gaps": []},
+        }
+        data = ReportDataComputer().compute(merged)
+        entities = next(k for k in data.dashboard_kpis if k["label"] == "Entities")
+        assert entities["value"] == "2"
+
+    def test_kpi_domains_at_risk(self) -> None:
+        merged: dict[str, Any] = {
+            "a": {
+                "subject": "a",
+                "findings": [
+                    _make_finding("P0", agent="legal"),
+                    _make_finding("P0", agent="finance"),
+                ],
+                "gaps": [],
+            },
+        }
+        data = ReportDataComputer().compute(merged)
+        dar = next(k for k in data.dashboard_kpis if k["label"] == "Domains at Risk")
+        assert dar["value"] == "2"
+        assert dar["intent"] == "critical"
+
+    def test_kpi_critical_intent(self) -> None:
+        merged: dict[str, Any] = {
+            "a": {"subject": "a", "findings": [_make_finding("P0", agent="legal")], "gaps": []},
+        }
+        data = ReportDataComputer().compute(merged)
+        crit = next(k for k in data.dashboard_kpis if k["label"] == "Critical (P0/P1)")
+        assert crit["intent"] == "critical"
+
+    def test_kpi_clean_deal(self) -> None:
+        merged: dict[str, Any] = {"a": {"subject": "a", "findings": [], "gaps": []}}
+        data = ReportDataComputer().compute(merged)
+        assert len(data.dashboard_kpis) == 5
+        findings = next(k for k in data.dashboard_kpis if k["label"] == "Findings")
+        dar = next(k for k in data.dashboard_kpis if k["label"] == "Domains at Risk")
+        crit = next(k for k in data.dashboard_kpis if k["label"] == "Critical (P0/P1)")
+        assert findings["value"] == "0"
+        assert dar["value"] == "0"
+        assert crit["intent"] == "neutral"

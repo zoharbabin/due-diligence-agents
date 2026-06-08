@@ -8,8 +8,11 @@ Renders:
 
 from __future__ import annotations
 
+from typing import Any
+
 from dd_agents.reporting.html_base import SectionRenderer
 from dd_agents.reporting.html_base import fmt_currency as _fmt_currency
+from dd_agents.reporting.html_charts import render_waterfall_chart
 
 
 def _fmt_pct(value: float) -> str:
@@ -72,7 +75,7 @@ class FinancialImpactRenderer(SectionRenderer):
         )
 
     def _render_waterfall(self) -> str:
-        """Render revenue-at-risk waterfall chart."""
+        """Render revenue-at-risk waterfall as an inline SVG chart (Issue #199)."""
         d = self.data
         if d is None:
             return ""
@@ -80,71 +83,37 @@ class FinancialImpactRenderer(SectionRenderer):
         if total <= 0:
             return ""
 
-        parts: list[str] = [
-            "<h3>Revenue-at-Risk Waterfall</h3>",
-            "<div class='waterfall'>",
-            # Total bar
-            "<div class='waterfall-row'>",
-            "<span class='waterfall-label'>Total Contracted ARR</span>",
-            "<div class='waterfall-bar-container'>",
-            f"<div class='waterfall-bar waterfall-bar--total' style='width:100%'>"
-            f"<span>{_fmt_currency(total)}</span></div>",
-            "</div></div>",
-        ]
-
-        # Risk category bars
+        # Concise labels (SVG truncates to 30 chars); fold entity count into label.
         category_labels: dict[str, str] = {
-            "change_of_control": "Change of Control Exposure",
-            "termination_for_convenience": "Termination for Convenience",
-            "customer_concentration": "Customer Concentration Risk",
-            "pricing_risk": "Pricing & Discount Risk",
+            "change_of_control": "Change of Control",
+            "termination_for_convenience": "Termination for Conv.",
+            "customer_concentration": "Customer Concentration",
+            "pricing_risk": "Pricing & Discount",
         }
 
-        cumulative = 0.0
-        for cat_key in ("change_of_control", "termination_for_convenience", "customer_concentration", "pricing_risk"):
+        deductions: list[dict[str, Any]] = []
+        for cat_key in (
+            "change_of_control",
+            "termination_for_convenience",
+            "customer_concentration",
+            "pricing_risk",
+        ):
             cat_data = d.risk_waterfall.get(cat_key)
             if not cat_data or cat_data.get("amount", 0.0) <= 0:
                 continue
-            amount = cat_data["amount"]
+            amount = float(cat_data["amount"])
             contracts = cat_data.get("contracts", 0)
-            deduction_pct = min(amount / total * 100, 100.0)
-            remaining_pct = max((total - cumulative - amount) / total * 100, 0.0)
-            cumulative += amount
-            label = category_labels.get(cat_key, cat_key.replace("_", " ").title())
-            amount_label = f"-{_fmt_currency(amount)} ({contracts} entities)"
+            label = f"{category_labels.get(cat_key, cat_key)} ({contracts})"
+            deductions.append({"label": label, "amount": amount})
 
-            # Show a stacked bar: faded "remaining" on left + pink "deduction" on right.
-            # If the deduction is wide enough, label goes inside; otherwise outside.
-            if deduction_pct >= 25:
-                inner_label = f"<span>{self.escape(amount_label)}</span>"
-                outer_label = ""
-            else:
-                inner_label = ""
-                outer_label = f"<span class='waterfall-deduction-label'>{self.escape(amount_label)}</span>"
-
-            parts.append(
-                "<div class='waterfall-row'>"
-                f"<span class='waterfall-label'>{self.escape(label)}</span>"
-                "<div class='waterfall-bar-container'>"
-                f"<div class='waterfall-risk-stack'>"
-                f"<div class='remaining' style='width:{remaining_pct:.1f}%'></div>"
-                f"<div class='deduction' style='width:{deduction_pct:.1f}%'>{inner_label}</div>"
-                f"</div></div>{outer_label}</div>"
-            )
-
-        # Risk-adjusted bar
-        adjusted_pct = d.risk_adjusted_arr / total * 100
-        parts.append(
-            "<div class='waterfall-row'>"
-            "<span class='waterfall-label'><strong>Risk-Adjusted ARR</strong></span>"
-            "<div class='waterfall-bar-container'>"
-            f"<div class='waterfall-bar waterfall-bar--adjusted' style='width:{adjusted_pct:.1f}%'>"
-            f"<span>{_fmt_currency(d.risk_adjusted_arr)}</span></div>"
-            "</div></div>"
+        svg = render_waterfall_chart(
+            start_value=total,
+            deductions=deductions,
+            title="Revenue-at-Risk Waterfall",
         )
-
-        parts.append("</div>")  # close waterfall
-        return "\n".join(parts)
+        if not svg:
+            return ""
+        return f"<h3>Revenue-at-Risk Waterfall</h3>\n{svg}"
 
     def _render_treemap(self) -> str:
         """Render customer concentration treemap using CSS grid."""

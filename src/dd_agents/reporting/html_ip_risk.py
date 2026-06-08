@@ -73,7 +73,7 @@ class IPRiskRenderer(SectionRenderer):
         if findings:
             parts.append("<h3>IP &amp; License Findings</h3>")
             parts.append(
-                "<table class='subject-table sortable'><thead><tr>"
+                "<table class='subject-table sortable'><caption>IP and technology license findings</caption><thead><tr>"
                 "<th scope='col'>Entity</th>"
                 "<th scope='col'>Finding</th>"
                 "<th scope='col'>Severity</th>"

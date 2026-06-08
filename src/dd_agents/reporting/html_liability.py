@@ -74,7 +74,7 @@ class LiabilityRenderer(SectionRenderer):
         if findings:
             parts.append("<h3>Liability Findings</h3>")
             parts.append(
-                "<table class='subject-table sortable'><thead><tr>"
+                "<table class='subject-table sortable'><caption>Insurance and liability findings</caption><thead><tr>"
                 "<th scope='col'>Entity</th>"
                 "<th scope='col'>Finding</th>"
                 "<th scope='col'>Severity</th>"

@@ -15,20 +15,23 @@ from dd_agents.reporting.html_base import (
     SectionRenderer,
     get_domain_agents,
 )
+from dd_agents.reporting.html_charts import render_donut_chart
 from dd_agents.utils.constants import ALL_SEVERITIES, SEVERITY_P0
-
-_SYNTHESIS_SIGNAL_COLORS: dict[str, str] = {
-    "No-Go": "#dc3545",
-    "Proceed with Caution": "#fd7e14",
-    "Conditional Go": "#ffc107",
-    "Go": "#28a745",
-}
 
 _VERDICT_SIGNAL_COLORS: dict[str, str] = {
     "NO-GO": "#dc3545",
     "CONDITIONAL": "#fd7e14",
     "PROCEED WITH CONDITIONS": "#ffc107",
     "PROCEED": "#28a745",
+}
+
+# Maps the raw deterministic verdict signal (verdict.py SIGNAL_*) to the
+# reader-facing display vocabulary used on the badge.
+_VERDICT_DISPLAY_LABEL: dict[str, str] = {
+    "NO-GO": "No-Go",
+    "CONDITIONAL": "Conditional Go",
+    "PROCEED WITH CONDITIONS": "Proceed with Caution",
+    "PROCEED": "Go",
 }
 
 
@@ -49,6 +52,7 @@ class ExecutiveSummaryRenderer(SectionRenderer):
 
         parts.append(self._render_deal_header())
         parts.append(self._render_hero_verdict())
+        parts.append(self._render_kpi_strip())
         parts.append(self._render_executive_takeaways())
         parts.append(self._render_domain_grid())
         parts.append(self._render_top_deal_breakers())
@@ -154,6 +158,33 @@ class ExecutiveSummaryRenderer(SectionRenderer):
         )
 
     # ------------------------------------------------------------------
+    # KPI Strip (Issue #197)
+    # ------------------------------------------------------------------
+
+    _KPI_INTENT_COLORS: dict[str, str] = {
+        "critical": "#dc3545",
+        "good": "#28a745",
+        "neutral": "#1a1a2e",
+    }
+
+    def _render_kpi_strip(self) -> str:
+        """Render the Layer-1 headline KPI strip (3-5 compact metrics)."""
+        kpis = self.data.dashboard_kpis
+        if not kpis:
+            return ""
+        cards: list[str] = []
+        for kpi in kpis:
+            intent = str(kpi.get("intent", "neutral"))
+            color = self._KPI_INTENT_COLORS.get(intent, "#1a1a2e")
+            label = self.escape(str(kpi.get("label", "")))
+            value = self.escape(str(kpi.get("value", "")))
+            cards.append(
+                f"<div class='metric-card'><div class='value' style='color:{color}'>"
+                f"{value}</div><div class='label'>{label}</div></div>"
+            )
+        return f"<div class='metrics-strip' id='sec-kpi-strip'>{''.join(cards)}</div>"
+
+    # ------------------------------------------------------------------
     # Key Takeaways
     # ------------------------------------------------------------------
 
@@ -231,7 +262,14 @@ class ExecutiveSummaryRenderer(SectionRenderer):
         )
         max_findings = max(max_findings, 1)
 
-        parts: list[str] = ["<div class='domain-strip'>"]
+        parts: list[str] = []
+
+        # At-a-glance severity donut (Issue #199) — complements the per-domain strip.
+        donut = render_donut_chart(self.data.material_by_severity, title="Severity Distribution")
+        if donut:
+            parts.append(f"<div class='hero-donut'>{donut}</div>")
+
+        parts.append("<div class='domain-strip'>")
 
         for domain in active_domains:
             display = DOMAIN_DISPLAY.get(domain, domain.capitalize())
@@ -250,6 +288,7 @@ class ExecutiveSummaryRenderer(SectionRenderer):
 
             # Build mini severity segments
             bar_segments = ""
+            bar_label_parts: list[str] = []
             for sev in ALL_SEVERITIES:
                 count = sev_counts.get(sev, 0)
                 if count > 0:
@@ -258,12 +297,16 @@ class ExecutiveSummaryRenderer(SectionRenderer):
                     seg_pct = (count / max_findings) * 100
                     seg_color = SEVERITY_COLORS.get(sev, "#6c757d")
                     bar_segments += f"<span style='width:{seg_pct:.0f}%;background:{seg_color}'></span>"
+                    bar_label_parts.append(f"{sev}: {count}")
+            # Non-color equivalent for the color-only severity bar (a11y, Issue #199).
+            bar_aria = f"Severity distribution: {', '.join(bar_label_parts)}" if bar_label_parts else "No findings"
 
             parts.append(
                 f"<a class='domain-row' href='#sec-domain-{self.escape(domain)}' "
                 f"style='--domain-color:{domain_color}'>"
                 f"<span class='domain-row-name'>{self.escape(display)}</span>"
-                f"<span class='domain-row-bar'>{bar_segments}</span>"
+                f"<span class='domain-row-bar' role='img' "
+                f"aria-label='{self.escape(bar_aria)}'>{bar_segments}</span>"
                 f"<span class='domain-row-badge' style='color:{risk_color}'>"
                 f"{self.escape(risk_label)}</span>"
                 f"<span class='domain-row-count'>{total}</span>"
@@ -379,7 +422,7 @@ class ExecutiveSummaryRenderer(SectionRenderer):
 
         parts: list[str] = [
             "<h3>Financial Exposure Summary</h3>",
-            "<table class='subject-table sortable'><thead><tr>",
+            "<table class='subject-table sortable'><caption>Financial exposure summary</caption><thead><tr>",
             "<th scope='col'>Risk Category</th>",
             "<th scope='col'>Estimated Impact</th>",
             "<th scope='col'>Confidence</th>",
@@ -565,32 +608,20 @@ class ExecutiveSummaryRenderer(SectionRenderer):
     def _resolve_verdict(self) -> tuple[str, str, str, float, str]:
         """Return (signal, color, description, score, label).
 
-        Priority: executive_synthesis LLM signal > deterministic verdict > risk-label fallback.
-        The LLM signal is more nuanced (e.g. "Conditional Go" vs blunt "No-Go")
-        because it weighs deal context, buyer risk tolerance, and mitigability.
+        The badge is DETERMINISTIC: the displayed signal, color, and score are
+        driven by `data.verdict` (verdict.py:compute_verdict) — never by the LLM.
+        The LLM rationale/narrative is surfaced only as supporting text beneath
+        the badge (see _render_hero_verdict). This guarantees the headline
+        Go/No-Go a reader sees is reproducible and auditable, not a model opinion.
+
+        Falls back to a risk-label heuristic only when no deterministic verdict
+        is present (e.g. legacy data).
         """
-        es = self._get_synthesis()
-
-        # Check synthesis output — supports both "go_no_go_signal" and "go_no_go" keys
-        synthesis_signal = ""
-        if es:
-            synthesis_signal = str(es.get("go_no_go_signal") or es.get("go_no_go") or "").strip()
-
-        if es and synthesis_signal:
-            signal = synthesis_signal
-            signal_color = _SYNTHESIS_SIGNAL_COLORS.get(signal, "#ffc107")
-            signal_desc = str(es.get("go_no_go_rationale") or es.get("executive_narrative") or "").strip()
-            score_override = es.get("risk_score_override", -1)
-            score = (
-                float(score_override)
-                if isinstance(score_override, int | float) and score_override >= 0
-                else self.data.deal_risk_score
-            )
-            label = self.data.deal_risk_label
-        elif self.data.verdict and self.data.verdict.get("signal"):
-            signal = str(self.data.verdict["signal"])
+        if self.data.verdict and self.data.verdict.get("signal"):
+            raw_signal = str(self.data.verdict["signal"])
+            signal = _VERDICT_DISPLAY_LABEL.get(raw_signal, raw_signal)
+            signal_color = _VERDICT_SIGNAL_COLORS.get(raw_signal, "#ffc107")
             signal_desc = str(self.data.verdict.get("rationale", ""))
-            signal_color = _VERDICT_SIGNAL_COLORS.get(signal, "#ffc107")
             score = self.data.deal_risk_score
             label = self.data.deal_risk_label
         else:

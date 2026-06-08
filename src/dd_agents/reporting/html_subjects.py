@@ -82,7 +82,7 @@ class SubjectRenderer(SectionRenderer):
         if xrefs and isinstance(xrefs, list):
             parts.append("<h3>Cross-Reference Reconciliation</h3>")
             parts.append(
-                "<table class='sortable'><thead><tr>"
+                "<table class='sortable'><caption>Cross-reference reconciliation</caption><thead><tr>"
                 "<th scope='col'>Field</th><th scope='col'>Source A</th>"
                 "<th scope='col'>Source B</th><th scope='col'>Match</th>"
                 "</tr></thead><tbody>"
@@ -125,7 +125,7 @@ class SubjectRenderer(SectionRenderer):
         if gaps:
             parts.append("<h3>Gaps</h3>")
             parts.append(
-                "<table class='sortable'><thead><tr>"
+                "<table class='sortable'><caption>Data gaps</caption><thead><tr>"
                 "<th scope='col'>Priority</th><th scope='col'>Type</th><th scope='col'>Missing Item</th>"
                 "<th scope='col'>Risk</th><th scope='col'>Why Needed</th>"
                 "<th scope='col'>Request to Company</th><th scope='col'>Agent</th>"

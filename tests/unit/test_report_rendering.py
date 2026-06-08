@@ -333,8 +333,8 @@ class TestExecutiveSummary:
         # Executive summary section should exist
         assert "id='sec-executive'" in content or "Executive Summary" in content
 
-        # Single P0 → deterministic verdict: NO-GO (Issue #195)
-        assert "NO-GO" in content
+        # Single P0 → deterministic verdict NO-GO, displayed as "No-Go" (Issue #195)
+        assert "hero-verdict-signal'>No-Go<" in content
 
     def test_executive_summary_heatmap(self, tmp_path: Path) -> None:
         """Executive summary renders a domain x severity data visualization."""
@@ -762,7 +762,7 @@ class TestExecutiveSummaryExtended:
     """Extended tests for all Go/No-Go signal mappings."""
 
     def test_go_no_go_critical(self, tmp_path: Path) -> None:
-        """Critical risk (3+ P0) shows NO-GO (deterministic verdict, Issue #195)."""
+        """Critical risk (3+ P0) → NO-GO, displayed as "No-Go" (Issue #195)."""
         merged: dict[str, Any] = {
             "c": {
                 "subject": "C",
@@ -773,41 +773,41 @@ class TestExecutiveSummaryExtended:
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
         gen.generate(merged, out)
-        assert "NO-GO" in out.read_text(encoding="utf-8")
+        assert "hero-verdict-signal'>No-Go<" in out.read_text(encoding="utf-8")
 
     def test_go_no_go_single_p0(self, tmp_path: Path) -> None:
-        """Single P0 → NO-GO under deterministic verdict (Issue #195)."""
+        """Single P0 → NO-GO, displayed as "No-Go" (Issue #195)."""
         merged: dict[str, Any] = {"c": {"subject": "C", "findings": [_make_finding(severity="P0")], "gaps": []}}
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
         gen.generate(merged, out)
-        assert "NO-GO" in out.read_text(encoding="utf-8")
+        assert "hero-verdict-signal'>No-Go<" in out.read_text(encoding="utf-8")
 
     def test_go_no_go_high(self, tmp_path: Path) -> None:
-        """3+ P1 findings shows CONDITIONAL (deterministic verdict, Issue #195)."""
+        """3+ P1 findings → CONDITIONAL, displayed as "Conditional Go" (Issue #195)."""
         findings = [_make_finding(severity="P1") for _ in range(3)]
         merged: dict[str, Any] = {"c": {"subject": "C", "findings": findings, "gaps": []}}
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
         gen.generate(merged, out)
-        assert "CONDITIONAL" in out.read_text(encoding="utf-8")
+        assert "hero-verdict-signal'>Conditional Go<" in out.read_text(encoding="utf-8")
 
     def test_go_no_go_medium(self, tmp_path: Path) -> None:
-        """Single P1 shows PROCEED WITH CONDITIONS (deterministic verdict, Issue #195)."""
+        """Single P1 → PROCEED WITH CONDITIONS, displayed as "Proceed with Caution" (Issue #195)."""
         merged: dict[str, Any] = {"c": {"subject": "C", "findings": [_make_finding(severity="P1")], "gaps": []}}
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
         gen.generate(merged, out)
-        assert "PROCEED WITH CONDITIONS" in out.read_text(encoding="utf-8")
+        assert "hero-verdict-signal'>Proceed with Caution<" in out.read_text(encoding="utf-8")
 
     def test_go_no_go_clean(self, tmp_path: Path) -> None:
-        """Clean risk shows PROCEED (deterministic verdict, Issue #195)."""
+        """Clean risk → PROCEED, displayed as "Go" (Issue #195)."""
         merged: dict[str, Any] = {"c": {"subject": "C", "findings": [], "gaps": []}}
         gen = HTMLReportGenerator()
         out = tmp_path / "report.html"
         gen.generate(merged, out)
         content = out.read_text(encoding="utf-8")
-        assert "PROCEED" in content
+        assert "hero-verdict-signal'>Go<" in content
 
     def test_concentration_hhi_thresholds(self) -> None:
         """Concentration risk levels match HHI thresholds."""

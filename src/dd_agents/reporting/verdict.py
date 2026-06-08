@@ -15,7 +15,10 @@ from typing import Any
 class VerdictRubric:
     """Configurable thresholds for the deterministic verdict rubric.
 
-    Override via deal-config ``forensic_dd.reporting.verdict`` section.
+    Defaults are conservative. Override any of the four fields via the
+    deal-config ``reporting.verdict`` section (see ``VerdictRubricConfig``):
+    ``no_go_p0_min``, ``conditional_p1_min``, ``proceed_with_conditions_p1_min``,
+    ``high_exposure_pct``.
     """
 
     no_go_p0_min: int = 1

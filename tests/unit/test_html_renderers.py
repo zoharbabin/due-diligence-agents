@@ -1057,15 +1057,30 @@ class TestExecutiveSummaryRenderer:
         html_out = r.render()
         assert "id='sec-executive'" in html_out
         assert "Executive Summary" in html_out
-        # Single P0 → deterministic verdict: NO-GO (Issue #195)
-        assert "NO-GO" in html_out
+        # Single P0 → deterministic verdict NO-GO, displayed as "No-Go" (Issue #195)
+        assert "No-Go" in html_out
 
     def test_go_signal_clean(self) -> None:
         merged = {"c": {"subject": "C", "findings": [], "gaps": []}}
         computed = _compute(merged)
         r = ExecutiveSummaryRenderer(computed, merged)
         html_out = r.render()
-        assert "PROCEED" in html_out
+        # Clean deal → deterministic PROCEED, displayed as "Go" (Issue #195)
+        assert "hero-verdict-signal'>Go<" in html_out
+
+    def test_badge_uses_deterministic_signal_not_llm(self) -> None:
+        """Issue #195: the badge reflects the deterministic verdict, never the LLM."""
+        # Deterministic verdict says NO-GO; LLM synthesis disagrees with "Go".
+        computed = _compute()
+        computed.verdict = {"signal": "NO-GO", "rationale": "1 deal-breaker"}
+        computed.executive_synthesis = {
+            "go_no_go_signal": "Go",
+            "go_no_go_rationale": "looks fine",
+        }
+        r = ExecutiveSummaryRenderer(computed, _make_merged_data())
+        signal, color, _desc, _score, _label = r._resolve_verdict()
+        assert signal == "No-Go"
+        assert color == "#dc3545"
 
     def test_heatmap_rendered(self) -> None:
         computed = _compute()
@@ -1096,6 +1111,36 @@ class TestExecutiveSummaryRenderer:
         # Concentration risk is now surfaced via domain severity in the domain strip
         assert "domain-strip" in html_out
 
+    def test_kpi_strip_rendered(self) -> None:
+        """Issue #197: Layer-1 KPI strip appears in the executive summary."""
+        computed = _compute()
+        r = ExecutiveSummaryRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        assert "id='sec-kpi-strip'" in html_out
+        assert "Entities" in html_out
+        assert "Financial Exposure" in html_out
+
+    def test_severity_donut_and_bar_aria(self) -> None:
+        """Issue #199: a severity donut and an accessible severity bar render."""
+        computed = _compute()
+        r = ExecutiveSummaryRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        # Donut SVG present in Layer 1.
+        assert "hero-donut" in html_out
+        assert "<svg" in html_out
+        # Color-only domain-row bar now has a text equivalent.
+        assert "domain-row-bar' role='img'" in html_out
+        assert "Severity distribution:" in html_out
+
+    def test_no_donut_when_no_findings(self) -> None:
+        """Donut is omitted on a clean deal but the grid still renders."""
+        merged = {"c": {"subject": "C", "findings": [], "gaps": []}}
+        computed = _compute(merged)
+        r = ExecutiveSummaryRenderer(computed, merged)
+        html_out = r.render()
+        assert "hero-donut" not in html_out
+        assert "domain-strip" in html_out
+
 
 # ===========================================================================
 # Findings Table tests (Issue #113 B1)
@@ -1110,6 +1155,13 @@ class TestFindingsTableRenderer:
         assert "id='sec-p0-table'" in html_out
         assert "P0 Deal Stoppers" in html_out
         assert "subject-table" in html_out
+
+    def test_findings_table_has_caption(self) -> None:
+        """Issue #214: severity findings table carries an accessible caption."""
+        computed = _compute()
+        r = FindingsTableRenderer(computed, _make_merged_data())
+        html_out = r.render()
+        assert "<caption>Entities ranked by finding severity</caption>" in html_out
 
     def test_p1_table_rendered(self) -> None:
         computed = _compute()

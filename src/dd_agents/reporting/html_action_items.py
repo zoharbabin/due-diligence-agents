@@ -145,7 +145,7 @@ class ActionItemsRenderer(SectionRenderer):
                 f"<span class='rec-timeline' style='background:{color}22;color:{color}'>"
                 f"{self.escape(label)}</span> ({len(items)} actions)</h3>"
             )
-            parts.append("<table class='subject-table sortable'><thead><tr>")
+            parts.append("<table class='subject-table sortable'><caption>Action items by urgency</caption><thead><tr>")
             parts.append(
                 "<th scope='col'>#</th>"
                 "<th scope='col'>Action</th>"
@@ -254,7 +254,7 @@ class ActionItemsRenderer(SectionRenderer):
             f"<span class='rec-timeline' style='background:{color}22;color:{color}'>"
             f"{self.escape(phase)}</span> "
             f"({len(items)} actions)</h3>",
-            "<table class='subject-table sortable'><thead><tr>",
+            "<table class='subject-table sortable'><caption>Action items by timeline phase</caption><thead><tr>",
             "<th scope='col'>#</th>",
             "<th scope='col'>Action</th>",
             "<th scope='col'>Owner</th>",

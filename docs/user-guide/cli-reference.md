@@ -91,6 +91,7 @@ Print the installed dd-agents version.
 
 ```
 dd-agents version
+dd-agents version --json    # machine-readable: {"version": "..."}
 ```
 
 ---

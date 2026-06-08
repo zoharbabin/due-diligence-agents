@@ -168,7 +168,7 @@ class DashboardRenderer(SectionRenderer):
 
         # Build summary table
         parts.append(
-            "<table class='subject-table sortable'><thead><tr>"
+            "<table class='subject-table sortable'><caption>Key risks</caption><thead><tr>"
             "<th scope='col'>Domain</th><th scope='col'>Category</th>"
             "<th scope='col'>Count</th><th scope='col'>Top Finding</th>"
             "<th scope='col'>Severity</th></tr></thead><tbody>"

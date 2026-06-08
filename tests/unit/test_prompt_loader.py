@@ -96,3 +96,13 @@ def test_split_on_marker_returns_head_tail() -> None:
     head, tail = loader.split_on_marker("synthesis", "red_flag_scanner", "<!-- CATEGORIES -->")
     assert "Red Flag Scanner" in head
     assert "CALIBRATION" in tail
+
+
+def test_esg_domain_guidance_includes_regulatory_aliases() -> None:
+    loader.load_builtin_specialist.cache_clear()
+    dg = loader.load_builtin_specialist("esg").domain_guidance
+    for kw in ("EU Taxonomy", "EUDR", "Scope 4", "avoided emissions", "just transition"):
+        assert kw in dg
+    # Pre-existing aliases must survive the edit.
+    assert "double materiality" in dg
+    assert "CSRD" in dg

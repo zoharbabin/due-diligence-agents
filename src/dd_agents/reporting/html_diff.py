@@ -112,7 +112,7 @@ class DiffRenderer(SectionRenderer):
 
     def _render_change_table(self, changes: list[dict[str, Any]]) -> str:
         parts: list[str] = [
-            "<table class='sortable'><thead><tr>"
+            "<table class='sortable'><caption>Run-over-run findings changes</caption><thead><tr>"
             "<th scope='col'>Entity</th><th scope='col'>Finding</th>"
             "</tr></thead><tbody>"
         ]
@@ -128,7 +128,7 @@ class DiffRenderer(SectionRenderer):
 
     def _render_severity_change_table(self, changes: list[dict[str, Any]]) -> str:
         parts: list[str] = [
-            "<table class='sortable'><thead><tr>"
+            "<table class='sortable'><caption>Run-over-run severity changes</caption><thead><tr>"
             "<th scope='col'>Entity</th><th scope='col'>Finding</th>"
             "<th scope='col'>Prior</th><th scope='col'>Current</th>"
             "</tr></thead><tbody>"

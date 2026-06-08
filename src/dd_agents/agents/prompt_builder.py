@@ -214,7 +214,9 @@ class PromptBuilder:
     # Prompt version tracking (Issue #146) — bump on prompt changes
     # 2.1.0: HR specialist prompt — surface each workforce risk as a distinct
     # finding (removed the "defer to Legal" suppression; added granularity rule).
-    PROMPT_VERSION: str = "2.1.0"
+    # 2.2.0: ESG specialist prompt — added current EU/sustainability keyword
+    # aliases (EU Taxonomy, EUDR, Scope 4, avoided emissions, just transition).
+    PROMPT_VERSION: str = "2.2.0"
 
     def __init__(
         self,

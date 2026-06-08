@@ -54,7 +54,7 @@ class SaaSMetricsRenderer(SectionRenderer):
         if tiers:
             parts.append("<h3>Entity Tier Distribution</h3>")
             parts.append(
-                "<table class='subject-table sortable'><thead><tr>"
+                "<table class='subject-table sortable'><caption>Entity tier distribution</caption><thead><tr>"
                 "<th scope='col'>Tier</th>"
                 "<th scope='col'>Entities</th>"
                 "<th scope='col'>%</th>"
