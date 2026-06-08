@@ -169,7 +169,7 @@ To preview what will happen without making API calls:
 dd-agents run deal-config.json --dry-run
 ```
 
-For a quick red-flag triage instead of full analysis:
+To also produce a red-flag stoplight triage signal alongside the full analysis:
 
 ```bash
 dd-agents run deal-config.json --quick-scan --model-profile economy
