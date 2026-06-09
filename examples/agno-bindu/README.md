@@ -36,13 +36,19 @@ is the **light** part on the other side of that output. It:
    `dd_agents.query.indexer.FindingIndexer` — pure, deterministic Python, **no LLM**.
 2. Exposes three tools to an agno agent: `report_overview`, `list_findings`,
    `get_finding`.
-3. Lets the agno model (via OpenRouter) reason over those tools and answer
-   conversationally, leading with the answer and citing the source document,
-   section, and exact quote.
+3. Lets the agno model reason over those tools and answer conversationally,
+   leading with the answer and citing the source document, section, and exact
+   quote.
 
-Because the retrieval is deterministic and the only model call is agno's, **this
-example needs only an OpenRouter key — no Anthropic key**. (The dd-agents
-*pipeline* still needs Anthropic/Bedrock; reading its output here does not.)
+**Provider-agnostic, like the pipeline.** Pick the LLM backend with
+`BINDU_AGENT_PROVIDER` — `bedrock` (default), `anthropic`, `openai`, `google`,
+or `openrouter` — and supply only that provider's standard credentials (the same
+env you already use for the pipeline). The default is **Bedrock**, so by default
+your data stays inside your own AWS account; nothing is hardcoded to a single
+vendor. Because retrieval is deterministic and the only model call is agno's,
+**only that one conversational call needs a key** — reading the report findings
+does not. (The dd-agents *pipeline* that produced the report still needs its own
+Anthropic/Bedrock access; reading its output here does not.)
 
 By default the agent reads the bundled, 100%-synthetic **Project Atlas** golden
 report this repo ships at `docs/marketing/sample-report-atlas/` (real pipeline
@@ -69,9 +75,12 @@ All commands run from the **repo root**, with [uv](https://docs.astral.sh/uv/).
 ```bash
 uv venv                                                  # create a venv (Python 3.12+)
 uv pip install -e .                                      # the dd-agents engine (this repo)
-uv pip install -r examples/agno-bindu/requirements.txt   # agno + Bindu glue
+uv pip install -r examples/agno-bindu/requirements.txt   # agno + Bindu glue (Bedrock SDK by default)
 cp examples/agno-bindu/.env.example examples/agno-bindu/.env
-# edit examples/agno-bindu/.env and set OPENROUTER_API_KEY
+# edit examples/agno-bindu/.env: pick BINDU_AGENT_PROVIDER (default: bedrock) and
+# supply that provider's credentials. For a non-default provider, also install
+# its SDK (e.g. `uv pip install anthropic` / `openai` / `google-genai`) — see
+# the requirements.txt provider list.
 ```
 
 ## Run the CLI (one-shot)
@@ -197,7 +206,7 @@ Sources: forensic-dd_finance_northwind_logistics_0001, forensic-dd_commercial_no
   local dev origin (override with `BINDU_CORS_ORIGINS`).
 - **Exposing publicly is opt-in and unauthenticated by default.** Setting
   `BINDU_EXPOSE=true` asks Bindu to open a **public** tunnel, with your
-  OpenRouter key on the billing path. The example does not add an application
+  provider key on the billing path. The example does not add an application
   auth layer on the JSON-RPC `POST /` endpoint — it relies on Bindu's defaults.
   **Before exposing a real-deal report**, set `BINDU_AUTH_TOKEN` and confirm
   your Bindu version enforces it; the entry point logs a loud warning if you
@@ -220,7 +229,7 @@ Sources: forensic-dd_finance_northwind_logistics_0001, forensic-dd_commercial_no
 | `cli.py` | One-shot local runner |
 | `prompts.py` | Agent name, description, and system prompt |
 | `requirements.txt` | agno + Bindu glue deps (the engine comes from the parent repo) |
-| `.env.example` | `OPENROUTER_API_KEY`, `DD_REPORT_DIR`, exposure/auth/CORS knobs |
+| `.env.example` | `BINDU_AGENT_PROVIDER` + credentials, `DD_REPORT_DIR`, exposure/auth/CORS knobs |
 
 ## Tests
 
