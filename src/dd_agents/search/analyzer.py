@@ -705,13 +705,12 @@ class SearchAnalyzer:
         """Single SDK round-trip. Sets ``output_format`` iff *output_schema* given."""
         from claude_agent_sdk import (
             AssistantMessage,
-            ClaudeAgentOptions,
             ResultMessage,
             TextBlock,
             query,
         )
 
-        from dd_agents.utils import resolve_sdk_cli_path
+        from dd_agents.llm import build_agent_options
 
         options_kwargs: dict[str, Any] = {
             "system_prompt": system_prompt,
@@ -722,10 +721,9 @@ class SearchAnalyzer:
         }
         if output_schema:
             options_kwargs["output_format"] = {"type": "json_schema", "schema": output_schema}
-        cli_path = resolve_sdk_cli_path()
-        if cli_path is not None:
-            options_kwargs["cli_path"] = cli_path
-        options = ClaudeAgentOptions(**options_kwargs)
+        # Shared LLM seam: cli_path + output-token clamp + provider routing.
+        # Model inherits the provider default unless pinned via DD_SEARCH_MODEL.
+        options = build_agent_options(model=os.getenv("DD_SEARCH_MODEL") or None, **options_kwargs)
 
         text_parts: list[str] = []
         errored = False

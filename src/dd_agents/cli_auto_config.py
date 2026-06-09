@@ -611,15 +611,16 @@ class DataRoomAnalyzer:
 
         Isolated as a method for testability.
         """
+        import os
+
         from claude_agent_sdk import (
             AssistantMessage,
-            ClaudeAgentOptions,
             ResultMessage,
             TextBlock,
             query,
         )
 
-        from dd_agents.utils import resolve_sdk_cli_path
+        from dd_agents.llm import build_agent_options
 
         logger.debug(
             "Calling Claude: system_prompt=%d chars, user_prompt=%d chars",
@@ -627,15 +628,14 @@ class DataRoomAnalyzer:
             len(user_prompt),
         )
 
-        options_kwargs: dict[str, Any] = {
-            "system_prompt": system_prompt,
-            "max_turns": 3,
-            "permission_mode": "bypassPermissions",
-        }
-        cli_path = resolve_sdk_cli_path()
-        if cli_path is not None:
-            options_kwargs["cli_path"] = cli_path
-        options = ClaudeAgentOptions(**options_kwargs)
+        # Shared LLM seam: cli_path + output-token clamp + provider routing.
+        # Model inherits the provider default unless pinned via DD_AUTOCONFIG_MODEL.
+        options = build_agent_options(
+            model=os.getenv("DD_AUTOCONFIG_MODEL") or None,
+            system_prompt=system_prompt,
+            max_turns=3,
+            permission_mode="bypassPermissions",
+        )
 
         text_parts: list[str] = []
         async for message in query(prompt=user_prompt, options=options):

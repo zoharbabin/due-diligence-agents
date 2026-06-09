@@ -80,9 +80,14 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 **Option C — AWS Bedrock:**
 
 ```bash
+export CLAUDE_CODE_USE_BEDROCK=1
 export AWS_PROFILE=default
 export AWS_REGION=us-east-1
 ```
+
+Google Vertex AI and **any other model** (GPT, Gemini, …) via an
+Anthropic-compatible gateway are also supported — see
+[Model Providers](model-providers.md).
 
 To override which AI model is used, pass `--model-profile economy|standard|premium` when running the pipeline (see [Running the Pipeline](running-pipeline.md)).
 

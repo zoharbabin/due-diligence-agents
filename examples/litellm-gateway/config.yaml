@@ -1,0 +1,34 @@
+# LiteLLM gateway config — run dd-agents on ANY model.
+#
+# This fronts your chosen backend behind LiteLLM's native Anthropic
+# /v1/messages endpoint, so the Claude Agent SDK (and therefore dd-agents) can
+# call it unchanged via ANTHROPIC_BASE_URL. See README.md in this directory.
+#
+# The model_name dd-agents requests (left) is mapped to a real backend (right).
+# Use a model_name the SDK accepts (a Claude-style id works well as the alias);
+# the litellm_params decide which model actually answers.
+model_list:
+  # Example: map a Claude id dd-agents actually requests to OpenAI GPT-4o.
+  - model_name: claude-sonnet-4-6
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+
+  # Example alternates (uncomment one and set its key/creds):
+  # - model_name: claude-sonnet-4-6
+  #   litellm_params:
+  #     model: gemini/gemini-2.5-flash
+  #     api_key: os.environ/GEMINI_API_KEY
+  # - model_name: claude-sonnet-4-6
+  #   litellm_params:
+  #     model: bedrock/deepseek.v3.2          # non-Claude model on your Bedrock account
+  #     aws_region_name: os.environ/AWS_REGION
+
+  # Catch-all so any model id dd-agents sends still resolves.
+  - model_name: "*"
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+
+litellm_settings:
+  drop_params: true   # tolerate Anthropic-only params the backend doesn't accept

@@ -97,6 +97,7 @@ markers = [
     "eval: agent quality evaluation tests (require API key)",
     "slow: tests that take more than 1 minute",
     "local: deep validation tests, local-only (not for CI)",
+    "gateway: provider-agnostic live test through an Anthropic-compatible gateway (requires DD_TEST_GATEWAY_URL)",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",

@@ -37,9 +37,6 @@ try:
         AssistantMessage as _AssistantMessage,
     )
     from claude_agent_sdk import (
-        ClaudeAgentOptions as _ClaudeAgentOptions,
-    )
-    from claude_agent_sdk import (
         ResultMessage as _ResultMessage,
     )
     from claude_agent_sdk import (
@@ -160,16 +157,6 @@ class BaseAgentRunner(ABC):
         # 3× for JSON encoding overhead (escaping, base64, wrapper)
         computed = max_size * 3
         return min(max(computed, self._MIN_BUFFER_BYTES), self._MAX_BUFFER_BYTES)
-
-    @staticmethod
-    def _resolve_cli_path() -> str | None:
-        """Resolve the Claude CLI binary for agent SDK sessions.
-
-        Delegates to :func:`dd_agents.utils.resolve_sdk_cli_path`.
-        """
-        from dd_agents.utils import resolve_sdk_cli_path
-
-        return resolve_sdk_cli_path()
 
     def _raw_output_path(self) -> Path:
         """Return the path for saving raw agent output text."""
@@ -366,10 +353,13 @@ class BaseAgentRunner(ABC):
         )
         mcp_server = build_mcp_server(agent_type=self.get_agent_type(), **runtime_ctx)
 
-        # Build options dict — only include hooks/mcp_servers when available
+        # Build options through the shared LLM seam (provider/model-agnostic;
+        # always sets cli_path + an explicit model, applies the output-token
+        # clamp). See dd_agents.llm.provider.
+        from dd_agents.llm import build_agent_options
+
         options_kwargs: dict[str, Any] = {
             "system_prompt": system_prompt,
-            "model": self.get_model_id(),
             "max_turns": self.max_turns,
             "max_budget_usd": self.max_budget_usd,
             "permission_mode": "bypassPermissions",
@@ -377,18 +367,12 @@ class BaseAgentRunner(ABC):
             "allowed_tools": self.get_tools(),
             "max_buffer_size": self._compute_buffer_size(),
         }
-        # Allow overriding the Claude CLI binary used by the agent SDK.
-        # Workaround for bundled CLI version mismatches (e.g. Bedrock auth
-        # bugs fixed in newer system-installed versions).
-        cli_path = self._resolve_cli_path()
-        if cli_path is not None:
-            options_kwargs["cli_path"] = cli_path
         if hooks is not None:
             options_kwargs["hooks"] = hooks
         if mcp_server is not None:
             options_kwargs["mcp_servers"] = {"dd_tools": mcp_server}
 
-        options = _ClaudeAgentOptions(**options_kwargs)
+        options = build_agent_options(model=self.get_model_id(), **options_kwargs)
 
         agent_name = self.batch_label or self.get_agent_name()
         hard_limit = self.max_turns * self.HARD_LIMIT_MULTIPLIER

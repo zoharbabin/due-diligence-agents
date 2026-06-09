@@ -8,14 +8,26 @@ Provides:
 
 from __future__ import annotations
 
+import json
+import logging
+import os
 from collections import defaultdict
 from typing import Any
 
 from pydantic import BaseModel, Field
 
+logger = logging.getLogger(__name__)
+
 # ---------------------------------------------------------------------------
 # Pricing (per 1M tokens, Claude model family, as of 2026-03)
 # Update these when model pricing changes.
+#
+# dd-agents is provider/model-agnostic (see dd_agents.llm.provider), so a run
+# may use a non-Claude model behind an Anthropic-compatible gateway. Pricing for
+# such models is unknown here — supply it via the DD_MODEL_PRICING env var, a
+# JSON object of ``{"<model-id>": {"input": <usd_per_mtok>, "output": <...>}}``.
+# Unknown models fall back to Sonnet-shaped pricing AND log a one-time warning
+# so the cost estimate is never silently wrong.
 # ---------------------------------------------------------------------------
 
 _MODEL_PRICING: dict[str, dict[str, float]] = {
@@ -25,13 +37,59 @@ _MODEL_PRICING: dict[str, dict[str, float]] = {
     "claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.0},
 }
 
-# Fallback for unknown models
+# Fallback for unknown models (Sonnet-shaped — an estimate, flagged when used).
 _DEFAULT_PRICING: dict[str, float] = {"input": 3.0, "output": 15.0}
+
+# Models we've already warned about (one warning per unknown model per process).
+_WARNED_UNKNOWN_MODELS: set[str] = set()
+
+
+def _load_pricing_overrides() -> dict[str, dict[str, float]]:
+    """Parse the optional ``DD_MODEL_PRICING`` JSON env override (best-effort)."""
+    raw = os.getenv("DD_MODEL_PRICING", "").strip()
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        logger.warning("DD_MODEL_PRICING is not valid JSON — ignoring it")
+        return {}
+    overrides: dict[str, dict[str, float]] = {}
+    if isinstance(data, dict):
+        for model, price in data.items():
+            if isinstance(price, dict) and "input" in price and "output" in price:
+                try:
+                    overrides[str(model)] = {
+                        "input": float(price["input"]),
+                        "output": float(price["output"]),
+                    }
+                except (TypeError, ValueError):
+                    logger.warning(
+                        "DD_MODEL_PRICING entry %r has non-numeric rates — ignoring it",
+                        model,
+                    )
+    return overrides
 
 
 def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
-    """Estimate cost in USD for a given model and token counts."""
-    pricing = _MODEL_PRICING.get(model, _DEFAULT_PRICING)
+    """Estimate cost in USD for a model + token counts.
+
+    Resolution order: built-in Claude table → ``DD_MODEL_PRICING`` override →
+    Sonnet-shaped default (with a one-time warning, so a non-Claude model's
+    estimate is never silently presented as exact).
+    """
+    pricing = _MODEL_PRICING.get(model)
+    if pricing is None:
+        pricing = _load_pricing_overrides().get(model)
+    if pricing is None:
+        pricing = _DEFAULT_PRICING
+        if model not in _WARNED_UNKNOWN_MODELS:
+            _WARNED_UNKNOWN_MODELS.add(model)
+            logger.warning(
+                "No pricing for model %r — estimating at default (Sonnet-shaped) rates. "
+                "Set DD_MODEL_PRICING to cost it accurately.",
+                model,
+            )
     return (input_tokens * pricing["input"] + output_tokens * pricing["output"]) / 1_000_000
 
 

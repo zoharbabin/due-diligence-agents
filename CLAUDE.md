@@ -40,7 +40,7 @@ All source lives under `src/dd_agents/`. Each package has one job:
 
 These are mechanical constraints, not guidelines:
 
-1. **All LLM calls go through `claude_agent_sdk`** — `query()` with `ClaudeAgentOptions`. Never call other clients. Always include `cli_path=resolve_sdk_cli_path()` from `dd_agents.utils`.
+1. **All LLM calls go through the seam** — build options with `dd_agents.llm.build_agent_options(...)`, then `claude_agent_sdk.query()`. Never construct `ClaudeAgentOptions` directly and never call other clients. The seam sets `cli_path`, the output-token clamp, and an explicit `model` when one is resolved (deal/env override); `model=None` deliberately inherits the provider/CLI default. dd-agents is provider- AND model-agnostic by config: provider/model are env-selected (Anthropic API / Bedrock / Vertex natively, or **any** model behind an Anthropic-compatible gateway via `ANTHROPIC_BASE_URL`) — never hardcode a vendor. See `dd_agents/llm/provider.py` and `docs/user-guide/model-providers.md`. Enforced by `tests/unit/test_docs_drift.py` (no `ClaudeAgentOptions(` constructed outside the seam).
 2. **Findings are per-subject** — one JSON file per subject at `findings/{agent_name}/{subject_safe_name}.json`. Never create aggregate files (`summary.json`, `all_findings.json`).
 3. **Hook format is flat** — PreToolUse: `{"decision": "allow"|"block", "reason": "..."}`. Stop: `{"continue_": bool, "stopReason": "..."}`. Never nest under `hookSpecificOutput`.
 4. **Three persistence tiers** — PERMANENT (never wiped: text index, entity cache), VERSIONED (archived per run: findings, reports), FRESH (rebuilt each run: inventory). Never modify PERMANENT tier during pipeline runs.
