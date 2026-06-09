@@ -33,7 +33,7 @@ dd-agents is a **forensic analysis accelerator** for M&A due diligence — it ge
 - Read an entire data room across 9 domains and **cross-reference** findings no single-domain reviewer connects.
 - Trace every finding to an exact page and verbatim quote, so each conclusion is auditable.
 - Halt rather than ship unverified output — quality gates are fail-closed, not advisory.
-- Run locally: documents only leave your machine as API calls to your own LLM provider (Anthropic API, AWS Bedrock, or Google Vertex AI — your choice, via env config).
+- Run locally: documents only leave your machine as API calls to your own LLM provider — Anthropic API, AWS Bedrock, or Google Vertex AI, or any model (GPT, Gemini, …) via an Anthropic-compatible gateway. Your choice, via env config; see [Model Providers](user-guide/model-providers.md).
 - Produce structured output (interactive HTML, Excel, JSON) you use as a **basis** for IC memos, advisor reports, and negotiation checklists.
 
 **It does not:**

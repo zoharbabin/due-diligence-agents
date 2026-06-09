@@ -132,12 +132,13 @@ class QueryEngine:
         context = self._build_context(question)
 
         try:
-            from claude_agent_sdk import ClaudeAgentOptions
+            import os
+
             from claude_agent_sdk import query as sdk_query
 
             from dd_agents.agents.personas import DD_ANALYST
             from dd_agents.agents.prompt_constants import NO_FABRICATION
-            from dd_agents.utils import resolve_sdk_cli_path
+            from dd_agents.llm import build_agent_options
 
             prompt = (
                 f"{DD_ANALYST}. Answer the following question based on the findings below.\n\n"
@@ -148,15 +149,17 @@ class QueryEngine:
                 f"{NO_FABRICATION}"
             )
 
-            options_kwargs: dict[str, Any] = {"max_turns": 1}
-            cli_path = resolve_sdk_cli_path()
-            if cli_path is not None:
-                options_kwargs["cli_path"] = cli_path
+            # Shared LLM seam: cli_path + output-token clamp + provider routing.
+            # Model inherits the provider default unless pinned via DD_QUERY_MODEL.
+            options = build_agent_options(
+                model=os.getenv("DD_QUERY_MODEL") or None,
+                max_turns=1,
+            )
 
             answer_parts: list[str] = []
             async for message in sdk_query(
                 prompt=prompt,
-                options=ClaudeAgentOptions(**options_kwargs),
+                options=options,
             ):
                 content = getattr(message, "content", None)
                 if content and isinstance(content, list):

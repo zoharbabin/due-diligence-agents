@@ -1619,13 +1619,12 @@ class ExtractionPipeline:
         """
         from claude_agent_sdk import (
             AssistantMessage,
-            ClaudeAgentOptions,
             ResultMessage,
             TextBlock,
             query,
         )
 
-        from dd_agents.utils import resolve_sdk_cli_path
+        from dd_agents.llm import build_agent_options
 
         system_prompt = (
             "You are a document-analysis assistant.  The user will ask you "
@@ -1638,17 +1637,18 @@ class ExtractionPipeline:
 
         user_prompt = f"Use the Read tool to visually examine this file and describe everything you see: {filepath}"
 
-        options_kwargs: dict[str, Any] = {
-            "system_prompt": system_prompt,
-            "max_turns": 1,
-            "permission_mode": "bypassPermissions",
-            "tools": ["Read"],
-            "allowed_tools": ["Read"],
-        }
-        cli_path = resolve_sdk_cli_path()
-        if cli_path is not None:
-            options_kwargs["cli_path"] = cli_path
-        options = ClaudeAgentOptions(**options_kwargs)
+        # Shared LLM seam: cli_path + output-token clamp + provider routing.
+        # This path needs a multimodal model (it reads an image via the Read
+        # tool); a non-vision gateway model returns no description (handled
+        # gracefully downstream). Pin a vision model with DD_VISION_MODEL.
+        options = build_agent_options(
+            model=os.getenv("DD_VISION_MODEL") or None,
+            system_prompt=system_prompt,
+            max_turns=1,
+            permission_mode="bypassPermissions",
+            tools=["Read"],
+            allowed_tools=["Read"],
+        )
 
         text_parts: list[str] = []
         try:

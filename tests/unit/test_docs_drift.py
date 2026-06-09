@@ -229,3 +229,40 @@ def test_side_effecting_tool_descriptions_declare_their_effect(name: str, must_c
     assert any(k in desc for k in must_contain), (
         f"{name} description does not declare its write/side-effect (looked for any of {must_contain}): {tools[name]!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Design rule 1: all LLM calls go through the dd_agents.llm seam.
+# ---------------------------------------------------------------------------
+
+
+def test_no_claude_agent_options_constructed_outside_the_seam() -> None:
+    """``ClaudeAgentOptions(...)`` may only be constructed in the LLM seam.
+
+    Enforces CLAUDE.md design rule 1 — every reasoning-LLM call builds options
+    via ``dd_agents.llm.build_agent_options``, so provider/model agnosticism,
+    the cli_path, and the output-token clamp are applied uniformly. Imports and
+    docstring mentions are fine; only a call-construction is forbidden.
+    """
+    src = REPO_ROOT / "src" / "dd_agents"
+    seam = src / "llm" / "provider.py"
+    # Match a construction call: `ClaudeAgentOptions(`.
+    call_re = re.compile(r"\bClaudeAgentOptions\s*\(")
+    offenders: list[str] = []
+    for py in src.rglob("*.py"):
+        if py == seam:
+            continue
+        for i, line in enumerate(py.read_text(encoding="utf-8").splitlines(), 1):
+            stripped = line.strip()
+            if stripped.startswith(("#", "from ", "import ", '"', "'")):
+                continue
+            # Ignore docstring/prose mentions inside a backtick code-span
+            # (e.g. ``ClaudeAgentOptions(hooks=...)`` in a docstring).
+            if "`" in line:
+                continue
+            if call_re.search(line):
+                offenders.append(f"{py.relative_to(REPO_ROOT)}:{i}: {stripped}")
+    assert not offenders, (
+        "ClaudeAgentOptions constructed outside dd_agents.llm.provider — route it "
+        "through build_agent_options() instead:\n" + "\n".join(offenders)
+    )

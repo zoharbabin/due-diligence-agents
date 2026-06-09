@@ -244,3 +244,39 @@ class TestCostTracker:
         assert "16_spawn_specialists" in by_step
         assert "19_spawn_judge" in by_step
         assert "30_generate_reports" in by_step
+
+
+class TestPricingAgnostic:
+    """Cost estimation for non-Claude / gateway models (provider-agnostic)."""
+
+    def test_known_claude_model_priced_from_table(self) -> None:
+        from dd_agents.agents.cost_tracker import _estimate_cost
+
+        # 1M input + 1M output at Sonnet rates = 3 + 15 = $18.
+        assert _estimate_cost("claude-sonnet-4-6", 1_000_000, 1_000_000) == pytest.approx(18.0)
+
+    def test_unknown_model_falls_back_and_warns_once(self, caplog: pytest.LogCaptureFixture) -> None:
+        import dd_agents.agents.cost_tracker as ct
+
+        ct._WARNED_UNKNOWN_MODELS.discard("openai/gpt-4o")
+        with caplog.at_level("WARNING"):
+            cost = ct._estimate_cost("openai/gpt-4o", 1_000_000, 0)
+        assert cost == pytest.approx(3.0)  # default input rate
+        assert any("No pricing for model" in r.message for r in caplog.records)
+
+    def test_dd_model_pricing_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import json
+
+        import dd_agents.agents.cost_tracker as ct
+
+        monkeypatch.setenv("DD_MODEL_PRICING", json.dumps({"openai/gpt-4o": {"input": 2.5, "output": 10.0}}))
+        # 1M input + 1M output at the override = 2.5 + 10 = $12.5.
+        assert ct._estimate_cost("openai/gpt-4o", 1_000_000, 1_000_000) == pytest.approx(12.5)
+
+    def test_malformed_override_ignored(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import dd_agents.agents.cost_tracker as ct
+
+        monkeypatch.setenv("DD_MODEL_PRICING", "{not json")
+        ct._WARNED_UNKNOWN_MODELS.discard("some/model")
+        # Falls back to default, does not raise.
+        assert ct._estimate_cost("some/model", 1_000_000, 0) == pytest.approx(3.0)

@@ -1173,7 +1173,9 @@ class TestSpawnAgentSDKWiring:
             def __init__(self, **kwargs: object) -> None:
                 pass
 
-        monkeypatch.setattr(base_mod, "_ClaudeAgentOptions", MockOptions)
+        import claude_agent_sdk as _cas
+
+        monkeypatch.setattr(_cas, "ClaudeAgentOptions", MockOptions)
 
         agent = LegalAgent(tmp_project, tmp_run_dir, run_id)
         result = await agent._spawn_agent("analyze contracts")
@@ -1217,7 +1219,9 @@ class TestSpawnAgentSDKWiring:
             def __init__(self, **kwargs: object) -> None:
                 pass
 
-        monkeypatch.setattr(base_mod, "_ClaudeAgentOptions", MockOptions)
+        import claude_agent_sdk as _cas
+
+        monkeypatch.setattr(_cas, "ClaudeAgentOptions", MockOptions)
 
         agent = LegalAgent(tmp_project, tmp_run_dir, run_id)
         result = await agent._spawn_agent("test")
@@ -1290,7 +1294,9 @@ class TestTurnLimitEnforcement:
         monkeypatch.setattr(base_mod, "_AssistantMessage", MockAssistantMessage)
         monkeypatch.setattr(base_mod, "_TextBlock", MockTextBlock)
         monkeypatch.setattr(base_mod, "_ResultMessage", MockResultMessage)
-        monkeypatch.setattr(base_mod, "_ClaudeAgentOptions", MockOptions)
+        import claude_agent_sdk as _cas
+
+        monkeypatch.setattr(_cas, "ClaudeAgentOptions", MockOptions)
 
         return MockTextBlock, MockAssistantMessage, MockResultMessage, MockOptions
 
@@ -2173,7 +2179,9 @@ class TestSystemPromptConstraints:
         monkeypatch.setattr(base_mod, "_AssistantMessage", MockAssistantMessage)
         monkeypatch.setattr(base_mod, "_TextBlock", MockTextBlock)
         monkeypatch.setattr(base_mod, "_ResultMessage", MockResultMessage)
-        monkeypatch.setattr(base_mod, "_ClaudeAgentOptions", MockOptions)
+        import claude_agent_sdk as _cas
+
+        monkeypatch.setattr(_cas, "ClaudeAgentOptions", MockOptions)
 
         agent = LegalAgent(tmp_project, tmp_run_dir, run_id)
         await agent._spawn_agent("test prompt")
@@ -2228,7 +2236,9 @@ class TestSystemPromptConstraints:
         monkeypatch.setattr(base_mod, "_AssistantMessage", MockAssistantMessage)
         monkeypatch.setattr(base_mod, "_TextBlock", MockTextBlock)
         monkeypatch.setattr(base_mod, "_ResultMessage", MockResultMessage)
-        monkeypatch.setattr(base_mod, "_ClaudeAgentOptions", MockOptions)
+        import claude_agent_sdk as _cas
+
+        monkeypatch.setattr(_cas, "ClaudeAgentOptions", MockOptions)
 
         agent = FinanceAgent(tmp_project, tmp_run_dir, run_id)
         await agent._spawn_agent("test prompt")
@@ -2278,7 +2288,9 @@ class TestSystemPromptConstraints:
         monkeypatch.setattr(base_mod, "_AssistantMessage", MockAssistantMessage)
         monkeypatch.setattr(base_mod, "_TextBlock", MockTextBlock)
         monkeypatch.setattr(base_mod, "_ResultMessage", MockResultMessage)
-        monkeypatch.setattr(base_mod, "_ClaudeAgentOptions", MockOptions)
+        import claude_agent_sdk as _cas
+
+        monkeypatch.setattr(_cas, "ClaudeAgentOptions", MockOptions)
 
         agent = CommercialAgent(tmp_project, tmp_run_dir, run_id)
         await agent._spawn_agent("test prompt")

@@ -563,7 +563,6 @@ class ChatEngine:
 
     def _build_options(self, max_budget: float) -> _ClaudeAgentOptions:
         """Build ClaudeAgentOptions for a chat turn."""
-        from dd_agents.utils import resolve_sdk_cli_path
 
         # Capture SDK subprocess stderr so we can log it on failure
         # instead of letting it corrupt the terminal.  The list is
@@ -605,13 +604,6 @@ class ChatEngine:
             "stderr": _stderr_handler,
         }
 
-        cli_path = resolve_sdk_cli_path()
-        if cli_path is not None:
-            options_kwargs["cli_path"] = cli_path
-
-        if self._config.model is not None:
-            options_kwargs["model"] = self._config.model
-
         hooks = self._build_hooks()
         if hooks:
             options_kwargs["hooks"] = hooks
@@ -620,7 +612,11 @@ class ChatEngine:
         if mcp_server is not None:
             options_kwargs["mcp_servers"] = {"dd_tools": mcp_server}
 
-        return _ClaudeAgentOptions(**options_kwargs)
+        # Shared LLM seam: sets cli_path + the output-token clamp; model is the
+        # configured override (None inherits the CLI/provider default).
+        from dd_agents.llm import build_agent_options
+
+        return build_agent_options(model=self._config.model, **options_kwargs)
 
     def _get_allowed_tools(self) -> list[str]:
         """Return the allowed tool list for the chat session."""
