@@ -22,9 +22,9 @@ rich>=13,<15
 
 # Provider SDK — install ONLY the one matching BINDU_AGENT_PROVIDER (agno
 # lazy-imports the vendor client, so you don't need all of them):
-#   bedrock (default) -> anthropic     (Anthropic-on-Bedrock; uses AWS creds)
-#   anthropic         -> anthropic
-#   openai            -> openai
-#   google            -> google-genai
-#   openrouter        -> openai         (OpenRouter speaks the OpenAI API)
-anthropic>=0.40       # default provider (Bedrock via Anthropic SDK); swap per the list above
+#   anthropic (default) -> anthropic
+#   bedrock             -> anthropic[bedrock]   (pulls boto3; Anthropic-on-Bedrock)
+#   openai              -> openai
+#   google              -> google-genai
+#   openrouter          -> openai               (OpenRouter speaks the OpenAI API)
+anthropic>=0.40       # default provider; for bedrock use:  anthropic[bedrock]>=0.40

@@ -326,7 +326,7 @@ The pipeline **halts on quality failures** rather than producing unreliable outp
 
 ## Security & Privacy
 
-- **Local execution** — all analysis runs on your machine. Documents only leave your machine as API calls to your configured LLM provider (Anthropic or AWS Bedrock).
+- **Local execution** — all analysis runs on your machine. Documents only leave your machine as API calls to your configured LLM provider (Anthropic API, AWS Bedrock, or Google Vertex AI).
 - **No telemetry** — the tool does not phone home, collect usage data, or send analytics anywhere.
 - **Read-only** — the tool never modifies files in your data room. Output is written to a separate `_dd/` directory.
 - **No persistent credentials** — API keys are read from environment variables or `.env` files, never stored in output artifacts.

@@ -21,7 +21,7 @@ We will acknowledge receipt within 48 hours and aim to provide a fix or mitigati
 
 This tool processes potentially sensitive M&A documents. Key security measures:
 
-- **Local execution** — all analysis runs on your machine. No data is sent to third parties except the configured LLM API (Anthropic or AWS Bedrock).
+- **Local execution** — all analysis runs on your machine. No data is sent to third parties except the configured LLM API (Anthropic API, AWS Bedrock, or Google Vertex AI).
 - **No telemetry** — the tool does not phone home or collect usage data.
 - **Bash guard** — shell command execution is restricted to prevent injection.
 - **SSRF prevention** — external URL fetching is limited to document-referenced URLs with legal keyword patterns.

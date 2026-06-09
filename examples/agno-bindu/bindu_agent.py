@@ -1,8 +1,9 @@
 """Atlas DD Analyst exposed as a Bindu A2A agent (synchronous — no MCP, no loop).
 
 The handler reads a completed dd-agents report through the upstream finding index
-and lets the agno agent answer over it. Tools are deterministic and need no
-Anthropic key; only the agno model call (via OpenRouter) needs OPENROUTER_API_KEY.
+and lets the agno agent answer over it. The tools are deterministic and need no
+key; only the agno model call needs your chosen provider's credentials
+(BINDU_AGENT_PROVIDER; see .env.example).
 
 Run:  uv run python examples/agno-bindu/bindu_agent.py
 """
@@ -18,9 +19,9 @@ from bindu.penguin.bindufy import bindufy
 from dotenv import load_dotenv
 from prompts import AGENT_DESCRIPTION
 
-# Load the example's .env so OPENROUTER_API_KEY is present before the model is
-# built. The agent is built lazily inside get_agent(), so importing `agent`
-# above is key-free; the key is only needed when the first request arrives.
+# Load the example's .env so the provider credentials are present before the
+# model is built. The agent is built lazily inside get_agent(), so importing
+# `agent` above is key-free; the key is only needed on the first request.
 load_dotenv(Path(__file__).with_name(".env"))
 
 logger = logging.getLogger(__name__)
@@ -47,14 +48,14 @@ def handler(messages):
 
 # Optional bearer token for the A2A endpoint. Strongly recommended before
 # exposing publicly (BINDU_EXPOSE=true) — without it, every accepted request
-# spends your OpenRouter key and returns full report contents.
+# spends your provider key and returns full report contents.
 _AUTH_TOKEN = os.getenv("BINDU_AUTH_TOKEN", "").strip()
 _EXPOSE = os.getenv("BINDU_EXPOSE", "false").lower() == "true"
 if _EXPOSE and not _AUTH_TOKEN:
     logger.warning(
         "BINDU_EXPOSE=true but BINDU_AUTH_TOKEN is unset: the agent will be "
         "publicly reachable with NO application-layer auth — every call bills "
-        "your OpenRouter key and returns report contents. Set BINDU_AUTH_TOKEN "
+        "your provider key and returns report contents. Set BINDU_AUTH_TOKEN "
         "or keep BINDU_EXPOSE=false for local use."
     )
 

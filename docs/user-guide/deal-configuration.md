@@ -322,10 +322,16 @@ Text extraction (non-scanned PDFs) uses a separate chain: pymupdf → pdftotext 
 
 ### agent_models
 
-Controls which Claude models are used:
+Controls which Claude models are used. dd-agents runs on the Claude Agent SDK,
+so model IDs must be **Claude models**, in the form your configured provider
+expects — Anthropic short IDs (`claude-opus-4-8`) on the Anthropic API, or the
+prefixed IDs your provider uses on Bedrock/Vertex (e.g.
+`us.anthropic.claude-...`). Non-Claude vendors (GPT, Gemini) are not supported
+by the core pipeline; the provider/transport is selected by environment
+variables (see `.env.example`), not here.
 
 - `profile`: preset model tier — see table below
-- `overrides`: per-agent model IDs, e.g. `{"legal": "claude-opus-4-8"}`
+- `overrides`: per-agent Claude model IDs, e.g. `{"legal": "claude-opus-4-8"}`
 - `budget_limit_usd`: optional hard spending cap per run
 
 Model assignments per profile:
