@@ -55,6 +55,29 @@ class FilterBarRenderer(SectionRenderer):
             )
 
         parts.append("</div>")
+
+        # Free-text search (Issue #191) — matches title + description + citations.
+        parts.append("<div class='filter-bar-group'>")
+        parts.append("<span class='filter-bar-label'>Search:</span>")
+        parts.append(
+            "<input type='search' class='filter-search' placeholder='Search findings…' aria-label='Search findings'>"
+        )
+        parts.append("</div>")
+
+        # Entity dropdown (Issue #191) — filters finding cards by entity.
+        entity_options = "".join(
+            f"<option value='{self.escape(csn)}'>{self.escape(name)}</option>"
+            for csn, name in sorted(self.data.display_names.items(), key=lambda kv: kv[1].lower())
+        )
+        parts.append("<div class='filter-bar-group'>")
+        parts.append("<span class='filter-bar-label'>Entity:</span>")
+        parts.append(
+            "<select class='filter-entity' aria-label='Filter by entity'>"
+            "<option value=''>All entities</option>"
+            f"{entity_options}</select>"
+        )
+        parts.append("</div>")
+
         parts.append(
             "<div class='filter-bar-status'>"
             "<span class='filter-count' aria-live='polite' aria-atomic='true'></span>"
@@ -87,6 +110,12 @@ FILTER_BAR_CSS = """
   .filter-chip:hover { background: color-mix(in srgb, var(--chip-color) 15%, transparent); }
 }
 .filter-chip[aria-pressed='true'] { background: var(--chip-color); color: #fff; }
+.filter-search { border: 1px solid var(--border-light); border-radius: 16px;
+                 padding: 3px 12px; font-size: 0.8em; min-width: 160px; color: var(--text-primary);
+                 background: var(--bg-primary); }
+.filter-entity { border: 1px solid var(--border-light); border-radius: 16px;
+                 padding: 3px 8px; font-size: 0.8em; color: var(--text-primary);
+                 background: var(--bg-primary); }
 .filter-bar-status { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .filter-count { font-size: 0.8em; color: var(--text-secondary); }
 .filter-clear { border: none; background: none; color: var(--blue); font-size: 0.8em;
@@ -112,8 +141,12 @@ FILTER_BAR_JS = r"""
 
     var activeSev = new Set();
     var activeDom = new Set();
+    var activeEntity = '';
+    var searchText = '';
     var countEl = bar.querySelector('.filter-count');
     var clearBtn = bar.querySelector('.filter-clear');
+    var searchInput = bar.querySelector('.filter-search');
+    var entitySelect = bar.querySelector('.filter-entity');
     var allFilterable = document.querySelectorAll('[data-severity]');
     // Also tag table rows containing severity badges for filtering
     document.querySelectorAll('tr:not([data-severity])').forEach(function(tr) {
@@ -143,7 +176,8 @@ FILTER_BAR_JS = r"""
 
     function applyFilters() {
         if (totalCount === 0) return;
-        var noFilter = activeSev.size === 0 && activeDom.size === 0;
+        var noFilter = activeSev.size === 0 && activeDom.size === 0
+            && activeEntity === '' && searchText === '';
         var visibleCount = 0;
         var firstVisible = null;
         allFilterable.forEach(function(el) {
@@ -151,8 +185,21 @@ FILTER_BAR_JS = r"""
             var dom = el.getAttribute('data-domain');
             var sevMatch = activeSev.size === 0 || activeSev.has(sev);
             var domMatch = activeDom.size === 0 || activeDom.has(dom);
-            var visible = sevMatch && domMatch;
+            var entMatch = activeEntity === '' || el.getAttribute('data-entity') === activeEntity;
+            var txtMatch = true;
+            // Adjacent .finding-detail sibling carries description + citations.
+            var detail = el.nextElementSibling;
+            var hasDetail = detail && detail.classList.contains('finding-detail');
+            if (searchText !== '') {
+                var hay = el.textContent;
+                if (hasDetail) hay += ' ' + detail.textContent;
+                txtMatch = hay.toLowerCase().indexOf(searchText) !== -1;
+            }
+            var visible = sevMatch && domMatch && entMatch && txtMatch;
             el.style.display = visible ? '' : 'none';
+            // Keep the detail's visibility consistent with its card. When visible,
+            // clear inline display so the .open class controls expand state again.
+            if (hasDetail) detail.style.display = visible ? '' : 'none';
             if (visible) {
                 visibleCount++;
                 if (!firstVisible) firstVisible = el;
@@ -208,6 +255,8 @@ FILTER_BAR_JS = r"""
             var parts = [];
             if (activeSev.size > 0) parts.push('sev=' + Array.from(activeSev).join(','));
             if (activeDom.size > 0) parts.push('dom=' + Array.from(activeDom).join(','));
+            if (activeEntity) parts.push('ent=' + encodeURIComponent(activeEntity));
+            if (searchText) parts.push('q=' + encodeURIComponent(searchText));
             if (parts.length > 0) {
                 history.replaceState(null, '', '#filter:' + parts.join('&'));
             } else {
@@ -219,12 +268,18 @@ FILTER_BAR_JS = r"""
     // Build allowlists from rendered chip buttons (known-safe values only)
     var knownSev = new Set();
     var knownDom = new Set();
+    var knownEnt = new Set();
     bar.querySelectorAll('.filter-chip--severity').forEach(function(btn) {
         knownSev.add(btn.getAttribute('data-filter-severity'));
     });
     bar.querySelectorAll('.filter-chip--domain').forEach(function(btn) {
         knownDom.add(btn.getAttribute('data-filter-domain'));
     });
+    if (entitySelect) {
+        Array.from(entitySelect.options).forEach(function(opt) {
+            if (opt.value) knownEnt.add(opt.value);
+        });
+    }
 
     function readHash() {
         var hash = window.location.hash.slice(1);
@@ -236,6 +291,14 @@ FILTER_BAR_JS = r"""
             var key = kv[0], vals = kv[1].split(',');
             if (key === 'sev') vals.forEach(function(v) { if (knownSev.has(v)) activeSev.add(v); });
             if (key === 'dom') vals.forEach(function(v) { if (knownDom.has(v)) activeDom.add(v); });
+            if (key === 'ent') {
+                var ent = decodeURIComponent(kv[1]);
+                if (knownEnt.has(ent)) { activeEntity = ent; if (entitySelect) entitySelect.value = ent; }
+            }
+            if (key === 'q') {
+                searchText = decodeURIComponent(kv[1]).toLowerCase();
+                if (searchInput) searchInput.value = decodeURIComponent(kv[1]);
+            }
         });
         bar.querySelectorAll('.filter-chip--severity').forEach(function(btn) {
             if (activeSev.has(btn.getAttribute('data-filter-severity'))) {
@@ -268,9 +331,27 @@ FILTER_BAR_JS = r"""
         });
     });
 
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            searchText = this.value.trim().toLowerCase();
+            applyFilters();
+        });
+    }
+
+    if (entitySelect) {
+        entitySelect.addEventListener('change', function() {
+            activeEntity = this.value;
+            applyFilters();
+        });
+    }
+
     clearBtn.addEventListener('click', function() {
         activeSev.clear();
         activeDom.clear();
+        activeEntity = '';
+        searchText = '';
+        if (searchInput) searchInput.value = '';
+        if (entitySelect) entitySelect.value = '';
         bar.querySelectorAll('.filter-chip').forEach(function(btn) {
             btn.setAttribute('aria-pressed', 'false');
         });

@@ -18,7 +18,7 @@ dd-agents run deal-config.json
 | Command | Purpose |
 |---------|---------|
 | `dd-agents run` | Full 38-step pipeline across 9 domains |
-| `dd-agents run --quick-scan` | Red flag triage in minutes |
+| `dd-agents run --quick-scan` | Adds a red-flag stoplight triage pass to the run |
 | `dd-agents search` | Targeted contract questions with citations |
 | `dd-agents chat` | Interactive multi-turn chat about findings |
 | `dd-agents query` | Single-question mode |

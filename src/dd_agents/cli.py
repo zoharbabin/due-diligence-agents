@@ -123,7 +123,7 @@ def main() -> None:
     "resume_from",
     type=int,
     default=0,
-    help="Resume pipeline from a specific step number (0-35).",
+    help="Resume pipeline from a specific step number (0-38).",
 )
 @click.option(
     "--dry-run",
@@ -137,7 +137,9 @@ def main() -> None:
     "quick_scan",
     is_flag=True,
     default=False,
-    help="Run a quick Red Flag scan only (steps 1-13 + Red Flag Scanner agent).",
+    help="Add a Red Flag Scanner pass to the run — a stoplight (red/amber/green) "
+    "triage signal and top deal-breakers, surfaced in the report alongside the "
+    "full analysis. (The scanner reads merged findings, so the full pipeline runs.)",
 )
 @click.option(
     "--no-knowledge",
@@ -243,11 +245,11 @@ def run(
     _print_config_summary(deal_config)
 
     # --- Validate resume-from ---
-    if resume_from < 0 or resume_from > 35:
+    if resume_from < 0 or resume_from > 38:
         _print_error(
             "Invalid Option",
-            f"--resume-from must be 0-35, got {resume_from}\n"
-            "  Key steps: 0=start, 6=inventory, 14=prompts, 16=agents, 24=merge, 28=QA, 35=end",
+            f"--resume-from must be 0-38, got {resume_from}\n"
+            "  Key steps: 0=start, 6=inventory, 14=prompts, 16=agents, 24=merge, 31=QA, 33=reports, 38=end",
         )
         raise SystemExit(1)
 
@@ -464,9 +466,13 @@ def validate(config_path: Path) -> None:
 
 
 @main.command()
-def version() -> None:
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output version as JSON.")
+def version(as_json: bool) -> None:
     """Print the dd-agents version."""
-    console.print(f"dd-agents {dd_agents.__version__}")
+    if as_json:
+        click.echo(json.dumps({"version": dd_agents.__version__}))
+    else:
+        console.print(f"dd-agents {dd_agents.__version__}")
 
 
 # ---------------------------------------------------------------------------
@@ -2142,11 +2148,36 @@ def annotate(data_room: Path, entity: str | None, note: str) -> None:
     """
     from dd_agents.knowledge._utils import now_iso
     from dd_agents.knowledge.base import DealKnowledgeBase
+    from dd_agents.knowledge.chronicle import (
+        AnalysisChronicle,
+        AnalysisLogEntry,
+        InteractionType,
+        _generate_entry_id,
+    )
     from dd_agents.knowledge.filing import file_annotation
 
-    kb = DealKnowledgeBase(data_room.resolve())
+    project_dir = data_room.resolve()
+    kb = DealKnowledgeBase(project_dir)
     kb.ensure_dirs()
-    article_id = file_annotation(kb, note, entity, now_iso())
+    ts = now_iso()
+    article_id = file_annotation(kb, note, entity, ts)
+    # Record the annotation in the analysis chronicle so `dd-agents log`
+    # surfaces it (Issue #217 — annotate previously wrote no chronicle entry).
+    try:
+        chronicle = AnalysisChronicle(kb.knowledge_dir / "chronicle.jsonl")
+        chronicle.append(
+            AnalysisLogEntry(
+                id=_generate_entry_id(),
+                timestamp=ts,
+                interaction_type=InteractionType.ANNOTATION,
+                title=f"Annotation: {note[:80]}",
+                details={"note": note, "article_id": article_id},
+                entities_affected=[entity] if entity else [],
+                user_initiated=True,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 — chronicle logging must never block
+        logger.debug("Failed to log annotation to chronicle: %s", exc)
     console.print(f"[green]Annotation saved:[/green] {article_id}")
     if entity:
         console.print(f"  Linked to entity: {entity}")

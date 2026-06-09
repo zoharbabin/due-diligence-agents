@@ -268,9 +268,11 @@ class SectionRenderer(ABC):
         if confidence in ("high", "medium", "low"):
             conf_html = f" <span class='conf-dot conf-{confidence}' title='Confidence: {confidence}'></span>"
 
+        entity_csn = self.escape(str(finding.get("_subject_safe_name", "")))
         return (
             f"<div class='finding-card' style='border-left-color:{color}' "
             f"data-severity='{self.escape(severity)}' data-domain='{self.escape(self.agent_to_domain(agent))}' "
+            f"data-entity='{entity_csn}' "
             f"tabindex='0' role='button' aria-expanded='false'>"
             f"<div class='fc-title'>{self.severity_badge(severity)} {title}{conf_html} "
             f"<span class='arrow'>&#9654;</span></div>"
@@ -789,6 +791,7 @@ table.sortable caption { caption-side: top; text-align: left; font-size: 0.78em;
 @page { margin: 2cm 1.5cm; }
 @media print {
     .sidebar, .skip-link, .nav-toggle, .sidebar-overlay { display: none !important; }
+    .layer-divider, .layer-toggle { display: none !important; }
     .domain-body, .subject-body, .category-body, .finding-detail { display: block !important; }
     body { background: white; font-size: 11pt; orphans: 3; widows: 3; }
     .deal-header { border-bottom: 2px solid #333; }
@@ -960,6 +963,10 @@ HERO_ZONE_CSS = """
 .rag-amber { border-color: #fd7e1430; }
 .rag-green { border-color: #28a74530; }
 
+/* Severity donut (Issue #199) — at-a-glance Layer-1 total */
+.hero-donut { display: flex; justify-content: center; margin: 16px 0 4px; }
+.hero-donut svg { max-width: 200px; height: auto; }
+
 /* Domain Strip — compact risk rows */
 .domain-strip { margin: 24px 0 32px; }
 .domain-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px;
@@ -1114,6 +1121,11 @@ def render_js() -> str:
             });
             rows.forEach(function(row) { tbody.appendChild(row); });
             this.dataset.sort = asc ? 'asc' : 'desc';
+            // a11y: reflect sort direction; clear siblings (Issue #199)
+            Array.from(this.parentNode.children).forEach(function(sib) {
+                if (sib !== th) sib.removeAttribute('aria-sort');
+            });
+            this.setAttribute('aria-sort', asc ? 'ascending' : 'descending');
         });
     });
 
@@ -1251,6 +1263,29 @@ def render_js() -> str:
             }, 60);
             e.preventDefault();
         });
+    });
+
+    // --- Print completeness (Issue #199) ---
+    // Deep-dive layers carry inline display:none, which @media print CSS cannot
+    // override. Force-expand every layer before printing, then restore the
+    // layers the user had not manually expanded.
+    var printCollapsed = [];
+    window.addEventListener('beforeprint', function() {
+        printCollapsed = [];
+        layers.forEach(function(l) {
+            var content = document.getElementById(l.content);
+            if (content && content.style.display === 'none') {
+                printCollapsed.push(l.content);
+                content.style.display = 'block';
+            }
+        });
+    });
+    window.addEventListener('afterprint', function() {
+        printCollapsed.forEach(function(contentId) {
+            var content = document.getElementById(contentId);
+            if (content) content.style.display = 'none';
+        });
+        printCollapsed = [];
     });
 })();
 """

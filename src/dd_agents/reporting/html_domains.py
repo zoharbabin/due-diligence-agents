@@ -49,7 +49,7 @@ class DomainRenderer(SectionRenderer):
         if categories:
             # Category summary table
             parts.append(
-                "<table class='sortable'><thead><tr>"
+                "<table class='sortable'><caption>Finding categories for this domain</caption><thead><tr>"
                 "<th scope='col'>Category</th><th scope='col'>Findings</th><th scope='col'>Severity Mix</th>"
                 "<th scope='col'>Top Entity</th></tr></thead><tbody>"
             )

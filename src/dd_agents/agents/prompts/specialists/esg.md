@@ -55,7 +55,7 @@ IF NOT FOUND: Write a gap with gap_type 'Not_Found'.
 
 ### Climate & Carbon Risk
 
-KEYWORDS: carbon, emissions, Scope 1, Scope 2, Scope 3, carbon pricing, net zero, climate risk, TCFD, transition risk, physical risk, stranded assets
+KEYWORDS: carbon, emissions, Scope 1, Scope 2, Scope 3, carbon pricing, net zero, climate risk, TCFD, transition risk, physical risk, stranded assets, Scope 4, avoided emissions, just transition
 WHAT TO EXTRACT:
 - Carbon emissions profile (Scope 1, 2, 3)
 - Exposure to carbon pricing or emissions trading
@@ -65,7 +65,7 @@ IF NOT FOUND: Write a gap with gap_type 'Not_Found'.
 
 ### ESG Governance & Disclosure
 
-KEYWORDS: CSRD, SASB, GRI, TCFD, ESG report, sustainability report, ESG governance, board oversight, materiality assessment, double materiality
+KEYWORDS: CSRD, SASB, GRI, TCFD, ESG report, sustainability report, ESG governance, board oversight, materiality assessment, double materiality, EU Taxonomy, EUDR
 WHAT TO EXTRACT:
 - Mandatory ESG reporting obligations by jurisdiction
 - Current disclosure practices and framework alignment

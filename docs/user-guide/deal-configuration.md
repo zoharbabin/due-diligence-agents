@@ -313,6 +313,12 @@ Text extraction (non-scanned PDFs) uses a separate chain: pymupdf → pdftotext 
 - `report_schema_override`: path to custom report schema JSON (default: null, uses built-in)
 - `include_diff_sheet`: include incremental diff sheet in Excel report (default: true)
 - `include_metadata_sheet`: include pipeline metadata sheet (default: true)
+- `verdict`: optional overrides for the deterministic Go/No-Go badge thresholds.
+  Any omitted field keeps its conservative default. Fields:
+    - `no_go_p0_min`: P0 findings that trigger **No-Go** (default 1)
+    - `conditional_p1_min`: P1 findings that trigger **Conditional Go** (default 3)
+    - `proceed_with_conditions_p1_min`: P1 findings that trigger **Proceed with Caution** (default 1)
+    - `high_exposure_pct`: revenue-at-risk percent treated as high exposure (default 20.0)
 
 ### agent_models
 

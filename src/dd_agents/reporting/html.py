@@ -62,6 +62,7 @@ from dd_agents.reporting.html_strategy import StrategyRenderer
 from dd_agents.reporting.html_subjects import SubjectRenderer
 from dd_agents.reporting.html_timeline import TimelineRenderer
 from dd_agents.reporting.html_valuation import ValuationBridgeRenderer
+from dd_agents.reporting.verdict import VerdictRubric
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -69,6 +70,37 @@ if TYPE_CHECKING:
     from dd_agents.reporting.html_base import SectionRenderer
 
 logger = logging.getLogger(__name__)
+
+# The four overridable verdict-rubric thresholds (config.reporting.verdict).
+_VERDICT_RUBRIC_KEYS = frozenset(
+    {
+        "no_go_p0_min",
+        "conditional_p1_min",
+        "proceed_with_conditions_p1_min",
+        "high_exposure_pct",
+    }
+)
+
+
+def _verdict_rubric_from_config(deal_config: dict[str, Any] | None) -> VerdictRubric | None:
+    """Build a VerdictRubric from ``config.reporting.verdict``, if present.
+
+    Returns ``None`` (rubric defaults apply) when the section is absent or
+    holds no recognized keys. Unknown keys are ignored so a malformed config
+    can never raise here.
+    """
+    if not isinstance(deal_config, dict):
+        return None
+    reporting = deal_config.get("reporting")
+    if not isinstance(reporting, dict):
+        return None
+    raw = reporting.get("verdict")
+    if not isinstance(raw, dict):
+        return None
+    overrides = {k: v for k, v in raw.items() if k in _VERDICT_RUBRIC_KEYS and v is not None}
+    if not overrides:
+        return None
+    return VerdictRubric(**overrides)
 
 
 def _clause_lib_renderer(computed: Any, merged_data: dict[str, Any], config: dict[str, Any]) -> SectionRenderer:
@@ -146,9 +178,11 @@ class HTMLReportGenerator:
         """
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Single-pass metrics computation
+        # Single-pass metrics computation. An optional deal-config override
+        # (config.reporting.verdict) tunes the deterministic verdict rubric.
+        rubric = _verdict_rubric_from_config(deal_config)
         computer = ReportDataComputer()
-        computed = computer.compute(merged_data, executive_synthesis=executive_synthesis)
+        computed = computer.compute(merged_data, executive_synthesis=executive_synthesis, rubric=rubric)
 
         # Inject buyer_strategy from deal_config if present
         if deal_config and isinstance(deal_config, dict):

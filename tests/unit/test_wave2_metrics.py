@@ -491,10 +491,26 @@ class TestIPRiskAnalysis:
 
 
 class TestCrossDomainRisks:
-    """Issue #103: Entities with findings across 3+ domains."""
+    """Issue #103: Entities with findings across 2+ domains."""
+
+    def test_cross_domain_two_domain_escalates(self) -> None:
+        """Issue #198: an entity with findings in exactly 2 domains is a compound risk."""
+        merged: dict[str, Any] = {
+            "two_risk": {
+                "subject": "Two Risk",
+                "findings": [
+                    _make_finding(agent="legal", severity="P1"),
+                    _make_finding(agent="finance", severity="P2"),
+                ],
+                "gaps": [],
+            }
+        }
+        result = ReportDataComputer().compute(merged)
+        assert len(result.cross_domain_risks) == 1
+        assert result.cross_domain_risks[0]["domain_count"] == 2
 
     def test_cross_domain_detection(self) -> None:
-        """Entity with findings in 3+ domains should appear in cross_domain_risks."""
+        """Entity with findings in 2+ domains should appear in cross_domain_risks."""
         merged: dict[str, Any] = {
             "multi_risk": {
                 "subject": "Multi Risk",

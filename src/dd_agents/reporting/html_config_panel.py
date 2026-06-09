@@ -80,7 +80,7 @@ class ConfigPanelRenderer(SectionRenderer):
 
         # Per-agent overrides table.
         if override_rows:
-            parts.append("<table class='subject-table sortable'><thead><tr>")
+            parts.append("<table class='subject-table sortable'><caption>Analyst configuration</caption><thead><tr>")
             parts.append(
                 "<th scope='col'>Agent</th><th scope='col'>Override</th><th scope='col'>Detail</th></tr></thead><tbody>"
             )

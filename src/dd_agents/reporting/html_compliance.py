@@ -83,7 +83,7 @@ class ComplianceRenderer(SectionRenderer):
         if top_jurisdictions:
             parts.append("<h3>Top Jurisdictions</h3>")
             parts.append(
-                "<table class='subject-table sortable'><thead><tr>"
+                "<table class='subject-table sortable'><caption>Top jurisdictions</caption><thead><tr>"
                 "<th scope='col'>Jurisdiction</th>"
                 "<th scope='col'>Count</th>"
                 "</tr></thead><tbody>"
@@ -108,7 +108,7 @@ class ComplianceRenderer(SectionRenderer):
         if findings:
             parts.append("<h3>Compliance Findings</h3>")
             parts.append(
-                "<table class='subject-table sortable'><thead><tr>"
+                "<table class='subject-table sortable'><caption>Compliance findings</caption><thead><tr>"
                 "<th scope='col'>Severity</th>"
                 "<th scope='col'>Entity</th>"
                 "<th scope='col'>Finding</th>"

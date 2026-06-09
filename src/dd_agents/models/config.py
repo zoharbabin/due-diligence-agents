@@ -208,6 +208,31 @@ class ExecutionConfig(BaseModel):
     )
 
 
+class VerdictRubricConfig(BaseModel):
+    """Optional overrides for the deterministic Go/No-Go verdict rubric.
+
+    Mirrors ``reporting.verdict.VerdictRubric``. Each field is optional; only
+    the keys present override the conservative built-in defaults.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    no_go_p0_min: int | None = Field(default=None, ge=1, description="P0 findings that trigger NO-GO (default 1)")
+    conditional_p1_min: int | None = Field(
+        default=None, ge=1, description="P1 findings that trigger CONDITIONAL (default 3)"
+    )
+    proceed_with_conditions_p1_min: int | None = Field(
+        default=None,
+        ge=1,
+        description="P1 findings that trigger PROCEED WITH CONDITIONS (default 1)",
+    )
+    high_exposure_pct: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Revenue-at-risk percent treated as high exposure (default 20.0)",
+    )
+
+
 class ReportingConfig(BaseModel):
     """Report generation configuration. From reporting-protocol.md section 3."""
 
@@ -216,6 +241,10 @@ class ReportingConfig(BaseModel):
     report_schema_override: str | None = Field(default=None, description="Path to custom report_schema.json override")
     include_diff_sheet: bool = Field(default=True, description="Include run-over-run diff sheet in Excel report")
     include_metadata_sheet: bool = Field(default=True, description="Include metadata sheet in Excel report")
+    verdict: VerdictRubricConfig | None = Field(
+        default=None,
+        description="Override the deterministic verdict rubric thresholds (Issue #195)",
+    )
 
 
 class AgentCustomization(BaseModel):

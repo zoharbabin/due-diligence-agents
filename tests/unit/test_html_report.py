@@ -169,6 +169,27 @@ class TestHTMLReportGenerator:
         # Dashboard shows zero counts
         assert ">0</div>" in content  # At least one stat card with value 0
 
+    def test_verdict_rubric_override_flows_through_generate(self, tmp_path: Path) -> None:
+        """config.reporting.verdict tunes the deterministic badge (Issue #195)."""
+        merged = {
+            "subject_a": {
+                "subject": "Subject A",
+                "findings": [_make_finding(severity="P0", title="Critical issue")],
+                "gaps": [],
+            },
+        }
+        gen = HTMLReportGenerator()
+
+        # Default rubric: a single P0 → No-Go badge.
+        out_default = tmp_path / "default.html"
+        gen.generate(merged, out_default)
+        assert "hero-verdict-signal'>No-Go<" in out_default.read_text(encoding="utf-8")
+
+        # Raised threshold: a single P0 no longer trips No-Go.
+        out_override = tmp_path / "override.html"
+        gen.generate(merged, out_override, deal_config={"reporting": {"verdict": {"no_go_p0_min": 2}}})
+        assert "hero-verdict-signal'>No-Go<" not in out_override.read_text(encoding="utf-8")
+
     def test_single_subject_with_findings(self, tmp_path: Path) -> None:
         """Subject name appears in output; finding title and description are rendered."""
         merged = {
@@ -721,3 +742,29 @@ def test_xss_escaped_across_all_user_fields(tmp_path: Path) -> None:
     html = out.read_text(encoding="utf-8")
     assert html.count("<script>alert(1)</script>") == 0
     assert "&lt;script&gt;" in html  # escaping demonstrably happened
+
+
+class TestTableCaptions:
+    """Issue #214: every report table carries an accessible <caption>."""
+
+    def test_every_table_has_caption(self, tmp_path: Path) -> None:
+        import re
+
+        merged = {
+            "subject_a": {
+                "subject": "Subject A",
+                "findings": [
+                    _make_finding(severity="P0", title="Change of control clause"),
+                    _make_finding(severity="P1", title="Termination for convenience"),
+                ],
+                "gaps": [_make_gap()],
+            },
+        }
+        out = tmp_path / "report.html"
+        HTMLReportGenerator().generate(merged, out)
+        html = out.read_text(encoding="utf-8")
+        # No <table ...> tag may be immediately followed by <thead> (caption-less).
+        offenders = re.findall(r"<table[^>]*>(?!<caption>)", html)
+        assert offenders == []
+        # And we did render at least some tables with captions.
+        assert html.count("<caption>") >= 1

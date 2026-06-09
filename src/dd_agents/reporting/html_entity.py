@@ -63,7 +63,8 @@ class EntityDistributionRenderer(SectionRenderer):
         if entity_names:
             parts.append("<h3>Referenced Entities</h3>")
             parts.append(
-                "<table class='subject-table sortable'><thead><tr><th scope='col'>Entity Name</th></tr></thead><tbody>"
+                "<table class='subject-table sortable'><caption>Referenced entities</caption>"
+                "<thead><tr><th scope='col'>Entity Name</th></tr></thead><tbody>"
             )
             for name in entity_names[:15]:
                 parts.append(f"<tr><td>{self.escape(str(name))}</td></tr>")
@@ -83,7 +84,7 @@ class EntityDistributionRenderer(SectionRenderer):
         if findings:
             parts.append("<h3>Entity-Related Findings</h3>")
             parts.append(
-                "<table class='subject-table sortable'><thead><tr>"
+                "<table class='subject-table sortable'><caption>Entity-related findings</caption><thead><tr>"
                 "<th scope='col'>Severity</th>"
                 "<th scope='col'>Entity</th>"
                 "<th scope='col'>Finding</th>"

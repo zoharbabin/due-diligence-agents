@@ -33,10 +33,10 @@ dd-agents run CONFIG_PATH [OPTIONS]
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `--mode` | `full\|incremental` | from config | Override execution mode |
-| `--resume-from` | int (0-35) | 0 (beginning) | Resume from a specific step |
+| `--resume-from` | int (0-38) | 0 (beginning) | Resume from a specific step |
 | `--no-narrative` | flag | off | Skip LLM narrative generation (deterministic report only) |
 | `--dry-run` | flag | off | Print step plan without executing |
-| `--quick-scan` | flag | off | Run steps 1-13 + Red Flag Scanner only |
+| `--quick-scan` | flag | off | Add a Red Flag Scanner stoplight-triage pass (full pipeline runs; scanner reads merged findings) |
 | `--model-profile` | `economy\|standard\|premium` | from config | Model quality: `economy` (fastest, cheapest), `standard` (balanced), `premium` (most accurate, most expensive) |
 | `--model-override` | `AGENT=MODEL` | none | Per-agent model override (repeatable) |
 | `--no-knowledge` | flag | off | Skip knowledge compilation after pipeline run |
@@ -91,6 +91,7 @@ Print the installed dd-agents version.
 
 ```
 dd-agents version
+dd-agents version --json    # machine-readable: {"version": "..."}
 ```
 
 ---

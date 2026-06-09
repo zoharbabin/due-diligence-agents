@@ -82,7 +82,7 @@ class CoCAnalysisRenderer(SectionRenderer):
             by_subject.setdefault(subj, []).append(f)
 
         parts.append(
-            "<table class='subject-table sortable'><thead><tr>"
+            "<table class='subject-table sortable'><caption>Change of control analysis</caption><thead><tr>"
             "<th scope='col'>Entity</th>"
             "<th scope='col'>Type</th>"
             "<th scope='col'>Findings</th>"
@@ -148,7 +148,8 @@ class TfCAnalysisRenderer(SectionRenderer):
             by_subject.setdefault(subj, []).append(f)
 
         parts.append(
-            "<table class='subject-table sortable'><thead><tr>"
+            "<table class='subject-table sortable'>"
+            "<caption>Termination for convenience &mdash; revenue quality</caption><thead><tr>"
             "<th scope='col'>Entity</th>"
             "<th scope='col'>Notice Period</th>"
             "<th scope='col'>Revenue Impact</th>"
@@ -213,7 +214,7 @@ class PrivacyAnalysisRenderer(SectionRenderer):
         )
 
         parts.append(
-            "<table class='subject-table sortable'><thead><tr>"
+            "<table class='subject-table sortable'><caption>Data privacy and DPA analysis</caption><thead><tr>"
             "<th scope='col'>Entity</th>"
             "<th scope='col'>Findings</th>"
             "<th scope='col'>Max Severity</th>"
