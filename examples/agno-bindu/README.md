@@ -41,12 +41,13 @@ is the **light** part on the other side of that output. It:
    quote.
 
 **Provider-agnostic, like the pipeline.** Pick the LLM backend with
-`BINDU_AGENT_PROVIDER` — `bedrock` (default), `anthropic`, `openai`, `google`,
+`BINDU_AGENT_PROVIDER` — `anthropic` (default), `bedrock`, `openai`, `google`,
 or `openrouter` — and supply only that provider's standard credentials (the same
-env you already use for the pipeline). The default is **Bedrock**, so by default
-your data stays inside your own AWS account; nothing is hardcoded to a single
-vendor. Because retrieval is deterministic and the only model call is agno's,
-**only that one conversational call needs a key** — reading the report findings
+env you already use for the pipeline). The default is **anthropic** (one
+`ANTHROPIC_API_KEY`, no AWS account or extra SDK — the lowest-friction way to
+try it); switch to `bedrock` to keep data inside your own AWS account. Nothing
+is hardcoded to a single vendor. Because retrieval is deterministic and the only
+model call is agno's, **only that one conversational call needs a key** — reading the report findings
 does not. (The dd-agents *pipeline* that produced the report still needs its own
 Anthropic/Bedrock access; reading its output here does not.)
 
@@ -75,11 +76,11 @@ All commands run from the **repo root**, with [uv](https://docs.astral.sh/uv/).
 ```bash
 uv venv                                                  # create a venv (Python 3.12+)
 uv pip install -e .                                      # the dd-agents engine (this repo)
-uv pip install -r examples/agno-bindu/requirements.txt   # agno + Bindu glue (Bedrock SDK by default)
+uv pip install -r examples/agno-bindu/requirements.txt   # agno + Bindu glue (Anthropic SDK by default)
 cp examples/agno-bindu/.env.example examples/agno-bindu/.env
-# edit examples/agno-bindu/.env: pick BINDU_AGENT_PROVIDER (default: bedrock) and
+# edit examples/agno-bindu/.env: pick BINDU_AGENT_PROVIDER (default: anthropic) and
 # supply that provider's credentials. For a non-default provider, also install
-# its SDK (e.g. `uv pip install anthropic` / `openai` / `google-genai`) — see
+# its SDK (e.g. `anthropic[bedrock]` for bedrock, `openai`, `google-genai`) — see
 # the requirements.txt provider list.
 ```
 

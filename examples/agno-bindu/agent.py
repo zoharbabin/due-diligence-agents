@@ -10,10 +10,11 @@ deterministic Python, no LLM and no key. The agno model supplies the
 conversational reasoning on top. The dd-agents pipeline itself is never run here.
 
 Provider-agnostic, like the pipeline: pick the LLM backend with
-``BINDU_AGENT_PROVIDER`` (default ``bedrock``, matching dd-agents' enterprise
-posture — your data stays within your own AWS account). Each provider reads its
-own standard credentials (the same env you already use for the pipeline), so no
-single vendor is hardcoded. See ``.env.example`` for the supported providers.
+``BINDU_AGENT_PROVIDER`` (default ``anthropic`` — lowest friction; switch to
+``bedrock`` to keep data inside your own AWS account, or ``openai`` / ``google``
+/ ``openrouter``). Each provider reads its own standard credentials (the same
+env you already use for the pipeline), so no single vendor is hardcoded. See
+``.env.example`` for the supported providers.
 """
 
 from __future__ import annotations
@@ -33,9 +34,9 @@ if TYPE_CHECKING:
 
 __all__ = ["BINDU_AGENT_PROVIDERS", "build_agent", "get_agent", "report_path"]
 
-# Default model id per provider (override with BINDU_AGENT_MODEL). These are
-# illustrative current Claude tiers; the example reasons over deterministic
-# tools, so any solid tool-calling model works.
+# Default model id per provider (override with BINDU_AGENT_MODEL). Illustrative
+# tool-calling models; the example reasons over deterministic tools, so any
+# solid tool-calling model works. Update as providers release newer models.
 _DEFAULT_MODEL_ID: dict[str, str] = {
     "bedrock": "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
     "anthropic": "claude-sonnet-4-5-20250929",
@@ -58,7 +59,11 @@ def _build_model() -> Model:
     ``ANTHROPIC_API_KEY``, ``OPENAI_API_KEY``, ``GOOGLE_API_KEY``,
     ``OPENROUTER_API_KEY``), exactly as the agno docs specify.
     """
-    provider = os.getenv("BINDU_AGENT_PROVIDER", "bedrock").strip().lower()
+    # Default to `anthropic`: lowest-friction for a copy-paste example — one
+    # ANTHROPIC_API_KEY, no AWS account or extra SDK. Switch to bedrock/vertex/
+    # openai/google/openrouter to match your stack (mirrors dd-agents' own
+    # provider-flexible posture).
+    provider = os.getenv("BINDU_AGENT_PROVIDER", "anthropic").strip().lower()
     if provider not in _DEFAULT_MODEL_ID:
         raise RuntimeError(
             f"Unknown BINDU_AGENT_PROVIDER {provider!r}. Choose one of: {', '.join(BINDU_AGENT_PROVIDERS)}."
@@ -66,16 +71,17 @@ def _build_model() -> Model:
     model_id = os.getenv("BINDU_AGENT_MODEL", _DEFAULT_MODEL_ID[provider])
     max_tokens = int(os.getenv("BINDU_AGENT_MAX_TOKENS", "4096"))
 
-    if provider == "bedrock":
-        # Anthropic-on-Bedrock — your data stays in your AWS account. Reads the
-        # standard AWS credential chain (AWS_PROFILE / AWS_REGION / keys).
-        from agno.models.aws import Claude as BedrockClaude
-
-        return BedrockClaude(id=model_id, max_tokens=max_tokens)
     if provider == "anthropic":
         from agno.models.anthropic import Claude
 
         return Claude(id=model_id, max_tokens=max_tokens)
+    if provider == "bedrock":
+        # Anthropic-on-Bedrock — your data stays in your AWS account. Needs the
+        # `anthropic[bedrock]` extra (boto3) + the standard AWS credential chain
+        # (AWS_PROFILE / AWS_REGION / keys); see requirements.txt.
+        from agno.models.aws import Claude as BedrockClaude
+
+        return BedrockClaude(id=model_id, max_tokens=max_tokens)
     if provider == "openai":
         from agno.models.openai import OpenAIChat
 
@@ -83,7 +89,8 @@ def _build_model() -> Model:
     if provider == "google":
         from agno.models.google import Gemini
 
-        return Gemini(id=model_id)
+        # agno's Gemini uses `max_output_tokens` (not `max_tokens`).
+        return Gemini(id=model_id, max_output_tokens=max_tokens)
     # openrouter
     from agno.models.openrouter import OpenRouter
 
