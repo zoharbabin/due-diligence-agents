@@ -61,6 +61,24 @@ class TestResolveProvider:
         monkeypatch.setenv("DD_MAX_OUTPUT_TOKENS", "not-a-number")
         assert resolve_provider().max_output_tokens is None
 
+    def test_describe_is_secret_free_and_includes_routing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """describe() (logged once at pipeline start) summarizes routing, no secrets."""
+        monkeypatch.setenv("ANTHROPIC_BASE_URL", "http://localhost:4011")
+        monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "sk-secret")  # pragma: allowlist secret
+        monkeypatch.setenv("DD_MAX_OUTPUT_TOKENS", "4096")
+        text = resolve_provider().describe()
+        assert "provider=gateway" in text
+        assert "base_url=http://localhost:4011" in text
+        assert "max_output_tokens=4096" in text
+        assert "sk-secret" not in text  # pragma: allowlist secret
+
+    def test_describe_minimal_for_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+        monkeypatch.delenv("DD_MAX_OUTPUT_TOKENS", raising=False)
+        monkeypatch.delenv("CLAUDE_CODE_USE_BEDROCK", raising=False)
+        monkeypatch.delenv("CLAUDE_CODE_USE_VERTEX", raising=False)
+        assert resolve_provider().describe() == "provider=anthropic"
+
 
 class TestBuildAgentOptions:
     def test_sets_model_when_given(self) -> None:

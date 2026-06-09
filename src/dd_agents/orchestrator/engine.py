@@ -137,6 +137,13 @@ class PipelineEngine:
         """
         self._run_options = options or {}
 
+        # Surface the active LLM provider routing once, up front, so a run's
+        # logs record which provider/gateway answered (model/provider-agnostic
+        # by env — see dd_agents.llm.provider). Secret-free by construction.
+        from dd_agents.llm import resolve_provider
+
+        logger.info("LLM routing: %s", resolve_provider().describe())
+
         # Suppress the known anyio/SDK cancel-scope RuntimeError that fires
         # during event-loop shutdown.  The SDK's ``process_query`` async
         # generator uses an anyio task group internally.  When Python's

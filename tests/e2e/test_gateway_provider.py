@@ -13,7 +13,7 @@ normal CI matrix, which has no proxy). To run it:
     # 2. point the test at it:
     DD_TEST_GATEWAY_URL=http://localhost:4011 \
     DD_TEST_GATEWAY_KEY=sk-anything \
-    DD_TEST_GATEWAY_MODEL=claude-sonnet-4-5-20250929 \
+    DD_TEST_GATEWAY_MODEL=claude-sonnet-4-6 \
     DD_MAX_OUTPUT_TOKENS=4096 \
     pytest tests/e2e/test_gateway_provider.py -m gateway
 """

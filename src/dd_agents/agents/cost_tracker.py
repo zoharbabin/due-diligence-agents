@@ -58,7 +58,16 @@ def _load_pricing_overrides() -> dict[str, dict[str, float]]:
     if isinstance(data, dict):
         for model, price in data.items():
             if isinstance(price, dict) and "input" in price and "output" in price:
-                overrides[str(model)] = {"input": float(price["input"]), "output": float(price["output"])}
+                try:
+                    overrides[str(model)] = {
+                        "input": float(price["input"]),
+                        "output": float(price["output"]),
+                    }
+                except (TypeError, ValueError):
+                    logger.warning(
+                        "DD_MODEL_PRICING entry %r has non-numeric rates — ignoring it",
+                        model,
+                    )
     return overrides
 
 

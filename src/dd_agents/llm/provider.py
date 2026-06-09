@@ -5,11 +5,13 @@ through :func:`build_agent_options` rather than constructing options by hand.
 That gives one place to:
 
 - always resolve the CLI binary (``resolve_sdk_cli_path``),
-- always set an explicit ``model`` (never silently ride the CLI default),
+- set an explicit ``model`` when one is resolved (a deal/env override),
+  otherwise intentionally inherit the provider/CLI default,
 - honor an output-token clamp for gateways whose backing model has a lower
   cap than the CLI's default request (``DD_MAX_OUTPUT_TOKENS`` ->
   ``CLAUDE_CODE_MAX_OUTPUT_TOKENS``), and
-- report the active provider for audit/provenance (:func:`resolve_provider`).
+- snapshot the active provider routing for diagnostics
+  (:func:`resolve_provider` — logged once at pipeline start).
 
 Provider/model selection is environment-driven (see
 ``docs/user-guide/model-providers.md`` and ``.env.example``); this module reads
@@ -31,7 +33,8 @@ class ProviderInfo:
     """Audit-friendly snapshot of the active LLM provider routing.
 
     Derived purely from environment — the same env the Claude CLI reads. Used
-    for provenance/diagnostics; it does not itself change behavior.
+    for diagnostics (logged once at pipeline start, see
+    :meth:`ProviderInfo.describe`); it does not itself change behavior.
     """
 
     #: One of: ``anthropic`` | ``bedrock`` | ``vertex`` | ``gateway``.
@@ -40,6 +43,15 @@ class ProviderInfo:
     base_url: str | None
     #: Output-token clamp in effect (None when unset).
     max_output_tokens: int | None
+
+    def describe(self) -> str:
+        """One-line, secret-free summary for startup logging."""
+        parts = [f"provider={self.provider}"]
+        if self.base_url:
+            parts.append(f"base_url={self.base_url}")
+        if self.max_output_tokens is not None:
+            parts.append(f"max_output_tokens={self.max_output_tokens}")
+        return " ".join(parts)
 
 
 def _max_output_tokens() -> int | None:

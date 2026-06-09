@@ -252,8 +252,10 @@ class TestPricingAgnostic:
     def test_known_claude_model_priced_from_table(self) -> None:
         from dd_agents.agents.cost_tracker import _estimate_cost
 
-        # 1M input + 1M output at Sonnet rates = 3 + 15 = $18.
-        assert _estimate_cost("claude-sonnet-4-6", 1_000_000, 1_000_000) == pytest.approx(18.0)
+        # Use a model whose table rate DIFFERS from the default fallback, so a
+        # regression to the fallback path would fail this test. Opus = 15/75.
+        # 1M input + 1M output = 15 + 75 = $90 (default would give $18).
+        assert _estimate_cost("claude-opus-4-8", 1_000_000, 1_000_000) == pytest.approx(90.0)
 
     def test_unknown_model_falls_back_and_warns_once(self, caplog: pytest.LogCaptureFixture) -> None:
         import dd_agents.agents.cost_tracker as ct
@@ -280,3 +282,15 @@ class TestPricingAgnostic:
         ct._WARNED_UNKNOWN_MODELS.discard("some/model")
         # Falls back to default, does not raise.
         assert ct._estimate_cost("some/model", 1_000_000, 0) == pytest.approx(3.0)
+
+    def test_override_with_non_numeric_rates_ignored(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import json
+
+        import dd_agents.agents.cost_tracker as ct
+
+        # Structurally-valid JSON dict but a non-numeric rate — must be skipped,
+        # not crash cost tracking mid-run. (Guards the per-entry float() coercion.)
+        monkeypatch.setenv("DD_MODEL_PRICING", json.dumps({"m": {"input": "abc", "output": 1.0}}))
+        ct._WARNED_UNKNOWN_MODELS.discard("m")
+        # The bad entry is dropped, so the model falls back to the default rate.
+        assert ct._estimate_cost("m", 1_000_000, 0) == pytest.approx(3.0)

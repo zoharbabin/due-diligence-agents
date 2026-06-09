@@ -256,11 +256,12 @@ def test_no_claude_agent_options_constructed_outside_the_seam() -> None:
             stripped = line.strip()
             if stripped.startswith(("#", "from ", "import ", '"', "'")):
                 continue
-            # Ignore docstring/prose mentions inside a backtick code-span
-            # (e.g. ``ClaudeAgentOptions(hooks=...)`` in a docstring).
-            if "`" in line:
-                continue
-            if call_re.search(line):
+            # Blank out backtick code-spans (single or double backtick, e.g.
+            # ``ClaudeAgentOptions(hooks=...)`` in a docstring) so a prose
+            # mention is ignored — but a real construction with an unrelated
+            # inline-backtick comment on the same line is still caught.
+            scannable = re.sub(r"`+[^`]*`+", "", line)
+            if call_re.search(scannable):
                 offenders.append(f"{py.relative_to(REPO_ROOT)}:{i}: {stripped}")
     assert not offenders, (
         "ClaudeAgentOptions constructed outside dd_agents.llm.provider — route it "
