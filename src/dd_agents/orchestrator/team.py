@@ -13,7 +13,7 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from dd_agents.agents.registry import AgentRegistry
 from dd_agents.utils.constants import (
@@ -22,6 +22,7 @@ from dd_agents.utils.constants import (
 )
 
 if TYPE_CHECKING:
+    from dd_agents.models.config import DealConfig
     from dd_agents.orchestrator.state import PipelineState
 
 logger = logging.getLogger(__name__)
@@ -82,6 +83,32 @@ class AgentTeam:
         self._completed_agents: set[str] = set()
         # Per-batch SDK turn counts: "commercial_b1" → turn_number
         self._batch_turns: dict[str, int] = {}
+        # Typed deal config, built once from the (CLI-override-applied) raw
+        # state.deal_config so specialist runners resolve agent_models / model
+        # overrides. Cached: parsed lazily on first access. ``False`` sentinel
+        # distinguishes "not yet built" from a successfully-parsed ``None``.
+        self._typed_deal_config: DealConfig | None | Literal[False] = False
+
+    def _deal_config(self) -> DealConfig | None:
+        """Return the typed deal config parsed from ``state.deal_config``.
+
+        The runners need a typed ``DealConfig`` to resolve model selection via
+        ``agent_models`` (profile + per-agent overrides). ``state.deal_config``
+        is the raw dict with CLI overrides already applied (see
+        ``engine._step_01``), so parsing it here keeps a single source of truth
+        and honors ``--model-profile`` / ``--model-override``.
+        """
+        if self._typed_deal_config is False:
+            self._typed_deal_config = None
+            raw = self.state.deal_config
+            if isinstance(raw, dict):
+                try:
+                    from dd_agents.models.config import DealConfig as _DealConfig
+
+                    self._typed_deal_config = _DealConfig.model_validate(raw)
+                except Exception as exc:  # noqa: BLE001 — config already validated upstream
+                    logger.debug("Could not build typed deal config for model resolution: %s", exc)
+        return self._typed_deal_config
 
     # ------------------------------------------------------------------
     # Specialist agents
@@ -283,6 +310,7 @@ class AgentTeam:
                 project_dir=self.state.project_dir,
                 run_dir=self.state.run_dir,
                 run_id=self.state.run_id,
+                deal_config=self._deal_config(),
             )
             runner.batch_label = batch_label
             if runner_kwargs.get("max_turns"):
@@ -385,11 +413,20 @@ class AgentTeam:
         # Estimate cost from token counts
         from dd_agents.agents.cost_tracker import _estimate_cost
 
+        # Resolve the effective model id the SAME way the runner does (typed
+        # deal config → agent_models), so cost is attributed to the real model
+        # rather than blank. Falls back to the registry's default model when no
+        # selection is configured, so a run is never costed against "".
         model_id = ""
         if runner_cls is not None:
             try:
-                _tmp = runner_cls.__new__(runner_cls)  # type: ignore[call-overload]
-                model_id = (_tmp.get_model_id() if hasattr(_tmp, "get_model_id") else "") or ""
+                _tmp = runner_cls(
+                    project_dir=self.state.project_dir,
+                    run_dir=self.state.run_dir,
+                    run_id=self.state.run_id,
+                    deal_config=self._deal_config(),
+                )
+                model_id = (_tmp.get_model_id() if hasattr(_tmp, "get_model_id") else None) or ""
             except Exception:  # noqa: BLE001
                 pass
         cost_usd = _estimate_cost(model_id, total_input_tokens, total_output_tokens)
@@ -430,6 +467,7 @@ class AgentTeam:
             project_dir=self.state.project_dir,
             run_dir=self.state.run_dir,
             run_id=self.state.run_id,
+            deal_config=self._deal_config(),
         )
 
         agent_state: dict[str, Any] = {

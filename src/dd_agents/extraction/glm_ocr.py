@@ -27,6 +27,7 @@ vs bf16) had minimal impact on accuracy.
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import tempfile
 import threading
@@ -39,8 +40,11 @@ from dd_agents.extraction._constants import CONFIDENCE_GLM_OCR as _CONFIDENCE_GL
 logger = logging.getLogger(__name__)
 
 # ── Tuning constants (benchmarked on Apple M3 Max) ───────────────────
-MODEL_ID_MLX = "mlx-community/GLM-OCR-8bit"
-MODEL_ID_OLLAMA = "glm-ocr"
+# Local VLM model tags. Override to point OCR at a different local model
+# (e.g. a newer GLM-OCR build or a differently-tagged Ollama model), mirroring
+# the DD_TRANSCRIPTION_MODEL knob on the sibling transcription path.
+MODEL_ID_MLX = os.getenv("DD_OCR_MODEL_MLX") or "mlx-community/GLM-OCR-8bit"
+MODEL_ID_OLLAMA = os.getenv("DD_OCR_MODEL_OLLAMA") or "glm-ocr"
 MAX_TOKENS = 2048
 DPI = 200
 MAX_IMAGE_DIM = 1024

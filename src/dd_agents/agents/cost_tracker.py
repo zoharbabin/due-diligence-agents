@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 from collections import defaultdict
 from typing import Any
 
@@ -42,6 +43,7 @@ _DEFAULT_PRICING: dict[str, float] = {"input": 3.0, "output": 15.0}
 
 # Models we've already warned about (one warning per unknown model per process).
 _WARNED_UNKNOWN_MODELS: set[str] = set()
+_WARNED_LOCK = threading.Lock()
 
 
 def _load_pricing_overrides() -> dict[str, dict[str, float]]:
@@ -83,13 +85,17 @@ def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
         pricing = _load_pricing_overrides().get(model)
     if pricing is None:
         pricing = _DEFAULT_PRICING
-        if model not in _WARNED_UNKNOWN_MODELS:
-            _WARNED_UNKNOWN_MODELS.add(model)
-            logger.warning(
-                "No pricing for model %r — estimating at default (Sonnet-shaped) rates. "
-                "Set DD_MODEL_PRICING to cost it accurately.",
-                model,
-            )
+        # Advisory one-warning-per-unknown-model dedup. Guarded so concurrent
+        # specialist tasks emit the warning deterministically (the cost value
+        # itself is unaffected — it always uses the default rate here).
+        with _WARNED_LOCK:
+            if model not in _WARNED_UNKNOWN_MODELS:
+                _WARNED_UNKNOWN_MODELS.add(model)
+                logger.warning(
+                    "No pricing for model %r — estimating at default (Sonnet-shaped) rates. "
+                    "Set DD_MODEL_PRICING to cost it accurately.",
+                    model,
+                )
     return (input_tokens * pricing["input"] + output_tokens * pricing["output"]) / 1_000_000
 
 
@@ -239,6 +245,14 @@ class CostTracker:
             result[e.step] += e.cost_usd
         return dict(result)
 
+    def models_used(self) -> list[str]:
+        """Return the distinct, non-empty model ids recorded across the run.
+
+        Sorted for determinism. Used to stamp the run's audit receipt with the
+        models that actually produced the analysis.
+        """
+        return sorted({e.model for e in self.entries if e.model})
+
     def is_budget_exceeded(self) -> bool:
         """Return True if total cost exceeds the budget limit."""
         if self.budget_limit_usd is None:
@@ -252,12 +266,20 @@ class CostTracker:
         return max(0.0, self.budget_limit_usd - self.total_cost())
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize the tracker state for reporting."""
+        """Serialize the tracker state for reporting.
+
+        Includes the active LLM routing receipt (provider + secret-free
+        base_url + distinct models used) so cost_summary.json is a
+        self-contained audit artifact: what was spent AND on which provider/model.
+        """
+        from dd_agents.llm import resolve_provider
+
         return {
             "total_cost": round(self.total_cost(), 4),
             "total_tokens": self.total_tokens(),
             "budget_limit_usd": self.budget_limit_usd,
             "budget_remaining": round(self.remaining_budget(), 4) if self.budget_limit_usd else None,
+            "routing": {**resolve_provider().as_receipt(), "models_used": self.models_used()},
             "by_agent": {k: round(v, 4) for k, v in self.cost_by_agent().items()},
             "by_step": {k: round(v, 4) for k, v in self.cost_by_step().items()},
             "entries": [e.model_dump() for e in self.entries],

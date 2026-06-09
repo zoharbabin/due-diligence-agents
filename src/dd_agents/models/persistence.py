@@ -25,6 +25,15 @@ class RunMetadata(BaseModel):
     execution_mode: ExecutionMode = Field(description="Execution mode: 'full' or 'incremental'")
     config_hash: str = Field(description="SHA-256 hash of deal-config.json")
     framework_version: str = Field(default="unknown", description="Version of the dd-agents framework")
+    # LLM routing receipt (audit): which provider/gateway answered. Secret-free
+    # (base_url is host-only). Empty/None when not recorded (older runs).
+    llm_provider: str | None = Field(
+        default=None, description="Active LLM provider: anthropic | bedrock | vertex | gateway"
+    )
+    llm_base_url: str | None = Field(
+        default=None, description="Gateway base URL (host only, credentials stripped), if any"
+    )
+    llm_models: list[str] = Field(default_factory=list, description="Distinct model ids actually used across the run")
     cross_skill_run_ids: dict[str, str] = Field(
         default_factory=dict, description="Map of skill name to run_id for cross-skill data"
     )

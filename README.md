@@ -214,9 +214,16 @@ cp .env.example .env
 
 **AWS Bedrock** (if you use AWS):
 ```bash
+export CLAUDE_CODE_USE_BEDROCK=1
 export AWS_PROFILE=default
 export AWS_REGION=us-east-1
 ```
+
+**Any model — no vendor lock-in.** dd-agents is provider- *and* model-agnostic by
+env config (no code change): Anthropic API, your own **AWS Bedrock** or **Google
+Vertex AI** account, or **any model** (GPT, Gemini, DeepSeek, local) behind an
+Anthropic-compatible gateway. Verify your setup with `dd-agents doctor`. See
+[Model Providers](docs/user-guide/model-providers.md).
 </details>
 
 <details>
@@ -326,7 +333,7 @@ The pipeline **halts on quality failures** rather than producing unreliable outp
 
 ## Security & Privacy
 
-- **Local execution** — all analysis runs on your machine. Documents only leave your machine as API calls to your configured LLM provider (Anthropic API, AWS Bedrock, or Google Vertex AI).
+- **Local execution** — all analysis runs on your machine. Documents only leave your machine as API calls to your configured LLM endpoint — Anthropic API, AWS Bedrock, Google Vertex AI, or an Anthropic-compatible gateway you point it at. See [Model Providers](docs/user-guide/model-providers.md).
 - **No telemetry** — the tool does not phone home, collect usage data, or send analytics anywhere.
 - **Read-only** — the tool never modifies files in your data room. Output is written to a separate `_dd/` directory.
 - **No persistent credentials** — API keys are read from environment variables or `.env` files, never stored in output artifacts.

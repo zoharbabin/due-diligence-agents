@@ -175,6 +175,12 @@ class RunManager:
         if fw_path.exists():
             framework_version = fw_path.read_text(encoding="utf-8").strip()
 
+        # Record the active LLM routing (secret-free) so the durable run record
+        # shows which provider/gateway produced the analysis (enterprise audit).
+        from dd_agents.llm import resolve_provider
+
+        routing = resolve_provider().as_receipt()
+
         metadata = RunMetadata(
             run_id=run_id,
             timestamp=datetime.now(UTC).isoformat(),
@@ -182,6 +188,8 @@ class RunManager:
             execution_mode=exec_mode,
             config_hash=config_hash,
             framework_version=framework_version,
+            llm_provider=routing["provider"],  # type: ignore[arg-type]
+            llm_base_url=routing["base_url"],  # type: ignore[arg-type]
             completion_status=CompletionStatus.IN_PROGRESS,
         )
 

@@ -95,6 +95,9 @@ class PipelineEngine:
         self.checkpoint_dir = self.project_dir / "_dd" / "forensic-dd" / "checkpoints"
         self.team: AgentTeam | None = None
         self._run_options: dict[str, Any] = {}
+        # Cache of the typed DealConfig built from the effective (CLI-override
+        # applied) raw config. None until first built; reset when raw changes.
+        self._typed_deal_config_cache: tuple[int, Any] | None = None
 
         from dd_agents.agents.cost_tracker import CostTracker
         from dd_agents.agents.registry import AgentRegistry
@@ -237,6 +240,7 @@ class PipelineEngine:
             if stored_provenance:
                 from dd_agents.agents.prompt_builder import PromptBuilder
                 from dd_agents.agents.registry import AgentRegistry as _Reg
+                from dd_agents.llm import resolve_provider as _rp
                 from dd_agents.persistence.provenance import (
                     compute_persona_hashes as _cph,
                 )
@@ -251,14 +255,16 @@ class PipelineEngine:
                     # project_dir folds dd-config/ drift into the recompute too,
                     # matching VALIDATE_CONFIG (Copilot #202 C5).
                     _cph(_Reg.collect_persona_texts(_active, project_dir=self.project_dir)),
+                    # Routing fingerprint: a provider/gateway swap busts the gate.
+                    _rp().fingerprint(),
                 )
                 if _current != stored_provenance:
                     raise BlockingGateError(
-                        "Resume blocked: deal config or agent personas/prompts changed "
-                        "since this checkpoint (provenance hash mismatch). Resuming would "
-                        "pair stale results with new instructions and break reproducibility. "
-                        "Delete the checkpoint directory or re-run without --resume-from to "
-                        "start fresh."
+                        "Resume blocked: deal config, agent personas/prompts, or LLM "
+                        "provider/model routing changed since this checkpoint (provenance "
+                        "hash mismatch). Resuming would pair stale results with new "
+                        "instructions/backends and break reproducibility. Delete the "
+                        "checkpoint directory or re-run without --resume-from to start fresh."
                     )
                 logger.info("Provenance gate passed — checkpoint matches current config/personas.")
             elif resume_from_step > 1:
@@ -709,6 +715,22 @@ class PipelineEngine:
         except Exception as exc:
             raise BlockingGateError(f"Config validation failed: {exc}") from exc
 
+        # Apply CLI model selection onto the effective config BEFORE hashing, so
+        # --model-profile / --model-override are (a) honored by the agents and
+        # (b) folded into the provenance hash. Mutating the raw dict keeps a
+        # single source of truth: state.deal_config, the typed load, and the hash
+        # all see the same effective config.
+        agent_models_raw = raw.setdefault("agent_models", {})
+        profile_override = self._run_options.get("model_profile")
+        if profile_override:
+            agent_models_raw["profile"] = profile_override
+            logger.info("Model profile overridden by CLI: %s", profile_override)
+        model_overrides = self._run_options.get("model_overrides")
+        if model_overrides:
+            merged = {**agent_models_raw.get("overrides", {}), **model_overrides}
+            agent_models_raw["overrides"] = merged
+            logger.info("Per-agent model overrides applied by CLI: %s", model_overrides)
+
         state.deal_config = raw
         # Provenance (audit §8.1): one canonical config hash (not raw bytes, so
         # it matches the resume-recompute and run_manager), plus prompt version +
@@ -730,7 +752,17 @@ class PipelineEngine:
         state.persona_hashes = compute_persona_hashes(
             AgentRegistry.collect_persona_texts(active_agents, project_dir=self.project_dir)
         )
-        state.provenance_hash = compute_provenance_hash(state.config_hash, state.prompt_version, state.persona_hashes)
+        # Fold the secret-free LLM routing fingerprint into provenance so a
+        # resume under a different provider/gateway/clamp is rejected (no
+        # silent cross-backend stitching).
+        from dd_agents.llm import resolve_provider
+
+        state.provenance_hash = compute_provenance_hash(
+            state.config_hash,
+            state.prompt_version,
+            state.persona_hashes,
+            resolve_provider().fingerprint(),
+        )
 
         # Pull execution settings from config
         execution = raw.get("execution", {})
@@ -744,13 +776,15 @@ class PipelineEngine:
             state.execution_mode = mode_override
             logger.info("Execution mode overridden by CLI: %s", mode_override)
 
-        # Refine active agents now that the typed config is available.
+        # Refine active agents now that the typed config is available. Use the
+        # effective in-memory config (single source of truth) rather than a
+        # fresh disk read.
         try:
             from dd_agents.agents.registry import AgentRegistry
-            from dd_agents.config import load_deal_config
 
-            deal_cfg = load_deal_config(self.deal_config_path)
-            self._active_agents = AgentRegistry.resolve_active(deal_cfg)
+            deal_cfg = self._typed_deal_config(state)
+            if deal_cfg is not None:
+                self._active_agents = AgentRegistry.resolve_active(deal_cfg)
         except Exception as exc:
             logger.debug("Could not refine active agents from config: %s", exc)
 
@@ -763,6 +797,33 @@ class PipelineEngine:
             self._active_agents,
         )
         return state
+
+    def _typed_deal_config(self, state: PipelineState) -> Any:
+        """Return the typed ``DealConfig`` built from the EFFECTIVE raw config.
+
+        Single source of truth for model selection across every agent the
+        engine constructs (synthesis, judge, etc.). Built from
+        ``state.deal_config`` — the raw dict with CLI ``--model-profile`` /
+        ``--model-override`` already applied in ``_step_01`` — rather than
+        re-reading the on-disk file, so the overrides are honored and provenance
+        stays consistent. Cached against the raw object's identity so a resume
+        that swaps the dict rebuilds it.
+        """
+        raw = state.deal_config
+        if not isinstance(raw, dict):
+            return None
+        cache = self._typed_deal_config_cache
+        if cache is not None and cache[0] == id(raw):
+            return cache[1]
+        typed: Any = None
+        try:
+            from dd_agents.models.config import DealConfig
+
+            typed = DealConfig.model_validate(raw)
+        except Exception as exc:  # noqa: BLE001 — config already validated in _step_01
+            logger.debug("Could not build typed deal config: %s", exc)
+        self._typed_deal_config_cache = (id(raw), typed)
+        return typed
 
     async def _step_02_init_persistence(self, state: PipelineState) -> PipelineState:
         """Generate run_id, create directory structure, wipe FRESH tier.
@@ -867,7 +928,7 @@ class PipelineEngine:
 
     async def _step_05_bulk_extraction(self, state: PipelineState) -> PipelineState:
         """Bulk pre-extraction of text from documents.  BLOCKING GATE."""
-        from dd_agents.extraction.pipeline import ExtractionPipeline, ExtractionPipelineError
+        from dd_agents.extraction.pipeline import ExtractionPipelineError
 
         files = getattr(state, "_discovered_files", [])
         if not files:
@@ -882,22 +943,11 @@ class PipelineEngine:
         # Resolve file paths to absolute
         file_paths = [str(state.project_dir / entry.path) for entry in files]
 
-        # Select OCR backend from deal-config (Issue #2)
-        ocr_preference = "auto"
-        if state.deal_config and isinstance(state.deal_config, dict):
-            extraction_cfg = state.deal_config.get("extraction", {})
-            if isinstance(extraction_cfg, dict):
-                ocr_preference = extraction_cfg.get("ocr_backend", "auto")
+        # Select OCR backend from deal-config (Issue #2) via the shared seam so
+        # the orchestrator and the standalone search command never diverge.
+        from dd_agents.extraction.ocr_registry import build_extraction_pipeline
 
-        from dd_agents.extraction.ocr_registry import OCRBackendRegistry
-
-        ocr_backend = OCRBackendRegistry.get_backend(ocr_preference)
-
-        from dd_agents.extraction.glm_ocr import GlmOcrExtractor
-
-        # Pass registry-selected GLM-OCR backend if available; otherwise
-        # None so the pipeline relies on its default pytesseract OCR.
-        pipeline = ExtractionPipeline(glm_ocr=ocr_backend if isinstance(ocr_backend, GlmOcrExtractor) else None)
+        pipeline = build_extraction_pipeline(state.deal_config)
         try:
             pipeline.extract_all(
                 files=file_paths,
@@ -1245,16 +1295,10 @@ class PipelineEngine:
         reference_files: list[Any] = getattr(state, "_reference_files", [])
         deal_config_raw = state.deal_config
 
-        # Lazy import to build typed DealConfig only when available
-        deal_config_obj: Any = None
-        if deal_config_raw:
-            try:
-                from dd_agents.config import load_deal_config
-
-                deal_config_obj = load_deal_config(self.deal_config_path)
-            except Exception as exc:
-                logger.warning("Failed to load deal config for prompt enrichment: %s", exc)
-                deal_config_obj = None
+        # Build typed DealConfig from the effective in-memory config (CLI
+        # overrides applied), not the on-disk file, so prompt enrichment and
+        # model selection stay consistent with the rest of the run.
+        deal_config_obj: Any = self._typed_deal_config(state) if deal_config_raw else None
 
         run_dir = state.run_dir or (state.project_dir / state.skill_dir / "runs" / state.run_id)
         builder = PromptBuilder(
@@ -2619,6 +2663,7 @@ class PipelineEngine:
                 project_dir=state.project_dir,
                 run_dir=state.run_dir,
                 run_id=state.run_id,
+                deal_config=self._typed_deal_config(state),
             )
             # Apply deal-config overrides
             judge.score_threshold = judge_config.get("score_threshold", DEFAULT_SCORE_THRESHOLD)
@@ -3412,10 +3457,18 @@ class PipelineEngine:
         Collects quality_scores, entity_matches, reference_files, and
         run-level statistics so conditional sheets have data to render.
         """
+        from dd_agents.llm import resolve_provider
+
+        routing = resolve_provider().as_receipt()
         run_metadata: dict[str, Any] = {
             "run_id": state.run_id,
             "execution_mode": state.execution_mode,
             "framework_version": state.framework_version,
+            # Generation provenance (secret-free): which provider/model produced
+            # the analysis, for enterprise audit/governance review.
+            "llm_provider": routing["provider"],
+            "llm_base_url": routing["base_url"],
+            "llm_models": (ct.models_used() if (ct := getattr(self, "cost_tracker", None)) else []),
         }
 
         inv_dir = self._inventory_dir(state)
@@ -3633,6 +3686,7 @@ class PipelineEngine:
                 project_dir=self.project_dir,
                 run_dir=state.run_dir,
                 run_id=state.run_id,
+                deal_config=self._typed_deal_config(state),
             )
             # Collect P0 and P1 findings from merged data.
             # Apply severity recalibration so the agent sees the same
@@ -3728,6 +3782,7 @@ class PipelineEngine:
                     project_dir=self.project_dir,
                     run_dir=state.run_dir,
                     run_id=state.run_id,
+                    deal_config=self._typed_deal_config(state),
                 )
                 ai_state = {
                     "buyer_strategy": deal_config_dict["buyer_strategy"],
@@ -3770,6 +3825,7 @@ class PipelineEngine:
                     project_dir=self.project_dir,
                     run_dir=state.run_dir,
                     run_id=state.run_id,
+                    deal_config=self._typed_deal_config(state),
                 )
                 rf_state: dict[str, Any] = {
                     "merged_findings_dir": str(state.run_dir / "findings" / "merged"),
@@ -3797,6 +3853,7 @@ class PipelineEngine:
                     project_dir=self.project_dir,
                     run_dir=state.run_dir,
                     run_id=state.run_id,
+                    deal_config=self._typed_deal_config(state),
                 )
 
                 # Build domain summaries from severity distribution
@@ -3969,6 +4026,12 @@ class PipelineEngine:
         subject_assignments = self._collect_subject_assignments(state)
         batch_counts = getattr(state, "batch_counts", {}) or {}
 
+        # LLM routing receipt (secret-free): which provider/gateway answered and
+        # the distinct models actually used — recorded in the durable run record.
+        from dd_agents.llm import resolve_provider
+
+        routing = resolve_provider().as_receipt()
+
         metadata = RunMetadata(
             run_id=state.run_id,
             timestamp=state.run_dir.name if state.run_dir else state.run_id,
@@ -3976,6 +4039,9 @@ class PipelineEngine:
             execution_mode=ExecutionMode(state.execution_mode),
             config_hash=state.config_hash,
             framework_version=state.framework_version,
+            llm_provider=routing["provider"],  # type: ignore[arg-type]
+            llm_base_url=routing["base_url"],  # type: ignore[arg-type]
+            llm_models=self.cost_tracker.models_used(),
             completion_status=CompletionStatus.COMPLETED,
             finding_counts=finding_counts,
             gap_counts=gap_counts,

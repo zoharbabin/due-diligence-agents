@@ -92,10 +92,14 @@ def extract_document(
     # and get_page_content look up files by whatever source_path the agent
     # passes — typically a relative or bare path.  To bridge the gap we
     # write the extracted text under every plausible lookup name.
+    from dd_agents.extraction.ocr_registry import build_extraction_pipeline
     from dd_agents.extraction.pipeline import ExtractionPipeline
 
     try:
-        pipeline = ExtractionPipeline()
+        # Shared OCR seam (auto-detect; no deal config in the on-demand tool path)
+        # so single-document extraction gets GLM-OCR when available, matching the
+        # bulk pipeline instead of silently falling back to pytesseract-only.
+        pipeline = build_extraction_pipeline()
         text_out.mkdir(parents=True, exist_ok=True)
 
         entry = pipeline.extract_single(filepath=resolved, output_dir=text_out)

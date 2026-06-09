@@ -62,17 +62,26 @@ def compute_provenance_hash(
     config_hash: str,
     prompt_version: str,
     persona_hashes: dict[str, str],
+    routing_fingerprint: str = "",
 ) -> str:
     """Combine config + prompt-version + persona hashes into one provenance hash.
 
     This is the value the fail-closed resume gate compares: if the config, the
-    prompt builder version, or any agent persona changed since the checkpoint,
-    the combined hash changes and the stale checkpoint is rejected.
+    prompt builder version, any agent persona, or the LLM routing
+    (provider/gateway/clamp — ``routing_fingerprint``) changed since the
+    checkpoint, the combined hash changes and the stale checkpoint is rejected.
+    So a run cannot silently resume under a different provider/model and stitch
+    findings from two backends into one report.
+
+    ``routing_fingerprint`` defaults to ``""`` so the function stays pure (the
+    caller derives the secret-free fingerprint from the environment and passes
+    it in); an empty value preserves the legacy three-input hash.
     """
     payload = {
         "config_hash": config_hash,
         "prompt_version": prompt_version,
         "persona_hashes": dict(sorted(persona_hashes.items())),
+        "routing_fingerprint": routing_fingerprint,
     }
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()

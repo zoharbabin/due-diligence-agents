@@ -44,14 +44,58 @@ class ProviderInfo:
     #: Output-token clamp in effect (None when unset).
     max_output_tokens: int | None
 
+    @property
+    def safe_base_url(self) -> str | None:
+        """``base_url`` with any embedded credentials stripped.
+
+        ``ANTHROPIC_BASE_URL`` can legitimately carry secrets in userinfo
+        (``https://token@host``) or a query string (``?api-key=...``). This
+        keeps only scheme + host[:port] + path so the value is safe to log and
+        persist. Returns None when no base_url is set.
+        """
+        if not self.base_url:
+            return None
+        from urllib.parse import urlsplit, urlunsplit
+
+        parts = urlsplit(self.base_url)
+        host = parts.hostname or ""
+        if parts.port:
+            host = f"{host}:{parts.port}"
+        # Drop userinfo (netloc → host only), query, and fragment.
+        return urlunsplit((parts.scheme, host, parts.path, "", "")) or None
+
     def describe(self) -> str:
         """One-line, secret-free summary for startup logging."""
         parts = [f"provider={self.provider}"]
-        if self.base_url:
-            parts.append(f"base_url={self.base_url}")
+        safe = self.safe_base_url
+        if safe:
+            parts.append(f"base_url={safe}")
         if self.max_output_tokens is not None:
             parts.append(f"max_output_tokens={self.max_output_tokens}")
         return " ".join(parts)
+
+    def as_receipt(self) -> dict[str, str | int | None]:
+        """Secret-free routing receipt for persistence into the run audit trail."""
+        return {
+            "provider": self.provider,
+            "base_url": self.safe_base_url,
+            "max_output_tokens": self.max_output_tokens,
+        }
+
+    def fingerprint(self) -> str:
+        """Stable, secret-free identity of the active routing.
+
+        Folded into the provenance hash so a resume under a different
+        provider/gateway/clamp is rejected by the fail-closed gate. Uses the
+        redacted base_url (host only), so no secret enters the hash.
+        """
+        return "|".join(
+            (
+                self.provider,
+                self.safe_base_url or "",
+                str(self.max_output_tokens if self.max_output_tokens is not None else ""),
+            )
+        )
 
 
 def _max_output_tokens() -> int | None:

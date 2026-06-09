@@ -29,6 +29,29 @@ class MethodologyRenderer(SectionRenderer):
             "quality gates.</p>"
         )
 
+        # Generation provenance (secret-free): which provider/model produced the
+        # analysis, for audit/governance review. Sourced from the persisted run
+        # metadata routing receipt (see RunMetadata.llm_*).
+        run_meta = (self.config or {}).get("_run_metadata") or {}
+        if isinstance(run_meta, dict):
+            provider = run_meta.get("llm_provider")
+            models = run_meta.get("llm_models") or []
+            base_url = run_meta.get("llm_base_url")
+            if provider or models:
+                items: list[str] = []
+                if provider:
+                    items.append(f"<li>Provider: <strong>{self.escape(str(provider))}</strong></li>")
+                if models:
+                    model_str = ", ".join(self.escape(str(m)) for m in models)
+                    items.append(f"<li>Model(s): <strong>{model_str}</strong></li>")
+                if base_url:
+                    items.append(f"<li>Gateway: <strong>{self.escape(str(base_url))}</strong></li>")
+                parts.append("<h3>Generation Provenance</h3>")
+                parts.append(
+                    "<p>The findings in this report were produced by the following model/provider configuration:</p>"
+                )
+                parts.append("<ul>" + "".join(items) + "</ul>")
+
         # Key stats
         parts.append(
             "<div class='metrics-strip'>"

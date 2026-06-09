@@ -15,12 +15,46 @@ Set ``extraction.ocr_backend`` in deal-config.json:
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from dd_agents.extraction.backend import ExtractionBackend
+    from dd_agents.extraction.pipeline import ExtractionPipeline
 
 logger = logging.getLogger(__name__)
+
+
+def _ocr_preference_from_config(deal_config: Any) -> str:
+    """Extract ``extraction.ocr_backend`` from a raw-dict or typed deal config.
+
+    Returns ``"auto"`` when unset or unreadable.
+    """
+    if isinstance(deal_config, dict):
+        extraction_cfg = deal_config.get("extraction", {})
+        if isinstance(extraction_cfg, dict):
+            value = extraction_cfg.get("ocr_backend", "auto")
+            return str(value) if value else "auto"
+        return "auto"
+    extraction = getattr(deal_config, "extraction", None)
+    return str(getattr(extraction, "ocr_backend", "auto") or "auto")
+
+
+def build_extraction_pipeline(deal_config: Any = None) -> ExtractionPipeline:
+    """Build an ``ExtractionPipeline`` with the config-selected OCR backend.
+
+    The ONE seam for OCR-backend selection: reads ``extraction.ocr_backend``
+    from the deal config (raw dict or typed), resolves it through
+    :meth:`OCRBackendRegistry.get_backend`, and wires a GLM-OCR backend into the
+    pipeline only when one is actually available — otherwise the pipeline relies
+    on its built-in pytesseract path. Both the orchestrator and the standalone
+    search command call this so OCR selection can never drift between them.
+    """
+    from dd_agents.extraction.glm_ocr import GlmOcrExtractor
+    from dd_agents.extraction.pipeline import ExtractionPipeline
+
+    preference = _ocr_preference_from_config(deal_config)
+    backend = OCRBackendRegistry.get_backend(preference)
+    return ExtractionPipeline(glm_ocr=backend if isinstance(backend, GlmOcrExtractor) else None)
 
 
 class OCRBackendRegistry:

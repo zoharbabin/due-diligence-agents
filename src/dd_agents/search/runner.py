@@ -161,10 +161,12 @@ class SearchRunner:
 
         if relevant_file_paths:
             self._console.print("\n[bold]Running text extraction...[/bold]")
-            from dd_agents.extraction.glm_ocr import GlmOcrExtractor
-            from dd_agents.extraction.pipeline import ExtractionPipeline
+            from dd_agents.extraction.ocr_registry import build_extraction_pipeline
 
-            pipeline = ExtractionPipeline(glm_ocr=GlmOcrExtractor())
+            # Auto-detect the OCR backend (no deal config in the search path) via
+            # the same seam the pipeline uses, so a machine without mlx-vlm/ollama
+            # does not force an unavailable GLM-OCR backend.
+            pipeline = build_extraction_pipeline()
             pipeline.extract_all(
                 files=relevant_file_paths,
                 output_dir=text_dir,
