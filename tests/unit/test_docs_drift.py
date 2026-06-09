@@ -267,3 +267,52 @@ def test_no_claude_agent_options_constructed_outside_the_seam() -> None:
         "ClaudeAgentOptions constructed outside dd_agents.llm.provider — route it "
         "through build_agent_options() instead:\n" + "\n".join(offenders)
     )
+
+
+# ---------------------------------------------------------------------------
+# Agnosticism documentation contract: env knobs + provider branches must exist
+# in code exactly as the model-providers doc names them (no silent doc drift).
+# ---------------------------------------------------------------------------
+
+
+def test_model_provider_env_vars_documented_match_code() -> None:
+    """Every ``DD_*`` model/provider knob in model-providers.md must exist in src/.
+
+    Catches a rename in code that silently desyncs the agnosticism docs (and
+    .env.example), the failure the docs-anti-drift standard exists to prevent.
+    """
+    doc = (REPO_ROOT / "docs" / "user-guide" / "model-providers.md").read_text(encoding="utf-8")
+    documented = set(re.findall(r"\bDD_[A-Z_]+\b", doc))
+    # Only assert the model/provider tuning knobs this guard owns.
+    owned = {v for v in documented if v.endswith("_MODEL") or v in {"DD_MODEL_PRICING", "DD_MAX_OUTPUT_TOKENS"}}
+    assert owned, "expected model-providers.md to document DD_* model knobs"
+
+    src_text = "\n".join(p.read_text(encoding="utf-8") for p in (REPO_ROOT / "src" / "dd_agents").rglob("*.py"))
+    missing = sorted(v for v in owned if v not in src_text)
+    assert not missing, (
+        f"model-providers.md documents DD_* env vars not present in src/ (renamed/removed in code?): {missing}"
+    )
+
+
+def test_provider_branches_match_resolve_provider() -> None:
+    """The providers named in model-providers.md must match resolve_provider()."""
+    # The four routing branches the seam can return.
+    import os
+    from unittest import mock
+
+    from dd_agents.llm.provider import resolve_provider
+
+    seen = set()
+    for env in (
+        {"ANTHROPIC_BASE_URL": "http://x"},
+        {"CLAUDE_CODE_USE_BEDROCK": "1"},
+        {"CLAUDE_CODE_USE_VERTEX": "1"},
+        {},
+    ):
+        with mock.patch.dict(os.environ, env, clear=True):
+            seen.add(resolve_provider().provider)
+    assert seen == {"gateway", "bedrock", "vertex", "anthropic"}
+
+    doc = (REPO_ROOT / "docs" / "user-guide" / "model-providers.md").read_text(encoding="utf-8").lower()
+    for provider in seen:
+        assert provider in doc, f"resolve_provider() returns {provider!r} but model-providers.md never mentions it"

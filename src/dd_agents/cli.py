@@ -301,6 +301,14 @@ def run(
         run_options["no_knowledge"] = True
     if no_narrative:
         run_options["no_narrative"] = True
+    # Plumb model selection so the engine applies it to the effective config
+    # (and folds it into the provenance hash) — see engine._step_01. Source the
+    # already-validated values off deal_config.agent_models rather than re-parsing
+    # the raw flags, so CLI validation is the single source of truth.
+    if model_profile is not None:
+        run_options["model_profile"] = deal_config.agent_models.profile
+    if model_overrides:
+        run_options["model_overrides"] = dict(deal_config.agent_models.overrides)
 
     console.print()
     console.print(
@@ -473,6 +481,109 @@ def version(as_json: bool) -> None:
         click.echo(json.dumps({"version": dd_agents.__version__}))
     else:
         console.print(f"dd-agents {dd_agents.__version__}")
+
+
+# ---------------------------------------------------------------------------
+# doctor command — verify the LLM provider/model routing before a full run
+# ---------------------------------------------------------------------------
+
+# Which credential env var(s) each provider needs present. Bedrock/Vertex
+# accept either a profile or explicit keys; we check the common ones.
+_PROVIDER_CREDENTIAL_HINTS: dict[str, tuple[str, ...]] = {
+    "anthropic": ("ANTHROPIC_API_KEY",),
+    "bedrock": ("AWS_PROFILE", "AWS_ACCESS_KEY_ID", "AWS_BEARER_TOKEN_BEDROCK"),
+    "vertex": ("ANTHROPIC_VERTEX_PROJECT_ID", "GOOGLE_APPLICATION_CREDENTIALS"),
+    "gateway": ("ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY"),
+}
+
+
+@main.command()
+@click.option(
+    "--probe", is_flag=True, default=False, help="Issue a minimal live query through the configured provider."
+)
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output the routing receipt as JSON.")
+def doctor(probe: bool, as_json: bool) -> None:
+    """Verify the configured LLM provider/model routing (no pipeline run).
+
+    Shows which provider/gateway will answer (secret-free), checks that a
+    credential for it is present, and — with ``--probe`` — issues one minimal
+    live query to confirm the endpoint actually responds. Use this to validate
+    a Bedrock / Vertex / gateway setup before committing to a full run.
+    """
+    import os
+
+    from dd_agents.llm import resolve_provider
+
+    info = resolve_provider()
+    receipt = info.as_receipt()
+    hints = _PROVIDER_CREDENTIAL_HINTS.get(info.provider, ())
+    credential_present = any(os.getenv(name) for name in hints)
+
+    probe_ok: bool | None = None
+    probe_detail = ""
+    if probe:
+        probe_ok, probe_detail = _probe_provider()
+
+    if as_json:
+        out: dict[str, Any] = {**receipt, "credential_present": credential_present}
+        if probe:
+            out["probe_ok"] = probe_ok
+            out["probe_detail"] = probe_detail
+        click.echo(json.dumps(out))
+        if (probe and not probe_ok) or not credential_present:
+            raise SystemExit(1)
+        return
+
+    lines = [
+        f"[bold]Provider:[/bold] {info.provider}",
+        f"[bold]Model:[/bold] {receipt.get('base_url') and 'gateway-served' or 'provider default / per-config'}",
+    ]
+    if receipt.get("base_url"):
+        lines.append(f"[bold]Gateway:[/bold] {receipt['base_url']}")
+    if info.max_output_tokens is not None:
+        lines.append(f"[bold]Output-token clamp:[/bold] {info.max_output_tokens}")
+    cred_color = "green" if credential_present else "yellow"
+    cred_text = "present" if credential_present else f"NOT found (looked for: {', '.join(hints) or 'n/a'})"
+    lines.append(f"[bold]Credential:[/bold] [{cred_color}]{cred_text}[/{cred_color}]")
+    if probe:
+        probe_color = "green" if probe_ok else "red"
+        lines.append(f"[bold]Live probe:[/bold] [{probe_color}]{'OK' if probe_ok else 'FAILED'}[/{probe_color}]")
+        if probe_detail:
+            lines.append(f"  {probe_detail}")
+
+    border = "green" if credential_present and (probe_ok is not False) else "yellow"
+    console.print(Panel("\n".join(lines), title="LLM Provider Routing", border_style=border))
+    if not credential_present:
+        console.print(
+            "[yellow]No credential detected for this provider. "
+            "Set the appropriate env var — see docs/user-guide/model-providers.md.[/yellow]"
+        )
+    if (probe and not probe_ok) or not credential_present:
+        raise SystemExit(1)
+
+
+def _probe_provider() -> tuple[bool, str]:
+    """Issue one minimal query through the seam. Returns (ok, detail)."""
+    import asyncio
+
+    async def _run() -> tuple[bool, str]:
+        try:
+            from claude_agent_sdk import query
+
+            from dd_agents.llm import build_agent_options
+
+            options = build_agent_options(max_turns=1)
+            text = ""
+            async for message in query(prompt="Reply with the single word: OK", options=options):
+                for attr in ("content", "result", "text"):
+                    val = getattr(message, attr, None)
+                    if isinstance(val, str):
+                        text += val
+            return (bool(text.strip()), f"response chars: {len(text.strip())}")
+        except Exception as exc:  # noqa: BLE001 — diagnostic surface, report any failure
+            return (False, f"{type(exc).__name__}: {exc}")
+
+    return asyncio.run(_run())
 
 
 # ---------------------------------------------------------------------------

@@ -96,6 +96,22 @@ dd-agents version --json    # machine-readable: {"version": "..."}
 
 ---
 
+## doctor
+
+Verify the configured LLM provider/model routing before a run. Prints the
+active provider/gateway (secret-free — embedded credentials are stripped),
+checks that a credential is present, and exits non-zero on misconfiguration.
+
+```
+dd-agents doctor            # show routing + credential check
+dd-agents doctor --probe    # also issue one minimal live query
+dd-agents doctor --json     # machine-readable routing receipt
+```
+
+See [Model Providers](model-providers.md) for the full provider/model story.
+
+---
+
 ## init
 
 Generate a deal-config.json by scanning a data room. Supports interactive and

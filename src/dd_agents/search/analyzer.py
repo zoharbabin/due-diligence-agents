@@ -58,8 +58,6 @@ logger = logging.getLogger(__name__)
 
 # Approximate tokens per character for cost estimation.
 _CHARS_PER_TOKEN = 4
-_INPUT_COST_PER_MTOK = 3.0  # Claude Sonnet 4 pricing (USD per 1M tokens)
-_OUTPUT_COST_PER_MTOK = 15.0
 
 # Error messages that indicate non-transient failures (don't retry).
 _NON_TRANSIENT_ERRORS = ("Prompt is too long", "context length", "too many tokens")
@@ -279,10 +277,13 @@ class SearchAnalyzer:
         # Rough output estimate: ~500 tokens per column per subject.
         estimated_output_tokens = len(subjects) * len(self._prompts.columns) * 500
 
-        estimated_cost = (
-            estimated_input_tokens / 1_000_000 * _INPUT_COST_PER_MTOK
-            + estimated_output_tokens / 1_000_000 * _OUTPUT_COST_PER_MTOK
-        )
+        # Cost the search model through the single shared pricing seam so a
+        # gateway/non-Claude search model (DD_SEARCH_MODEL) is costed consistently
+        # with the rest of the system and honors DD_MODEL_PRICING.
+        from dd_agents.agents.cost_tracker import _estimate_cost
+
+        search_model = os.getenv("DD_SEARCH_MODEL", "")
+        estimated_cost = _estimate_cost(search_model, estimated_input_tokens, estimated_output_tokens)
 
         return {
             "total_subjects": len(subjects),

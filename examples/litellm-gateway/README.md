@@ -31,7 +31,15 @@ chosen backend (OpenAI / Gemini / a non-Claude Bedrock model / local).
 
 ## Verify it works
 
-The repo ships an automated end-to-end check:
+First, a quick pre-flight that prints the active routing and round-trips one query:
+
+```bash
+ANTHROPIC_BASE_URL=http://localhost:4011 ANTHROPIC_AUTH_TOKEN=sk-anything \
+  dd-agents doctor --probe          # pragma: allowlist secret
+```
+
+The repo also ships an opt-in end-to-end check (skipped in the standard CI
+matrix, which has no proxy — run it manually against your gateway):
 
 ```bash
 DD_TEST_GATEWAY_URL=http://localhost:4011 \
