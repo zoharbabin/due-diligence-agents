@@ -46,7 +46,7 @@ class MethodologyRenderer(SectionRenderer):
         # Agent coverage
         parts.append("<h3>Agent Coverage</h3>")
         parts.append(
-            "<table class='sortable'><thead><tr>"
+            "<table class='sortable'><caption>Agent coverage by domain</caption><thead><tr>"
             "<th scope='col'>Domain</th><th scope='col'>Findings</th>"
             "<th scope='col'>Risk Level</th></tr></thead><tbody>"
         )
