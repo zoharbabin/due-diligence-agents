@@ -21,9 +21,11 @@ backend (local/cloud parity), not only those that support json_schema.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os  # noqa: TCH003 - used at module level for env var reads
+import re
 from typing import TYPE_CHECKING, Any
 
 from dd_agents.agents.personas import DD_LEGAL_ANALYST
@@ -83,6 +85,25 @@ def _is_structured_output_error(exc: Exception) -> bool:
     """True if *exc* indicates the backend rejected ``output_format``."""
     msg = str(exc).lower()
     return any(marker in msg for marker in _STRUCTURED_OUTPUT_ERROR_MARKERS)
+
+
+# JSON-schema property keys must match this pattern on some providers (notably
+# Bedrock's tool-schema validator): ^[a-zA-Z0-9_.-]{1,64}$. User column names
+# are free text ("Governing Law"), so we map each to a schema-safe key for the
+# structured-output schema and translate back when parsing. Provider-agnostic:
+# the Anthropic API is lenient, but Bedrock/Vertex/gateways fronting them are
+# not — sanitizing keeps search working identically across all providers.
+def _schema_key(name: str) -> str:
+    """Map a free-text column name to a stable, schema-valid property key.
+
+    Deterministic and collision-resistant: a slug of the safe characters plus a
+    short hash of the original name, so two columns that slug identically still
+    get distinct keys, and the same name always yields the same key (stable
+    across runs/providers). Always matches ``^[a-zA-Z0-9_.-]{1,64}$``.
+    """
+    slug = re.sub(r"[^a-zA-Z0-9_.-]+", "_", name).strip("_")[:48]
+    digest = hashlib.sha256(name.encode("utf-8")).hexdigest()[:8]
+    return f"{slug}_{digest}" if slug else f"col_{digest}"
 
 
 def _looks_like_json(text: str) -> bool:
@@ -626,10 +647,13 @@ class SearchAnalyzer:
             "additionalProperties": False,
         }
 
+        # Key by schema-safe identifiers (not the raw, possibly-spaced column
+        # names) so providers that validate property-key patterns (Bedrock and
+        # gateways fronting it) accept the schema. Parsing maps keys back.
         return {
             "type": "object",
-            "properties": {name: column_schema for name in column_names},
-            "required": list(column_names),
+            "properties": {_schema_key(name): column_schema for name in column_names},
+            "required": [_schema_key(name) for name in column_names],
             "additionalProperties": False,
         }
 
@@ -781,9 +805,14 @@ class SearchAnalyzer:
         - Follow-up validation language ("pay special attention", "do not miss")
         - Targeted instructions that don't unduly inflate context
         """
-        column_descriptions = "\n".join(f"- **{col.name}**: {col.prompt}" for col in self._prompts.columns)
+        # Describe each column by its JSON key (schema-safe) AND its human label,
+        # so the model emits keys that match the structured-output schema across
+        # all providers (Bedrock rejects spaced keys).
+        column_descriptions = "\n".join(
+            f"- `{_schema_key(col.name)}` ({col.name}): {col.prompt}" for col in self._prompts.columns
+        )
 
-        column_names_list = ", ".join(f'"{col.name}"' for col in self._prompts.columns)
+        column_names_list = ", ".join(f'"{_schema_key(col.name)}"' for col in self._prompts.columns)
 
         return (
             DD_LEGAL_ANALYST + " reviewing subject contracts.\n\n"
@@ -1104,7 +1133,9 @@ class SearchAnalyzer:
 
         # Update only the conflicted columns with synthesis results.
         for col_name in conflicted_columns:
-            col_data = data.get(col_name)
+            col_data = data.get(_schema_key(col_name))
+            if col_data is None:
+                col_data = data.get(col_name)
             if not isinstance(col_data, dict):
                 continue
 
@@ -1197,7 +1228,9 @@ class SearchAnalyzer:
         # Uses parse_column_result to ensure answer normalization and
         # citation dedup are applied consistently.  Issue #24.
         for col_name in not_addressed:
-            col_data = data.get(col_name)
+            col_data = data.get(_schema_key(col_name))
+            if col_data is None:
+                col_data = data.get(col_name)
             if not isinstance(col_data, dict):
                 continue
             parsed = parse_column_result(col_data)
@@ -1295,7 +1328,11 @@ class SearchAnalyzer:
         incomplete_columns: list[str] = []
 
         for col in self._prompts.columns:
-            col_data = data.get(col.name)
+            # Prefer the schema-safe key; fall back to the raw name in case a
+            # prompt-JSON fallback response echoed the human label.
+            col_data = data.get(_schema_key(col.name))
+            if col_data is None:
+                col_data = data.get(col.name)
 
             if col_data is None:
                 # Column is completely missing from the response.

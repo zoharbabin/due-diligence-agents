@@ -2448,19 +2448,35 @@ class TestAnalysisSchema:
     """Tests for _build_analysis_schema and structured output integration."""
 
     def test_schema_has_all_columns(self) -> None:
-        """Schema must include every column name as a required top-level key."""
+        """Schema keys each column by its schema-SAFE id (cross-provider compat).
+
+        Provider-agnosticism: Bedrock (and gateways fronting it) reject JSON
+        property keys with spaces, so the schema must key by ``_schema_key``,
+        not the raw column name.
+        """
+        import re as _re
+
+        from dd_agents.search.analyzer import _schema_key
+
         columns = ["Consent Required", "Notice Required", "Governing Law"]
         schema = SearchAnalyzer._build_analysis_schema(columns)
 
+        expected_keys = {_schema_key(c) for c in columns}
         assert schema["type"] == "object"
-        assert set(schema["required"]) == set(columns)
-        assert set(schema["properties"].keys()) == set(columns)
+        assert set(schema["required"]) == expected_keys
+        assert set(schema["properties"].keys()) == expected_keys
         assert schema["additionalProperties"] is False
+        # Every key matches the Bedrock-accepted property-key pattern.
+        pat = _re.compile(r"^[a-zA-Z0-9_.-]{1,64}$")
+        for key in schema["properties"]:
+            assert pat.match(key), f"schema key {key!r} would be rejected by Bedrock"
 
     def test_column_schema_structure(self) -> None:
         """Each column must have answer, confidence (enum), and citations array."""
+        from dd_agents.search.analyzer import _schema_key
+
         schema = SearchAnalyzer._build_analysis_schema(["Test Column"])
-        col = schema["properties"]["Test Column"]
+        col = schema["properties"][_schema_key("Test Column")]
 
         assert col["type"] == "object"
         assert set(col["required"]) == {"answer", "confidence", "citations"}
@@ -2474,8 +2490,10 @@ class TestAnalysisSchema:
 
     def test_citation_schema_structure(self) -> None:
         """Citation objects must require all 4 fields with no extra properties."""
+        from dd_agents.search.analyzer import _schema_key
+
         schema = SearchAnalyzer._build_analysis_schema(["Col"])
-        citation = schema["properties"]["Col"]["properties"]["citations"]["items"]
+        citation = schema["properties"][_schema_key("Col")]["properties"]["citations"]["items"]
 
         assert citation["type"] == "object"
         assert set(citation["required"]) == {"file_path", "page", "section_ref", "exact_quote"}
@@ -2483,10 +2501,27 @@ class TestAnalysisSchema:
 
     def test_single_column_schema(self) -> None:
         """Schema works for a single column (Phase 3/4 with one conflict/gap)."""
+        from dd_agents.search.analyzer import _schema_key
+
         schema = SearchAnalyzer._build_analysis_schema(["Only Column"])
 
-        assert schema["required"] == ["Only Column"]
+        assert schema["required"] == [_schema_key("Only Column")]
         assert len(schema["properties"]) == 1
+
+    def test_schema_key_is_provider_safe_and_stable(self) -> None:
+        """_schema_key yields Bedrock-valid keys, stable + collision-resistant."""
+        import re as _re
+
+        from dd_agents.search.analyzer import _schema_key
+
+        pat = _re.compile(r"^[a-zA-Z0-9_.-]{1,64}$")
+        for name in ["Governing Law", "Change of Control?", "IP / Ownership", "x" * 200, "日本語", "!!!"]:
+            key = _schema_key(name)
+            assert pat.match(key), f"{key!r} would be rejected by Bedrock"
+        # Stable across calls.
+        assert _schema_key("Governing Law") == _schema_key("Governing Law")
+        # Distinct names that slugify identically still get distinct keys.
+        assert _schema_key("A B") != _schema_key("A  B")
 
     def test_schema_is_valid_json_schema(self) -> None:
         """Schema can be serialized to JSON (required by SDK)."""
@@ -2534,12 +2569,14 @@ class TestStructuredOutputWiring:
         with patch.object(analyzer, "_call_claude", side_effect=mock_call):
             await analyzer.analyze_all([subject])
 
-        # Phase 1 should have passed a schema.
+        # Phase 1 should have passed a schema, keyed by schema-safe ids.
+        from dd_agents.search.analyzer import _schema_key
+
         assert len(captured_schemas) >= 1
         schema = captured_schemas[0]
         assert schema is not None
-        assert "Consent Required" in schema["required"]
-        assert "Notice Required" in schema["required"]
+        assert _schema_key("Consent Required") in schema["required"]
+        assert _schema_key("Notice Required") in schema["required"]
 
     @pytest.mark.asyncio
     async def test_phase3_passes_conflicted_schema(self, tmp_path: Path) -> None:
@@ -2577,12 +2614,14 @@ class TestStructuredOutputWiring:
         with patch.object(analyzer, "_call_claude", side_effect=mock_call):
             await analyzer._synthesis_pass(merged, chunk_results, ["Consent Required"], subject)
 
+        from dd_agents.search.analyzer import _schema_key
+
         assert len(captured_schemas) == 1
         schema = captured_schemas[0]
         assert schema is not None
-        # Only conflicted column in schema.
-        assert schema["required"] == ["Consent Required"]
-        assert "Notice Required" not in schema["properties"]
+        # Only conflicted column in schema (keyed by schema-safe id).
+        assert schema["required"] == [_schema_key("Consent Required")]
+        assert _schema_key("Notice Required") not in schema["properties"]
 
     @pytest.mark.asyncio
     async def test_phase4_passes_not_addressed_schema(self, tmp_path: Path) -> None:
@@ -2607,12 +2646,14 @@ class TestStructuredOutputWiring:
         with patch.object(analyzer, "_call_claude", side_effect=mock_call):
             await analyzer._validation_pass(result, file_texts, subject)
 
+        from dd_agents.search.analyzer import _schema_key
+
         assert len(captured_schemas) == 1
         schema = captured_schemas[0]
         assert schema is not None
-        # Only NOT_ADDRESSED column in schema.
-        assert schema["required"] == ["Notice Required"]
-        assert "Consent Required" not in schema["properties"]
+        # Only NOT_ADDRESSED column in schema (keyed by schema-safe id).
+        assert schema["required"] == [_schema_key("Notice Required")]
+        assert _schema_key("Consent Required") not in schema["properties"]
 
     @pytest.mark.asyncio
     async def test_system_prompt_no_output_format_boilerplate(self, tmp_path: Path) -> None:
