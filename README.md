@@ -128,7 +128,8 @@ dd-agents annotate --data-room ./data_room "Confirmed with counsel"  # Add analy
 > **Serve a finished report over the network.**
 > [`examples/agno-bindu/`](examples/agno-bindu/) exposes a completed report as a
 > conversational [Bindu](https://github.com/GetBindu/Bindu) A2A agent — ask it for
-> P0 counts, domain risks, or the exact cited clause. Community-contributed example.
+> P0 counts, domain risks, or the exact cited clause. Community-contributed
+> example; not affiliated with or endorsed by the maintainers.
 
 ### Customize the Agents (no code required)
 

@@ -33,7 +33,7 @@ and writes merged findings to `…/runs/latest/findings/merged/*.json`. This age
 is the **light** part on the other side of that output. It:
 
 1. Loads a completed report's merged findings through the upstream
-   `dd_agents.query.FindingIndexer` — pure, deterministic Python, **no LLM**.
+   `dd_agents.query.indexer.FindingIndexer` — pure, deterministic Python, **no LLM**.
 2. Exposes three tools to an agno agent: `report_overview`, `list_findings`,
    `get_finding`.
 3. Lets the agno model (via OpenRouter) reason over those tools and answer
@@ -48,7 +48,10 @@ By default the agent reads the bundled, 100%-synthetic **Project Atlas** golden
 report this repo ships at `docs/marketing/sample-report-atlas/` (real pipeline
 output: 2 P0, 10 P1, 17 P2, 15 P3 findings — the hero being a customer worth
 30.1% of ARR with a change-of-control termination right). Point `DD_REPORT_DIR`
-at any `dd-agents run` output (its `runs/latest`) to analyze a real deal.
+at any `dd-agents run` output (its `runs/latest`) to analyze a real deal. The
+indexer reads `<dir>/findings/merged/*.json` (a real run's layout), falling back
+to a top-level `findings_merged.json` — which is what the bundled Atlas report
+ships, so both layouts work.
 
 ## The libraries it uses
 
@@ -191,20 +194,42 @@ Sources: forensic-dd_finance_northwind_logistics_0001, forensic-dd_commercial_no
 ## Network exposure & dependencies
 
 - **Local by default.** The agent binds to `localhost` and CORS is limited to a
-  local dev origin. Setting `BINDU_EXPOSE=true` asks Bindu to open a **public,
-  unauthenticated** tunnel to the agent, with your OpenRouter key on the billing
-  path. Leave it off unless you understand that.
-- **Opt-in deps.** The extra packages live in `examples/agno-bindu/requirements.txt`
-  and are installed only if you set this example up. Nothing here changes the
-  `dd-agents` package, its CLI, or its CI.
+  local dev origin (override with `BINDU_CORS_ORIGINS`).
+- **Exposing publicly is opt-in and unauthenticated by default.** Setting
+  `BINDU_EXPOSE=true` asks Bindu to open a **public** tunnel, with your
+  OpenRouter key on the billing path. The example does not add an application
+  auth layer on the JSON-RPC `POST /` endpoint — it relies on Bindu's defaults.
+  **Before exposing a real-deal report**, set `BINDU_AUTH_TOKEN` and confirm
+  your Bindu version enforces it; the entry point logs a loud warning if you
+  expose without a token set. Treat an exposed agent as a billable, content-
+  leaking endpoint and never point it at a non-synthetic report without auth.
+- **Opt-in deps, pinned to a tested window.** The extra packages live in
+  `examples/agno-bindu/requirements.txt`, are installed only if you set this
+  example up, and are pinned to the versions this example was validated against
+  (Bindu owns the exposure/auth defaults, so its version is held tight). Nothing
+  here changes the `dd-agents` package, its CLI, or its CI. Note: `bindu` pulls a
+  large transitive tree (web3/crypto/grpc/multi-LLM) this example never uses.
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `agent.py` | The agno agent + the three finding-index tools |
+| `report_tools.py` | The three deterministic finding-index tools — pure Python over `dd_agents.query`, **no agno/Bindu/key**. Reusable on its own. |
+| `agent.py` | Thin agno wrapper: builds the model lazily (`get_agent()`) and hands it the tools |
 | `bindu_agent.py` | Primary entry point — handler, config, `bindufy(...)` |
 | `cli.py` | One-shot local runner |
 | `prompts.py` | Agent name, description, and system prompt |
 | `requirements.txt` | agno + Bindu glue deps (the engine comes from the parent repo) |
-| `.env.example` | `OPENROUTER_API_KEY` + `DD_REPORT_DIR` and other knobs |
+| `.env.example` | `OPENROUTER_API_KEY`, `DD_REPORT_DIR`, exposure/auth/CORS knobs |
+
+## Tests
+
+The deterministic tools are covered by a **keyless** test in the upstream suite,
+`tests/unit/test_agno_bindu_example.py` — it imports only `report_tools` (never
+`agent.py`, so no agno/Bindu needed) and runs on the normal CI matrix. It is a
+tripwire: if the `FindingIndexer` contract drifts or the bundled report moves,
+the example breaks loudly in CI instead of silently. Run it with:
+
+```bash
+pytest tests/unit/test_agno_bindu_example.py
+```

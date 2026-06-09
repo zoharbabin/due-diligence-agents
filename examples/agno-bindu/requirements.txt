@@ -9,8 +9,13 @@
 # Note: this example only reads the dd-agents *finding index* (deterministic,
 # no LLM), so it does not need an Anthropic key — only OPENROUTER_API_KEY for the
 # agno model call.
-bindu>=2026.20
-agno>=2.6,<3
-openai>=1.40
-python-dotenv>=1.0
-rich>=13
+#
+# Pins: capped to the versions this example was validated against. Bindu owns
+# the A2A service's auth/exposure/CORS defaults, so its version is held to a
+# tested window (verified: bindu 2026.21.2, agno 2.6.5). Re-test before widening.
+# Heads-up: `bindu` pulls a large transitive tree (web3/crypto/grpc/multi-LLM)
+# this example never exercises — expected, and isolated to this opt-in file.
+bindu>=2026.21.2,<2027
+agno>=2.6.5,<2.7
+python-dotenv>=1.0,<2
+rich>=13,<15

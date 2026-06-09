@@ -9,17 +9,17 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from agent import get_agent, report_path
 from dotenv import load_dotenv
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.rule import Rule
 
-# Load the example's .env before importing `agent`, which builds the model at
-# import time and needs OPENROUTER_API_KEY.
+# Load the example's .env so OPENROUTER_API_KEY is present before the model is
+# built. The agent is built lazily inside get_agent(), so importing `agent`
+# above is key-free; only the get_agent() call below needs the key.
 load_dotenv(Path(__file__).with_name(".env"))
-
-from agent import agent, report_path  # noqa: E402  (after load_dotenv, by design)
 
 console = Console()
 err = Console(stderr=True)
@@ -34,7 +34,7 @@ def main() -> int:
     err.print(f"[dim]report: {report_path()}[/dim]")
     try:
         with err.status("[bold cyan]Analyzing the report…[/bold cyan]", spinner="dots"):
-            result = agent.run(input=question)
+            result = get_agent().run(input=question)
     except Exception as exc:  # noqa: BLE001 — surface any failure to the user
         err.print(f"[bold red]Error:[/bold red] {exc}")
         return 1
