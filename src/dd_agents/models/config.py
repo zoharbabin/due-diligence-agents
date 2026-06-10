@@ -365,11 +365,36 @@ class BuyerStrategy(BaseModel):
         return v
 
 
-class AgentModelsConfig(BaseModel):
-    """Agent model selection configuration (Issue #129).
+class AgentRoute(BaseModel):
+    """Per-agent LLM routing override (Issue #233).
 
-    Supports three preset profiles (economy/standard/premium) and
-    per-agent overrides for fine-grained control.
+    Lets a single agent run on a different model AND/OR provider than the
+    run-wide default — e.g. a cheap gateway model for the Red Flag Scanner, a
+    premium provider for the Judge. All fields optional; an empty route is a
+    no-op. Routing is applied through the one LLM seam
+    (``llm.build_agent_options`` via ``extra_env``) — never by mutating process
+    env — so concurrent sessions stay isolated.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    model: str | None = Field(default=None, description="Model id for this agent (overrides profile/overrides).")
+    base_url: str | None = Field(
+        default=None,
+        description="Anthropic-compatible gateway base URL for this agent (sets ANTHROPIC_BASE_URL for its call only).",
+    )
+    auth_token_env: str | None = Field(
+        default=None,
+        description="Name of an env var holding the gateway auth token for this agent (its value is read at run "
+        "time and passed as ANTHROPIC_AUTH_TOKEN for the agent's call). The token itself is NEVER stored in config.",
+    )
+
+
+class AgentModelsConfig(BaseModel):
+    """Agent model selection configuration (Issue #129, extended #233).
+
+    Supports three preset profiles (economy/standard/premium), per-agent model
+    overrides, and per-agent provider/model routing (``routes``).
     """
 
     model_config = ConfigDict(extra="allow")
@@ -382,19 +407,27 @@ class AgentModelsConfig(BaseModel):
         default_factory=dict,
         description="Per-agent model overrides. Keys are agent names, values are model IDs.",
     )
+    routes: dict[str, AgentRoute] = Field(
+        default_factory=dict,
+        description="Per-agent provider/model routing (Issue #233). Keys are agent names; each route may set "
+        "model, base_url (gateway), and auth_token_env. Routing applies through the LLM seam per call.",
+    )
     budget_limit_usd: float | None = Field(
         default=None,
         description="Optional hard budget limit in USD per pipeline run.",
     )
 
     def resolve_model(self, agent_name: str) -> str:
-        """Return the model ID for a given agent, checking overrides first.
+        """Return the model ID for a given agent.
 
-        Uses a deferred import of ``agents.cost_tracker`` to avoid a
-        circular dependency (models → agents → models).  This is
-        intentional — the method belongs on the config model because it
-        encapsulates profile + override resolution logic.
+        Precedence: per-agent ``routes[agent].model`` → ``overrides[agent]`` →
+        profile default. Uses a deferred import of ``agents.cost_tracker`` to
+        avoid a circular dependency (models → agents → models).
         """
+        route = self.routes.get(agent_name)
+        if route is not None and route.model:
+            return route.model
+
         if agent_name in self.overrides:
             return self.overrides[agent_name]
 
@@ -403,6 +436,36 @@ class AgentModelsConfig(BaseModel):
         profiles = get_model_profiles()
         profile = profiles.get(self.profile, profiles["standard"])
         return profile.get_model_for_agent(agent_name)
+
+    def resolve_route(self, agent_name: str) -> AgentRoute | None:
+        """Return the per-agent route, or None when the agent has no routing override."""
+        return self.routes.get(agent_name)
+
+    def routing_fingerprint(self) -> str:
+        """Secret-free, stable fingerprint of all per-agent routing.
+
+        Folded into the run's provenance fingerprint so a per-agent routing
+        change busts a stale checkpoint (fail-closed resume). Excludes the token
+        value (only the env-var NAME is in config); base_url host-only would be
+        ideal but config base_urls are operator-authored and not expected to
+        carry secrets — we still strip any userinfo defensively.
+        """
+        if not self.routes:
+            return ""
+        from urllib.parse import urlsplit, urlunsplit
+
+        parts: list[str] = []
+        for agent in sorted(self.routes):
+            r = self.routes[agent]
+            safe_url = ""
+            if r.base_url:
+                u = urlsplit(r.base_url)
+                host = u.hostname or ""
+                if u.port:
+                    host = f"{host}:{u.port}"
+                safe_url = urlunsplit((u.scheme, host, u.path, "", ""))
+            parts.append(f"{agent}={r.model or ''}@{safe_url}#{r.auth_token_env or ''}")
+        return ";".join(parts)
 
 
 class PrecedenceConfig(BaseModel):

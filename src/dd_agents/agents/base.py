@@ -111,8 +111,8 @@ class BaseAgentRunner(ABC):
         """Return the LLM model identifier for this agent.
 
         Checks ``deal_config.agent_models`` for profile-based or per-agent
-        override model selection (Issue #129).  Returns ``None`` as fallback
-        so the SDK uses its own configured model.
+        override/route model selection (Issue #129/#233).  Returns ``None`` as
+        fallback so the SDK uses its own configured model.
         """
         if self.deal_config is not None:
             agent_models = getattr(self.deal_config, "agent_models", None)
@@ -120,6 +120,34 @@ class BaseAgentRunner(ABC):
                 result: str | None = agent_models.resolve_model(self.get_agent_name())
                 return result
         return None
+
+    def get_route_env(self) -> dict[str, str]:
+        """Return per-agent provider-routing env for this agent (Issue #233).
+
+        Reads ``deal_config.agent_models.routes[agent]`` and turns a configured
+        gateway ``base_url`` (+ optional ``auth_token_env`` → its value) into the
+        env the LLM seam forwards to the per-call CLI subprocess. Empty dict when
+        no route / no base_url (parity: run-wide env routing is used). Never
+        mutates process env; the token value is read from the named env var at
+        run time and never stored in config.
+        """
+        if self.deal_config is None:
+            return {}
+        agent_models = getattr(self.deal_config, "agent_models", None)
+        if agent_models is None or not hasattr(agent_models, "resolve_route"):
+            return {}
+        route = agent_models.resolve_route(self.get_agent_name())
+        if route is None or not getattr(route, "base_url", None):
+            return {}
+        import os
+
+        env: dict[str, str] = {"ANTHROPIC_BASE_URL": str(route.base_url)}
+        token_env = getattr(route, "auth_token_env", None)
+        if token_env:
+            token = os.getenv(str(token_env))
+            if token:
+                env["ANTHROPIC_AUTH_TOKEN"] = token
+        return env
 
     @abstractmethod
     def get_system_prompt(self) -> str:
@@ -376,7 +404,15 @@ class BaseAgentRunner(ABC):
         if mcp_server is not None:
             options_kwargs["mcp_servers"] = {"dd_tools": mcp_server}
 
-        options = build_agent_options(model=self.get_model_id(), **options_kwargs)
+        # Per-agent provider routing (Issue #233): when configured, route this
+        # agent to its own gateway via extra_env (applied to its CLI call only;
+        # process env is never mutated). Empty when no route → run-wide routing.
+        route_env = self.get_route_env()
+        options = build_agent_options(
+            model=self.get_model_id(),
+            extra_env=route_env or None,
+            **options_kwargs,
+        )
 
         agent_name = self.batch_label or self.get_agent_name()
         hard_limit = self.max_turns * self.HARD_LIMIT_MULTIPLIER
