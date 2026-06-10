@@ -216,7 +216,10 @@ class PromptBuilder:
     # finding (removed the "defer to Legal" suppression; added granularity rule).
     # 2.2.0: ESG specialist prompt — added current EU/sustainability keyword
     # aliases (EU Taxonomy, EUDR, Scope 4, avoided emissions, just transition).
-    PROMPT_VERSION: str = "2.2.0"
+    # 2.3.0: Finance specialist prompt — added Financial Model Integrity guidance
+    # (formula-audit findings: hardcoded overrides, circular refs, broken links)
+    # paired with the read_office formula-integrity section (Issue #194).
+    PROMPT_VERSION: str = "2.3.0"
 
     def __init__(
         self,
