@@ -144,6 +144,8 @@ Instead, reference **stable contracts**: interface/class names, file paths, enum
 | `docs/user-guide/deal-configuration.md` | Changing config schema or adding config options |
 | `docs/search-guide.md` | Working on search module — chunking, citation, precedence |
 | `docs/knowledge-architecture.md` | Working on knowledge base — research foundations |
+| `docs/user-guide/model-providers.md` | Configuring provider/model (native + gateway); the LLM seam |
+| `docs/user-guide/provider-coverage.md` | Which flows are verified live on which providers |
 
 The Architecture Map and Key Patterns above are the fast orientation to the codebase; the code under `src/dd_agents/` is authoritative for current behavior.
 

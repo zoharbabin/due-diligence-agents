@@ -57,6 +57,7 @@ nav:
     - Installation & First Run: user-guide/getting-started.md
     - Deal Configuration: user-guide/deal-configuration.md
     - Model Providers: user-guide/model-providers.md
+    - Provider Coverage: user-guide/provider-coverage.md
     - Running the Pipeline: user-guide/running-pipeline.md
     - Reading the Report: user-guide/reading-report.md
     - CLI Reference: user-guide/cli-reference.md

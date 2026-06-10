@@ -271,3 +271,67 @@ class TestDoctorCommand:
         assert payload["provider"] == "gateway"
         assert payload["base_url"] == "https://gw.example/v1"
         assert "secret" not in result.output
+
+
+# ---------------------------------------------------------------------------
+# Audit receipt: agent result carries the resolved model id
+# ---------------------------------------------------------------------------
+
+
+class TestModelAttribution:
+    @pytest.mark.asyncio
+    async def test_run_stamps_resolved_model_into_result(self, tmp_path: Path) -> None:
+        """BaseAgentRunner.run() stamps result['model'] so cost/audit attribute it.
+
+        Guards the audit-receipt fix: every cost entry + metadata.json llm_models
+        must reflect the model the agent actually resolved, not "".
+        """
+        from unittest.mock import patch
+
+        from dd_agents.agents.base import BaseAgentRunner
+
+        class _Agent(BaseAgentRunner):
+            def get_agent_name(self) -> str:
+                return "legal"
+
+            def get_model_id(self) -> str:
+                return "claude-haiku-4-5-20251001"
+
+            def get_system_prompt(self) -> str:
+                return "x"
+
+            def get_tools(self) -> list[str]:
+                return []
+
+            def build_prompt(self, state: dict) -> str:
+                return "p"
+
+        runner = _Agent(project_dir=tmp_path, run_dir=tmp_path, run_id="r")
+        with patch.object(_Agent, "_spawn_agent", return_value="some output"):
+            result = await runner.run({"prompt": "p", "subjects": []})
+        assert result["model"] == "claude-haiku-4-5-20251001"
+
+    @pytest.mark.asyncio
+    async def test_run_stamps_empty_when_inheriting_default(self, tmp_path: Path) -> None:
+        from unittest.mock import patch
+
+        from dd_agents.agents.base import BaseAgentRunner
+
+        class _Agent(BaseAgentRunner):
+            def get_agent_name(self) -> str:
+                return "legal"
+
+            def get_system_prompt(self) -> str:
+                return "x"
+
+            def get_tools(self) -> list[str]:
+                return []
+
+            def build_prompt(self, state: dict) -> str:
+                return "p"
+
+        # No deal_config → get_model_id() returns None → model stamped as "".
+        runner = _Agent(project_dir=tmp_path, run_dir=tmp_path, run_id="r")
+        with patch.object(_Agent, "_spawn_agent", return_value="out"):
+            result = await runner.run({"prompt": "p", "subjects": []})
+        assert result["model"] == ""
