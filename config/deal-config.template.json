@@ -116,5 +116,27 @@
       "enabled": true
     }
   },
+  "extraction": {
+    "ocr_backend": "auto"
+  },
+  "precedence": {
+    "enabled": true,
+    "folder_priority": {},
+    "vdr_overrides": {
+      "EXAMPLE_FOLDER_SUBSTRING": "legal"
+    }
+  },
+  "request_list": {
+    "enabled": true,
+    "seed_from_vdr": false,
+    "items": [
+      {
+        "category": "Signed MSA",
+        "keywords": ["msa", "signed"],
+        "required": true,
+        "subject": null
+      }
+    ]
+  },
   "buyer_strategy": null
 }

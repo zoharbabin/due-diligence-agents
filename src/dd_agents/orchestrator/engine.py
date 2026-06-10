@@ -1031,6 +1031,21 @@ class PipelineEngine:
         )
         return state
 
+    @staticmethod
+    def _vdr_overrides(state: PipelineState) -> dict[str, str]:
+        """Read precedence.vdr_overrides from the deal config (Issue #193/#236).
+
+        Returns the folder-substring → specialist-domain map, or {} when absent
+        (parity — generic detection unchanged).
+        """
+        raw = state.deal_config if isinstance(state.deal_config, dict) else {}
+        prec = raw.get("precedence")
+        if isinstance(prec, dict):
+            ov = prec.get("vdr_overrides")
+            if isinstance(ov, dict):
+                return {str(k): str(v) for k, v in ov.items()}
+        return {}
+
     def _reconcile_request_list(self, state: PipelineState, files: list[Any], inv_dir: Path) -> None:
         """Reconcile the configured request list and persist completeness JSON.
 
@@ -1051,7 +1066,7 @@ class PipelineEngine:
                 from dd_agents.precedence.vdr_conventions import detect_convention
 
                 top_level = sorted({f.path.split("/")[0] for f in files if "/" in f.path})
-                cats = detect_convention(top_level).categories
+                cats = detect_convention(top_level, self._vdr_overrides(state)).categories
                 items = seed_from_vdr_categories({k: v.category for k, v in cats.items()})
             if not items:
                 return

@@ -222,3 +222,33 @@ class TestValidateDealConfig:
     def test_empty_dict(self) -> None:
         with pytest.raises(ConfigValidationError):
             validate_deal_config({})
+
+
+class TestV113ConfigBlocks:
+    """The v1.13.0 config blocks are present in the template + parse (Issue #236)."""
+
+    _TEMPLATE = Path(__file__).resolve().parents[2] / "config" / "deal-config.template.json"
+
+    def test_template_has_request_list_and_vdr_overrides(self) -> None:
+        data = json.loads(self._TEMPLATE.read_text(encoding="utf-8"))
+        assert "request_list" in data, "template must document request_list (#192)"
+        assert "vdr_overrides" in data.get("precedence", {}), "template must document precedence.vdr_overrides (#193)"
+        assert "extraction" in data, "template should surface extraction.ocr_backend"
+
+    def test_template_validates_as_deal_config(self) -> None:
+        cfg = DealConfig.model_validate(json.loads(self._TEMPLATE.read_text(encoding="utf-8")))
+        assert cfg.precedence is not None and isinstance(cfg.precedence.vdr_overrides, dict)
+        assert cfg.request_list is not None and len(cfg.request_list.items) >= 1
+
+    def test_vdr_overrides_round_trips(self) -> None:
+        cfg = DealConfig.model_validate(
+            {
+                "config_version": "1.0.0",
+                "buyer": {"name": "B"},
+                "target": {"name": "T"},
+                "deal": {"type": "acquisition", "focus_areas": ["ip_ownership"]},
+                "precedence": {"vdr_overrides": {"zorblax": "producttech"}},
+            }
+        )
+        assert cfg.precedence is not None
+        assert cfg.precedence.vdr_overrides == {"zorblax": "producttech"}

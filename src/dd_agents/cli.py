@@ -1166,7 +1166,10 @@ def assess(data_room: Path, config_path: Path | None, verbose: bool) -> None:
 
     console.print("\n[bold]dd-agents assess[/bold] -- Data Room Health Check\n")
 
-    assessor = DataRoomAssessor(data_room.resolve())
+    # When a config is supplied, honor its precedence.vdr_overrides so the
+    # detected VDR layout reflects the deal's corrections (Issue #236).
+    vdr_overrides = _vdr_overrides_from_config(config_path) if config_path is not None else {}
+    assessor = DataRoomAssessor(data_room.resolve(), vdr_overrides=vdr_overrides)
     report = assessor.assess()
 
     # Request-list reconciliation (Issue #192) — only when a config with a
@@ -1176,6 +1179,19 @@ def assess(data_room: Path, config_path: Path | None, verbose: bool) -> None:
 
     # Display results
     _print_assessment_report(report)
+
+
+def _vdr_overrides_from_config(config_path: Path) -> dict[str, str]:
+    """Read precedence.vdr_overrides from a deal config (Issue #236). {} on any issue."""
+    from dd_agents.config import load_deal_config
+
+    try:
+        cfg = load_deal_config(config_path)
+    except Exception:  # noqa: BLE001 — assess is advisory; a bad config shouldn't crash it
+        return {}
+    prec = cfg.precedence
+    overrides = getattr(prec, "vdr_overrides", None) if prec is not None else None
+    return {str(k): str(v) for k, v in overrides.items()} if isinstance(overrides, dict) else {}
 
 
 def _reconcile_request_list(config_path: Path, report: dict[str, Any]) -> dict[str, Any]:

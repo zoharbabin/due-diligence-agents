@@ -419,6 +419,12 @@ class PrecedenceConfig(BaseModel):
         default_factory=dict,
         description="Folder name → tier override (1=authoritative, 2=working, 3=supplementary, 4=historical)",
     )
+    vdr_overrides: dict[str, str] = Field(
+        default_factory=dict,
+        description="VDR folder-convention overrides (Issue #193): folder-name substring (case-insensitive) → "
+        "specialist domain (legal, finance, commercial, producttech, cybersecurity, hr, tax, regulatory, esg). "
+        "Corrects a misclassified numbered VDR folder; takes precedence over the built-in convention table.",
+    )
 
 
 class RequestedDocument(BaseModel):

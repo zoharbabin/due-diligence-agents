@@ -141,3 +141,25 @@ class TestDataRoomAssessor:
         assessor = DataRoomAssessor(tmp_path)
         report = assessor.assess()
         assert 0 <= report["overall_score"] <= 100
+
+
+class TestVdrOverrides:
+    """VDR convention override wiring (Issue #236)."""
+
+    def _room(self, tmp_path: Path) -> Path:
+        for f in ["1.0 Corporate", "2.0 Zorblax Widgets"]:
+            (tmp_path / f).mkdir()
+            (tmp_path / f / "doc.pdf").write_text("x")
+        return tmp_path
+
+    def test_unrecognized_folder_without_override(self, tmp_path: Path) -> None:
+        report = DataRoomAssessor(self._room(tmp_path)).assess()
+        cats = report["vdr_convention"]["categories"]
+        # "Zorblax Widgets" isn't in the built-in table → unmapped.
+        assert not any("Zorblax" in k for k in cats)
+
+    def test_override_maps_unrecognized_folder(self, tmp_path: Path) -> None:
+        report = DataRoomAssessor(self._room(tmp_path), vdr_overrides={"zorblax": "producttech"}).assess()
+        cats = report["vdr_convention"]["categories"]
+        # With an override, the folder is now recognized (categorized).
+        assert any("Zorblax" in k for k in cats)

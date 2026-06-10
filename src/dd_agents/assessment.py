@@ -58,8 +58,11 @@ _SKIP_NAMES: frozenset[str] = frozenset(
 class DataRoomAssessor:
     """Assess data room quality and completeness."""
 
-    def __init__(self, data_room_path: Path) -> None:
+    def __init__(self, data_room_path: Path, vdr_overrides: dict[str, str] | None = None) -> None:
         self.data_room = data_room_path
+        # Folder-substring → specialist-domain overrides for VDR convention
+        # detection (Issue #193/#236). Empty = built-in table only (parity).
+        self.vdr_overrides = vdr_overrides or {}
 
     def assess(self) -> dict[str, Any]:
         """Run full assessment and return structured report."""
@@ -95,7 +98,7 @@ class DataRoomAssessor:
         from dd_agents.precedence.vdr_conventions import detect_convention
 
         top_level = [d.name for d in self.data_room.iterdir() if d.is_dir() and d.name not in _SKIP_NAMES]
-        result = detect_convention(top_level)
+        result = detect_convention(top_level, self.vdr_overrides)
         return {
             "is_vdr": result.is_vdr,
             "numbered_folders": result.numbered_folders,
