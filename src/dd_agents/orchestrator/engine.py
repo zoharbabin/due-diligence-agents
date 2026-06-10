@@ -3514,6 +3514,9 @@ class PipelineEngine:
             "llm_provider": routing["provider"],
             "llm_base_url": routing["base_url"],
             "llm_models": (ct.models_used() if (ct := getattr(self, "cost_tracker", None)) else []),
+            # Per-model cost rollup (Issue #232) — surfaced in the report; flags
+            # estimated (default-rate) models so non-Claude spend isn't shown as exact.
+            "llm_cost_by_model": (ctm.cost_by_model() if (ctm := getattr(self, "cost_tracker", None)) else {}),
         }
 
         inv_dir = self._inventory_dir(state)

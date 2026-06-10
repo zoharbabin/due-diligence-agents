@@ -294,3 +294,39 @@ class TestPricingAgnostic:
         ct._WARNED_UNKNOWN_MODELS.discard("m")
         # The bad entry is dropped, so the model falls back to the default rate.
         assert ct._estimate_cost("m", 1_000_000, 0) == pytest.approx(3.0)
+
+
+class TestCostByModel:
+    """Per-model cost rollup with estimated flag (Issue #232)."""
+
+    def test_rollup_groups_and_flags_estimated(self) -> None:
+        from dd_agents.agents.cost_tracker import CostTracker
+
+        t = CostTracker()
+        # claude-sonnet-4-6 is in the built-in table → exact; gpt-4o is not → estimated.
+        t.record("legal", "16_spawn", 1_000_000, 0, "claude-sonnet-4-6")
+        t.record("finance", "16_spawn", 1_000_000, 0, "claude-sonnet-4-6")
+        t.record("hr", "16_spawn", 1_000_000, 0, "openai/gpt-4o")
+        by_model = t.cost_by_model()
+        assert set(by_model) == {"claude-sonnet-4-6", "openai/gpt-4o"}
+        assert by_model["claude-sonnet-4-6"]["estimated"] is False
+        assert by_model["openai/gpt-4o"]["estimated"] is True
+        assert by_model["claude-sonnet-4-6"]["input_tokens"] == 2_000_000
+
+    def test_empty_model_is_provider_default_and_estimated(self) -> None:
+        from dd_agents.agents.cost_tracker import CostTracker
+
+        t = CostTracker()
+        t.record("legal", "16_spawn", 100, 50, "")
+        by_model = t.cost_by_model()
+        assert "(provider default)" in by_model
+        assert by_model["(provider default)"]["estimated"] is True
+
+    def test_to_dict_includes_by_model(self) -> None:
+        from dd_agents.agents.cost_tracker import CostTracker
+
+        t = CostTracker()
+        t.record("legal", "16_spawn", 100, 50, "claude-opus-4-8")
+        d = t.to_dict()
+        assert "by_model" in d
+        assert "claude-opus-4-8" in d["by_model"]
