@@ -87,6 +87,23 @@ def _is_structured_output_error(exc: Exception) -> bool:
     return any(marker in msg for marker in _STRUCTURED_OUTPUT_ERROR_MARKERS)
 
 
+# Appended to the system prompt ONLY when constrained decoding (output_format)
+# is unavailable and we fall back to prompt-instructed JSON. Without this, a
+# provider/gateway that drops output_format (or a weaker model) returns markdown
+# prose the parser can't recover. Kept off the constrained-decoding path so
+# native structured output is unchanged (Issue #4).
+_JSON_ONLY_FALLBACK_INSTRUCTION = (
+    "\n\n## Output Format (STRICT)\n\n"
+    "Return ONLY a single raw JSON object — no markdown, no code fences, no "
+    "prose, no preamble, no headings. The response MUST start with `{` and end "
+    "with `}`. Each top-level key is one of the required keys named above, and "
+    'each maps to an object: {"answer": <string>, "confidence": "high"|"medium"'
+    '|"low", "citations": [{"file_path": <string>, "page": <string>, '
+    '"section_ref": <string>, "exact_quote": <string>}]}. Output nothing '
+    "outside the JSON object."
+)
+
+
 # JSON-schema property keys must match this pattern on some providers (notably
 # Bedrock's tool-schema validator): ^[a-zA-Z0-9_.-]{1,64}$. User column names
 # are free text ("Governing Law"), so we map each to a schema-safe key for the
@@ -705,7 +722,7 @@ class SearchAnalyzer:
         want_structured = output_schema is not None and not self._structured_output_unsupported
         if want_structured:
             try:
-                return await self._sdk_query(system_prompt, user_prompt, output_schema)
+                result = await self._sdk_query(system_prompt, user_prompt, output_schema)
             except RuntimeError as exc:
                 if not _is_structured_output_error(exc):
                     raise
@@ -717,9 +734,34 @@ class SearchAnalyzer:
                             "(%s); falling back to prompt-instructed JSON for the rest of the run.",
                             exc,
                         )
+            else:
+                # The call SUCCEEDED. But some gateways silently drop
+                # output_format (e.g. LiteLLM drop_params) so the model returns
+                # prose with no error. If the result isn't JSON, treat structured
+                # output as unsupported and fall through to the prompt-instructed
+                # path (with the explicit JSON contract) for this and later calls.
+                if _looks_like_json(result):
+                    return result
+                async with self._latch_lock:
+                    if not self._structured_output_unsupported:
+                        self._structured_output_unsupported = True
+                        logger.warning(
+                            "Backend accepted output_format but returned non-JSON text "
+                            "(gateway likely dropped the param); falling back to "
+                            "prompt-instructed JSON for the rest of the run."
+                        )
         # No schema requested, or structured output is known-unsupported: rely
-        # on the prompt's explicit JSON-key contract + _extract_json_text.
-        return await self._sdk_query(system_prompt, user_prompt, output_schema=None)
+        # on the prompt's explicit JSON-key contract + _extract_json_text. When
+        # we are NOT using constrained decoding, append an explicit JSON-only
+        # instruction — some providers/gateways silently drop ``output_format``
+        # (e.g. LiteLLM ``drop_params``) or a weaker model ignores it, and would
+        # otherwise return markdown prose that no parser can recover. This is
+        # added ONLY on the fallback path, so native constrained-decoding output
+        # stays untouched (Issue #4 design preserved).
+        fallback_system = system_prompt
+        if output_schema is not None:
+            fallback_system = system_prompt + _JSON_ONLY_FALLBACK_INSTRUCTION
+        return await self._sdk_query(fallback_system, user_prompt, output_schema=None)
 
     async def _sdk_query(
         self,
@@ -1399,37 +1441,47 @@ class SearchAnalyzer:
             cleaned = cleaned[: cleaned.rfind("```")]
         cleaned = cleaned.strip()
 
-        # Skip any preamble text before the JSON object.
-        brace_pos = cleaned.find("{")
-        if brace_pos == -1:
-            return cleaned
-        cleaned = cleaned[brace_pos:]
-
-        # Extract the FIRST brace-balanced object, ignoring trailing data
-        # (prose, a duplicate object, etc.). String-aware so braces inside
-        # quoted values don't throw off the depth count.
-        depth = 0
-        in_str = False
-        escaped = False
-        for i, ch in enumerate(cleaned):
-            if in_str:
-                if escaped:
-                    escaped = False
-                elif ch == "\\":
-                    escaped = True
-                elif ch == '"':
-                    in_str = False
+        # Scan EVERY '{' as a candidate object start and return the first
+        # brace-balanced span that parses as a JSON object. A single first-brace
+        # scan breaks when a weaker/non-Claude model wraps the answer in prose or
+        # leaks native tool-call markup (e.g. DeepSeek's ``<｜DSML｜...{...}``)
+        # whose first '{' is not the answer object. String-aware brace matching.
+        best_effort = ""
+        for start in range(len(cleaned)):
+            if cleaned[start] != "{":
                 continue
-            if ch == '"':
-                in_str = True
-            elif ch == "{":
-                depth += 1
-            elif ch == "}":
-                depth -= 1
-                if depth == 0:
-                    return cleaned[: i + 1]
-        # Unbalanced — return as-is and let json.loads surface the error.
-        return cleaned
+            depth = 0
+            in_str = False
+            escaped = False
+            for i in range(start, len(cleaned)):
+                ch = cleaned[i]
+                if in_str:
+                    if escaped:
+                        escaped = False
+                    elif ch == "\\":
+                        escaped = True
+                    elif ch == '"':
+                        in_str = False
+                    continue
+                if ch == '"':
+                    in_str = True
+                elif ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        span = cleaned[start : i + 1]
+                        if not best_effort:
+                            best_effort = span  # remember the first balanced span
+                        try:
+                            if isinstance(json.loads(span), dict):
+                                return span
+                        except (json.JSONDecodeError, ValueError):
+                            pass
+                        break  # this '{' didn't yield a dict; try the next one
+        # No candidate parsed as a dict: return the first balanced span (or the
+        # cleaned text) so json.loads surfaces a meaningful error upstream.
+        return best_effort or cleaned
 
     def _get_text_path(self, source_path: str) -> Path:
         """Convert original file path to extracted text path.

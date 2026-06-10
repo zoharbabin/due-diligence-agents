@@ -88,3 +88,4 @@ A copy-paste recipe lives in [`examples/litellm-gateway/`](https://github.com/zo
 | [Deal Configuration](deal-configuration.md) | `agent_models` profiles/overrides and budget cap |
 | `src/dd_agents/llm/provider.py` | The seam — `resolve_provider()` and `build_agent_options()` |
 | `examples/litellm-gateway/` | A tested gateway recipe for non-Claude models |
+| [Provider Coverage](provider-coverage.md) | Which flows are verified live on which providers |

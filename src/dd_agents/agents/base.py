@@ -193,6 +193,10 @@ class BaseAgentRunner(ABC):
             "output": None,
             "error": None,
             "elapsed_seconds": 0.0,
+            # Effective model id (or "" when inheriting the provider/CLI default)
+            # so cost tracking and the run's audit receipt attribute findings to
+            # the model that produced them. See CostTracker.record(model=...).
+            "model": self.get_model_id() or "",
         }
 
         start = time.monotonic()
