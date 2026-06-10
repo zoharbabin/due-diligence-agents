@@ -1611,8 +1611,23 @@ class TestExtractJsonText:
         raw = '{"col": {"answer": "YES, see section 12.3'
         result = SearchAnalyzer._extract_json_text(raw)
         assert result.startswith("{")
-        with pytest.raises(json.JSONDecodeError):
-            json.loads(result)
+
+    def test_skips_leading_nonjson_brace_object(self) -> None:
+        """A non-answer ``{...}`` (e.g. a weak model's tool-call markup) before
+        the real answer object must be skipped — pick the first SPAN that parses
+        as a dict, not merely the first ``{``. Cross-provider robustness."""
+        raw = (
+            "Let me analyze.\n<tool>{not valid json here}</tool>\n"
+            'Final answer:\n{"col": {"answer": "YES", "confidence": "high", "citations": []}}'
+        )
+        result = SearchAnalyzer._extract_json_text(raw)
+        assert json.loads(result) == {"col": {"answer": "YES", "confidence": "high", "citations": []}}
+
+    def test_prose_wrapped_json_recovered(self) -> None:
+        """Prose before AND after the JSON object (weak-model fallback)."""
+        raw = 'I reviewed all documents.\n{"col": {"answer": "NO"}}\nThat concludes my analysis.'
+        result = SearchAnalyzer._extract_json_text(raw)
+        assert json.loads(result) == {"col": {"answer": "NO"}}
 
 
 # ===================================================================
