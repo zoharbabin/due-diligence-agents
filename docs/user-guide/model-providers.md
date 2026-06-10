@@ -52,6 +52,7 @@ gateway lets you reach models from any vendor without changing dd-agents.
 - **If a query 400s on token limits** behind a gateway, set `DD_MAX_OUTPUT_TOKENS` (the seam exports it as `CLAUDE_CODE_MAX_OUTPUT_TOKENS`) to a value within the backing model's output cap.
 - **Cost accuracy for non-Claude models**: set `DD_MODEL_PRICING` (JSON: `{"<model-id>": {"input": <usd_per_mtok>, "output": <…>}}`). Unknown models are estimated at default rates and logged as such, never silently presented as exact.
 - **Pin a model per call path** (optional): `agent_models.overrides` in the deal config (specialists/synthesis), and `DD_QUERY_MODEL` / `DD_SEARCH_MODEL` / `DD_AUTOCONFIG_MODEL` / `DD_VISION_MODEL` for the auxiliary reasoning paths. Use the id form your endpoint expects. CLI `--model-profile` / `--model-override` apply to a `run` and are folded into the run's provenance hash.
+- **Route a single agent to its own provider** (optional): `agent_models.routes` maps an agent name to a route `{model, base_url, auth_token_env}` — e.g. a cheap gateway model for `red_flag_scanner`, a premium provider for `judge`. `base_url` points that agent's call at an Anthropic-compatible gateway; `auth_token_env` names an env var whose value is sent as the gateway token (the token is **never** stored in config). Applied through the LLM seam per call (no global-env mutation, concurrent-session safe); a routing change busts the provenance hash, so resume stays fail-closed. See `agent_models` in [Deal Configuration](deal-configuration.md).
 
 ## Auxiliary (local) model paths
 
