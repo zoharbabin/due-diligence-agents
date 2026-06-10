@@ -2,7 +2,9 @@
 
 Everything produced for the Product Hunt launch, in one place. Positioning is locked
 (see `producthunt-launch-plan.md`): tagline **"Legal flags a risk. Finance another. We connect and cite."**,
-moat = cross-domain cross-referencing, proof = forensic citation.
+moat = cross-domain cross-referencing, proof = forensic citation, and a supporting
+enterprise differentiator = **no vendor lock-in** (runs on Anthropic API, your own
+Bedrock/Vertex, or any model via an Anthropic-compatible gateway — env config only).
 
 > **One golden sample, everywhere.** Project Atlas is now the *single* canonical example across the
 > whole repo — the quickstart (`examples/project-atlas/`), the public sample report
@@ -58,7 +60,7 @@ session — see `recordings/screen-recording-guide.md`.
 - **Avatar clips** (3 specialist reviewers) + **founder on-camera** beat.
 - Capture the **HTML report screen walkthrough** + the **Excel** scroll from the captured report.
 - Final **video assembly** per the brief's timecodes; export Hero / Teaser / Silent-loop cuts.
-- Decide launch date (Jun 14 vs Jun 21) → schedule the PH "Coming Soon" page.
+- Lock the launch date → schedule the PH "Coming Soon" page (see `producthunt-launch-plan.md` for the runway).
 
 ## Guardrails (apply to every asset)
 No "board-ready"; never "replaces advisors" (it accelerates them); no "zero hallucinations"

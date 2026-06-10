@@ -54,7 +54,7 @@ answered. Any legal professional can write one — no coding required.
 
 For a complete, production-quality example see
 [Ready-to-Use Example: Change of Control Analysis](#ready-to-use-example-change-of-control-analysis)
-below, or the file at [`examples/search/change_of_control.json`](../examples/search/change_of_control.json).
+below, or the file at [`examples/search/change_of_control.json`](https://github.com/zoharbabin/due-diligence-agents/blob/main/examples/search/change_of_control.json).
 
 ### Tips for Writing Good Prompts
 
@@ -298,7 +298,7 @@ is unacceptable:
 ## Ready-to-Use Example: Change of Control Analysis
 
 A production-quality prompts file is included at
-[`examples/search/change_of_control.json`](../examples/search/change_of_control.json).
+[`examples/search/change_of_control.json`](https://github.com/zoharbabin/due-diligence-agents/blob/main/examples/search/change_of_control.json).
 It covers the most common M&A due-diligence scenario — identifying contracts
 that require consent, notice, or that carry termination-for-convenience risk
 when ownership of the service provider changes.

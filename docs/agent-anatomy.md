@@ -16,7 +16,7 @@ associate's scope memo before sending them into a data room.
 > *add* guidance, sharpen focus, and adjust how findings are graded. Nobody —
 > no setting, no customization, no edited file — can switch off the safety
 > rules that prevent the agents from inventing facts or citations. Those are
-> bolted on in code, last, every time. The ["Safety floor"](#the-safety-floor--what-can-never-be-switched-off)
+> bolted on in code, last, every time. The ["Safety floor"](#the-safety-floor-what-can-never-be-switched-off)
 > section explains how that guarantee holds.
 
 ---

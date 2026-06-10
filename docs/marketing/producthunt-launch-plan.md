@@ -12,7 +12,7 @@ Product Hunt is **not dead, but it rewards a coordinated 24-hour campaign backed
 1. **It's a B2-developer-and-prosumer audience.** PH works best for self-serve tools tech people can try in minutes. Our **developer story** (open-source, `pip install`, Docker, forensic AI-agent architecture) is the PH-native hook. The **M&A-professional story** is the depth, but it converts better on LinkedIn/legal channels (Artificial Lawyer, LawNext, r/legaltech — see the broader launch plan in project memory).
 2. **We are a free, open-source project with no signup funnel.** That changes our goal. We are **not** optimizing trial signups — we optimize **GitHub stars, `pip`/Docker installs, newsletter/secondary-channel reach, and durable social proof** (the "Product of the Day" badge + DR-91 backlink). Frame success accordingly.
 
-**Our starting position (verify before launch):** 37★, 8 forks, repo created Feb 2026, currently v1.10.0. Assets already in hand: interactive [sample report], 23-slide [presentation], the golden Project Atlas demo + recordings, full logo set, social preview. This is a strong asset base — most of the "Week 2" work is *done*.
+**Our starting position (verify the live numbers before launch — stars/forks/version drift):** a public repo with a growing star/fork base on [GitHub](https://github.com/zoharbabin/due-diligence-agents) and [Releases](https://github.com/zoharbabin/due-diligence-agents/releases). Assets already in hand: interactive [sample report], the golden Project Atlas demo + recordings, full logo set, social preview, and the launch copy pack. This is a strong asset base — most of the asset-production work is *done*; the remaining work is the runway (§4) and scheduling.
 
 ---
 
@@ -31,15 +31,15 @@ Pick explicit targets so we know what to optimize (every playbook insists on thi
 
 **Why Top 3 matters disproportionately:** only the top 3 sit above the fold on the PH homepage; Meetric's retrospective showed upvotes ≠ visitors — the traffic concentrates on #1–#3. Top 10 still earns a next-day **newsletter** feature. Hitting any top-5 spot earns the permanent badge.
 
-Caveat to log honestly: a solo maker with ~37★ and a niche (M&A) audience is realistically fighting for **Top 5 on a low-competition day**, not a guaranteed #1. Plan for Top 5, build the machine that *could* reach #1 if the dev-tool angle catches.
+Caveat to log honestly: a solo maker with a modest star base and a niche (M&A) audience is realistically fighting for **Top 5 on a low-competition day**, not a guaranteed #1. Plan for Top 5, build the machine that *could* reach #1 if the dev-tool angle catches.
 
 ---
 
 ## 2. Timing decision
 
-**DECIDED: launch Sunday June 14, 2026, 12:01 AM PT** (= 3:01 AM ET). Solo maker. DevHunt dress-rehearsal a couple days prior (~Thu Jun 11 / Fri Jun 12).
+**Not yet launched.** Pick a target **weekend** and lock it so the §4–§6 runway can be dated backwards from it. Solo maker; schedule a DevHunt dress-rehearsal a couple of days prior.
 
-> ⚠️ **Compressed runway:** from the Jun 5 decision date this is only ~8 days, vs the ~3 weeks the prep assumes. Assets are already built so most prep compresses fine, BUT the high-ROI "founder DM flywheel" (§4) needs weeks to compound — in 8 days expect ~15–30 reciprocal supporters, not 50–150. Realistic ceiling on this timeline is a strong **Top 5**; a true **#1** run would prefer Sat/Sun Jun 20–21. Confirm Jun 14 vs Jun 21.
+> ⚠️ **Give the runway room:** the high-ROI "founder DM flywheel" (§4) needs ~3 weeks to compound into 50–150 reciprocal supporters. A compressed (~1 week) runway yields ~15–30 supporters and a realistic ceiling of a strong **Top 5**; a true **#1** run wants the full 3-week warm-up. Choose a launch weekend at least ~3 weeks out and date the countdown from it.
 
 **Why weekend, 12:01 AM PT (general reasoning):**
 
@@ -175,7 +175,7 @@ The maker runs the whole day; the principle is **pace the network across timezon
 >
 > So I built **Due Diligence Agents** — an open-source pipeline where **13 specialist AI agents** (Legal, Finance, Commercial, Tech, Cyber, HR, Tax, Regulatory, ESG + synthesis) read every document in the **data room** in parallel, **cross-reference findings across domains**, and trace **every** finding to an exact page, section, and quote. It produces an interactive HTML report with a Go/No-Go view + a 14-sheet Excel export. It runs **locally** — your documents only leave your machine as API calls to your own LLM provider.
 >
-> What makes it different: it's **forensic and auditable** (every claim is cited; a quality gate halts the run rather than ship unreliable output), **fully open-source** (Apache-2.0, `pip install dd-agents` or Docker), and the agent prompts are **editable markdown** you can read and fork.
+> What makes it different: it's **forensic and auditable** (every claim is cited; a quality gate halts the run rather than ship unreliable output), **fully open-source** (Apache-2.0, `pip install dd-agents` or Docker), the agent prompts are **editable markdown** you can read and fork, and there's **no vendor lock-in** — run it on the Anthropic API, your own AWS Bedrock or Google Vertex account, or any model (GPT, Gemini, local) via an Anthropic-compatible gateway, all by env config.
 >
 > 👉 You can see a **real (synthetic-deal) report with zero install** here: [sample report link]
 > 👉 Code: github.com/zoharbabin/due-diligence-agents
@@ -219,13 +219,13 @@ The launch is the **starting line**, not the finish (every guide hammers this):
 
 ---
 
-## 10. Decisions (locked 2026-06-05)
+## 10. Decisions
 
-1. **Launch date** — ✅ **Sun Jun 14, 2026, 12:01 AM PT**, solo. (⚠️ ~8-day runway → Top-5 realistic; Jun 21 still open as the fuller-runway #1 option — see §2.)
+1. **Launch date** — ⏳ **TBD.** Pick a weekend ≥3 weeks out (full founder-DM runway → realistic #1 shot); date the §4–§6 countdown from it. Go live exactly 12:01 AM PT.
 2. **Co-maker?** — ✅ **Solo for now.** Nap the 3–8 AM lull; be sharp 9 AM–7 PM PT peak.
 3. **PH-exclusive offer** — ✅ **Community value, no business angle** (live feature requests in comments + personal walkthroughs). Purely open-source; monetization not on the table now.
-4. **DevHunt dress-rehearsal** — ✅ **Yes, a couple days prior (~Thu Jun 11 / Fri Jun 12).**
-5. **Tagline** — ✅ **LOCKED: "Legal flags a risk. Finance another. We connect and cite."** (57 ch) — cross-domain moat + forensic proof, both audiences. Subtitle: "Every finding traced to an exact quote. Or we halt." A/B + alternates in §7. Positioning rolled out repo-wide (README, docs, mkdocs, DOCKERHUB, pyproject, GitHub description/topics, OG/JSON-LD meta).
+4. **DevHunt dress-rehearsal** — ✅ **Yes, a couple of days before the locked PH date.**
+5. **Tagline** — ✅ **LOCKED: "Legal flags a risk. Finance another. We connect and cite."** (57 ch) — cross-domain moat + forensic proof, both audiences. Subtitle: "Every finding traced to an exact quote. Or we halt." A/B + alternates in §7. Supporting enterprise hook: **no vendor lock-in** (run on Anthropic API / your Bedrock / your Vertex / any model via a gateway). Positioning rolled out repo-wide (README, docs, mkdocs, DOCKERHUB, pyproject, GitHub description/topics, OG/JSON-LD meta).
 
 ---
 

@@ -45,7 +45,7 @@ As a corp-dev lead, I'd sit on top of siloed advisor reports — legal, finance,
 
 So I built Due Diligence Agents. 13 AI agents read your entire data room across 9 domains (Legal, Finance, Commercial, Product/Tech, Cybersecurity, HR, Tax, Regulatory, ESG), cross-reference what no single-domain reviewer ever links, and trace every finding to an exact page and a verbatim quote. If a finding can't be verified against the source, the quality gate halts rather than ship it.
 
-What makes it different: the cross-domain connection is the whole point, and forensic citation is the proof. It's open-source (Apache-2.0) and runs locally — your documents only leave as API calls to your own LLM provider. It accelerates your advisors; humans still decide.
+What makes it different: the cross-domain connection is the whole point, and forensic citation is the proof. It's open-source (Apache-2.0) and runs locally — your documents only leave as API calls to your own LLM provider. **No vendor lock-in:** run it on the Anthropic API, your own AWS Bedrock or Google Vertex account, or *any* model (GPT, Gemini, a local model) behind an Anthropic-compatible gateway — all by env config, no code change. `dd-agents doctor` verifies your setup before a run, and every run records which provider/model produced the findings. It accelerates your advisors; humans still decide.
 
 See a sample report (no install): https://zoharbabin.github.io/due-diligence-agents/sample-report/
 Code: https://github.com/zoharbabin/due-diligence-agents · `pip install dd-agents`
@@ -174,8 +174,8 @@ Every finding is traced to an exact page and a verbatim quote. If a claim can't 
 
 It doesn't replace your lawyers or bankers — it accelerates them, and hands them analysis they can actually stand behind.
 
-**5/ (Open-source + local)**
-It's Apache-2.0 and runs locally. Your data room never leaves your machine — the only thing that goes out is API calls to your own LLM provider.
+**5/ (Open-source + local + no lock-in)**
+Apache-2.0, runs locally. Your data room never leaves your machine — only API calls to YOUR LLM provider go out. And no vendor lock-in: Anthropic API, your own AWS Bedrock / Google Vertex, or any model (GPT, Gemini, local) via a gateway — env config, zero code change.
 
 pip install dd-agents (or Docker). Read the prompts, edit the agents, fork the whole thing. #buildinpublic
 
@@ -211,7 +211,7 @@ So I built Due Diligence Agents — an open-source tool that reads an entire dat
 
 It does not replace your lawyers, bankers, or deal team — it accelerates them. Humans still decide. It just connects the dots and hands your advisors a cited starting point instead of a blank page.
 
-Runs locally. Your documents never leave your environment except as API calls to your own LLM provider.
+Runs locally. Your documents never leave your environment except as API calls to your own LLM provider — and there's no vendor lock-in: run it on the Anthropic API, your own AWS Bedrock or Google Vertex account, or any model via an Anthropic-compatible gateway, all by configuration.
 
 We're live on Product Hunt today. I'd genuinely value your read on it — see a sample report and tell me where it's wrong:
 
@@ -251,7 +251,7 @@ Read as one mini-walkthrough scroll: **what it is → cross-domain reveal → th
 
 **#4 — Report / Go·No-Go verdict (the deliverable).** Headline: "An interactive report with a clear verdict — built to brief your advisors." Sub: "Go / No-Go view, deal-breakers, action items, risk heatmap. Filter by severity and drill into any finding." Visual: executive dashboard (`01-executive-dashboard.png` / `05-deal-breakers.png`) in browser chrome; foreground the verdict banner showing real sample value "Conditional Go" + deal-breaker count + severity tally; show filter bar (`07-filter-bar-active.png`) as a thin strip; iris accent on the active filter pill. Caption stays "to brief your advisors" / "basis for deliverables" — never "board-ready," never "replaces advisors."
 
-**#5 — Export + local (the practical close).** Headline: "14-sheet Excel, per-finding JSON — and it runs locally." Sub: "Your documents never leave your machine except as API calls to your own LLM provider. Apache-2.0, open source." Visual: split panel — left, a 14-tab Excel still (tabs along the bottom, one sheet showing findings rows with severity + citation columns); right, a "local" trust motif (laptop/terminal + shield) with the data-flow line `Data room (your disk) → agents (local) → your LLM API → report (your disk)`, iris on the "your disk" endpoints. 50/50 vertical split, thin iris divider; badges bottom-right: "Apache-2.0," "Local-first." Keep the data-flow line literally accurate.
+**#5 — Export + local + no lock-in (the practical close).** Headline: "14-sheet Excel, per-finding JSON — runs locally, on your model." Sub: "Your documents never leave your machine except as API calls to your own LLM provider. No vendor lock-in — Anthropic API, your Bedrock/Vertex, or any model via a gateway. Apache-2.0, open source." Visual: split panel — left, a 14-tab Excel still (tabs along the bottom, one sheet showing findings rows with severity + citation columns); right, a "local" trust motif (laptop/terminal + shield) with the data-flow line `Data room (your disk) → agents (local) → your LLM API → report (your disk)`, iris on the "your disk" endpoints. 50/50 vertical split, thin iris divider; badges bottom-right: "Apache-2.0," "Local-first," "BYO model." Keep the data-flow line literally accurate.
 
 **#6 — Install (CTA, dev-native).** Headline: "Read every doc. Connect every domain. Cite every flag." Visual: clean terminal block on `#0a0f1e`, mono, copy-paste ready:
 ```

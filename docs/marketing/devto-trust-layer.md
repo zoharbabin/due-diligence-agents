@@ -185,7 +185,7 @@ And the meta-point: **be honest in your own docs about which layer is which.** I
 
 ## Try it
 
-Open-source (Apache 2.0), Python 3.12+, runs on the Anthropic API or AWS Bedrock.
+Open-source (Apache 2.0), Python 3.12+. No vendor lock-in: runs on the Anthropic API, your own AWS Bedrock or Google Vertex account, or any model (GPT, Gemini, local) behind an Anthropic-compatible gateway — all by env config.
 
 **See the output without installing → [interactive sample report](https://zoharbabin.github.io/due-diligence-agents/sample-report/)** (from a synthetic deal — no real data).
 

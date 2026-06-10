@@ -78,7 +78,7 @@ Every new install path = a new discovery surface + credibility:
 - **M&A / PE / corp-dev communities**: corp-dev & PE Slack/Discord groups, **Axial** (lower-middle-market deal community), the SourceScrub/Grata/Sourceco orbit (adjacent deal-sourcing audiences). Be a contributor, not a spammer.
 - **Newsletters/podcasts**: "AI and the Future of Law", LawNext, legaltech substacks; PE/corp-dev newsletters (e.g. deal-sourcing roundups). Pitch the founder story + the open-source angle (rare in this space).
 - **Conferences** (2026): **ILTACON** (Aug), **Legal Geek** (Oct), **CLOC Global** (May), corp-dev/M&A summits. Even a lightning demo or a hallway-track presence drives credibility. Most have a startup/demo track.
-- **Academic / research**: the [knowledge-architecture](knowledge-architecture.md) foundations make this credible — arXiv-adjacent writeups, or sharing the eval datasheet, reach the "AI for law/finance" research crowd.
+- **Academic / research**: the [knowledge-architecture](../knowledge-architecture.md) foundations make this credible — arXiv-adjacent writeups, or sharing the eval datasheet, reach the "AI for law/finance" research crowd.
 
 ---
 
