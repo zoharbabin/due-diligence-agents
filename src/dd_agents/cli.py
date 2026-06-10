@@ -1352,6 +1352,95 @@ def export_pdf(html_path: Path, output_path: Path | None, engine: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# memo command (Issue #190 — IC memo / advisory report)
+# ---------------------------------------------------------------------------
+
+
+@main.command()
+@click.option(
+    "--report",
+    "report_dir",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    required=True,
+    help="Path to the pipeline run directory (contains findings/merged/).",
+)
+@click.option(
+    "--output",
+    "output_path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Output memo path (Markdown). Default: <run>/report/ic_memo.md. An .html sibling is also written.",
+)
+def memo(report_dir: Path, output_path: Path | None) -> None:
+    """Generate an Investment Committee memo from a completed run.
+
+    Deterministically assembles a distributable memo (Markdown + HTML) from the
+    run's merged findings — Go/No-Go, key takeaways, top risks with cited
+    evidence, and recommendations. No new analysis pass. Convert to PDF with
+    `dd-agents export-pdf` on the emitted .html.
+
+    \b
+    Example:
+        dd-agents memo --report _dd/forensic-dd/runs/latest
+    """
+    import json as _json
+
+    from dd_agents.reporting.computed_metrics import ReportDataComputer
+    from dd_agents.reporting.ic_memo import memo_to_html, render_ic_memo
+
+    run_dir = report_dir.resolve()
+    merged_dir = run_dir / "findings" / "merged"
+    if not merged_dir.is_dir() or not any(merged_dir.glob("*.json")):
+        _print_error(
+            "No Merged Findings",
+            f"No merged findings found at {merged_dir}.\n  Run the full pipeline first: dd-agents run deal-config.json",
+        )
+        raise SystemExit(1)
+
+    # Load merged findings into {safe_name: subject_dict} — same shape the
+    # report generator uses, so the memo reflects identical computed data.
+    merged_data: dict[str, Any] = {}
+    for jf in sorted(merged_dir.glob("*.json")):
+        try:
+            merged_data[jf.stem] = _json.loads(jf.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            continue
+
+    # Optional synthesis + deal config, loaded the same way the report step does.
+    exec_synth = _read_optional_json(run_dir / "executive_synthesis.json")
+    deal_config = _read_optional_json(run_dir.parent.parent.parent / "deal-config.json")
+
+    computed = ReportDataComputer().compute(merged_data, executive_synthesis=exec_synth)
+
+    memo_md = render_ic_memo(computed, deal_config if isinstance(deal_config, dict) else None)
+    md_path = output_path.resolve() if output_path else run_dir / "report" / "ic_memo.md"
+    md_path.parent.mkdir(parents=True, exist_ok=True)
+    md_path.write_text(memo_md, encoding="utf-8")
+    html_path = md_path.with_suffix(".html")
+    html_path.write_text(memo_to_html(memo_md), encoding="utf-8")
+
+    console.print(
+        Panel(
+            f"[bold green]IC memo generated[/bold green]\n\n"
+            f"Markdown: {md_path}\nHTML: {html_path}\n\n"
+            f"To PDF: dd-agents export-pdf {html_path}",
+            title="Memo Complete",
+            border_style="green",
+        )
+    )
+
+
+def _read_optional_json(path: Path) -> Any:
+    """Read a JSON file if it exists, else None (best-effort)."""
+    import json as _json
+
+    try:
+        return _json.loads(path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return None
+
+
+# ---------------------------------------------------------------------------
 # query command (Issue #124)
 # ---------------------------------------------------------------------------
 
