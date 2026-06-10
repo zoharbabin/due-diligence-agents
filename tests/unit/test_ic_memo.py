@@ -131,6 +131,29 @@ class TestMemoCli:
         assert md.exists() and html.exists()
         assert "# Investment Committee Memo" in md.read_text()
 
+    def test_memo_discovers_deal_config_up_the_tree(self, tmp_path: Path) -> None:
+        import json
+
+        from click.testing import CliRunner
+
+        from dd_agents.cli import main
+
+        # deal-config.json at the project root; run nested several levels below.
+        (tmp_path / "deal-config.json").write_text(
+            json.dumps({"buyer": {"name": "Summit"}, "target": {"name": "Northwind"}, "deal": {"type": "acquisition"}})
+        )
+        run = tmp_path / "data_room" / "_dd" / "forensic-dd" / "runs" / "run_x"
+        merged = run / "findings" / "merged"
+        merged.mkdir(parents=True)
+        (merged / "n.json").write_text(json.dumps({"subject": "Northwind", "findings": [], "gaps": []}))
+
+        result = CliRunner().invoke(main, ["memo", "--report", str(run)])
+        assert result.exit_code == 0, result.output
+        # Header populated from the discovered config (not silently dropped).
+        md = (run / "report" / "ic_memo.md").read_text()
+        assert "**Target:** Northwind" in md
+        assert "**Acquirer:** Summit" in md
+
     def test_memo_command_errors_without_findings(self, tmp_path: Path) -> None:
         from click.testing import CliRunner
 

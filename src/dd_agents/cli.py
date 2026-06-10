@@ -1371,7 +1371,14 @@ def export_pdf(html_path: Path, output_path: Path | None, engine: str) -> None:
     default=None,
     help="Output memo path (Markdown). Default: <run>/report/ic_memo.md. An .html sibling is also written.",
 )
-def memo(report_dir: Path, output_path: Path | None) -> None:
+@click.option(
+    "--deal-config",
+    "deal_config_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Path to deal-config.json (for the memo header). Auto-discovered from the run dir if omitted.",
+)
+def memo(report_dir: Path, output_path: Path | None, deal_config_path: Path | None) -> None:
     """Generate an Investment Committee memo from a completed run.
 
     Deterministically assembles a distributable memo (Markdown + HTML) from the
@@ -1408,7 +1415,7 @@ def memo(report_dir: Path, output_path: Path | None) -> None:
 
     # Optional synthesis + deal config, loaded the same way the report step does.
     exec_synth = _read_optional_json(run_dir / "executive_synthesis.json")
-    deal_config = _read_optional_json(run_dir.parent.parent.parent / "deal-config.json")
+    deal_config = _read_optional_json(deal_config_path) if deal_config_path else _discover_deal_config(run_dir)
 
     computed = ReportDataComputer().compute(merged_data, executive_synthesis=exec_synth)
 
@@ -1438,6 +1445,21 @@ def _read_optional_json(path: Path) -> Any:
         return _json.loads(path.read_text(encoding="utf-8"))
     except (ValueError, OSError):
         return None
+
+
+def _discover_deal_config(run_dir: Path) -> Any:
+    """Find deal-config.json by walking up from a run dir (best-effort).
+
+    A run lives at ``<project>/<data_room>/_dd/forensic-dd/runs/<run_id>``, but
+    the data-room/project depth varies, so search ancestors for the first
+    ``deal-config.json`` rather than assuming a fixed level. Returns the parsed
+    dict, or None when not found (the memo header degrades gracefully).
+    """
+    for ancestor in [run_dir, *run_dir.parents]:
+        candidate = ancestor / "deal-config.json"
+        if candidate.is_file():
+            return _read_optional_json(candidate)
+    return None
 
 
 # ---------------------------------------------------------------------------

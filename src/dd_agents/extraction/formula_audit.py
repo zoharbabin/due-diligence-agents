@@ -77,6 +77,26 @@ def _split_cell(coord: str) -> tuple[str, int] | None:
     return m.group(1), int(m.group(2))
 
 
+def _col_to_num(col: str) -> int:
+    """Convert an Excel column letter to its 1-based number (A=1, Z=26, AA=27).
+
+    Used for sorting so multi-letter columns order correctly (B < Z < AA),
+    rather than lexicographically (where "AA" would wrongly sort before "B").
+    """
+    n = 0
+    for ch in col:
+        n = n * 26 + (ord(ch) - ord("A") + 1)
+    return n
+
+
+def _sort_key(cell: str) -> tuple[int, int]:
+    """Stable (column-number, row) sort key for a cell coordinate."""
+    parts = _split_cell(cell)
+    if parts is None:
+        return (0, 0)
+    return (_col_to_num(parts[0]), parts[1])
+
+
 def extract_formula_map(path: Path, max_cells_per_sheet: int = _MAX_CELLS_PER_SHEET) -> FormulaMap:
     """Return ``{sheet: {cell: formula}}`` for every formula cell in *path*.
 
@@ -138,7 +158,8 @@ def audit_formulas(formula_map: FormulaMap) -> list[FormulaIssue]:
       "formula" (``=42``) inside a column whose other cells are real formulas,
       i.e. an analyst overrode a computed cell with a typed-in number.
 
-    Returns issues sorted by (sheet, row, column) for stable, citable output.
+    Returns issues sorted by (sheet, column, row) — columns ordered
+    numerically (B < Z < AA) — for stable, citable output.
     """
     issues: list[FormulaIssue] = []
 
@@ -209,7 +230,7 @@ def audit_formulas(formula_map: FormulaMap) -> list[FormulaIssue]:
                         )
                     )
 
-    issues.sort(key=lambda i: (i.sheet, _split_cell(i.cell) or ("", 0)))
+    issues.sort(key=lambda i: (i.sheet, _sort_key(i.cell)))
     return issues
 
 

@@ -111,6 +111,12 @@ class TestAuditFormulas:
         # Sorted by (sheet, col, row): A1 (col A) before C9 (col C).
         assert [i.cell for i in issues] == ["A1", "C9"]
 
+    def test_multi_letter_columns_sort_numerically(self) -> None:
+        # Regression: "AA" (col 27) must sort AFTER "B"/"Z", not lexicographically first.
+        fmap = {"S": {"AA1": "=[1]X!Q1", "B2": "=[1]X!Q2", "Z3": "=[1]X!Q3"}}
+        issues = audit_formulas(fmap)
+        assert [i.cell for i in issues] == ["B2", "Z3", "AA1"]
+
 
 class TestFormatFormulaAudit:
     def test_empty_map_renders_nothing(self) -> None:

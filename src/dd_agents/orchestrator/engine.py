@@ -1066,9 +1066,45 @@ class PipelineEngine:
                 "unexpected_count": len(result.unexpected_files),
             }
             (inv_dir / "request_list.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            # Stash missing-required gaps so the report step surfaces them in the
+            # gaps section (Issue #192 — flows through the existing Gap pipeline).
+            from dd_agents.inventory.request_list import to_gaps
+
+            state._request_list_gaps = [g.model_dump(mode="json") for g in to_gaps(result, run_id=state.run_id)]  # type: ignore[attr-defined]
             logger.info("Request list: %s", result.summary())
         except Exception as exc:  # noqa: BLE001 — advisory; never block the run
             logger.debug("Request-list reconciliation skipped: %s", exc)
+
+    def _inject_request_list_gaps(self, state: PipelineState, merged_findings: dict[str, Any]) -> None:
+        """Inject request-list missing-required gaps into the report's gaps view.
+
+        Adds each Gap (already a standard Gap record) to the matching subject's
+        ``gaps`` list — or a synthetic deal-wide entry when the gap isn't scoped
+        to a known subject — so missing required documents render in the report's
+        gaps section. No-op when no request-list gaps were produced (parity).
+        """
+        gaps = getattr(state, "_request_list_gaps", None)
+        if not gaps:
+            return
+        # Bucket gaps by subject_safe_name; deal-wide gaps go to a synthetic entry.
+        from dd_agents.utils.naming import subject_safe_name
+
+        for gap in gaps:
+            subj_label = str(gap.get("subject", "")) or "Deal-wide"
+            safe = subject_safe_name(subj_label) if subj_label != "Deal-wide" else "_request_list"
+            target = merged_findings.get(safe)
+            if target is None:
+                target = {
+                    "subject": subj_label,
+                    "subject_safe_name": safe,
+                    "findings": [],
+                    "gaps": [],
+                    "cross_references": [],
+                    "auto_generated": True,
+                    "source": "request_list",
+                }
+                merged_findings[safe] = target
+            target.setdefault("gaps", []).append(gap)
 
     async def _step_07_entity_resolution(self, state: PipelineState) -> PipelineState:
         """Run 6-pass cascading entity matcher."""
@@ -3627,6 +3663,11 @@ class PipelineEngine:
                     merged_findings[jf.stem] = data
                 except (json.JSONDecodeError, OSError):
                     continue
+
+        # Request-list gaps (Issue #192): inject missing-required documents as
+        # standard Gap records into the report so they surface in the gaps
+        # section (not just the inventory JSON). No-op when no request list.
+        self._inject_request_list_gaps(state, merged_findings)
 
         # ------------------------------------------------------------------
         # Schema resolution with config/ fallback (Issue #35)
