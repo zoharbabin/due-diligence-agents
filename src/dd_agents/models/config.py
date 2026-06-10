@@ -389,6 +389,39 @@ class AgentRoute(BaseModel):
         "time and passed as ANTHROPIC_AUTH_TOKEN for the agent's call). The token itself is NEVER stored in config.",
     )
 
+    @field_validator("base_url")
+    @classmethod
+    def _reject_credentialed_base_url(cls, v: str | None) -> str | None:
+        """Reject a base_url that embeds credentials (``scheme://user:pw@host``).
+
+        Credentials belong in ``auth_token_env`` (an env-var name), never in the
+        URL — a credentialed base_url would otherwise be persisted in config and
+        forwarded to the subprocess. Fail-closed at the config boundary.
+        """
+        if v:
+            from urllib.parse import urlsplit
+
+            parts = urlsplit(v)
+            if parts.username or parts.password:
+                raise ValueError(
+                    "agent_models.routes[*].base_url must not contain credentials (userinfo). "
+                    "Put the token's env-var name in auth_token_env instead."
+                )
+        return v
+
+    @property
+    def safe_base_url(self) -> str | None:
+        """``base_url`` with any userinfo/query/fragment stripped (defensive)."""
+        if not self.base_url:
+            return None
+        from urllib.parse import urlsplit, urlunsplit
+
+        parts = urlsplit(self.base_url)
+        host = parts.hostname or ""
+        if parts.port:
+            host = f"{host}:{parts.port}"
+        return urlunsplit((parts.scheme, host, parts.path, "", "")) or None
+
 
 class AgentModelsConfig(BaseModel):
     """Agent model selection configuration (Issue #129, extended #233).
@@ -438,34 +471,13 @@ class AgentModelsConfig(BaseModel):
         return profile.get_model_for_agent(agent_name)
 
     def resolve_route(self, agent_name: str) -> AgentRoute | None:
-        """Return the per-agent route, or None when the agent has no routing override."""
-        return self.routes.get(agent_name)
+        """Return the per-agent route, or None when the agent has no routing override.
 
-    def routing_fingerprint(self) -> str:
-        """Secret-free, stable fingerprint of all per-agent routing.
-
-        Folded into the run's provenance fingerprint so a per-agent routing
-        change busts a stale checkpoint (fail-closed resume). Excludes the token
-        value (only the env-var NAME is in config); base_url host-only would be
-        ideal but config base_urls are operator-authored and not expected to
-        carry secrets — we still strip any userinfo defensively.
+        Note: per-agent routing is part of the deal config, so it is already
+        covered by the run's ``config_hash`` (and therefore the provenance hash)
+        — a routing change busts a stale checkpoint with no extra plumbing.
         """
-        if not self.routes:
-            return ""
-        from urllib.parse import urlsplit, urlunsplit
-
-        parts: list[str] = []
-        for agent in sorted(self.routes):
-            r = self.routes[agent]
-            safe_url = ""
-            if r.base_url:
-                u = urlsplit(r.base_url)
-                host = u.hostname or ""
-                if u.port:
-                    host = f"{host}:{u.port}"
-                safe_url = urlunsplit((u.scheme, host, u.path, "", ""))
-            parts.append(f"{agent}={r.model or ''}@{safe_url}#{r.auth_token_env or ''}")
-        return ";".join(parts)
+        return self.routes.get(agent_name)
 
 
 class PrecedenceConfig(BaseModel):

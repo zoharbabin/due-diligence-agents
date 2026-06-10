@@ -141,7 +141,10 @@ class BaseAgentRunner(ABC):
             return {}
         import os
 
-        env: dict[str, str] = {"ANTHROPIC_BASE_URL": str(route.base_url)}
+        # Use the credential-stripped URL (defense-in-depth — a config validator
+        # already rejects userinfo, but never forward a raw URL to the subprocess).
+        safe_url = getattr(route, "safe_base_url", None) or str(route.base_url)
+        env: dict[str, str] = {"ANTHROPIC_BASE_URL": safe_url}
         token_env = getattr(route, "auth_token_env", None)
         if token_env:
             token = os.getenv(str(token_env))

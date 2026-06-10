@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
+
 from dd_agents.models.config import AgentModelsConfig, AgentRoute, DealConfig
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import pytest
+    from dd_agents.agents.specialists import LegalAgent
 
 
 class TestResolveModelAndRoute:
@@ -39,33 +41,23 @@ class TestResolveModelAndRoute:
 
 
 class TestRoutingFingerprint:
-    def test_empty_when_no_routes(self) -> None:
-        assert AgentModelsConfig().routing_fingerprint() == ""
+    def test_credentialed_base_url_rejected_at_config_boundary(self) -> None:
+        # A base_url with embedded credentials must be rejected (fail-closed) —
+        # credentials belong in auth_token_env, never in the URL/config.
+        import pydantic
 
-    def test_changes_with_routing(self) -> None:
-        a = AgentModelsConfig(routes={"legal": AgentRoute(base_url="http://gw-a")})
-        b = AgentModelsConfig(routes={"legal": AgentRoute(base_url="http://gw-b")})
-        assert a.routing_fingerprint() != b.routing_fingerprint()
+        with pytest.raises(pydantic.ValidationError):
+            AgentRoute(base_url="https://tok:pw@gw.example/v1")  # pragma: allowlist secret
 
-    def test_deterministic_and_order_independent(self) -> None:
-        a = AgentModelsConfig(routes={"legal": AgentRoute(model="m1"), "finance": AgentRoute(model="m2")})
-        b = AgentModelsConfig(routes={"finance": AgentRoute(model="m2"), "legal": AgentRoute(model="m1")})
-        assert a.routing_fingerprint() == b.routing_fingerprint()
+    def test_safe_base_url_strips_userinfo_defensively(self) -> None:
+        # Even if a credentialed URL somehow reaches the model, safe_base_url is clean.
+        r = AgentRoute.model_construct(base_url="https://tok:pw@gw.example:4011/v1?x=1")  # pragma: allowlist secret
+        safe = r.safe_base_url
+        assert safe == "https://gw.example:4011/v1"
+        assert "pw@" not in (safe or "") and "tok:" not in (safe or "")
 
-    def test_token_value_never_in_fingerprint(self) -> None:
-        # Only the env-var NAME is in config; the fingerprint must not contain a token.
-        fp = AgentModelsConfig(
-            routes={"legal": AgentRoute(base_url="http://x", auth_token_env="SECRET_TOK")}
-        ).routing_fingerprint()
-        assert "SECRET_TOK" in fp  # the NAME is fine
-        # (no token value exists in config to leak — guard documents intent)
-
-    def test_credentialed_base_url_stripped(self) -> None:
-        fp = AgentModelsConfig(
-            routes={"legal": AgentRoute(base_url="https://tok:pw@gw.example/v1")}  # pragma: allowlist secret
-        ).routing_fingerprint()
-        assert "pw@" not in fp and "tok:" not in fp
-        assert "gw.example/v1" in fp
+    def test_safe_base_url_none_when_unset(self) -> None:
+        assert AgentRoute(model="m1").safe_base_url is None
 
 
 class TestProvenanceCoversRouting:
@@ -84,7 +76,7 @@ class TestProvenanceCoversRouting:
 
 
 class TestGetRouteEnv:
-    def _runner(self, tmp_path: Path, deal_config: DealConfig | None):
+    def _runner(self, tmp_path: Path, deal_config: DealConfig | None) -> LegalAgent:
         from dd_agents.agents.specialists import LegalAgent
 
         return LegalAgent(project_dir=tmp_path, run_dir=tmp_path, run_id="r", deal_config=deal_config)
