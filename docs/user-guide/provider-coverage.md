@@ -63,6 +63,36 @@ Notes:
   provider routing is identical. Drive them with `dd-agents doctor` first if you
   are bringing up a new provider.
 
+## Model capability tiers
+
+Which *backing model* you put behind the seam matters: the pipeline leans on
+tool-use, structured (JSON-schema) output, and — for scanned docs — vision.
+This matrix records what's been validated, so a BYO-model buyer can choose with
+confidence instead of discovering gaps at runtime. Legend: ✅ validated ·
+⚠️ partial / model-dependent · ❓ untested here.
+
+| Model (family) | Tool-use | Structured output (JSON) | Vision | Full 38-step run |
+|----------------|:--------:|:------------------------:|:------:|:----------------:|
+| Claude (Anthropic API / Bedrock / Vertex / gateway) | ✅ | ✅ | ✅ | ✅ |
+| DeepSeek v3.2 via gateway (non-Claude) | ⚠️ | ⚠️ | ❓ | ✅ |
+| GPT / Gemini via gateway | ❓ | ❓ | ❓ | ❓ |
+
+Notes:
+
+- **Claude** is the reference tier — full fidelity on every flow, native or via a gateway.
+- **DeepSeek (and weaker models)**: the full pipeline completes and produces
+  substantive findings, but a model that ignores the JSON contract (e.g. emits
+  native tool-call markup) yields partial `search` columns — handled gracefully,
+  not a crash. The structured-output fallback (prompt-instructed JSON + a
+  robust extractor) mitigates this; final fidelity is the model's responsibility.
+- **GPT / Gemini via gateway**: reachable by construction (same wire protocol)
+  but not validated live here — verify with `dd-agents doctor --probe` + a trial
+  `search` before a production run.
+- This matrix is a point-in-time validation record, not a guarantee. The
+  authoritative, continuous check is the `-m gateway` test (run on every push to
+  `main` via the **Gateway Provider Proof** CI job) plus your own
+  `dd-agents doctor --probe`.
+
 ## Reproduce
 
 Stand up a gateway and point dd-agents at it (the recipe in
@@ -76,4 +106,7 @@ dd-agents run deal-config.json           # full pipeline through your provider
 ```
 
 The gateway end-to-end test (`tests/e2e/test_gateway_provider.py -m gateway`) is
-the automated, opt-in version of the `doctor --probe` check.
+the automated version of the `doctor --probe` check. It runs continuously on
+every push to `main` (the **Gateway Provider Proof** CI job stands up a LiteLLM
+proxy in front of the Anthropic Messages API and round-trips a real query), and
+you can run it against your own gateway by setting `DD_TEST_GATEWAY_URL`.

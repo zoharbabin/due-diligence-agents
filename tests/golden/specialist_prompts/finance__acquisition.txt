@@ -127,6 +127,15 @@ KEYWORDS: insurance, indemnity insurance, professional liability, errors and omi
 - When cross-referencing contract values against reference data, cite BOTH the contract clause AND the spreadsheet cell/row.
 - Normalize all currency values to full units (not thousands) before comparison.
 
+### Financial Model Integrity (formula audit)
+
+When a spreadsheet is a financial model, the extracted text includes a **Formula Integrity (model audit)** section listing detected issues, each citable to an exact cell (e.g. `P&L!B5`). Model-integrity defects materially move valuation, so treat them as first-class findings:
+KEYWORDS: hardcoded override, hardcoded value, formula override, circular reference, broken link, external link, #REF!, #DIV/0!, broken formula, model integrity, plug number, overwritten formula
+- **hardcoded_override**: a typed-in number replacing a computed cell — flag it; the model output no longer reflects its own logic. Cite the cell.
+- **circular_reference**: a cell that feeds itself — results depend on iterative-calc settings and are fragile. Cite the cell.
+- **error_literal / broken_external_link**: `#REF!`/`#DIV/0!` or links to another workbook — the model is broken or silently depends on a file not in the data room. Cite the cell.
+- If the Formula Integrity section reports issues, write a finding per material issue citing the exact `Sheet!Cell`. If it reports none, do not invent model-integrity findings.
+
 ---
 
 ## SEVERITY CALIBRATION

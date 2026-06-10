@@ -90,6 +90,10 @@ def read_office(
     try:
         if suffix in _OPENPYXL_EXTENSIONS:
             content = _read_excel(path, sheet_name)
+            # Issue #194: append a formula-integrity audit (model risks citable
+            # to an exact cell) when the workbook contains formulas. Best-effort
+            # and additive — never blocks the value read above.
+            content += _formula_audit_section(path)
             method = "openpyxl"
         else:
             if sheet_name:
@@ -215,6 +219,31 @@ def _read_excel(path: Path, sheet_name: str | None) -> str:
         return "\n".join(parts)
     finally:
         wb.close()
+
+
+def _formula_audit_section(path: Path) -> str:
+    """Return a delimited formula-integrity section for an .xlsx, or "".
+
+    Issue #194: the value read above uses ``data_only=True`` and loses formula
+    text. This does a second formula-aware pass + a pure audit and renders a
+    compact section the Finance agent can cite. Best-effort: any failure yields
+    an empty string so the value content is unaffected.
+    """
+    try:
+        from dd_agents.extraction.formula_audit import (
+            audit_formulas,
+            extract_formula_map,
+            format_formula_audit,
+        )
+
+        formula_map = extract_formula_map(path)
+        if not formula_map:
+            return ""
+        issues = audit_formulas(formula_map)
+        return format_formula_audit(formula_map, issues)
+    except Exception as exc:  # noqa: BLE001 — additive audit; never break the value read
+        logger.debug("Formula audit skipped for %s: %s", path.name, exc)
+        return ""
 
 
 # ---------------------------------------------------------------------------

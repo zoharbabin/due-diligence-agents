@@ -80,8 +80,29 @@ class DataRoomAssessor:
             "estimated_subjects": len(subjects),
             "file_types": file_types,
             "subject_folders": sorted(subjects),
+            "vdr_convention": self._detect_vdr_convention(),
             "issues": issues,
             "recommendations": recommendations,
+        }
+
+    def _detect_vdr_convention(self) -> dict[str, Any]:
+        """Best-effort VDR numbered-folder convention detection (Issue #193).
+
+        Looks at the immediate child folders of the data room. Returns a small
+        dict for `assess` output; never raises and never affects scoring (a
+        generic room simply reports ``is_vdr: False``).
+        """
+        from dd_agents.precedence.vdr_conventions import detect_convention
+
+        top_level = [d.name for d in self.data_room.iterdir() if d.is_dir() and d.name not in _SKIP_NAMES]
+        result = detect_convention(top_level)
+        return {
+            "is_vdr": result.is_vdr,
+            "numbered_folders": result.numbered_folders,
+            "matched_categories": result.matched_categories,
+            "total_top_level": result.total_top_level,
+            "summary": result.describe(),
+            "categories": {folder: cat.category for folder, cat in result.categories.items()},
         }
 
     def _discover_files(self) -> list[Path]:

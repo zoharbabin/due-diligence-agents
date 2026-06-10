@@ -421,6 +421,47 @@ class PrecedenceConfig(BaseModel):
     )
 
 
+class RequestedDocument(BaseModel):
+    """One expected document/category in a request list (Issue #192).
+
+    Plain data — declares what the deal team expects to receive. Reconciliation
+    against discovered files produces received-vs-missing gaps.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    category: str = Field(description="Expected document or category, e.g. 'Signed MSA', 'Cap table'")
+    keywords: list[str] = Field(
+        default_factory=list,
+        description="Filename/path keywords that satisfy this item (case-insensitive). "
+        "Defaults to words from `category` when empty.",
+    )
+    required: bool = Field(default=True, description="True = missing is a material gap; False = optional/nice-to-have")
+    subject: str | None = Field(
+        default=None,
+        description="Subject this item applies to (subject_safe_name or display name). None = all subjects.",
+    )
+
+
+class RequestListConfig(BaseModel):
+    """Optional request list: what documents are expected in the data room.
+
+    When present, the pipeline (and `dd-agents assess`) reconciles expected
+    items against discovered files and reports received / missing / unexpected.
+    Absent = feature off (parity — nothing changes).
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    enabled: bool = Field(default=True, description="Enable request-list reconciliation")
+    items: list[RequestedDocument] = Field(default_factory=list, description="Expected documents/categories")
+    seed_from_vdr: bool = Field(
+        default=False,
+        description="When True, auto-seed expected categories from a detected VDR convention (Issue #193) "
+        "if no items are declared.",
+    )
+
+
 class DealConfig(BaseModel):
     """
     Root configuration model. Validated from deal-config.json.
@@ -455,6 +496,10 @@ class DealConfig(BaseModel):
     precedence: PrecedenceConfig | None = Field(
         default=None,
         description="Optional document precedence config. When absent, default tier patterns apply.",
+    )
+    request_list: RequestListConfig | None = Field(
+        default=None,
+        description="Optional request list (expected documents). When absent, reconciliation is skipped.",
     )
 
     @field_validator("config_version")

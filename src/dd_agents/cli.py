@@ -1134,13 +1134,20 @@ def search(
     type=click.Path(exists=True, file_okay=False, path_type=Path),
 )
 @click.option(
+    "--config",
+    "config_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Optional deal-config.json — enables request-list reconciliation (Issue #192).",
+)
+@click.option(
     "--verbose",
     "-v",
     is_flag=True,
     default=False,
     help="Enable verbose logging output.",
 )
-def assess(data_room: Path, verbose: bool) -> None:
+def assess(data_room: Path, config_path: Path | None, verbose: bool) -> None:
     """Assess data room quality and completeness before running the pipeline.
 
     Scans the data room folder and produces a health report covering:
@@ -1162,8 +1169,54 @@ def assess(data_room: Path, verbose: bool) -> None:
     assessor = DataRoomAssessor(data_room.resolve())
     report = assessor.assess()
 
+    # Request-list reconciliation (Issue #192) — only when a config with a
+    # request_list is supplied. Off by default (parity).
+    if config_path is not None:
+        report["request_list"] = _reconcile_request_list(config_path, report)
+
     # Display results
     _print_assessment_report(report)
+
+
+def _reconcile_request_list(config_path: Path, report: dict[str, Any]) -> dict[str, Any]:
+    """Reconcile a deal config's request_list against discovered files.
+
+    Returns a small dict for `assess` output. Auto-seeds from a detected VDR
+    convention when ``seed_from_vdr`` is set and no items are declared. Returns
+    an empty dict (rendered as nothing) when no request list applies.
+    """
+    from dd_agents.config import load_deal_config
+    from dd_agents.inventory.request_list import reconcile, seed_from_vdr_categories
+
+    try:
+        cfg = load_deal_config(config_path)
+    except Exception as exc:  # noqa: BLE001 — assess is advisory; bad config shouldn't crash it
+        return {"error": f"Could not load config: {exc}"}
+
+    rl = cfg.request_list
+    if rl is None or not rl.enabled:
+        return {}
+
+    items = list(rl.items)
+    if not items and rl.seed_from_vdr:
+        vdr_cats = report.get("vdr_convention", {}).get("categories", {})
+        items = seed_from_vdr_categories(vdr_cats)
+    if not items:
+        return {}
+
+    data_room = config_path.parent  # discovered paths are relative to where files live
+    # Reuse the assessor's discovered files (data-room-relative) for matching.
+    from dd_agents.assessment import DataRoomAssessor
+
+    files = DataRoomAssessor(data_room.resolve())._discover_files()
+    rel_paths = [str(f.relative_to(data_room.resolve())) for f in files]
+    result = reconcile(items, rel_paths)
+    return {
+        "summary": result.summary(),
+        "received": [s.category for s in result.received],
+        "missing_required": [s.category for s in result.missing_required],
+        "missing_optional": [s.category for s in result.missing if not s.required],
+    }
 
 
 def _print_assessment_report(report: dict[str, Any]) -> None:
@@ -1204,6 +1257,27 @@ def _print_assessment_report(report: dict[str, Any]) -> None:
             severity = issue.get("severity", "info")
             color = {"critical": "red", "warning": "yellow", "info": "cyan"}.get(severity, "white")
             console.print(f"  [{color}]{severity.upper()}[/{color}]: {issue['message']}")
+
+    # VDR convention (Issue #193) — only show when a numbered layout is detected.
+    vdr = report.get("vdr_convention", {})
+    if vdr.get("is_vdr"):
+        console.print()
+        console.print(f"[bold]VDR layout:[/bold] {vdr.get('summary', '')}")
+        for folder, category in sorted(vdr.get("categories", {}).items()):
+            console.print(f"  - {folder} → {category}")
+
+    # Request list (Issue #192) — only when reconciliation ran.
+    rl = report.get("request_list", {})
+    if rl:
+        console.print()
+        if rl.get("error"):
+            console.print(f"[yellow]Request list:[/yellow] {rl['error']}")
+        else:
+            console.print(f"[bold]Request list:[/bold] {rl.get('summary', '')}")
+            for cat in rl.get("missing_required", []):
+                console.print(f"  [red]MISSING (required)[/red]: {cat}")
+            for cat in rl.get("missing_optional", []):
+                console.print(f"  [yellow]missing (optional)[/yellow]: {cat}")
 
     # Recommendations
     recs = report.get("recommendations", [])
@@ -1275,6 +1349,117 @@ def export_pdf(html_path: Path, output_path: Path | None, engine: str) -> None:
             border_style="green",
         )
     )
+
+
+# ---------------------------------------------------------------------------
+# memo command (Issue #190 — IC memo / advisory report)
+# ---------------------------------------------------------------------------
+
+
+@main.command()
+@click.option(
+    "--report",
+    "report_dir",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    required=True,
+    help="Path to the pipeline run directory (contains findings/merged/).",
+)
+@click.option(
+    "--output",
+    "output_path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Output memo path (Markdown). Default: <run>/report/ic_memo.md. An .html sibling is also written.",
+)
+@click.option(
+    "--deal-config",
+    "deal_config_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Path to deal-config.json (for the memo header). Auto-discovered from the run dir if omitted.",
+)
+def memo(report_dir: Path, output_path: Path | None, deal_config_path: Path | None) -> None:
+    """Generate an Investment Committee memo from a completed run.
+
+    Deterministically assembles a distributable memo (Markdown + HTML) from the
+    run's merged findings — Go/No-Go, key takeaways, top risks with cited
+    evidence, and recommendations. No new analysis pass. Convert to PDF with
+    `dd-agents export-pdf` on the emitted .html.
+
+    \b
+    Example:
+        dd-agents memo --report _dd/forensic-dd/runs/latest
+    """
+    import json as _json
+
+    from dd_agents.reporting.computed_metrics import ReportDataComputer
+    from dd_agents.reporting.ic_memo import memo_to_html, render_ic_memo
+
+    run_dir = report_dir.resolve()
+    merged_dir = run_dir / "findings" / "merged"
+    if not merged_dir.is_dir() or not any(merged_dir.glob("*.json")):
+        _print_error(
+            "No Merged Findings",
+            f"No merged findings found at {merged_dir}.\n  Run the full pipeline first: dd-agents run deal-config.json",
+        )
+        raise SystemExit(1)
+
+    # Load merged findings into {safe_name: subject_dict} — same shape the
+    # report generator uses, so the memo reflects identical computed data.
+    merged_data: dict[str, Any] = {}
+    for jf in sorted(merged_dir.glob("*.json")):
+        try:
+            merged_data[jf.stem] = _json.loads(jf.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            continue
+
+    # Optional synthesis + deal config, loaded the same way the report step does.
+    exec_synth = _read_optional_json(run_dir / "executive_synthesis.json")
+    deal_config = _read_optional_json(deal_config_path) if deal_config_path else _discover_deal_config(run_dir)
+
+    computed = ReportDataComputer().compute(merged_data, executive_synthesis=exec_synth)
+
+    memo_md = render_ic_memo(computed, deal_config if isinstance(deal_config, dict) else None)
+    md_path = output_path.resolve() if output_path else run_dir / "report" / "ic_memo.md"
+    md_path.parent.mkdir(parents=True, exist_ok=True)
+    md_path.write_text(memo_md, encoding="utf-8")
+    html_path = md_path.with_suffix(".html")
+    html_path.write_text(memo_to_html(memo_md), encoding="utf-8")
+
+    console.print(
+        Panel(
+            f"[bold green]IC memo generated[/bold green]\n\n"
+            f"Markdown: {md_path}\nHTML: {html_path}\n\n"
+            f"To PDF: dd-agents export-pdf {html_path}",
+            title="Memo Complete",
+            border_style="green",
+        )
+    )
+
+
+def _read_optional_json(path: Path) -> Any:
+    """Read a JSON file if it exists, else None (best-effort)."""
+    import json as _json
+
+    try:
+        return _json.loads(path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return None
+
+
+def _discover_deal_config(run_dir: Path) -> Any:
+    """Find deal-config.json by walking up from a run dir (best-effort).
+
+    A run lives at ``<project>/<data_room>/_dd/forensic-dd/runs/<run_id>``, but
+    the data-room/project depth varies, so search ancestors for the first
+    ``deal-config.json`` rather than assuming a fixed level. Returns the parsed
+    dict, or None when not found (the memo header degrades gracefully).
+    """
+    for ancestor in [run_dir, *run_dir.parents]:
+        candidate = ancestor / "deal-config.json"
+        if candidate.is_file():
+            return _read_optional_json(candidate)
+    return None
 
 
 # ---------------------------------------------------------------------------

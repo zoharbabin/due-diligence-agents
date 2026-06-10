@@ -99,6 +99,19 @@ def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     return (input_tokens * pricing["input"] + output_tokens * pricing["output"]) / 1_000_000
 
 
+def _is_estimated_pricing(model: str) -> bool:
+    """True if *model*'s cost uses the default fallback (no exact rate).
+
+    An empty model id (CLI-default path) is always estimated. Otherwise a model
+    is exact only when present in the built-in table or DD_MODEL_PRICING.
+    """
+    if not model:
+        return True
+    if model in _MODEL_PRICING:
+        return False
+    return model not in _load_pricing_overrides()
+
+
 # ---------------------------------------------------------------------------
 # Model profiles
 # ---------------------------------------------------------------------------
@@ -253,6 +266,28 @@ class CostTracker:
         """
         return sorted({e.model for e in self.entries if e.model})
 
+    def cost_by_model(self) -> dict[str, dict[str, Any]]:
+        """Return per-model cost rollup (Issue #232).
+
+        Maps model id → ``{cost, input_tokens, output_tokens, estimated}``.
+        ``estimated=True`` flags models priced via the Sonnet-shaped default
+        fallback (no exact rate in the built-in table or DD_MODEL_PRICING), so a
+        non-Claude/gateway model's spend is never presented as exact. The empty
+        model id (a path that inherited the CLI default) is keyed as
+        ``"(provider default)"``.
+        """
+        agg: dict[str, dict[str, Any]] = {}
+        for e in self.entries:
+            key = e.model or "(provider default)"
+            bucket = agg.setdefault(key, {"cost": 0.0, "input_tokens": 0, "output_tokens": 0, "estimated": False})
+            bucket["cost"] += e.cost_usd
+            bucket["input_tokens"] += e.input_tokens
+            bucket["output_tokens"] += e.output_tokens
+            # A model is "estimated" when no exact rate exists for it. The empty
+            # model id is always estimated (we don't know what the CLI used).
+            bucket["estimated"] = bucket["estimated"] or _is_estimated_pricing(e.model)
+        return {k: {**v, "cost": round(v["cost"], 4)} for k, v in agg.items()}
+
     def is_budget_exceeded(self) -> bool:
         """Return True if total cost exceeds the budget limit."""
         if self.budget_limit_usd is None:
@@ -282,5 +317,6 @@ class CostTracker:
             "routing": {**resolve_provider().as_receipt(), "models_used": self.models_used()},
             "by_agent": {k: round(v, 4) for k, v in self.cost_by_agent().items()},
             "by_step": {k: round(v, 4) for k, v in self.cost_by_step().items()},
+            "by_model": self.cost_by_model(),
             "entries": [e.model_dump() for e in self.entries],
         }

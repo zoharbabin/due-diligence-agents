@@ -52,6 +52,24 @@ class MethodologyRenderer(SectionRenderer):
                 )
                 parts.append("<ul>" + "".join(items) + "</ul>")
 
+                # Per-model cost rollup (Issue #232). Estimated (default-rate)
+                # models are flagged so non-Claude/gateway spend isn't read as exact.
+                cost_by_model = run_meta.get("llm_cost_by_model") or {}
+                if isinstance(cost_by_model, dict) and cost_by_model:
+                    rows: list[str] = []
+                    for model_id, info in sorted(cost_by_model.items()):
+                        if not isinstance(info, dict):
+                            continue
+                        cost = info.get("cost", 0.0)
+                        est = " <em>(estimated)</em>" if info.get("estimated") else ""
+                        rows.append(f"<tr><td>{self.escape(str(model_id))}</td><td>${cost:,.2f}{est}</td></tr>")
+                    if rows:
+                        parts.append(
+                            "<table class='subject-table'><caption>Estimated cost by model</caption>"
+                            "<thead><tr><th scope='col'>Model</th><th scope='col'>Est. cost (USD)</th></tr></thead>"
+                            "<tbody>" + "".join(rows) + "</tbody></table>"
+                        )
+
         # Key stats
         parts.append(
             "<div class='metrics-strip'>"

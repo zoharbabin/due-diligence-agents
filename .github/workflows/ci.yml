@@ -200,3 +200,69 @@ jobs:
         with:
           name: eval-results
           path: results/
+
+  # ──────────────────────────────────────────────
+  # Stage 7: Gateway provider proof (main branch / dispatch)
+  #
+  # Continuous proof of the model/provider-agnostic path (Issue #231): stand up
+  # a LiteLLM proxy that fronts the Anthropic Messages API behind
+  # ANTHROPIC_BASE_URL and run the opt-in `-m gateway` test through it. This
+  # exercises the whole seam → SDK → CLI → gateway stack on every push to main,
+  # so a regression in the provider seam or gateway path can't ship silently.
+  # Non-blocking + requires the ANTHROPIC_API_KEY secret (skips cleanly without).
+  # ──────────────────────────────────────────────
+
+  test-gateway:
+    name: "Gateway Provider Proof"
+    runs-on: ubuntu-latest
+    needs: [test-integration, build]
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies + LiteLLM proxy
+        run: |
+          pip install -e ".[dev]"
+          pip install 'litellm[proxy]'
+      - name: Start LiteLLM gateway (fronts the Anthropic Messages API)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "No ANTHROPIC_API_KEY secret — skipping gateway proof."
+            echo "GATEWAY_READY=0" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          cat > /tmp/gw.yaml <<'YAML'
+          model_list:
+            - model_name: "*"
+              litellm_params:
+                model: anthropic/claude-sonnet-4-5-20250929
+                api_key: os.environ/ANTHROPIC_API_KEY
+          litellm_settings:
+            drop_params: true
+          YAML
+          nohup litellm --config /tmp/gw.yaml --port 4011 > /tmp/gw.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:4011/health/liveliness >/dev/null 2>&1; then
+              echo "GATEWAY_READY=1" >> "$GITHUB_ENV"; break
+            fi
+            sleep 2
+          done
+      - name: Run gateway provider test
+        if: env.GATEWAY_READY == '1'
+        env:
+          DD_TEST_GATEWAY_URL: http://localhost:4011
+          DD_TEST_GATEWAY_KEY: sk-anything
+          DD_TEST_GATEWAY_MODEL: claude-sonnet-4-6
+          DD_MAX_OUTPUT_TOKENS: "4096"
+        run: pytest tests/e2e/test_gateway_provider.py -v --tb=long -m "gateway" --junitxml=results/gateway.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gateway-results
+          path: results/

@@ -268,16 +268,20 @@ dd-agents assess DATA_ROOM [OPTIONS]
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
+| `--config` | Path | none | Optional `deal-config.json` — enables request-list reconciliation. Reports received / missing-required / unexpected documents against the config's `request_list`. |
 | `--verbose / -v` | flag | off | Enable debug logging |
 
 **Examples:**
 
 ```bash
 dd-agents assess ./data_room
+dd-agents assess ./data_room --config deal-config.json   # + request-list completeness
 ```
 
 Outputs a health report with overall score (0-100), file type distribution,
-extraction readiness, issues, and recommendations.
+extraction readiness, issues, recommendations, a detected VDR layout (when the
+data room uses a numbered convention), and — with `--config` — a request-list
+received-vs-missing view.
 
 ---
 
@@ -308,6 +312,34 @@ pip install weasyprint
 dd-agents export-pdf _dd/forensic-dd/runs/latest/report/dd_report.html
 dd-agents export-pdf report.html --output board-package.pdf
 dd-agents export-pdf report.html --engine weasyprint
+```
+
+---
+
+## memo
+
+Generate an Investment Committee memo from a completed run.
+
+```bash
+dd-agents memo --report <run_dir> [OPTIONS]
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--report` | Path | (required) | Pipeline run directory (contains `findings/merged/`) |
+| `--output` | Path | `<run>/report/ic_memo.md` | Output memo path (Markdown); an `.html` sibling is also written |
+| `--deal-config` | Path | auto-discovered | `deal-config.json` for the memo header; found by walking up from the run dir if omitted |
+
+Deterministically assembles a memo (Markdown + HTML) from the run's merged
+findings — Go/No-Go signal, key takeaways, top risks with cited evidence,
+recommendations, and a methodology appendix. No new analysis pass. Convert to
+PDF with `dd-agents export-pdf` on the emitted `.html`.
+
+**Examples:**
+
+```bash
+dd-agents memo --report _dd/forensic-dd/runs/latest
+dd-agents export-pdf _dd/forensic-dd/runs/latest/report/ic_memo.html
 ```
 
 ---

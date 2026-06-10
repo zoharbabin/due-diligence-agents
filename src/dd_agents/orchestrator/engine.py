@@ -1018,12 +1018,93 @@ class PipelineEngine:
             )
             logger.info("Precedence: indexed %d files", len(state.file_precedence))
 
+        # --- Request-list reconciliation (Issue #192) ---
+        # Optional + parity-safe: when the deal config declares a request_list,
+        # reconcile expected docs against discovered files and persist the
+        # completeness view to the inventory tier. Absent config = no-op.
+        self._reconcile_request_list(state, files, inv_dir)
+
         logger.info(
             "Inventory: %d subjects, %d reference files",
             state.total_subjects,
             state.reference_file_count,
         )
         return state
+
+    def _reconcile_request_list(self, state: PipelineState, files: list[Any], inv_dir: Path) -> None:
+        """Reconcile the configured request list and persist completeness JSON.
+
+        Best-effort and parity-safe: any failure (or absent config) leaves the
+        run unchanged. The result feeds the report's gaps section and mirrors
+        what ``dd-agents assess --config`` shows pre-run.
+        """
+        raw = state.deal_config if isinstance(state.deal_config, dict) else {}
+        rl_cfg = raw.get("request_list")
+        if not isinstance(rl_cfg, dict) or not rl_cfg.get("enabled", True):
+            return
+        try:
+            from dd_agents.inventory.request_list import reconcile, seed_from_vdr_categories
+            from dd_agents.models.config import RequestedDocument
+
+            items = [RequestedDocument.model_validate(i) for i in rl_cfg.get("items", [])]
+            if not items and rl_cfg.get("seed_from_vdr"):
+                from dd_agents.precedence.vdr_conventions import detect_convention
+
+                top_level = sorted({f.path.split("/")[0] for f in files if "/" in f.path})
+                cats = detect_convention(top_level).categories
+                items = seed_from_vdr_categories({k: v.category for k, v in cats.items()})
+            if not items:
+                return
+
+            rel_paths = [f.path for f in files]
+            result = reconcile(items, rel_paths)
+            payload = {
+                "summary": result.summary(),
+                "received": [s.category for s in result.received],
+                "missing_required": [s.category for s in result.missing_required],
+                "missing_optional": [s.category for s in result.missing if not s.required],
+                "unexpected_count": len(result.unexpected_files),
+            }
+            (inv_dir / "request_list.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            # Stash missing-required gaps so the report step surfaces them in the
+            # gaps section (Issue #192 — flows through the existing Gap pipeline).
+            from dd_agents.inventory.request_list import to_gaps
+
+            state._request_list_gaps = [g.model_dump(mode="json") for g in to_gaps(result, run_id=state.run_id)]  # type: ignore[attr-defined]
+            logger.info("Request list: %s", result.summary())
+        except Exception as exc:  # noqa: BLE001 — advisory; never block the run
+            logger.debug("Request-list reconciliation skipped: %s", exc)
+
+    def _inject_request_list_gaps(self, state: PipelineState, merged_findings: dict[str, Any]) -> None:
+        """Inject request-list missing-required gaps into the report's gaps view.
+
+        Adds each Gap (already a standard Gap record) to the matching subject's
+        ``gaps`` list — or a synthetic deal-wide entry when the gap isn't scoped
+        to a known subject — so missing required documents render in the report's
+        gaps section. No-op when no request-list gaps were produced (parity).
+        """
+        gaps = getattr(state, "_request_list_gaps", None)
+        if not gaps:
+            return
+        # Bucket gaps by subject_safe_name; deal-wide gaps go to a synthetic entry.
+        from dd_agents.utils.naming import subject_safe_name
+
+        for gap in gaps:
+            subj_label = str(gap.get("subject", "")) or "Deal-wide"
+            safe = subject_safe_name(subj_label) if subj_label != "Deal-wide" else "_request_list"
+            target = merged_findings.get(safe)
+            if target is None:
+                target = {
+                    "subject": subj_label,
+                    "subject_safe_name": safe,
+                    "findings": [],
+                    "gaps": [],
+                    "cross_references": [],
+                    "auto_generated": True,
+                    "source": "request_list",
+                }
+                merged_findings[safe] = target
+            target.setdefault("gaps", []).append(gap)
 
     async def _step_07_entity_resolution(self, state: PipelineState) -> PipelineState:
         """Run 6-pass cascading entity matcher."""
@@ -3469,6 +3550,9 @@ class PipelineEngine:
             "llm_provider": routing["provider"],
             "llm_base_url": routing["base_url"],
             "llm_models": (ct.models_used() if (ct := getattr(self, "cost_tracker", None)) else []),
+            # Per-model cost rollup (Issue #232) — surfaced in the report; flags
+            # estimated (default-rate) models so non-Claude spend isn't shown as exact.
+            "llm_cost_by_model": (ctm.cost_by_model() if (ctm := getattr(self, "cost_tracker", None)) else {}),
         }
 
         inv_dir = self._inventory_dir(state)
@@ -3579,6 +3663,11 @@ class PipelineEngine:
                     merged_findings[jf.stem] = data
                 except (json.JSONDecodeError, OSError):
                     continue
+
+        # Request-list gaps (Issue #192): inject missing-required documents as
+        # standard Gap records into the report so they surface in the gaps
+        # section (not just the inventory JSON). No-op when no request list.
+        self._inject_request_list_gaps(state, merged_findings)
 
         # ------------------------------------------------------------------
         # Schema resolution with config/ fallback (Issue #35)
