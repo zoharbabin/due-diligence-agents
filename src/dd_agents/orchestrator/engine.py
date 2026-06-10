@@ -1018,12 +1018,57 @@ class PipelineEngine:
             )
             logger.info("Precedence: indexed %d files", len(state.file_precedence))
 
+        # --- Request-list reconciliation (Issue #192) ---
+        # Optional + parity-safe: when the deal config declares a request_list,
+        # reconcile expected docs against discovered files and persist the
+        # completeness view to the inventory tier. Absent config = no-op.
+        self._reconcile_request_list(state, files, inv_dir)
+
         logger.info(
             "Inventory: %d subjects, %d reference files",
             state.total_subjects,
             state.reference_file_count,
         )
         return state
+
+    def _reconcile_request_list(self, state: PipelineState, files: list[Any], inv_dir: Path) -> None:
+        """Reconcile the configured request list and persist completeness JSON.
+
+        Best-effort and parity-safe: any failure (or absent config) leaves the
+        run unchanged. The result feeds the report's gaps section and mirrors
+        what ``dd-agents assess --config`` shows pre-run.
+        """
+        raw = state.deal_config if isinstance(state.deal_config, dict) else {}
+        rl_cfg = raw.get("request_list")
+        if not isinstance(rl_cfg, dict) or not rl_cfg.get("enabled", True):
+            return
+        try:
+            from dd_agents.inventory.request_list import reconcile, seed_from_vdr_categories
+            from dd_agents.models.config import RequestedDocument
+
+            items = [RequestedDocument.model_validate(i) for i in rl_cfg.get("items", [])]
+            if not items and rl_cfg.get("seed_from_vdr"):
+                from dd_agents.precedence.vdr_conventions import detect_convention
+
+                top_level = sorted({f.path.split("/")[0] for f in files if "/" in f.path})
+                cats = detect_convention(top_level).categories
+                items = seed_from_vdr_categories({k: v.category for k, v in cats.items()})
+            if not items:
+                return
+
+            rel_paths = [f.path for f in files]
+            result = reconcile(items, rel_paths)
+            payload = {
+                "summary": result.summary(),
+                "received": [s.category for s in result.received],
+                "missing_required": [s.category for s in result.missing_required],
+                "missing_optional": [s.category for s in result.missing if not s.required],
+                "unexpected_count": len(result.unexpected_files),
+            }
+            (inv_dir / "request_list.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            logger.info("Request list: %s", result.summary())
+        except Exception as exc:  # noqa: BLE001 — advisory; never block the run
+            logger.debug("Request-list reconciliation skipped: %s", exc)
 
     async def _step_07_entity_resolution(self, state: PipelineState) -> PipelineState:
         """Run 6-pass cascading entity matcher."""

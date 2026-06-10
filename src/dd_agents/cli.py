@@ -1134,13 +1134,20 @@ def search(
     type=click.Path(exists=True, file_okay=False, path_type=Path),
 )
 @click.option(
+    "--config",
+    "config_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Optional deal-config.json — enables request-list reconciliation (Issue #192).",
+)
+@click.option(
     "--verbose",
     "-v",
     is_flag=True,
     default=False,
     help="Enable verbose logging output.",
 )
-def assess(data_room: Path, verbose: bool) -> None:
+def assess(data_room: Path, config_path: Path | None, verbose: bool) -> None:
     """Assess data room quality and completeness before running the pipeline.
 
     Scans the data room folder and produces a health report covering:
@@ -1162,8 +1169,54 @@ def assess(data_room: Path, verbose: bool) -> None:
     assessor = DataRoomAssessor(data_room.resolve())
     report = assessor.assess()
 
+    # Request-list reconciliation (Issue #192) — only when a config with a
+    # request_list is supplied. Off by default (parity).
+    if config_path is not None:
+        report["request_list"] = _reconcile_request_list(config_path, report)
+
     # Display results
     _print_assessment_report(report)
+
+
+def _reconcile_request_list(config_path: Path, report: dict[str, Any]) -> dict[str, Any]:
+    """Reconcile a deal config's request_list against discovered files.
+
+    Returns a small dict for `assess` output. Auto-seeds from a detected VDR
+    convention when ``seed_from_vdr`` is set and no items are declared. Returns
+    an empty dict (rendered as nothing) when no request list applies.
+    """
+    from dd_agents.config import load_deal_config
+    from dd_agents.inventory.request_list import reconcile, seed_from_vdr_categories
+
+    try:
+        cfg = load_deal_config(config_path)
+    except Exception as exc:  # noqa: BLE001 — assess is advisory; bad config shouldn't crash it
+        return {"error": f"Could not load config: {exc}"}
+
+    rl = cfg.request_list
+    if rl is None or not rl.enabled:
+        return {}
+
+    items = list(rl.items)
+    if not items and rl.seed_from_vdr:
+        vdr_cats = report.get("vdr_convention", {}).get("categories", {})
+        items = seed_from_vdr_categories(vdr_cats)
+    if not items:
+        return {}
+
+    data_room = config_path.parent  # discovered paths are relative to where files live
+    # Reuse the assessor's discovered files (data-room-relative) for matching.
+    from dd_agents.assessment import DataRoomAssessor
+
+    files = DataRoomAssessor(data_room.resolve())._discover_files()
+    rel_paths = [str(f.relative_to(data_room.resolve())) for f in files]
+    result = reconcile(items, rel_paths)
+    return {
+        "summary": result.summary(),
+        "received": [s.category for s in result.received],
+        "missing_required": [s.category for s in result.missing_required],
+        "missing_optional": [s.category for s in result.missing if not s.required],
+    }
 
 
 def _print_assessment_report(report: dict[str, Any]) -> None:
@@ -1212,6 +1265,19 @@ def _print_assessment_report(report: dict[str, Any]) -> None:
         console.print(f"[bold]VDR layout:[/bold] {vdr.get('summary', '')}")
         for folder, category in sorted(vdr.get("categories", {}).items()):
             console.print(f"  - {folder} → {category}")
+
+    # Request list (Issue #192) — only when reconciliation ran.
+    rl = report.get("request_list", {})
+    if rl:
+        console.print()
+        if rl.get("error"):
+            console.print(f"[yellow]Request list:[/yellow] {rl['error']}")
+        else:
+            console.print(f"[bold]Request list:[/bold] {rl.get('summary', '')}")
+            for cat in rl.get("missing_required", []):
+                console.print(f"  [red]MISSING (required)[/red]: {cat}")
+            for cat in rl.get("missing_optional", []):
+                console.print(f"  [yellow]missing (optional)[/yellow]: {cat}")
 
     # Recommendations
     recs = report.get("recommendations", [])
