@@ -1205,6 +1205,14 @@ def _print_assessment_report(report: dict[str, Any]) -> None:
             color = {"critical": "red", "warning": "yellow", "info": "cyan"}.get(severity, "white")
             console.print(f"  [{color}]{severity.upper()}[/{color}]: {issue['message']}")
 
+    # VDR convention (Issue #193) — only show when a numbered layout is detected.
+    vdr = report.get("vdr_convention", {})
+    if vdr.get("is_vdr"):
+        console.print()
+        console.print(f"[bold]VDR layout:[/bold] {vdr.get('summary', '')}")
+        for folder, category in sorted(vdr.get("categories", {}).items()):
+            console.print(f"  - {folder} → {category}")
+
     # Recommendations
     recs = report.get("recommendations", [])
     if recs:
