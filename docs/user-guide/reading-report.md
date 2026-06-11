@@ -38,7 +38,9 @@ The report uses a 4-layer progressive disclosure design. You get the answer firs
 - Clause library, key employee, tech stack, product adoption
 - Cross-reference reconciliation, entity health tiers
 - Recommendations, integration playbook, governance graph
-- Data gaps, per-entity detail, methodology, data quality
+- Contract date reconciliation (active-vs-expired ARR), entity-resolution log
+- Data gaps, data-room completeness & model integrity, reference files
+- Per-entity detail, methodology, data quality
 
 ### Navigation
 
@@ -126,8 +128,16 @@ The Excel report at `dd_report.xlsx` contains 16 sheets:
 
 Sheets use conditional formatting: red for P0/P1, yellow for P2, no fill for P3.
 
-The HTML report's **Data-Room Completeness & Model Integrity** section surfaces
-the same request-list and formula-integrity views for browser-based review.
+For browser/PDF review the HTML report mirrors the analytical Excel sheets: the
+**Data-Room Completeness & Model Integrity** section surfaces the request-list,
+formula-integrity, and reference-files views; the **Contract Date Reconciliation**
+section shows active-vs-expired ARR; and the **Entity Resolution Log** (under
+Quality) shows how documents were matched to canonical entities.
+
+Spreadsheet formula-integrity issues (hardcoded overrides, circular refs,
+`#REF!`, broken links) are also minted as deterministic, citable Finance findings
+— so they appear in the findings table, severity rollups, and are answerable via
+`query`/`chat`, independent of whether an agent also flagged them.
 
 ## Generation Provenance & Cost
 

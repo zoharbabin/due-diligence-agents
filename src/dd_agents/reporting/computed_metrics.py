@@ -33,6 +33,7 @@ from dd_agents.utils.constants import (
     SEVERITY_RISK_SCORE_WEIGHTS,
     SEVERITY_WEIGHTS,
     _sev_count_init,
+    is_synthetic_subject,
 )
 
 logger = logging.getLogger(__name__)
@@ -1392,6 +1393,12 @@ class ReportDataComputer:
 
         # --- Issue #113: Topic classification, health tiers, recommendations ---
         topic_findings = self._classify_by_topic(all_findings)
+        # Real-entity count: exclude synthetic deal-wide subjects (_request_list,
+        # _model_integrity) so per-entity denominators + the "Entities Analyzed"
+        # headline reflect actual entities, not auto-generated finding buckets
+        # (Issues #192/#245). Their findings/gaps still count in totals above.
+        entity_count = sum(1 for csn in merged_data if not is_synthetic_subject(str(csn)))
+
         extracted_amounts, total_arr = self._extract_financials(all_findings)
         tier1, tier2, tier3 = self._compute_health_tiers(subject_risk_raw, merged_data)
         subject_p0_summary, subject_p1_summary = self._build_subject_severity_tables(merged_data, subject_risk_raw)
@@ -1402,7 +1409,7 @@ class ReportDataComputer:
             total_findings,
             governance_scores,
             concentration_hhi,
-            len(merged_data),
+            entity_count,
         )
         section_rag = self._compute_section_rag(
             severity_counts,
@@ -1423,7 +1430,7 @@ class ReportDataComputer:
         total_risk_exposure = sum(revenue_by_subject.get(csn, 0.0) for csn in all_at_risk_csns)
         risk_adjusted_arr = max(0.0, total_contracted_arr - total_risk_exposure)
         subjects_with_revenue = len(revenue_by_subject)
-        revenue_data_coverage = subjects_with_revenue / len(merged_data) if merged_data else 0.0
+        revenue_data_coverage = subjects_with_revenue / entity_count if entity_count else 0.0
         concentration_treemap = self._build_concentration_treemap(
             revenue_by_subject,
             subject_risk_raw,
@@ -1581,7 +1588,7 @@ class ReportDataComputer:
             material_by_severity,
             domain_summaries_data,
             total_risk_exposure,
-            len(merged_data),
+            entity_count,
         )
 
         # --- Issue #200: Actionable recommendations (template-matched) ---
@@ -1605,8 +1612,8 @@ class ReportDataComputer:
         return ReportComputedData(
             total_findings=total_findings,
             total_gaps=total_gaps,
-            total_subjects=len(merged_data),
-            subjects_analyzed=len(merged_data),
+            total_subjects=entity_count,
+            subjects_analyzed=entity_count,
             findings_by_severity=severity_counts,
             findings_by_domain=dict(domain_findings_count),
             findings_by_category={k: v for k, v in findings_by_category.items()},

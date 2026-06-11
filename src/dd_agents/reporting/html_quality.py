@@ -32,8 +32,48 @@ class QualityRenderer(SectionRenderer):
         parts: list[str] = []
         parts.append(self._render_governance_metrics())
         parts.append(self._render_quality_scores())
+        parts.append(self._render_entity_resolution())
         parts.append(self._render_audit_checks())
         return "\n".join(p for p in parts if p)
+
+    def _render_entity_resolution(self) -> str:
+        """Render the entity-resolution match log (Issue #244).
+
+        The match log (which distinctly-named documents were merged under one
+        canonical subject, and which candidates were rejected) is the provenance
+        for how per-entity finding counts and ARR roll up — previously surfaced
+        only in the Excel ``Entity_Resolution_Log`` sheet. Sourced from the same
+        ``run_metadata['entity_matches']`` list ``excel._data_entity_log`` reads.
+        Parity-safe: renders nothing when there are no matches.
+        """
+        run_metadata = self.config.get("_run_metadata")
+        if not isinstance(run_metadata, dict):
+            return ""
+        matches = run_metadata.get("entity_matches")
+        if not isinstance(matches, list) or not matches:
+            return ""
+
+        parts: list[str] = [
+            "<section class='report-section' id='sec-entity-resolution'>",
+            "<h2>Entity Resolution Log</h2>",
+            "<p class='text-muted'>How distinctly-named documents were matched to a canonical entity. "
+            "This is the provenance behind per-entity finding counts and ARR rollups.</p>",
+            "<table class='sortable'><caption>Entity resolution matches</caption><thead><tr>"
+            "<th scope='col'>Source Name</th><th scope='col'>Matched To (Canonical)</th>"
+            "<th scope='col'>Method</th><th scope='col'>Confidence</th></tr></thead><tbody>",
+        ]
+        for m in matches:
+            if not isinstance(m, dict):
+                continue
+            source = self.escape(str(m.get("source_name", "")))
+            canonical = self.escape(str(m.get("canonical_name", m.get("matched_name", ""))))
+            method = self.escape(str(m.get("match_method", "")))
+            conf = m.get("confidence", "")
+            conf_str = self.escape(f"{conf:.0%}" if isinstance(conf, (int, float)) else str(conf))
+            parts.append(f"<tr><td>{source}</td><td>{canonical}</td><td>{method}</td><td>{conf_str}</td></tr>")
+        parts.append("</tbody></table>")
+        parts.append("</section>")
+        return "\n".join(parts)
 
     def _render_governance_metrics(self) -> str:
         scores: list[tuple[str, float]] = []

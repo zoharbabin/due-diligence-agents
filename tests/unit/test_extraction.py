@@ -1876,7 +1876,9 @@ class TestClaudeVision:
             "_describe_image_async",
             side_effect=TimeoutError("timed out"),
         ):
-            text, conf = ExtractionPipeline._try_claude_vision(filepath)
+            # _try_claude_vision is now an instance method (Issue #247: it
+            # accumulates per-instance vision token usage).
+            text, conf = ExtractionPipeline()._try_claude_vision(filepath)
 
         assert text == ""
         assert conf == 0.0

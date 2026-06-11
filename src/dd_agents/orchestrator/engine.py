@@ -957,8 +957,42 @@ class PipelineEngine:
         except ExtractionPipelineError as exc:
             raise BlockingGateError(f"Extraction failed: {exc}") from exc
 
+        # Account for any Claude-vision fallback LLM spend in the run's cost
+        # tracker / per-provider audit receipt / budget gate (Issue #247). No-op
+        # when the vision fallback never fired (parity).
+        self._record_vision_cost(pipeline)
+
         logger.info("Extraction complete for %d files", len(file_paths))
         return state
+
+    def _record_vision_cost(self, pipeline: Any) -> None:
+        """Record Claude-vision extraction token spend in the CostTracker (#247).
+
+        The vision fallback is a real reasoning call through the seam; its tokens
+        must reach ``cost_summary.json`` (by_model/by_provider/total) and the
+        budget gate. Attributed to ``extraction_vision`` with the resolved
+        provider/base_url (secret-free). No-op when no vision call fired.
+        """
+        getter = getattr(pipeline, "vision_usage", None)
+        if not callable(getter):
+            return
+        input_tokens, output_tokens, calls = getter()
+        if calls <= 0:
+            return
+        import os
+
+        from dd_agents.llm import resolve_provider
+
+        info = resolve_provider()
+        self.cost_tracker.record(
+            agent_name="extraction_vision",
+            step="05_bulk_extraction",
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            model=os.getenv("DD_VISION_MODEL", "") or "",
+            provider=info.provider,
+            base_url=info.safe_base_url,
+        )
 
     # Phase 3: Inventory ----------------------------------------------------
 
@@ -1076,6 +1110,10 @@ class PipelineEngine:
                 if isinstance(file_val, str):
                     row["file"] = file_val.removeprefix(base)
             (inv_dir / "formula_audit.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+            # Stash the audit so formula-integrity issues become first-class
+            # findings in the findings index (query/chat/severity/exec summary),
+            # not only the report's Model-Integrity section (Issue #245).
+            state._formula_audit_report = report  # type: ignore[attr-defined]
             logger.info(
                 "Formula audit: %d file(s) with formulas, %d issue(s)",
                 report["files_with_formulas"],
@@ -1083,6 +1121,30 @@ class PipelineEngine:
             )
         except Exception as exc:  # noqa: BLE001 — advisory; never block the run
             logger.debug("Formula audit skipped: %s", exc)
+
+    def _formula_audit_for_merge(self, state: PipelineState) -> dict[str, Any] | None:
+        """Return the formula-audit report for merge-time injection (Issue #245).
+
+        The audit ran in step 06 and stashed its report on ``state``; on
+        ``--resume`` (when the stash is gone) it falls back to the persisted
+        ``inventory/formula_audit.json``. Returns the report (or None) so the merge
+        step can mint deterministic model-integrity findings that persist to
+        ``findings/merged/`` — reaching the findings index (query/chat), counts
+        (step 29), audit (step 30), and the report.
+        """
+        report = getattr(state, "_formula_audit_report", None)
+        if isinstance(report, dict) and report.get("issues"):
+            return report
+        # Resume fallback: re-read the persisted artifact.
+        fa_path = self._inventory_dir(state) / "formula_audit.json"
+        if fa_path.exists():
+            try:
+                loaded = json.loads(fa_path.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict) and loaded.get("issues"):
+                    return loaded
+            except (json.JSONDecodeError, OSError):
+                return None
+        return None
 
     def _per_agent_routes(self, state: PipelineState) -> dict[str, dict[str, str]]:
         """Secret-free per-agent routing receipt for the report (Issue #240).
@@ -3255,6 +3317,16 @@ class PipelineEngine:
         if tamper_count:
             logger.warning("Injected %d deterministic document_integrity (tamper) finding(s)", tamper_count)
 
+        # Deterministic formula-integrity findings (Issue #245). The audit ran in
+        # step 06; mint findings here — BEFORE write_merged — so they persist to
+        # findings/merged/, are counted (step 29), audited (step 30), and reach
+        # the findings index (query/chat) + report. Idempotent + parity-safe.
+        formula_report = self._formula_audit_for_merge(state)
+        if formula_report is not None:
+            formula_count = merger.inject_formula_findings(merged, formula_report)
+            if formula_count:
+                logger.info("Injected %d deterministic model-integrity (formula) finding(s)", formula_count)
+
         # Write merged files
         merged_dir = findings_dir / "merged"
         merger.write_merged(merged, merged_dir)
@@ -3709,7 +3781,11 @@ class PipelineEngine:
 
         run_metadata["finding_counts"] = {**sev_counts, "total": total_findings}
         run_metadata["gap_counts"] = {"total": total_gaps}
-        run_metadata["subject_count"] = len(merged_findings)
+        # Count real entities only — synthetic deal-wide subjects (_request_list,
+        # _model_integrity) carry findings but are not entities (Issues #192/#245).
+        from dd_agents.utils.constants import is_synthetic_subject
+
+        run_metadata["subject_count"] = sum(1 for csn in merged_findings if not is_synthetic_subject(str(csn)))
         run_metadata["reference_file_count"] = len(run_metadata.get("reference_files", []))
 
         # Numerical manifest entries (N001–N00x) for cross-format parity.
@@ -3742,6 +3818,7 @@ class PipelineEngine:
         """
         from dd_agents.models.reporting import ReportSchema
         from dd_agents.reporting.excel import ExcelReportGenerator
+        from dd_agents.utils.constants import is_synthetic_subject as _is_synth
 
         # Load merged findings
         merged_dir = state.run_dir / "findings" / "merged"
@@ -3758,6 +3835,10 @@ class PipelineEngine:
         # standard Gap records into the report so they surface in the gaps
         # section (not just the inventory JSON). No-op when no request list.
         self._inject_request_list_gaps(state, merged_findings)
+        # NOTE: formula-integrity findings (Issue #245) are injected at the MERGE
+        # step (27), persisted to findings/merged/_model_integrity.json, so they
+        # reach the findings index (query/chat), counts (29), audit (30), AND the
+        # report — not only this in-memory report view. See merge.inject_formula_findings.
 
         # ------------------------------------------------------------------
         # Schema resolution with config/ fallback (Issue #35)
@@ -3872,6 +3953,11 @@ class PipelineEngine:
             # severity distribution that appears in the final reports.
             from dd_agents.reporting.computed_metrics import ReportDataComputer
 
+            # Real-entity count for the synthesis LLM input — exclude synthetic
+            # deal-wide subjects (_request_list, _model_integrity) so the model
+            # isn't told there are more entities than the deal has (Issues #192/#245).
+            es_entity_count = sum(1 for csn in merged_findings if not _is_synth(str(csn)))
+
             p0_findings: list[dict[str, Any]] = []
             p1_findings: list[dict[str, Any]] = []
             severity_dist: dict[str, int] = _sev_count_init()
@@ -3904,7 +3990,7 @@ class PipelineEngine:
                 "Executive synthesis input: %d P0, %d P1 findings across %d entities",
                 len(p0_findings),
                 len(p1_findings),
-                len(merged_findings),
+                es_entity_count,
             )
 
             deal_config_for_es = state.deal_config if isinstance(state.deal_config, dict) else None
@@ -3913,7 +3999,7 @@ class PipelineEngine:
                 "p0_findings": p0_findings,
                 "p1_findings": p1_findings,
                 "findings_summary": {
-                    "total_subjects": len(merged_findings),
+                    "total_subjects": sum(1 for _csn in merged_findings if not _is_synth(str(_csn))),
                     "total_findings": sum(
                         len(v.get("findings", [])) for v in merged_findings.values() if isinstance(v, dict)
                     ),
@@ -3968,7 +4054,7 @@ class PipelineEngine:
                 ai_state = {
                     "buyer_strategy": deal_config_dict["buyer_strategy"],
                     "merged_findings_summary": {
-                        "total_subjects": len(merged_findings),
+                        "total_subjects": sum(1 for _csn in merged_findings if not _is_synth(str(_csn))),
                         "total_findings": sum(
                             len(v.get("findings", [])) for v in merged_findings.values() if isinstance(v, dict)
                         ),
@@ -4073,7 +4159,7 @@ class PipelineEngine:
                     "p0_findings": p0_findings,
                     "p1_findings": p1_findings,
                     "findings_summary": {
-                        "total_subjects": len(merged_findings),
+                        "total_subjects": sum(1 for _csn in merged_findings if not _is_synth(str(_csn))),
                         "total_findings": sum(
                             len(v.get("findings", [])) for v in merged_findings.values() if isinstance(v, dict)
                         ),

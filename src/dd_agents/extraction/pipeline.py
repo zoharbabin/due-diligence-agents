@@ -164,6 +164,14 @@ class ExtractionPipeline:
         self._markitdown = markitdown or MarkitdownExtractor()
         self._ocr = ocr or OCRExtractor()
         self._glm_ocr = glm_ocr
+        # Claude-vision LLM usage accumulator (Issue #247). The vision fallback is
+        # a real reasoning call through the seam; its token spend must reach the
+        # run's CostTracker / per-provider audit receipt / budget gate. Thread-safe
+        # because extract_all runs vision calls from worker threads.
+        self._vision_usage_lock = threading.Lock()
+        self._vision_input_tokens = 0
+        self._vision_output_tokens = 0
+        self._vision_calls = 0
 
     # ------------------------------------------------------------------
     # Public API
@@ -1611,11 +1619,12 @@ class ExtractionPipeline:
     # Claude vision last-resort (Issue #27)
     # ------------------------------------------------------------------
 
-    @staticmethod
-    async def _describe_image_async(filepath: Path) -> str:
+    async def _describe_image_async(self, filepath: Path) -> str:
         """Use Claude Agent SDK to visually describe an image or PDF.
 
-        Returns a text description or empty string on failure.
+        Returns a text description or empty string on failure. Token usage from
+        the ``ResultMessage`` is accumulated (Issue #247) so the run's CostTracker
+        can attribute and budget-gate this LLM spend.
         """
         from claude_agent_sdk import (
             AssistantMessage,
@@ -1657,17 +1666,48 @@ class ExtractionPipeline:
                     for block in message.content:
                         if isinstance(block, TextBlock):
                             text_parts.append(block.text)
-                elif isinstance(message, ResultMessage) and message.is_error:
-                    logger.debug("Claude vision error for %s: %s", filepath, message.result)
-                    return ""
+                elif isinstance(message, ResultMessage):
+                    # Accumulate token usage whether or not the call errored —
+                    # an errored vision call still consumed input tokens (#247).
+                    self._record_vision_usage(getattr(message, "usage", None))
+                    if message.is_error:
+                        logger.debug("Claude vision error for %s: %s", filepath, message.result)
+                        return ""
         except Exception as exc:
             logger.debug("Claude vision failed for %s: %s", filepath, exc)
             return ""
 
         return "\n".join(text_parts)
 
-    @staticmethod
-    def _try_claude_vision(filepath: Path) -> tuple[str, float]:
+    def _record_vision_usage(self, usage: Any) -> None:
+        """Accumulate input/output tokens from a vision ``ResultMessage.usage`` (#247).
+
+        ``usage`` is the SDK usage object/dict (``input_tokens``/``output_tokens``)
+        or None. Thread-safe; tolerant of missing/oddly-shaped usage (best-effort).
+        """
+        if usage is None:
+            return
+
+        def _field(name: str) -> int:
+            val = usage.get(name) if isinstance(usage, dict) else getattr(usage, name, 0)
+            try:
+                return int(val or 0)
+            except (TypeError, ValueError):
+                return 0
+
+        with self._vision_usage_lock:
+            self._vision_input_tokens += _field("input_tokens")
+            self._vision_output_tokens += _field("output_tokens")
+            self._vision_calls += 1
+
+    def vision_usage(self) -> tuple[int, int, int]:
+        """Return ``(input_tokens, output_tokens, calls)`` accumulated across the
+        run's Claude-vision fallback calls (Issue #247). ``(0, 0, 0)`` when the
+        fallback never fired — the engine records nothing in that case (parity)."""
+        with self._vision_usage_lock:
+            return (self._vision_input_tokens, self._vision_output_tokens, self._vision_calls)
+
+    def _try_claude_vision(self, filepath: Path) -> tuple[str, float]:
         """Synchronous wrapper for :meth:`_describe_image_async`.
 
         The pipeline is synchronous but may be called from within a
@@ -1680,7 +1720,7 @@ class ExtractionPipeline:
         from concurrent.futures import ThreadPoolExecutor as _ThreadPoolExecutor
 
         def _run() -> str:
-            return _asyncio.run(ExtractionPipeline._describe_image_async(filepath))
+            return _asyncio.run(self._describe_image_async(filepath))
 
         try:
             with _ThreadPoolExecutor(max_workers=1) as pool:

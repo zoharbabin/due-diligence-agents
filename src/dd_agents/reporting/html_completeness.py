@@ -41,12 +41,15 @@ class CompletenessRenderer(SectionRenderer):
             return ""
         request_list = run_meta.get("request_list")
         formula_audit = run_meta.get("formula_audit")
+        reference_files = run_meta.get("reference_files")
 
         body: list[str] = []
         if isinstance(request_list, dict) and request_list:
             body.append(self._render_request_list(request_list))
         if isinstance(formula_audit, dict) and formula_audit.get("files_with_formulas"):
             body.append(self._render_formula_audit(formula_audit))
+        if isinstance(reference_files, list) and reference_files:
+            body.append(self._render_reference_files(reference_files))
 
         body = [b for b in body if b]
         if not body:
@@ -168,4 +171,36 @@ class CompletenessRenderer(SectionRenderer):
         if truncated:
             parts.append("<p class='text-muted'>Note: issue list truncated to a bounded cap.</p>")
         parts.append("</div></div>")
+        return "".join(parts)
+
+    # -- Reference-files disclosure (Issue #244) -----------------------------
+
+    def _render_reference_files(self, files: list[Any]) -> str:
+        """Disclose reference-only documents that were deliberately NOT routed to
+        any specialist (per the DD_OUTPUT rule) — a transparency note so an HTML
+        reviewer can see which data-room files were treated as reference-only.
+        Surfaced in Excel (Reference_Files_Index); this adds the HTML counterpart.
+        """
+        rows = [f for f in files if isinstance(f, dict)]
+        if not rows:
+            return ""
+        parts: list[str] = [
+            "<div class='domain-section'>",
+            "<div class='domain-header' tabindex='0' role='button' aria-expanded='false'"
+            " style='border-left-color: var(--gray)'>",
+            f"<h2>Reference Files ({len(rows)})</h2>",
+            "<span class='arrow'>&#9654;</span></div>",
+            "<div class='domain-body'>",
+            "<p class='text-muted'>Reference-only documents (readout decks, internal analysis) classified as "
+            "context and intentionally not routed to a specialist agent — listed for inventory transparency.</p>",
+            "<table class='subject-table sortable'><caption>Reference files</caption>"
+            "<thead><tr><th scope='col'>File</th><th scope='col'>Category</th>"
+            "<th scope='col'>Description</th></tr></thead><tbody>",
+        ]
+        for row in rows:
+            file_path = self.escape(str(row.get("file_path", "")))
+            category = self.escape(str(row.get("category", "")))
+            description = self.escape(str(row.get("description", "")))
+            parts.append(f"<tr><td>{file_path}</td><td>{category}</td><td>{description}</td></tr>")
+        parts.append("</tbody></table></div></div>")
         return "".join(parts)
