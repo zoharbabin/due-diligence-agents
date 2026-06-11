@@ -163,6 +163,15 @@ class KnowledgeCompiler:
             contras = self._detect_contradictions(entity_findings, run_id, now, created_by)
             result.contradictions_found = contras
 
+            # Compound deal-wide completeness + model-integrity signals across
+            # runs (Issue #248). These live in the inventory tier, not in the
+            # entity findings, so the per-entity/clause passes above never see
+            # them — recurring missing-required docs / formula defects are exactly
+            # the cross-run signal the KB exists to capture.
+            cstats = self._compile_completeness_signals(run_dir, run_id, now, created_by)
+            result.articles_created += cstats["created"]
+            result.articles_updated += cstats["updated"]
+
         logger.info(
             "Knowledge compilation: %d created, %d updated, %d contradictions, %d entities",
             result.articles_created,
@@ -315,6 +324,92 @@ class KnowledgeCompiler:
                 self._kb.write_article(article)
                 stats["created"] += 1
 
+        return stats
+
+    def _compile_completeness_signals(
+        self,
+        run_dir: Path,
+        run_id: str,
+        now: str,
+        created_by: str,
+    ) -> dict[str, int]:
+        """Compound deal-wide completeness + model-integrity signals (Issue #248).
+
+        Reads the inventory-tier artifacts (``request_list.json`` missing-required
+        count, ``formula_audit.json`` ``by_kind`` totals) and upserts a single
+        deal-level INSIGHT article with cross-run history — so chronic missing
+        documents or recurring model defects surface across runs of the same deal.
+        Best-effort + parity-safe: writes nothing when neither artifact exists.
+        Returns ``{created, updated}``.
+        """
+        stats = {"created": 0, "updated": 0}
+        inv_dir = self._kb._project_dir / "_dd" / "forensic-dd" / "inventory"
+
+        def _load(name: str) -> dict[str, Any] | None:
+            path = inv_dir / name
+            if not path.is_file():
+                return None
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                return data if isinstance(data, dict) else None
+            except (json.JSONDecodeError, OSError):
+                return None
+
+        request_list = _load("request_list.json")
+        formula_audit = _load("formula_audit.json")
+        if request_list is None and formula_audit is None:
+            return stats
+
+        missing_required = len(request_list.get("missing_required", [])) if request_list else 0
+        received = len(request_list.get("received", [])) if request_list else 0
+        formula_by_kind = formula_audit.get("by_kind", {}) if formula_audit else {}
+        formula_total = int(formula_audit.get("total_issues", 0)) if formula_audit else 0
+
+        run_entry = {
+            "run_id": run_id,
+            "missing_required_docs": missing_required,
+            "received_docs": received,
+            "formula_issues_total": formula_total,
+            "formula_issues_by_kind": dict(formula_by_kind),
+        }
+
+        article_id = "deal_completeness_integrity"
+        existing = self._kb.get_article(article_id)
+        content: dict[str, Any] = {
+            "latest_missing_required_docs": missing_required,
+            "latest_received_docs": received,
+            "latest_formula_issues_total": formula_total,
+            "latest_formula_issues_by_kind": dict(formula_by_kind),
+        }
+        if existing:
+            history = list(existing.content.get("cross_run_history", []))
+            history.append(run_entry)
+            content["cross_run_history"] = history
+            self._kb.update_article(
+                article_id,
+                {
+                    "content": content,
+                    "tags": ["completeness", "model_integrity", f"missing:{missing_required}"],
+                    "updated_by": created_by,
+                },
+            )
+            stats["updated"] += 1
+        else:
+            content["cross_run_history"] = [run_entry]
+            article = KnowledgeArticle(
+                id=article_id,
+                article_type=ArticleType.INSIGHT,
+                title="Deal Completeness & Model Integrity",
+                content=content,
+                sources=[],
+                tags=["completeness", "model_integrity", f"missing:{missing_required}"],
+                created_at=now,
+                updated_at=now,
+                created_by=created_by,
+                updated_by=created_by,
+            )
+            self._kb.write_article(article)
+            stats["created"] += 1
         return stats
 
     def _detect_contradictions(

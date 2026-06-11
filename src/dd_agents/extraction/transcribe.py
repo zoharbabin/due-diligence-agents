@@ -102,6 +102,23 @@ def _openai_whisper_available() -> bool:
         return False
 
 
+def backend_available(backend: TranscriptionBackend) -> bool:
+    """True if *backend*'s library is importable on this machine (Issue #239).
+
+    ``detect_backend`` honors an explicit ``DD_TRANSCRIPTION_BACKEND`` override
+    WITHOUT probing availability (it trusts the operator). This probe lets a
+    pre-flight check verify the resolved backend is actually installed, so
+    ``doctor --config`` doesn't false-pass a requested-but-missing backend.
+    """
+    if backend is TranscriptionBackend.MLX_WHISPER:
+        return _is_macos() and _mlx_whisper_available()
+    if backend is TranscriptionBackend.WHISPERX:
+        return _whisperx_available()
+    if backend is TranscriptionBackend.OPENAI_WHISPER:
+        return _openai_whisper_available()
+    return False
+
+
 def detect_backend() -> TranscriptionBackend | None:
     """Return the best available transcription backend, or None.
 

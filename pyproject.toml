@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dd-agents"
-version = "1.16.0"
+version = "1.17.0"
 description = "Open-source forensic M&A due diligence — 13 AI agents read your data room across 9 domains, cross-reference findings no single reviewer connects, and cite every one to an exact quote"
 readme = "README.md"
 license = "Apache-2.0"

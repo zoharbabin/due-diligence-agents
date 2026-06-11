@@ -309,8 +309,8 @@ Agents operate under hard boundaries:
 
 Raw agent output produces thousands of findings. Most are noise. A three-tier classification system (applied deterministically in Python, not by LLM) separates signal from noise:
 
-1. **Noise filter** (15 patterns): "Cannot assess: extraction failed", "binary file", "unreadable document" — artifacts of the extraction process.
-2. **Data quality filter** (14 patterns): "Data unavailable", "cannot verify financial data" — real gaps, but not material risks. Routed to a separate appendix.
+1. **Noise filter** (`_NOISE_PATTERNS` in `reporting/computed_metrics.py`): "Cannot assess: extraction failed", "binary file", "unreadable document" — artifacts of the extraction process.
+2. **Data quality filter** (`_DATA_QUALITY_PATTERNS`): "Data unavailable", "cannot verify financial data" — real gaps, but not material risks. Routed to a separate appendix.
 3. **Material findings**: Everything that survives both filters.
 
 Plus 5 severity recalibration rules that auto-adjust based on context (e.g., competitor-only CoC: P0 → P3).

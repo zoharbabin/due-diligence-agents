@@ -448,21 +448,48 @@ def run(
     "config_path",
     type=click.Path(exists=False, dir_okay=False, path_type=Path),
 )
-def validate(config_path: Path) -> None:
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output the validation result as JSON.")
+def validate(config_path: Path, as_json: bool) -> None:
     """Validate a deal-config.json file and print the results."""
     try:
         deal_config = load_deal_config(config_path)
     except ConfigFileNotFoundError as exc:
+        if as_json:
+            click.echo(json.dumps({"valid": False, "errors": [{"type": "file_not_found", "msg": str(exc)}]}))
+            raise SystemExit(1) from exc
         _print_error("Config Error", str(exc))
         raise SystemExit(1) from exc
     except ConfigParseError as exc:
+        if as_json:
+            click.echo(json.dumps({"valid": False, "errors": [{"type": "json_parse", "msg": str(exc)}]}))
+            raise SystemExit(1) from exc
         _print_error("JSON Error", str(exc))
         raise SystemExit(1) from exc
     except ConfigValidationError as exc:
+        if as_json:
+            errs = [
+                {"loc": " -> ".join(str(p) for p in e["loc"]), "msg": e["msg"], "type": e["type"]}
+                for e in exc.validation_error.errors()
+            ]
+            click.echo(json.dumps({"valid": False, "errors": errs}))
+            raise SystemExit(1) from exc
         _print_error("Validation Error", str(exc))
         err_console.print()
         _print_validation_errors(exc)
         raise SystemExit(1) from exc
+
+    if as_json:
+        click.echo(
+            json.dumps(
+                {
+                    "valid": True,
+                    "config_version": getattr(deal_config, "config_version", None),
+                    "buyer": getattr(getattr(deal_config, "buyer", None), "name", None),
+                    "target": getattr(getattr(deal_config, "target", None), "name", None),
+                }
+            )
+        )
+        return
 
     console.print("[bold green]Config is valid.[/bold green]")
     _print_config_summary(deal_config)
@@ -501,14 +528,27 @@ _PROVIDER_CREDENTIAL_HINTS: dict[str, tuple[str, ...]] = {
 @click.option(
     "--probe", is_flag=True, default=False, help="Issue a minimal live query through the configured provider."
 )
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Deal config to pre-flight validate (per-agent routing, request_list, VDR overrides, extraction backends).",
+)
 @click.option("--json", "as_json", is_flag=True, default=False, help="Output the routing receipt as JSON.")
-def doctor(probe: bool, as_json: bool) -> None:
+def doctor(probe: bool, config_path: Path | None, as_json: bool) -> None:
     """Verify the configured LLM provider/model routing (no pipeline run).
 
     Shows which provider/gateway will answer (secret-free), checks that a
     credential for it is present, and — with ``--probe`` — issues one minimal
     live query to confirm the endpoint actually responds. Use this to validate
     a Bedrock / Vertex / gateway setup before committing to a full run.
+
+    With ``--config``, also pre-flight-validates a deal config: per-agent routing
+    (each route's ``auth_token_env`` env var present), ``request_list`` shape,
+    ``precedence.vdr_overrides`` domain names, and OCR/transcription backend
+    availability. Exits non-zero on a missing credential/backend so config errors
+    surface before a multi-hour run.
     """
     import os
 
@@ -524,13 +564,18 @@ def doctor(probe: bool, as_json: bool) -> None:
     if probe:
         probe_ok, probe_detail = _probe_provider()
 
+    config_validation = _validate_config_preflight(config_path) if config_path is not None else None
+    config_ok = config_validation is None or config_validation["ok"]
+
     if as_json:
         out: dict[str, Any] = {**receipt, "credential_present": credential_present}
         if probe:
             out["probe_ok"] = probe_ok
             out["probe_detail"] = probe_detail
+        if config_validation is not None:
+            out["config_validation"] = config_validation
         click.echo(json.dumps(out))
-        if (probe and not probe_ok) or not credential_present:
+        if (probe and not probe_ok) or not credential_present or not config_ok:
             raise SystemExit(1)
         return
 
@@ -558,8 +603,154 @@ def doctor(probe: bool, as_json: bool) -> None:
             "[yellow]No credential detected for this provider. "
             "Set the appropriate env var — see docs/user-guide/model-providers.md.[/yellow]"
         )
-    if (probe and not probe_ok) or not credential_present:
+
+    if config_validation is not None:
+        _print_config_validation(config_validation)
+
+    if (probe and not probe_ok) or not credential_present or not config_ok:
         raise SystemExit(1)
+
+
+def _validate_config_preflight(config_path: Path) -> dict[str, Any]:
+    """Pre-flight-validate a deal config before a run (Issue #239).
+
+    Read-only + secret-free. Checks, reusing existing contracts:
+    - per-agent routing: each ``agent_models.routes[*]`` reports model/provider/
+      base_url (via ``routing_receipt`` / ``safe_base_url``); a route whose
+      ``auth_token_env`` names an UNSET env var is an error.
+    - ``request_list``: item count + malformed/empty flagged.
+    - ``precedence.vdr_overrides``: each value must be a valid specialist domain
+      (``vdr_conventions.SPECIALIST_DOMAINS``).
+    - extraction backends: the config/env-selected OCR (``OCRBackendRegistry``)
+      and transcription (``transcribe.detect_backend``) backend must be available
+      when explicitly requested — a missing one is an error (fail-closed).
+
+    Returns a JSON-safe dict ``{ok, checks: [{name, status, detail}], errors:[...]}``.
+    ``ok`` is False when any check is an error.
+    """
+    import os
+
+    from dd_agents.config import load_deal_config
+
+    checks: list[dict[str, str]] = []
+    errors: list[str] = []
+
+    def _add(name: str, status: str, detail: str) -> None:
+        checks.append({"name": name, "status": status, "detail": detail})
+        if status == "error":
+            errors.append(f"{name}: {detail}")
+
+    try:
+        cfg = load_deal_config(config_path)
+    except Exception as exc:  # noqa: BLE001 — surface a clean validation failure
+        _add("config_loads", "error", f"config failed to load/validate: {exc}")
+        return {"ok": False, "checks": checks, "errors": errors}
+    _add("config_loads", "pass", "deal config loaded and schema-valid")
+
+    # --- Per-agent routing ---
+    am = getattr(cfg, "agent_models", None)
+    routes = getattr(am, "routes", {}) if am is not None else {}
+    if routes and am is not None:
+        receipt = am.routing_receipt() if hasattr(am, "routing_receipt") else {}
+        for agent_name, route in routes.items():
+            entry = receipt.get(agent_name, {})
+            desc = ", ".join(f"{k}={v}" for k, v in entry.items()) or "(model/profile default)"
+            token_env = getattr(route, "auth_token_env", None)
+            if token_env and not os.getenv(str(token_env)):
+                _add(
+                    f"route:{agent_name}",
+                    "error",
+                    f"auth_token_env '{token_env}' is not set in the environment ({desc})",
+                )
+            else:
+                _add(f"route:{agent_name}", "pass", desc)
+
+    # --- request_list ---
+    rl = getattr(cfg, "request_list", None)
+    if rl is not None:
+        items = getattr(rl, "items", []) or []
+        enabled = getattr(rl, "enabled", True)
+        seed = getattr(rl, "seed_from_vdr", False)
+        if not items and not seed:
+            _add("request_list", "warn", "enabled but has no items and seed_from_vdr is false (no-op)")
+        else:
+            blank = sum(1 for i in items if not str(getattr(i, "category", "")).strip())
+            if blank:
+                _add("request_list", "error", f"{blank} request_list item(s) have a blank category")
+            else:
+                _add("request_list", "pass", f"{len(items)} item(s); enabled={enabled}; seed_from_vdr={seed}")
+
+    # --- precedence.vdr_overrides ---
+    prec = getattr(cfg, "precedence", None)
+    overrides = getattr(prec, "vdr_overrides", None) if prec is not None else None
+    if overrides:
+        from dd_agents.precedence.vdr_conventions import SPECIALIST_DOMAINS
+
+        bad = {k: v for k, v in overrides.items() if v not in SPECIALIST_DOMAINS}
+        if bad:
+            _add(
+                "vdr_overrides",
+                "error",
+                f"invalid specialist domain(s): {bad} (valid: {', '.join(SPECIALIST_DOMAINS)})",
+            )
+        else:
+            _add("vdr_overrides", "pass", f"{len(overrides)} override(s), all valid domains")
+
+    # --- extraction backends ---
+    extraction = getattr(cfg, "extraction", None)
+    ocr_pref = str(getattr(extraction, "ocr_backend", "auto") or "auto") if extraction is not None else "auto"
+    if ocr_pref not in ("auto", ""):
+        from dd_agents.extraction.ocr_registry import OCRBackendRegistry
+
+        available = OCRBackendRegistry.detect_available()
+        # Mirror the RUNTIME selection exactly: get_backend() returns a working
+        # extractor (a non-None result) — including glm_ocr's documented fallback
+        # to pytesseract — so a non-None means the pipeline will run. This avoids
+        # a false blocker (e.g. glm_ocr requested, only pytesseract installed →
+        # the run succeeds via fallback, so pre-flight must not fail it).
+        resolved = OCRBackendRegistry.get_backend(ocr_pref)
+        detected = ", ".join(available) or "none"
+        if resolved is not None:
+            _add("ocr_backend", "pass", f"'{ocr_pref}' resolves to a working backend (detected: {detected})")
+        else:
+            _add(
+                "ocr_backend",
+                "error",
+                f"'{ocr_pref}' not available — install it or use 'auto' (detected: {detected})",
+            )
+
+    transcription_pref = os.getenv("DD_TRANSCRIPTION_BACKEND", "").strip().lower()
+    if transcription_pref:
+        from dd_agents.extraction.transcribe import backend_available, detect_backend
+
+        backend = detect_backend()
+        # detect_backend trusts an explicit override without probing — so verify
+        # the resolved backend is ACTUALLY installed (else a requested-but-missing
+        # backend would false-pass). Fail-closed.
+        if backend is None or not backend_available(backend):
+            suffix = f" (resolved to '{backend.value}' but it is not installed)" if backend is not None else ""
+            _add(
+                "transcription_backend",
+                "error",
+                f"DD_TRANSCRIPTION_BACKEND='{transcription_pref}' requested but no backend is available{suffix}",
+            )
+        else:
+            _add("transcription_backend", "pass", f"resolved to '{backend.value}'")
+
+    return {"ok": not errors, "checks": checks, "errors": errors}
+
+
+def _print_config_validation(result: dict[str, Any]) -> None:
+    """Render the deal-config pre-flight validation as a rich table (Issue #239)."""
+    table = Table(title="Deal Config Pre-Flight", show_header=True)
+    table.add_column("Check", style="bold")
+    table.add_column("Status")
+    table.add_column("Detail", style="dim")
+    for check in result.get("checks", []):
+        status = str(check.get("status", ""))
+        color = {"pass": "green", "warn": "yellow", "error": "red"}.get(status, "white")
+        table.add_row(str(check.get("name", "")), f"[{color}]{status}[/{color}]", str(check.get("detail", "")))
+    err_console.print(table) if not result.get("ok") else console.print(table)
 
 
 def _probe_provider() -> tuple[bool, str]:
@@ -1124,6 +1315,129 @@ def search(
 
 
 # ---------------------------------------------------------------------------
+# cost command (Issue #246 — read a completed run's persisted cost rollup)
+# ---------------------------------------------------------------------------
+
+
+@main.command()
+@click.argument(
+    "run_dir",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output the cost rollup as JSON.")
+def cost(run_dir: Path, as_json: bool) -> None:
+    """Show a completed run's cost breakdown (by provider, model, agent, step).
+
+    Reads the persisted ``cost_summary.json`` from a run directory — no recompute,
+    no LLM call. Surfaces the per-provider/per-model/per-agent/per-step rollup and
+    the active LLM routing receipt (provider + secret-free base_url + models used;
+    read-only) so an operator can audit spend without opening the HTML report.
+    Accepts the run dir or its parent (e.g. ``runs/`` or the ``latest`` symlink);
+    when a parent is given it resolves the ``latest`` symlink, else the NEWEST run.
+    """
+    summary_path = run_dir / "cost_summary.json"
+    if not summary_path.exists():
+        # Given a parent (e.g. runs/): prefer the 'latest' symlink, else the
+        # NEWEST run. Run ids are timestamp-prefixed, so name-sort == chronological;
+        # candidates[-1] is the most recent (NOT [0], which is the oldest).
+        latest = run_dir / "latest"
+        if (latest.is_symlink() or latest.is_dir()) and (latest / "cost_summary.json").exists():
+            summary_path = latest / "cost_summary.json"
+        else:
+            candidates = sorted(
+                (c for c in run_dir.glob("**/cost_summary.json") if "latest" not in c.parts),
+                key=lambda p: p.parent.name,
+            )
+            summary_path = candidates[-1] if candidates else summary_path
+    if not summary_path.exists():
+        msg = f"No cost_summary.json found under {run_dir}"
+        if as_json:
+            click.echo(json.dumps({"error": msg}))
+        else:
+            err_console.print(f"[red]{msg}[/red]")
+        raise SystemExit(1)
+
+    try:
+        data = json.loads(summary_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        msg = f"Failed to read {summary_path}: {exc}"
+        if as_json:
+            click.echo(json.dumps({"error": msg}))
+        else:
+            err_console.print(f"[red]{msg}[/red]")
+        raise SystemExit(1) from exc
+
+    if as_json:
+        click.echo(json.dumps(data))
+        return
+
+    _print_cost_summary(data)
+
+
+def _print_cost_summary(data: dict[str, Any]) -> None:
+    """Render a persisted cost_summary.json as rich tables (Issue #246)."""
+    total = data.get("total_cost", 0.0)
+    tokens = data.get("total_tokens", 0)
+    console.print(f"\n[bold]Run cost:[/bold] ${total:,.4f}  ([dim]{tokens:,} tokens[/dim])")
+    budget = data.get("budget_limit_usd")
+    if budget:
+        console.print(f"[bold]Budget:[/bold] ${budget:,.2f} (remaining ${data.get('budget_remaining', 0.0):,.4f})")
+
+    by_provider = data.get("by_provider") or {}
+    if by_provider:
+        table = Table(title="By Provider", show_header=True)
+        table.add_column("Provider", style="bold")
+        table.add_column("Cost (USD)")
+        table.add_column("Gateway", style="dim")
+        for prov, info in sorted(by_provider.items()):
+            if isinstance(info, dict):
+                table.add_row(str(prov), f"${info.get('cost', 0.0):,.4f}", str(info.get("base_url") or ""))
+        console.print(table)
+
+    by_model = data.get("by_model") or {}
+    if by_model:
+        table = Table(title="By Model", show_header=True)
+        table.add_column("Model", style="bold")
+        table.add_column("Cost (USD)")
+        table.add_column("Estimated", style="dim")
+        for model_id, info in sorted(by_model.items()):
+            if isinstance(info, dict):
+                est = "yes" if info.get("estimated") else "no"
+                table.add_row(str(model_id), f"${info.get('cost', 0.0):,.4f}", est)
+        console.print(table)
+
+    by_agent = data.get("by_agent") or {}
+    if by_agent:
+        table = Table(title="By Agent", show_header=True)
+        table.add_column("Agent", style="bold")
+        table.add_column("Cost (USD)")
+        for agent_name, c in sorted(by_agent.items(), key=lambda kv: -kv[1]):
+            table.add_row(str(agent_name), f"${c:,.4f}")
+        console.print(table)
+
+    by_step = data.get("by_step") or {}
+    if by_step:
+        table = Table(title="By Step", show_header=True)
+        table.add_column("Step", style="bold")
+        table.add_column("Cost (USD)")
+        for step_name, c in sorted(by_step.items(), key=lambda kv: -kv[1]):
+            table.add_row(str(step_name), f"${c:,.4f}")
+        console.print(table)
+
+    routing = data.get("routing") or {}
+    if isinstance(routing, dict) and routing:
+        prov = routing.get("provider") or "(default)"
+        base = routing.get("base_url") or ""
+        models = ", ".join(routing.get("models_used") or [])
+        console.print(
+            f"[bold]Routing:[/bold] provider={prov}"
+            + (f" base_url={base}" if base else "")
+            + (f" models=[{models}]" if models else "")
+        )
+    console.print()
+
+
+# ---------------------------------------------------------------------------
 # assess command (Issue #149 — Data Room Health Check)
 # ---------------------------------------------------------------------------
 
@@ -1147,7 +1461,8 @@ def search(
     default=False,
     help="Enable verbose logging output.",
 )
-def assess(data_room: Path, config_path: Path | None, verbose: bool) -> None:
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output the assessment report as JSON.")
+def assess(data_room: Path, config_path: Path | None, verbose: bool, as_json: bool) -> None:
     """Assess data room quality and completeness before running the pipeline.
 
     Scans the data room folder and produces a health report covering:
@@ -1164,7 +1479,8 @@ def assess(data_room: Path, config_path: Path | None, verbose: bool) -> None:
 
     from dd_agents.assessment import DataRoomAssessor
 
-    console.print("\n[bold]dd-agents assess[/bold] -- Data Room Health Check\n")
+    if not as_json:
+        console.print("\n[bold]dd-agents assess[/bold] -- Data Room Health Check\n")
 
     # When a config is supplied, honor its precedence.vdr_overrides so the
     # detected VDR layout reflects the deal's corrections (Issue #236).
@@ -1177,8 +1493,44 @@ def assess(data_room: Path, config_path: Path | None, verbose: bool) -> None:
     if config_path is not None:
         report["request_list"] = _reconcile_request_list(config_path, report)
 
-    # Display results
+    # Formula-integrity pre-flight (Issue #246) — audit any .xlsx in the data
+    # room so spreadsheet defects surface at the cheap assess stage, not only
+    # after a paid run. Parity-safe: nothing added when there are no formulas.
+    fa = _assess_formula_audit(data_room.resolve())
+    if fa is not None:
+        report["formula_audit"] = fa
+
+    # Display results (or emit the structured report for automation).
+    if as_json:
+        click.echo(json.dumps(report))
+        return
     _print_assessment_report(report)
+
+
+def _assess_formula_audit(data_room: Path) -> dict[str, Any] | None:
+    """Run the deterministic formula audit over the data room's .xlsx files (#246).
+
+    Returns the serializable audit report (data-room-relative file paths, no
+    local-path leak) when any spreadsheet has formulas, else None. Best-effort:
+    any failure returns None so assess stays advisory.
+    """
+    try:
+        from dd_agents.extraction.formula_audit import audit_data_room
+
+        xlsx = [p for p in data_room.rglob("*.xlsx") if not any(part.startswith(".") for part in p.parts)]
+        if not xlsx:
+            return None
+        report = audit_data_room(xlsx)
+        if not report["files_with_formulas"]:
+            return None
+        base = str(data_room).rstrip("/") + "/"
+        for row in report["issues"]:
+            file_val = row.get("file")
+            if isinstance(file_val, str):
+                row["file"] = file_val.removeprefix(base)
+        return dict(report)
+    except Exception:  # noqa: BLE001 — assess is advisory; never crash on a bad workbook
+        return None
 
 
 def _vdr_overrides_from_config(config_path: Path) -> dict[str, str]:
@@ -1294,6 +1646,21 @@ def _print_assessment_report(report: dict[str, Any]) -> None:
                 console.print(f"  [red]MISSING (required)[/red]: {cat}")
             for cat in rl.get("missing_optional", []):
                 console.print(f"  [yellow]missing (optional)[/yellow]: {cat}")
+
+    # Formula integrity (Issue #246) — only when .xlsx formulas were audited.
+    fa = report.get("formula_audit", {})
+    if fa and fa.get("files_with_formulas"):
+        console.print()
+        total = fa.get("total_issues", 0)
+        color = "red" if total else "green"
+        console.print(
+            f"[bold]Model integrity:[/bold] [{color}]{total} issue(s)[/{color}] across "
+            f"{fa.get('files_with_issues', 0)} of {fa.get('files_with_formulas', 0)} spreadsheet(s) with formulas"
+        )
+        for row in fa.get("issues", [])[:10]:
+            if isinstance(row, dict):
+                loc = f"{row.get('sheet', '')}!{row.get('cell', '')}".strip("!")
+                console.print(f"  [red]{row.get('kind', '')}[/red]: {row.get('file', '')} {loc}")
 
     # Recommendations
     recs = report.get("recommendations", [])
@@ -1504,7 +1871,14 @@ def _discover_deal_config(run_dir: Path) -> Any:
     default=False,
     help="Enable verbose logging output.",
 )
-def query(report_dir: Path, question: str | None, verbose: bool) -> None:
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    default=False,
+    help="Output the answer as JSON (single-question mode only; scriptable).",
+)
+def query(report_dir: Path, question: str | None, verbose: bool, as_json: bool) -> None:
     """Ask natural-language questions about the DD report.
 
     Index the merged findings from a pipeline run and answer
@@ -1522,15 +1896,23 @@ def query(report_dir: Path, question: str | None, verbose: bool) -> None:
     from dd_agents.query.engine import QueryEngine
     from dd_agents.query.indexer import FindingIndexer
 
-    console.print("\n[bold]dd-agents query[/bold]\n")
+    # --json is for scripting single-question mode; suppress the chrome.
+    json_single = as_json and bool(question)
+    if not json_single:
+        console.print("\n[bold]dd-agents query[/bold]\n")
 
     indexer = FindingIndexer()
-    with console.status("[bold cyan]Indexing findings...[/bold cyan]"):
+    if json_single:
         index = indexer.index_report(report_dir)
-
-    console.print(f"[dim]{index.summary}[/dim]\n")
+    else:
+        with console.status("[bold cyan]Indexing findings...[/bold cyan]"):
+            index = indexer.index_report(report_dir)
+        console.print(f"[dim]{index.summary}[/dim]\n")
 
     if index.total_findings == 0:
+        if json_single:
+            click.echo(json.dumps({"error": "No findings found.", "total_findings": 0}))
+            raise SystemExit(1)
         console.print("[yellow]No findings found. Check the --report path.[/yellow]")
         raise SystemExit(1)
 
@@ -1539,6 +1921,9 @@ def query(report_dir: Path, question: str | None, verbose: bool) -> None:
     if question:
         # Single-question mode
         result = asyncio.run(engine.query(question))
+        if as_json:
+            click.echo(json.dumps(result.model_dump()))
+            return
         _print_query_result(question, result)
     else:
         # Interactive mode

@@ -115,6 +115,7 @@ See [`examples/search/`](examples/search/) for ready-to-use templates.
 ```bash
 dd-agents chat --report _dd/forensic-dd/runs/latest         # Interactive multi-turn chat with memory
 dd-agents query --report _dd/forensic-dd/runs/latest        # Ask questions about findings
+dd-agents cost _dd/forensic-dd/runs/latest                  # Per-provider / per-model cost rollup
 dd-agents assess ./data_room                                # Check data room quality
 dd-agents portfolio add "Deal A" --data-room ./data_room_a  # Track multiple deals
 dd-agents portfolio compare                                 # Compare risk across deals
@@ -162,7 +163,10 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 # 3. Generate a deal config (AI scans the data room and infers entity aliases, focus areas)
 dd-agents auto-config "Buyer Corp" "Target Inc" --data-room ./data_room
 
-# 4. Run the analysis
+# 4. (Optional) Pre-flight: verify provider/model routing + validate the config
+dd-agents doctor --config deal-config.json
+
+# 5. Run the analysis
 dd-agents run deal-config.json
 ```
 

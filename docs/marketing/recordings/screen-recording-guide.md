@@ -21,7 +21,7 @@ unless the report ships dark). Hide the OS dock/menubar.
 | S4 | **The citation (the proof)** | Hover/click the finding's citation to reveal file → section → **verbatim quote** (Meridian MSA §12.3). Cursor-zoom this. Hold 3s — this is the money shot. | Hero [0:43–0:51]; gallery (citation) |
 | S5 | **Severity filter / drill-down** | Use the severity filter (P0/P1…) to show the report is interactive; filter to P0 and land on the hero finding. | B-roll; gallery |
 | S6 | **Cross-domain map** | If the report renders the cross-domain trigger table / correlation view, capture it. | Hero [0:30–0:34] |
-| S7 | **Excel export** | Quick cut: open the 14-sheet `.xlsx` (from the run's report dir), scroll the findings + cross-reference sheets. | Hero [0:58–1:06]; gallery #5 |
+| S7 | **Excel export** | Quick cut: open the 16-sheet `.xlsx` (from the run's report dir), scroll the findings + cross-reference sheets. | Hero [0:58–1:06]; gallery #5 |
 
 ## Capture settings
 - 60fps, 1920×1080, cursor-zoom ON, smooth-scroll ON.

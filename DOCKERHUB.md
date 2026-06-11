@@ -41,6 +41,8 @@ Output appears in your data room at `_dd/forensic-dd/runs/latest/report/`.
 | `chat --report ...` | Interactive multi-turn chat about findings |
 | `assess /data` | Data room quality check before running |
 | `auto-config` | AI-generated deal configuration from data room scan |
+| `doctor [--config ...] [--probe]` | Pre-flight: verify Bedrock/Vertex/gateway routing + validate a deal config |
+| `cost <run_dir>` | Per-provider / per-model cost rollup for a completed run |
 
 ## What Gets Analyzed
 

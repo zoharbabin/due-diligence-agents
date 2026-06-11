@@ -88,12 +88,19 @@ class ProviderInfo:
         Folded into the provenance hash so a resume under a different
         provider/gateway/clamp is rejected by the fail-closed gate. Uses the
         redacted base_url (host only), so no secret enters the hash.
+
+        Also includes ``DD_VISION_MODEL`` (Issue #248): the vision fallback is the
+        one aux model knob that drives a real reasoning call inside a ``run`` (its
+        text feeds every downstream specialist), so swapping it across a
+        checkpoint must bust the gate too. It is a model id, not a secret. Other
+        aux paths (search/auto-config) are separate commands, not part of a run.
         """
         return "|".join(
             (
                 self.provider,
                 self.safe_base_url or "",
                 str(self.max_output_tokens if self.max_output_tokens is not None else ""),
+                os.getenv("DD_VISION_MODEL", "").strip(),
             )
         )
 

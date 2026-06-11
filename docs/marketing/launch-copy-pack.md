@@ -128,7 +128,7 @@ Three reviewers, three screens, each signing off on their own domain. One clean 
 | 0:34 | `Change-of-control × revenue cliff = one risk` |
 | 0:43 | `Traced to page + verbatim quote` |
 | 0:51 | `Can't cite it? It halts.` |
-| 0:58 | `Go / No-Go report · 14-sheet workbook · JSON per finding` |
+| 0:58 | `Go / No-Go report · 16-sheet workbook · JSON per finding` |
 | 1:06 | `Runs locally · Open source` |
 | 1:14 | `Read every doc. Connect every domain. Cite every flag.` |
 | 1:20 (end) | `Legal flags a risk. Finance another.` / `We connect and cite.` |
@@ -183,7 +183,7 @@ pip install dd-agents (or Docker). Read the prompts, edit the agents, fork the w
 Output is built to be reviewed, not trusted blindly:
 
 • Interactive HTML report with a Go/No-Go view + drill-down to the source quote
-• 14-sheet Excel for the workstreams
+• 16-sheet Excel for the workstreams
 • Per-finding JSON for anything you want to script
 
 It's a basis for your deliverables — humans still decide.
@@ -251,7 +251,7 @@ Read as one mini-walkthrough scroll: **what it is → cross-domain reveal → th
 
 **#4 — Report / Go·No-Go verdict (the deliverable).** Headline: "An interactive report with a clear verdict — built to brief your advisors." Sub: "Go / No-Go view, deal-breakers, action items, risk heatmap. Filter by severity and drill into any finding." Visual: executive dashboard (`01-executive-dashboard.png` / `05-deal-breakers.png`) in browser chrome; foreground the verdict banner showing real sample value "Conditional Go" + deal-breaker count + severity tally; show filter bar (`07-filter-bar-active.png`) as a thin strip; iris accent on the active filter pill. Caption stays "to brief your advisors" / "basis for deliverables" — never "board-ready," never "replaces advisors."
 
-**#5 — Export + local + no lock-in (the practical close).** Headline: "14-sheet Excel, per-finding JSON — runs locally, on your model." Sub: "Your documents never leave your machine except as API calls to your own LLM provider. No vendor lock-in — Anthropic API, your Bedrock/Vertex, or any model via a gateway. Apache-2.0, open source." Visual: split panel — left, a 14-tab Excel still (tabs along the bottom, one sheet showing findings rows with severity + citation columns); right, a "local" trust motif (laptop/terminal + shield) with the data-flow line `Data room (your disk) → agents (local) → your LLM API → report (your disk)`, iris on the "your disk" endpoints. 50/50 vertical split, thin iris divider; badges bottom-right: "Apache-2.0," "Local-first," "BYO model." Keep the data-flow line literally accurate.
+**#5 — Export + local + no lock-in (the practical close).** Headline: "16-sheet Excel, per-finding JSON — runs locally, on your model." Sub: "Your documents never leave your machine except as API calls to your own LLM provider. No vendor lock-in — Anthropic API, your Bedrock/Vertex, or any model via a gateway. Apache-2.0, open source." Visual: split panel — left, a 16-tab Excel still (tabs along the bottom, one sheet showing findings rows with severity + citation columns); right, a "local" trust motif (laptop/terminal + shield) with the data-flow line `Data room (your disk) → agents (local) → your LLM API → report (your disk)`, iris on the "your disk" endpoints. 50/50 vertical split, thin iris divider; badges bottom-right: "Apache-2.0," "Local-first," "BYO model." Keep the data-flow line literally accurate.
 
 **#6 — Install (CTA, dev-native).** Headline: "Read every doc. Connect every domain. Cite every flag." Visual: clean terminal block on `#0a0f1e`, mono, copy-paste ready:
 ```
@@ -268,7 +268,7 @@ Below it, three faint real-run status lines: `✓ 9 specialists  ·  ✓ citatio
 | 2 | Cross-domain reveal (moat) | `03-cross-domain-synthesis.png` (+ `06-risk-heatmap.png` inset) |
 | 3 | Cited finding (proof) | `09-legal-findings.png` + citation hover |
 | 4 | Report verdict | `01-executive-dashboard.png` / `05-deal-breakers.png` / `07-filter-bar-active.png` |
-| 5 | Export + local | 14-sheet Excel still + local data-flow motif |
+| 5 | Export + local | 16-sheet Excel still + local data-flow motif |
 | 6 | Install (CTA) | Real terminal output |
 
 **Cross-frame consistency:** same navy canvas, same iris signature, same logo corner, same type scale, one focal element per frame. The three-domain triad (blue/green/violet) threads through #1, #2, #3 so the cross-domain story carries from thumbnail to proof.

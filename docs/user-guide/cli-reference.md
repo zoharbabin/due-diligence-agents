@@ -69,6 +69,7 @@ Validate a deal-config.json file without running the pipeline.
 
 ```
 dd-agents validate CONFIG_PATH
+dd-agents validate CONFIG_PATH --json   # machine-readable: {"valid": bool, "errors": [...]}
 ```
 
 **Arguments:**
@@ -78,10 +79,13 @@ dd-agents validate CONFIG_PATH
 
 ```bash
 dd-agents validate deal-config.json
+dd-agents validate deal-config.json --json   # for CI/pre-commit gates
 ```
 
 Prints "Config is valid" with a summary table on success, or detailed validation
-errors on failure.
+errors on failure. With `--json`, emits `{"valid": true, ...}` or
+`{"valid": false, "errors": [{"loc", "msg", "type"}, ...]}` and exits non-zero on
+failure (exit codes preserved).
 
 ---
 
@@ -103,12 +107,42 @@ active provider/gateway (secret-free — embedded credentials are stripped),
 checks that a credential is present, and exits non-zero on misconfiguration.
 
 ```
-dd-agents doctor            # show routing + credential check
-dd-agents doctor --probe    # also issue one minimal live query
-dd-agents doctor --json     # machine-readable routing receipt
+dd-agents doctor                       # show routing + credential check
+dd-agents doctor --probe               # also issue one minimal live query
+dd-agents doctor --json                # machine-readable routing receipt
+dd-agents doctor --config deal-config.json   # pre-flight validate a deal config
 ```
 
+With `--config`, doctor additionally pre-flight-validates a deal config before a
+run: per-agent routing (each route's `auth_token_env` env var present),
+`request_list` shape, `precedence.vdr_overrides` domain names, and the
+config/env-selected OCR / transcription backend availability. It exits non-zero
+on a missing credential or unavailable backend, so config errors surface before a
+multi-hour run. The `--json` output gains a `config_validation` block.
+
 See [Model Providers](model-providers.md) for the full provider/model story.
+
+---
+
+## cost
+
+Show a completed run's cost breakdown — by provider, model, agent, and step —
+read from the run's persisted `cost_summary.json` (no recompute, no LLM call).
+
+```
+dd-agents cost RUN_DIR          # rich tables
+dd-agents cost RUN_DIR --json   # the persisted cost rollup, verbatim
+```
+
+**Arguments:**
+- `RUN_DIR` -- A run directory (or a parent like `runs/latest`); the command
+  locates `cost_summary.json` beneath it.
+
+Surfaces the per-provider / per-model / per-agent / per-step rollup plus the active
+LLM routing receipt (provider + secret-free base_url + models used), and flags models
+priced at the default rate as estimated. Given a parent directory it resolves the
+`latest` symlink (else the newest run). Exits non-zero when no `cost_summary.json`
+is found.
 
 ---
 
@@ -269,6 +303,7 @@ dd-agents assess DATA_ROOM [OPTIONS]
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `--config` | Path | none | Optional `deal-config.json` — enables request-list reconciliation. Reports received / missing-required / unexpected documents against the config's `request_list`. |
+| `--json` | flag | off | Emit the assessment report as JSON (scriptable; skips the rich panels). |
 | `--verbose / -v` | flag | off | Enable debug logging |
 
 **Examples:**
@@ -276,12 +311,15 @@ dd-agents assess DATA_ROOM [OPTIONS]
 ```bash
 dd-agents assess ./data_room
 dd-agents assess ./data_room --config deal-config.json   # + request-list completeness
+dd-agents assess ./data_room --json                      # machine-readable
 ```
 
 Outputs a health report with overall score (0-100), file type distribution,
 extraction readiness, issues, recommendations, a detected VDR layout (when the
-data room uses a numbered convention), and — with `--config` — a request-list
-received-vs-missing view.
+data room uses a numbered convention), a spreadsheet **model-integrity pre-flight**
+(formula defects — hardcoded overrides, circular refs, `#REF!`, broken links — in
+any `.xlsx`, citing exact cells), and — with `--config` — a request-list
+received-vs-missing view. With `--json`, the full report dict is emitted instead.
 
 ---
 
@@ -356,15 +394,19 @@ dd-agents query --report <run_dir> [OPTIONS]
 |--------|------|---------|-------------|
 | `--report` | Path | (required) | Path to the pipeline run directory |
 | `--question`, `-q` | String | None | Single question (omit for interactive mode) |
+| `--json` | Flag | Off | Emit the answer as JSON (single-question mode only; scriptable) |
 | `--verbose`, `-v` | Flag | Off | Enable verbose logging |
 
-Indexes merged findings from the run directory and answers questions using keyword matching (fast path for counts and filters) or Claude (for complex analysis questions).
+Indexes merged findings from the run directory and answers questions using keyword matching (fast path for counts and filters) or Claude (for complex analysis questions). Deterministic spreadsheet model-integrity issues also appear in the index, so they are answerable here.
 
 **Examples:**
 
 ```bash
 # Single question
 dd-agents query --report _dd/forensic-dd/runs/latest -q "How many P0 findings?"
+
+# Scriptable JSON (answer/sources/confidence)
+dd-agents query --report _dd/forensic-dd/runs/latest -q "How many P0 findings?" --json
 
 # Interactive REPL mode
 dd-agents query --report _dd/forensic-dd/runs/latest
