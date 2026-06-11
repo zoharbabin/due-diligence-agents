@@ -138,9 +138,11 @@ dd-agents cost RUN_DIR --json   # the persisted cost rollup, verbatim
 - `RUN_DIR` -- A run directory (or a parent like `runs/latest`); the command
   locates `cost_summary.json` beneath it.
 
-Surfaces the per-provider rollup (meaningful for mixed-provider runs via per-agent
-routing) and flags models priced at the default rate as estimated. Exits non-zero
-when no `cost_summary.json` is found.
+Surfaces the per-provider / per-model / per-agent / per-step rollup plus the active
+LLM routing receipt (provider + secret-free base_url + models used), and flags models
+priced at the default rate as estimated. Given a parent directory it resolves the
+`latest` symlink (else the newest run). Exits non-zero when no `cost_summary.json`
+is found.
 
 ---
 

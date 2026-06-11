@@ -703,26 +703,36 @@ def _validate_config_preflight(config_path: Path) -> dict[str, Any]:
         from dd_agents.extraction.ocr_registry import OCRBackendRegistry
 
         available = OCRBackendRegistry.detect_available()
-        # A requested family is satisfied if any available backend name contains it.
-        if any(ocr_pref in name for name in available) or ocr_pref in available:
-            _add("ocr_backend", "pass", f"'{ocr_pref}' available (detected: {', '.join(available) or 'none'})")
+        # Mirror the RUNTIME selection exactly: get_backend() returns a working
+        # extractor (a non-None result) — including glm_ocr's documented fallback
+        # to pytesseract — so a non-None means the pipeline will run. This avoids
+        # a false blocker (e.g. glm_ocr requested, only pytesseract installed →
+        # the run succeeds via fallback, so pre-flight must not fail it).
+        resolved = OCRBackendRegistry.get_backend(ocr_pref)
+        detected = ", ".join(available) or "none"
+        if resolved is not None:
+            _add("ocr_backend", "pass", f"'{ocr_pref}' resolves to a working backend (detected: {detected})")
         else:
             _add(
                 "ocr_backend",
                 "error",
-                f"'{ocr_pref}' not available — install it or use 'auto' (detected: {', '.join(available) or 'none'})",
+                f"'{ocr_pref}' not available — install it or use 'auto' (detected: {detected})",
             )
 
     transcription_pref = os.getenv("DD_TRANSCRIPTION_BACKEND", "").strip().lower()
     if transcription_pref:
-        from dd_agents.extraction.transcribe import detect_backend
+        from dd_agents.extraction.transcribe import backend_available, detect_backend
 
         backend = detect_backend()
-        if backend is None:
+        # detect_backend trusts an explicit override without probing — so verify
+        # the resolved backend is ACTUALLY installed (else a requested-but-missing
+        # backend would false-pass). Fail-closed.
+        if backend is None or not backend_available(backend):
+            suffix = f" (resolved to '{backend.value}' but it is not installed)" if backend is not None else ""
             _add(
                 "transcription_backend",
                 "error",
-                f"DD_TRANSCRIPTION_BACKEND='{transcription_pref}' requested but no transcription backend is available",
+                f"DD_TRANSCRIPTION_BACKEND='{transcription_pref}' requested but no backend is available{suffix}",
             )
         else:
             _add("transcription_backend", "pass", f"resolved to '{backend.value}'")
@@ -1320,15 +1330,25 @@ def cost(run_dir: Path, as_json: bool) -> None:
 
     Reads the persisted ``cost_summary.json`` from a run directory — no recompute,
     no LLM call. Surfaces the per-provider/per-model/per-agent/per-step rollup and
-    the per-agent routing receipt (read-only; secret-free) so an operator can audit
-    spend without opening the HTML report. Accepts the run dir or its parent
-    (``runs/latest``).
+    the active LLM routing receipt (provider + secret-free base_url + models used;
+    read-only) so an operator can audit spend without opening the HTML report.
+    Accepts the run dir or its parent (e.g. ``runs/`` or the ``latest`` symlink);
+    when a parent is given it resolves the ``latest`` symlink, else the NEWEST run.
     """
     summary_path = run_dir / "cost_summary.json"
     if not summary_path.exists():
-        # Tolerate being given the run's report/ or project root: search one level.
-        candidates = sorted(run_dir.glob("**/cost_summary.json"))
-        summary_path = candidates[0] if candidates else summary_path
+        # Given a parent (e.g. runs/): prefer the 'latest' symlink, else the
+        # NEWEST run. Run ids are timestamp-prefixed, so name-sort == chronological;
+        # candidates[-1] is the most recent (NOT [0], which is the oldest).
+        latest = run_dir / "latest"
+        if (latest.is_symlink() or latest.is_dir()) and (latest / "cost_summary.json").exists():
+            summary_path = latest / "cost_summary.json"
+        else:
+            candidates = sorted(
+                (c for c in run_dir.glob("**/cost_summary.json") if "latest" not in c.parts),
+                key=lambda p: p.parent.name,
+            )
+            summary_path = candidates[-1] if candidates else summary_path
     if not summary_path.exists():
         msg = f"No cost_summary.json found under {run_dir}"
         if as_json:
@@ -1394,6 +1414,26 @@ def _print_cost_summary(data: dict[str, Any]) -> None:
         for agent_name, c in sorted(by_agent.items(), key=lambda kv: -kv[1]):
             table.add_row(str(agent_name), f"${c:,.4f}")
         console.print(table)
+
+    by_step = data.get("by_step") or {}
+    if by_step:
+        table = Table(title="By Step", show_header=True)
+        table.add_column("Step", style="bold")
+        table.add_column("Cost (USD)")
+        for step_name, c in sorted(by_step.items(), key=lambda kv: -kv[1]):
+            table.add_row(str(step_name), f"${c:,.4f}")
+        console.print(table)
+
+    routing = data.get("routing") or {}
+    if isinstance(routing, dict) and routing:
+        prov = routing.get("provider") or "(default)"
+        base = routing.get("base_url") or ""
+        models = ", ".join(routing.get("models_used") or [])
+        console.print(
+            f"[bold]Routing:[/bold] provider={prov}"
+            + (f" base_url={base}" if base else "")
+            + (f" models=[{models}]" if models else "")
+        )
     console.print()
 
 

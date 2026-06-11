@@ -128,3 +128,21 @@ class TestCostCommand:
         r = CliRunner().invoke(main, ["cost", str(empty), "--json"])
         assert r.exit_code == 1
         assert "error" in json.loads(r.output)
+
+    def test_cost_parent_dir_picks_newest_run(self, tmp_path: Path) -> None:
+        # Audit fix: a parent dir must resolve to the NEWEST run, not the oldest.
+        runs = tmp_path / "runs"
+        for name, cost_val in (("run_20260101_010000_a", 1.0), ("run_20260615_120000_c", 9.0)):
+            rd = runs / name
+            rd.mkdir(parents=True)
+            (rd / "cost_summary.json").write_text(json.dumps({**self._SUMMARY, "total_cost": cost_val}))
+        r = CliRunner().invoke(main, ["cost", str(runs), "--json"])
+        assert r.exit_code == 0, r.output
+        assert json.loads(r.output)["total_cost"] == 9.0  # newest, not oldest (1.0)
+
+    def test_cost_rich_shows_step_and_routing(self, tmp_path: Path) -> None:
+        summary = {**self._SUMMARY, "routing": {"provider": "bedrock", "base_url": None, "models_used": ["m"]}}
+        rd = self._run_dir(tmp_path, summary)
+        r = CliRunner().invoke(main, ["cost", str(rd)])
+        assert "By Step" in r.output
+        assert "Routing:" in r.output
