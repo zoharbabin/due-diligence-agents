@@ -13,7 +13,7 @@ from dd_agents.reporting.html_base import (
     SEVERITY_COLORS,
     SectionRenderer,
 )
-from dd_agents.utils.constants import SEVERITY_P3
+from dd_agents.utils.constants import SEVERITY_P3, is_synthetic_subject
 
 
 class SubjectRenderer(SectionRenderer):
@@ -25,6 +25,11 @@ class SubjectRenderer(SectionRenderer):
             "<h2>Entity Detail</h2>",
         ]
         for csn, data in sorted(self.merged_data.items()):
+            # Skip synthetic deal-wide subjects (_request_list, _model_integrity):
+            # they carry auto-generated findings/gaps but are not real entities,
+            # so they must not render as an Entity Detail card (Issues #192/#245).
+            if is_synthetic_subject(str(csn)):
+                continue
             parts.append(self._render_subject_section(csn, data))
         parts.append("</section>")
         return "\n".join(parts)

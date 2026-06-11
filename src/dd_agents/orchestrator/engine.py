@@ -3781,7 +3781,11 @@ class PipelineEngine:
 
         run_metadata["finding_counts"] = {**sev_counts, "total": total_findings}
         run_metadata["gap_counts"] = {"total": total_gaps}
-        run_metadata["subject_count"] = len(merged_findings)
+        # Count real entities only — synthetic deal-wide subjects (_request_list,
+        # _model_integrity) carry findings but are not entities (Issues #192/#245).
+        from dd_agents.utils.constants import is_synthetic_subject
+
+        run_metadata["subject_count"] = sum(1 for csn in merged_findings if not is_synthetic_subject(str(csn)))
         run_metadata["reference_file_count"] = len(run_metadata.get("reference_files", []))
 
         # Numerical manifest entries (N001–N00x) for cross-format parity.
@@ -3814,6 +3818,7 @@ class PipelineEngine:
         """
         from dd_agents.models.reporting import ReportSchema
         from dd_agents.reporting.excel import ExcelReportGenerator
+        from dd_agents.utils.constants import is_synthetic_subject as _is_synth
 
         # Load merged findings
         merged_dir = state.run_dir / "findings" / "merged"
@@ -3948,6 +3953,11 @@ class PipelineEngine:
             # severity distribution that appears in the final reports.
             from dd_agents.reporting.computed_metrics import ReportDataComputer
 
+            # Real-entity count for the synthesis LLM input — exclude synthetic
+            # deal-wide subjects (_request_list, _model_integrity) so the model
+            # isn't told there are more entities than the deal has (Issues #192/#245).
+            es_entity_count = sum(1 for csn in merged_findings if not _is_synth(str(csn)))
+
             p0_findings: list[dict[str, Any]] = []
             p1_findings: list[dict[str, Any]] = []
             severity_dist: dict[str, int] = _sev_count_init()
@@ -3980,7 +3990,7 @@ class PipelineEngine:
                 "Executive synthesis input: %d P0, %d P1 findings across %d entities",
                 len(p0_findings),
                 len(p1_findings),
-                len(merged_findings),
+                es_entity_count,
             )
 
             deal_config_for_es = state.deal_config if isinstance(state.deal_config, dict) else None
@@ -3989,7 +3999,7 @@ class PipelineEngine:
                 "p0_findings": p0_findings,
                 "p1_findings": p1_findings,
                 "findings_summary": {
-                    "total_subjects": len(merged_findings),
+                    "total_subjects": sum(1 for _csn in merged_findings if not _is_synth(str(_csn))),
                     "total_findings": sum(
                         len(v.get("findings", [])) for v in merged_findings.values() if isinstance(v, dict)
                     ),
@@ -4044,7 +4054,7 @@ class PipelineEngine:
                 ai_state = {
                     "buyer_strategy": deal_config_dict["buyer_strategy"],
                     "merged_findings_summary": {
-                        "total_subjects": len(merged_findings),
+                        "total_subjects": sum(1 for _csn in merged_findings if not _is_synth(str(_csn))),
                         "total_findings": sum(
                             len(v.get("findings", [])) for v in merged_findings.values() if isinstance(v, dict)
                         ),
@@ -4149,7 +4159,7 @@ class PipelineEngine:
                     "p0_findings": p0_findings,
                     "p1_findings": p1_findings,
                     "findings_summary": {
-                        "total_subjects": len(merged_findings),
+                        "total_subjects": sum(1 for _csn in merged_findings if not _is_synth(str(_csn))),
                         "total_findings": sum(
                             len(v.get("findings", [])) for v in merged_findings.values() if isinstance(v, dict)
                         ),

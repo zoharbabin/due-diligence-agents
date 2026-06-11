@@ -118,3 +118,58 @@ class TestInjectFormulaFindings:
         raw = merged["_model_integrity"].findings[0].model_dump()
         out = ReportDataComputer._recalibrate_severity(raw)
         assert out["severity"] == "P2"  # unchanged by the read-only guard
+
+
+class TestSyntheticSubjectExclusion:
+    """_model_integrity must NOT inflate entity counts (audit fix, Issue #245)."""
+
+    def test_entity_count_excludes_synthetic_subjects(self) -> None:
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+
+        merged = {
+            "acme_corp": {"subject": "Acme Corp", "findings": [], "gaps": []},
+            "globex": {"subject": "Globex", "findings": [], "gaps": []},
+            "_model_integrity": {"subject": "Financial models", "findings": [], "gaps": []},
+            "_request_list": {"subject": "Deal-wide", "findings": [], "gaps": []},
+        }
+        computed = ReportDataComputer().compute(merged)
+        # 2 real entities, not 4.
+        assert computed.total_subjects == 2
+        assert computed.subjects_analyzed == 2
+
+    def test_entity_detail_skips_synthetic_subject(self) -> None:
+        from dd_agents.reporting.computed_metrics import ReportDataComputer
+        from dd_agents.reporting.html_subjects import SubjectRenderer
+
+        merged = {
+            "acme_corp": {"subject": "Acme Corp", "findings": [], "gaps": []},
+            "_model_integrity": {"subject": "Financial models", "findings": [], "gaps": []},
+        }
+        computed = ReportDataComputer().compute(merged)
+        html = SubjectRenderer(computed, merged, {}).render()
+        assert "Acme Corp" in html
+        assert "Financial models" not in html
+
+
+class TestFindingIdStableAcrossProcesses:
+    """Finding ids must be content-stable across processes (audit fix, Issue #245)."""
+
+    def test_id_matches_known_digest_independent_of_hashseed(self) -> None:
+        import os
+        import subprocess
+        import sys
+
+        code = (
+            "from dd_agents.extraction.formula_audit import formula_findings;"
+            "r={'files_scanned':1,'files_with_formulas':1,'files_with_issues':1,'total_issues':1,"
+            "'by_kind':{},'issues':[{'file':'a.xlsx','sheet':'S','cell':'B7','kind':'error_literal','detail':'d'}],"
+            "'truncated':False};"
+            "print(formula_findings(r,run_id='r',subject='S',subject_safe_name='_m',timestamp='t')[0]['id'])"
+        )
+        ids = set()
+        for seed in ("0", "1", "12345"):
+            env = {**os.environ, "PYTHONHASHSEED": seed}
+            out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env, check=True)
+            ids.add(out.stdout.strip())
+        # Same content → same id regardless of hash seed (no builtin hash()).
+        assert len(ids) == 1

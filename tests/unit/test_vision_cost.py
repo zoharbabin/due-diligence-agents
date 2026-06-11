@@ -84,3 +84,31 @@ class TestEngineRecordsVisionCost:
         # 1M input tokens of Opus = $15 → well over the $0.001 budget.
         eng._record_vision_cost(_FakePipeline((1_000_000, 0, 1)))
         assert eng.cost_tracker.is_budget_exceeded() is True
+
+
+class TestVisionByProvider:
+    """#247 vision spend appears in the by-provider rollup (audit-noted gap)."""
+
+    def test_vision_entry_carries_provider_and_rolls_up(self, monkeypatch) -> None:  # noqa: ANN001
+        import dd_agents.llm as llm_mod
+        from dd_agents.llm import ProviderInfo
+
+        monkeypatch.setenv("DD_VISION_MODEL", "claude-sonnet-4-6")
+        # _record_vision_cost does `from dd_agents.llm import resolve_provider`,
+        # so patch the function on the llm module (its import source).
+        monkeypatch.setattr(
+            llm_mod,
+            "resolve_provider",
+            lambda: ProviderInfo(provider="gateway", base_url="http://gw:4011", max_output_tokens=None),
+        )
+        from dd_agents.orchestrator.engine import PipelineEngine
+
+        eng = PipelineEngine.__new__(PipelineEngine)
+        eng.cost_tracker = CostTracker()
+        eng._record_vision_cost(_FakePipeline((1000, 200, 2)))
+        entry = next(e for e in eng.cost_tracker.entries if e.agent_name == "extraction_vision")
+        assert entry.provider == "gateway"
+        assert entry.base_url == "http://gw:4011"
+        by_provider = eng.cost_tracker.cost_by_provider()
+        assert "gateway" in by_provider
+        assert by_provider["gateway"]["input_tokens"] == 1000

@@ -184,6 +184,27 @@ NON_SUBJECT_STEMS: frozenset[str] = frozenset(
     }
 )
 
+# Synthetic, deal-wide subject keys that carry auto-generated findings/gaps but
+# are NOT real entities (Issues #192/#245). Their findings/gaps still count in
+# totals + reach the findings index, but they must be EXCLUDED from per-entity
+# denominators (entity count, revenue coverage, HHI) and the Entity Detail
+# section — otherwise a 4-entity deal reports 5 "Entities Analyzed". Any merged
+# subject key in this set (or, defensively, starting with "_") is synthetic.
+SYNTHETIC_SUBJECT_KEYS: frozenset[str] = frozenset(
+    {
+        "_request_list",
+        "_model_integrity",
+    }
+)
+
+
+def is_synthetic_subject(subject_safe_name: str) -> bool:
+    """True when *subject_safe_name* is a synthetic deal-wide subject, not a real
+    entity (see :data:`SYNTHETIC_SUBJECT_KEYS`). Leading-underscore keys are
+    treated as synthetic defensively."""
+    return subject_safe_name in SYNTHETIC_SUBJECT_KEYS or subject_safe_name.startswith("_")
+
+
 # ---------------------------------------------------------------------------
 # Severity scoring weights (used for sorting and risk scoring)
 # ---------------------------------------------------------------------------

@@ -22,6 +22,7 @@ Contract:
 
 from __future__ import annotations
 
+import hashlib
 import re
 from collections import defaultdict
 from dataclasses import dataclass
@@ -364,8 +365,13 @@ def formula_findings(
         location = f"{sheet}!{cell}" if sheet else cell
         file_path = str(row.get("file", ""))
         detail = str(row.get("detail", ""))
-        # Stable, content-derived id so re-runs are idempotent (no clock/random).
-        seq = abs(hash((file_path, location, kind))) % 1_000_000
+        # Stable, content-derived id so re-runs are idempotent. Uses a SHA-256
+        # digest (NOT the builtin hash(), which is PYTHONHASHSEED-salted per
+        # process and would mint a different id each run — breaking cross-run
+        # finding-id references like chat corrections + the knowledge graph).
+        # Mirrors the tamper-finding id derivation in reporting/merge.py.
+        stable_key = f"{file_path}|{location}|{kind}"
+        seq = int(hashlib.sha256(stable_key.encode("utf-8")).hexdigest()[:8], 16) % 1_000_000
         # The Finding id pattern requires the subject segment to start with
         # [a-z0-9]; the synthetic safe name is "_model_integrity", so strip
         # leading underscores for the id only (the subject_safe_name key keeps it).
