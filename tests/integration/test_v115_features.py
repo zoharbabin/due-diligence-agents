@@ -166,3 +166,44 @@ class TestICMemoLanguagePassthrough:
         memo = render_ic_memo(computed, {"buyer": {"name": "B"}, "target": {"name": "TargetCo"}})
         # The non-English finding text appears unchanged — no translation pass.
         assert french_title in memo
+
+
+class TestFormulaFindingsReachQueryIndex:
+    """#245: injected formula-integrity findings flow merge → disk → query index."""
+
+    def test_merged_formula_findings_are_indexed(self, tmp_path: Path) -> None:
+        from dd_agents.query.indexer import FindingIndexer
+        from dd_agents.reporting.merge import FindingMerger
+
+        report = {
+            "files_scanned": 1,
+            "files_with_formulas": 1,
+            "files_with_issues": 1,
+            "total_issues": 1,
+            "by_kind": {"hardcoded_override": 1},
+            "issues": [
+                {
+                    "file": "Acme/model.xlsx",
+                    "sheet": "P&L",
+                    "cell": "B5",
+                    "kind": "hardcoded_override",
+                    "detail": "Hardcoded value 1234 in column B",
+                }
+            ],
+            "truncated": False,
+        }
+        merger = FindingMerger(run_id="r1", config_hash="h", prompt_version="1.0.0")
+        merged: dict = {}
+        added = merger.inject_formula_findings(merged, report)
+        assert added == 1
+
+        # Persist to findings/merged/ exactly as the pipeline does.
+        merged_dir = tmp_path / "findings" / "merged"
+        merger.write_merged(merged, merged_dir)
+        assert (merged_dir / "_model_integrity.json").exists()
+
+        # The query indexer reads findings/merged/*.json from disk.
+        index = FindingIndexer().index_report(tmp_path)
+        titles = " ".join(f.get("title", "") for f in index.findings).lower()
+        assert "model-integrity" in titles or "hardcoded" in titles
+        assert index.total_findings >= 1

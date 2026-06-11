@@ -1917,6 +1917,70 @@ class FindingMerger:
             )
         return added
 
+    # Synthetic subject key for deterministic model-integrity findings (Issue #245).
+    _FORMULA_SUBJECT = "Financial models"
+    _FORMULA_SAFE_NAME = "_model_integrity"
+
+    def inject_formula_findings(
+        self,
+        merged: dict[str, MergedSubjectOutput],
+        formula_report: dict[str, Any],
+    ) -> int:
+        """Mint deterministic spreadsheet model-integrity findings (Issue #245).
+
+        The formula audit (``extraction/formula_audit.audit_data_room``, run in
+        pipeline step 06) detects hardcoded overrides, circular refs, ``#REF!``,
+        and broken external links citing an exact ``Sheet!Cell``. v1.15.0 surfaced
+        these only in the report's Model-Integrity section; this routes each into a
+        first-class :class:`Finding` (Finance agent) on a synthetic
+        ``_model_integrity`` subject so they ALSO reach the findings index
+        (query/chat), the numerical manifest (step 29), the audit (step 30), and
+        severity rollups.
+
+        Mutating but idempotent: each finding's id is content-derived
+        (``file``/``Sheet!Cell``/``kind``) — independent of ``run_id`` — so
+        ``--resume`` never duplicates. Severity is stamped with
+        ``metadata.provenance.severity_source = "formula_auditor"`` so the single
+        severity authority (:func:`resolve_severity`) and the read-only
+        recalibration guard treat it as already-resolved (Design Rule 12). Returns
+        the count of findings newly added. No-op (returns 0) for an empty report.
+        """
+        from dd_agents.extraction.formula_audit import formula_findings
+
+        raw_findings = formula_findings(
+            formula_report,  # type: ignore[arg-type]
+            run_id=self.run_id,
+            subject=self._FORMULA_SUBJECT,
+            subject_safe_name=self._FORMULA_SAFE_NAME,
+            timestamp=self.timestamp,
+        )
+        if not raw_findings:
+            return 0
+
+        mco = merged.get(self._FORMULA_SAFE_NAME)
+        if mco is None:
+            mco = MergedSubjectOutput(
+                subject=self._FORMULA_SUBJECT,
+                subject_safe_name=self._FORMULA_SAFE_NAME,
+            )
+            merged[self._FORMULA_SAFE_NAME] = mco
+
+        existing_ids = {f.id for f in mco.findings}
+        added = 0
+        for raw in raw_findings:
+            fid = str(raw["id"])
+            if fid in existing_ids:  # idempotent under --resume
+                continue
+            try:
+                finding = Finding.model_validate(raw)
+            except Exception:  # noqa: BLE001 — never let one bad row break merge
+                logger.exception("Failed to build formula-integrity finding %s", fid)
+                continue
+            mco.findings.append(finding)
+            existing_ids.add(fid)
+            added += 1
+        return added
+
     @staticmethod
     def _first_real_citation(mco: MergedSubjectOutput, source_finding_id: Any) -> tuple[str, str]:
         """Return ``(source_path, exact_quote)`` of the first real citation on the

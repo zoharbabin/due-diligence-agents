@@ -309,6 +309,116 @@ def audit_data_room(
     )
 
 
+# Map each detector ``kind`` to a finding severity (Issue #245). Hardcoded
+# overrides, circular refs, and surfaced error literals materially move a
+# valuation model → P2; a broken external link is a quieter hygiene issue → P3.
+_KIND_SEVERITY: dict[str, str] = {
+    "hardcoded_override": "P2",
+    "circular_reference": "P2",
+    "error_literal": "P2",
+    "broken_external_link": "P3",
+}
+
+# Human-readable category per kind (stable machine-ish slug used by report
+# grouping + severity recalibration text matching).
+_KIND_CATEGORY: dict[str, str] = {
+    "hardcoded_override": "model_integrity_hardcoded_override",
+    "circular_reference": "model_integrity_circular_reference",
+    "error_literal": "model_integrity_error_literal",
+    "broken_external_link": "model_integrity_broken_link",
+}
+
+
+def formula_findings(
+    report: FormulaAuditReport,
+    *,
+    run_id: str,
+    subject: str,
+    subject_safe_name: str,
+    timestamp: str,
+) -> list[dict[str, str | dict[str, object] | list[object]]]:
+    """Convert a data-room formula audit into merged-finding dicts (Issue #245).
+
+    Each detected integrity issue becomes a standard finding dict (the same shape
+    specialist findings take in ``findings/merged/*.json``) so it reaches the
+    findings index, ``query``/``chat``, severity rollups, and the executive
+    summary — not only the report's Model-Integrity section.
+
+    Deterministic + parity-safe: an empty/clean report yields ``[]``. The finding
+    is attributed to the Finance agent (model integrity is a finance concern) and
+    routed to *subject_safe_name*. Severity is stamped with
+    ``metadata.provenance.severity_source = "formula_auditor"`` so the single
+    severity authority (``resolve_severity``) and the read-only recalibration
+    guard treat it as already-resolved (Design Rule 12) and never re-derive it.
+
+    Caller supplies ``run_id`` / ``timestamp`` (the module never reads the clock).
+    The citation ``source_path`` is the data-room-relative file path already on
+    each issue row; ``location`` is ``Sheet!Cell`` for exact grounding.
+    """
+    findings: list[dict[str, str | dict[str, object] | list[object]]] = []
+    for idx, row in enumerate(report["issues"]):
+        kind = str(row.get("kind", ""))
+        severity = _KIND_SEVERITY.get(kind, "P3")
+        sheet = str(row.get("sheet", ""))
+        cell = str(row.get("cell", ""))
+        location = f"{sheet}!{cell}" if sheet else cell
+        file_path = str(row.get("file", ""))
+        detail = str(row.get("detail", ""))
+        # Stable, content-derived id so re-runs are idempotent (no clock/random).
+        seq = abs(hash((file_path, location, kind))) % 1_000_000
+        # The Finding id pattern requires the subject segment to start with
+        # [a-z0-9]; the synthetic safe name is "_model_integrity", so strip
+        # leading underscores for the id only (the subject_safe_name key keeps it).
+        id_subject = subject_safe_name.lstrip("_") or "model_integrity"
+        findings.append(
+            {
+                "id": f"forensic-dd_finance_{id_subject}_{seq:06d}",
+                "severity": severity,
+                "category": _KIND_CATEGORY.get(kind, "model_integrity"),
+                "title": f"Spreadsheet model-integrity issue: {kind.replace('_', ' ')}"[:120],
+                "description": (
+                    f"Deterministic formula audit flagged a {kind.replace('_', ' ')} in "
+                    f"{file_path} at {location}. {detail}"
+                ),
+                "citations": [
+                    {
+                        "source_type": "file",
+                        "source_path": file_path,
+                        "location": location,
+                        "exact_quote": detail or None,
+                        "verification_status": "verified",
+                    }
+                ],
+                "confidence": "high",
+                "agent": "finance",
+                "skill": "forensic-dd",
+                "run_id": run_id,
+                "timestamp": timestamp,
+                "analysis_unit": subject,
+                "metadata": {
+                    "formula_audit": True,
+                    "detector": "audit_formulas",
+                    "kind": kind,
+                    "provenance": {
+                        "agent_name": "finance",
+                        "merge_action": "formula_audit_injected",
+                        "citation_verified": True,
+                        "severity_source": "formula_auditor",
+                        "severity_chain": [
+                            {
+                                "stage": "formula_auditor",
+                                "severity": severity,
+                                "reason": f"deterministic {kind} detection",
+                            }
+                        ],
+                    },
+                    "_idx": idx,
+                },
+            }
+        )
+    return findings
+
+
 def format_formula_audit(formula_map: FormulaMap, issues: list[FormulaIssue], *, max_issues: int = 40) -> str:
     """Render a compact markdown section for the agent prompt.
 
