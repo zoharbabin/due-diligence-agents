@@ -1,7 +1,8 @@
 """Schema-driven Excel report generator.
 
-Reads ``report_schema.json`` at runtime and produces the 14-sheet
-(10 always-active + 4 conditional) Excel workbook using openpyxl.
+Reads ``report_schema.json`` at runtime and produces the multi-sheet Excel
+workbook using openpyxl. The sheet set is defined entirely by the schema (the
+single source of truth) — never hardcode the count here.
 """
 
 from __future__ import annotations

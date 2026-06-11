@@ -141,3 +141,41 @@ class TestExcelHandlers:
         gen = ExcelReportGenerator()
         assert gen._data_model_integrity({}, {}, {"formula_audit": {"files_with_formulas": 0}}) == []
         assert gen._data_model_integrity({}, {}, {}) == []
+
+
+class TestEmptyRoomParity:
+    """The 2 new sheets stay strictly headers-only for a generic room (HTML/Excel parity).
+
+    Regression guard for the audit finding: Model_Integrity must NOT write a
+    phantom TOTAL footer when there is no formula data (it would imply an audit
+    ran), matching the HTML CompletenessRenderer which renders nothing.
+    """
+
+    def _generate_empty(self, tmp_path: Any) -> Any:
+        import pathlib
+
+        from dd_agents.models.reporting import ReportSchema
+
+        repo_root = pathlib.Path(__file__).resolve().parents[2]
+        schema = ReportSchema.model_validate_json((repo_root / "config" / "report_schema.json").read_text())
+        out = tmp_path / "r.xlsx"
+        ExcelReportGenerator().generate(
+            {"s": {"subject": "S", "findings": [], "gaps": []}},
+            schema,
+            out,
+            deal_config={},
+            run_metadata={},
+        )
+        from openpyxl import load_workbook
+
+        return load_workbook(out)
+
+    def test_new_sheets_are_headers_only_when_empty(self, tmp_path: Any) -> None:
+        wb = self._generate_empty(tmp_path)
+        # max_row == 1 means headers only (no data, no summary footer).
+        assert wb["Model_Integrity"].max_row == 1
+        assert wb["Request_List_Completeness"].max_row == 1
+
+    def test_html_renders_nothing_for_same_empty_room(self) -> None:
+        # Parity counterpart: HTML section is absent for a generic room.
+        assert CompletenessRenderer(_computed(), {}, {"_run_metadata": {}}).render() == ""

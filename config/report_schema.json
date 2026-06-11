@@ -502,12 +502,7 @@
         { "column": "file", "direction": "asc" }
       ],
       "conditional_formatting": [],
-      "summary_formulas": {
-        "bottom": [
-          { "column": "file", "value": "TOTAL" },
-          { "column": "kind", "formula": "COUNTA(kind)" }
-        ]
-      }
+      "summary_formulas": {}
     },
     {
       "name": "_Metadata",
