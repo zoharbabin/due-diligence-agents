@@ -418,6 +418,11 @@ class AgentTeam:
         # rather than blank. Falls back to the registry's default model when no
         # selection is configured, so a run is never costed against "".
         model_id = ""
+        # Per-agent provider attribution for the cost/audit receipt (Issue #240):
+        # resolved from the same route as the model. (None, None) on the run-wide
+        # default route. Secret-free (host-only base_url).
+        route_provider: str | None = None
+        route_base_url: str | None = None
         if runner_cls is not None:
             try:
                 _tmp = runner_cls(
@@ -427,6 +432,8 @@ class AgentTeam:
                     deal_config=self._deal_config(),
                 )
                 model_id = (_tmp.get_model_id() if hasattr(_tmp, "get_model_id") else None) or ""
+                if hasattr(_tmp, "get_route_provider"):
+                    route_provider, route_base_url = _tmp.get_route_provider()
             except Exception:  # noqa: BLE001
                 pass
         cost_usd = _estimate_cost(model_id, total_input_tokens, total_output_tokens)
@@ -436,6 +443,8 @@ class AgentTeam:
             "status": status,
             "cost_usd": cost_usd,
             "model": model_id,
+            "provider": route_provider,
+            "base_url": route_base_url,
             "session_id": "",
             "num_turns": total_turns,
             "duration_ms": total_elapsed_ms,
@@ -489,12 +498,18 @@ class AgentTeam:
 
         model_id = (runner.get_model_id() if hasattr(runner, "get_model_id") else "") or ""
         cost_usd = _estimate_cost(model_id, input_tokens, output_tokens)
+        # Per-agent provider attribution for the cost/audit receipt (Issue #240).
+        route_provider, route_base_url = (
+            runner.get_route_provider() if hasattr(runner, "get_route_provider") else (None, None)
+        )
 
         return {
             "agent": AGENT_JUDGE,
             "status": "completed",
             "cost_usd": cost_usd,
             "model": model_id,
+            "provider": route_provider,
+            "base_url": route_base_url,
             "session_id": "",
             "num_turns": num_turns,
             "duration_ms": elapsed_ms,

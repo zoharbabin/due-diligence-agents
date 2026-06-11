@@ -25,10 +25,23 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+class FormulaAuditReport(TypedDict):
+    """Serializable data-room formula-audit report (Issue #238)."""
+
+    files_scanned: int
+    files_with_formulas: int
+    files_with_issues: int
+    total_issues: int
+    by_kind: dict[str, int]
+    issues: list[dict[str, str]]
+    truncated: bool
+
 
 # A formula map: sheet name -> {cell coordinate (e.g. "B7") -> formula text incl. leading "="}.
 FormulaMap = dict[str, dict[str, str]]
@@ -232,6 +245,68 @@ def audit_formulas(formula_map: FormulaMap) -> list[FormulaIssue]:
 
     issues.sort(key=lambda i: (i.sheet, _sort_key(i.cell)))
     return issues
+
+
+def audit_data_room(
+    paths: list[Path],
+    *,
+    max_files: int = 200,
+    max_issues: int = 500,
+) -> FormulaAuditReport:
+    """Audit every ``.xlsx`` in *paths* and return a serializable report (Issue #238).
+
+    Reuses the pure per-workbook detector (:func:`extract_formula_map` +
+    :func:`audit_formulas`) so the report and the agent prompt share one audit.
+    The result is JSON-safe (persisted to ``formula_audit.json`` and surfaced in
+    the HTML/Excel report). Best-effort and parity-safe: a data room with no
+    spreadsheet formulas yields ``files_with_formulas == 0`` and an empty
+    ``issues`` list, so nothing renders. Bounded by *max_files* / *max_issues*;
+    any overflow is reported in ``truncated`` so silence never masks a cap.
+
+    Each issue row carries ``file`` (the path as given), ``sheet``, ``cell``,
+    ``kind``, and ``detail`` — enough to cite ``file → Sheet!Cell`` in the report.
+    """
+    xlsx = [p for p in paths if p.suffix.lower() == ".xlsx"]
+    files_truncated = len(xlsx) > max_files
+    xlsx = xlsx[:max_files]
+
+    issue_rows: list[dict[str, str]] = []
+    by_kind: dict[str, int] = defaultdict(int)
+    files_with_formulas = 0
+    files_with_issues = 0
+
+    for path in xlsx:
+        formula_map = extract_formula_map(path)
+        if not formula_map:
+            continue
+        files_with_formulas += 1
+        issues = audit_formulas(formula_map)
+        if issues:
+            files_with_issues += 1
+        for issue in issues:
+            issue_rows.append(
+                {
+                    "file": str(path),
+                    "sheet": issue.sheet,
+                    "cell": issue.cell,
+                    "kind": issue.kind,
+                    "detail": issue.detail,
+                }
+            )
+            by_kind[issue.kind] += 1
+
+    issues_truncated = len(issue_rows) > max_issues
+    issue_rows = issue_rows[:max_issues]
+
+    return FormulaAuditReport(
+        files_scanned=len(xlsx),
+        files_with_formulas=files_with_formulas,
+        files_with_issues=files_with_issues,
+        total_issues=sum(by_kind.values()),
+        by_kind=dict(sorted(by_kind.items())),
+        issues=issue_rows,
+        truncated=files_truncated or issues_truncated,
+    )
 
 
 def format_formula_audit(formula_map: FormulaMap, issues: list[FormulaIssue], *, max_issues: int = 40) -> str:

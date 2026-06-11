@@ -235,10 +235,29 @@ class TestV113ConfigBlocks:
         assert "vdr_overrides" in data.get("precedence", {}), "template must document precedence.vdr_overrides (#193)"
         assert "extraction" in data, "template should surface extraction.ocr_backend"
 
+    def test_template_has_agent_models(self) -> None:
+        # Per-agent profiles/overrides/routes are production features (#129/#233);
+        # the template must surface them so users can discover them (#242).
+        data = json.loads(self._TEMPLATE.read_text(encoding="utf-8"))
+        am = data.get("agent_models")
+        assert isinstance(am, dict), "template must document agent_models (#129/#233)"
+        assert {"profile", "overrides", "routes"} <= set(am), "agent_models must show profile/overrides/routes"
+        # The illustrative example must keep gateway auth secret-safe: an env-var
+        # NAME in auth_token_env, never a literal token, and no creds in base_url.
+        example = am.get("_routes_example", {})
+        flat = json.dumps(example)
+        assert "auth_token_env" in flat, "example must show auth_token_env (the secret-safe pattern)"
+        judge = example.get("judge", {})
+        if judge.get("base_url"):
+            assert "@" not in judge["base_url"], "example base_url must not embed credentials"
+
     def test_template_validates_as_deal_config(self) -> None:
         cfg = DealConfig.model_validate(json.loads(self._TEMPLATE.read_text(encoding="utf-8")))
         assert cfg.precedence is not None and isinstance(cfg.precedence.vdr_overrides, dict)
         assert cfg.request_list is not None and len(cfg.request_list.items) >= 1
+        # agent_models present and inert by default (empty routes → parity).
+        assert cfg.agent_models is not None
+        assert cfg.agent_models.routes == {}
 
     def test_vdr_overrides_round_trips(self) -> None:
         cfg = DealConfig.model_validate(

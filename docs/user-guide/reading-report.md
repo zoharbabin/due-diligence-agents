@@ -1,6 +1,6 @@
 # Reading the Report
 
-The pipeline produces two report formats: an interactive HTML report for navigation and drill-down, and a 14-sheet Excel report for detailed analysis. Both include sourced citations, severity classifications, and cross-domain correlation. These reports provide deep, granular analysis across 9 specialist domains — structured output your team uses as the basis for their own deliverables (board presentations, advisor memos, negotiation checklists, integration plans).
+The pipeline produces two report formats: an interactive HTML report for navigation and drill-down, and a 16-sheet Excel report for detailed analysis. Both include sourced citations, severity classifications, and cross-domain correlation. These reports provide deep, granular analysis across 9 specialist domains — structured output your team uses as the basis for their own deliverables (board presentations, advisor memos, negotiation checklists, integration plans).
 
 **This tool does not replace professional advisors.** Use the structured findings alongside your advisory process to search, correlate, and track risks more efficiently.
 
@@ -103,7 +103,7 @@ dd-agents export-pdf _dd/forensic-dd/runs/latest/report/dd_report.html
 
 ## Excel Report
 
-The Excel report at `dd_report.xlsx` contains 14 sheets:
+The Excel report at `dd_report.xlsx` contains 16 sheets:
 
 | Sheet | Content |
 |-------|---------|
@@ -120,9 +120,30 @@ The Excel report at `dd_report.xlsx` contains 14 sheets:
 | Entity_Resolution_Log | Entity matching decisions and confidence scores |
 | Quality_Audit | QA validation results and audit trail |
 | Run_Diff | Changes from prior run (incremental mode only) |
+| Request_List_Completeness | Requested-document reconciliation: received vs. missing-required vs. missing-optional (when a `request_list` is configured) |
+| Model_Integrity | Spreadsheet formula-integrity issues citing exact cells (hardcoded overrides, circular refs, `#REF!`, broken external links) |
 | _Metadata | Run configuration, timing, costs, versions |
 
 Sheets use conditional formatting: red for P0/P1, yellow for P2, no fill for P3.
+
+The HTML report's **Data-Room Completeness & Model Integrity** section surfaces
+the same request-list and formula-integrity views for browser-based review.
+
+## Generation Provenance & Cost
+
+The HTML report's **Methodology** section records which provider and model(s)
+produced the analysis, plus an estimated cost breakdown — by model, and (for a
+mixed-provider run) by provider and per agent. This is the audit trail for
+governance review; the same routing receipt is persisted in `metadata.json` and
+`cost_summary.json`.
+
+Costs are estimates. A model with a known rate (Claude models, or any model you
+price via the `DD_MODEL_PRICING` env override) is costed exactly; any other
+model — e.g. one reached through an Anthropic-compatible gateway — is costed at a
+default rate and labelled **(estimated)** so gateway/non-Claude spend is never
+read as exact. To make those exact, supply rates via `DD_MODEL_PRICING`. See
+[Model Providers](model-providers.md) for provider/model selection and per-agent
+routing.
 
 ## Next Steps
 

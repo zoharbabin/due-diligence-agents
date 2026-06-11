@@ -330,3 +330,131 @@ class TestCostByModel:
         d = t.to_dict()
         assert "by_model" in d
         assert "claude-opus-4-8" in d["by_model"]
+
+
+class TestCostByProvider:
+    """Per-provider cost rollup for mixed-provider runs (Issue #240)."""
+
+    def test_default_route_rolls_up_under_run_default(self) -> None:
+        from dd_agents.agents.cost_tracker import CostTracker
+
+        t = CostTracker()
+        # No per-agent provider → run-wide default bucket.
+        t.record("legal", "16_spawn", 1_000_000, 0, "claude-sonnet-4-6")
+        t.record("finance", "16_spawn", 1_000_000, 0, "claude-sonnet-4-6")
+        by_provider = t.cost_by_provider()
+        assert set(by_provider) == {"(run default)"}
+        assert by_provider["(run default)"]["input_tokens"] == 2_000_000
+        assert by_provider["(run default)"]["base_url"] is None
+
+    def test_mixed_provider_splits_into_buckets(self) -> None:
+        from dd_agents.agents.cost_tracker import CostTracker
+
+        t = CostTracker()
+        t.record("judge", "19_spawn_judge", 1_000_000, 0, "claude-sonnet-4-6")  # default route
+        t.record(
+            "red_flag_scanner",
+            "33_generate_reports",
+            1_000_000,
+            0,
+            "deepseek-v3",
+            provider="gateway",
+            base_url="http://gw:4011",
+        )
+        by_provider = t.cost_by_provider()
+        assert set(by_provider) == {"(run default)", "gateway"}
+        assert by_provider["gateway"]["base_url"] == "http://gw:4011"
+        assert by_provider["gateway"]["cost"] > 0
+
+    def test_multiple_gateways_yield_ambiguous_base_url(self) -> None:
+        from dd_agents.agents.cost_tracker import CostTracker
+
+        t = CostTracker()
+        t.record("legal", "16_spawn", 100, 0, "m1", provider="gateway", base_url="http://gw1")
+        t.record("finance", "16_spawn", 100, 0, "m2", provider="gateway", base_url="http://gw2")
+        by_provider = t.cost_by_provider()
+        # Two distinct hosts under one provider → base_url is None (unambiguous).
+        assert by_provider["gateway"]["base_url"] is None
+
+    def test_to_dict_includes_by_provider(self) -> None:
+        from dd_agents.agents.cost_tracker import CostTracker
+
+        t = CostTracker()
+        t.record("legal", "16_spawn", 100, 50, "claude-opus-4-8")
+        d = t.to_dict()
+        assert "by_provider" in d
+        assert "(run default)" in d["by_provider"]
+
+    def test_entry_carries_provider_and_base_url(self) -> None:
+        from dd_agents.agents.cost_tracker import CostTracker
+
+        t = CostTracker()
+        e = t.record("hr", "16_spawn", 10, 10, "m", provider="gateway", base_url="http://gw")
+        assert e.provider == "gateway"
+        assert e.base_url == "http://gw"
+
+
+class TestRoutingReceipt:
+    """Secret-free per-agent routing receipt for the audit trail (Issue #240)."""
+
+    def test_empty_when_no_routes(self) -> None:
+        am = AgentModelsConfig(profile="standard")
+        assert am.routing_receipt() == {}
+
+    def test_receipt_includes_model_and_safe_base_url(self) -> None:
+        from dd_agents.models.config import AgentRoute
+
+        am = AgentModelsConfig(
+            routes={
+                "judge": AgentRoute(model="claude-opus-4-8"),
+                "red_flag_scanner": AgentRoute(base_url="http://gw:4011", auth_token_env="MY_TOK"),
+            }
+        )
+        receipt = am.routing_receipt()
+        assert receipt["judge"] == {"model": "claude-opus-4-8"}
+        # base_url present, host-only; auth_token_env NEVER in the receipt.
+        assert receipt["red_flag_scanner"]["base_url"] == "http://gw:4011"
+        assert "auth_token_env" not in receipt["red_flag_scanner"]
+        assert "MY_TOK" not in str(receipt)
+
+    def test_credentialed_url_stripped_in_receipt(self) -> None:
+        from dd_agents.models.config import AgentRoute
+
+        # safe_base_url strips userinfo even if model_construct bypasses validation.
+        route = AgentRoute.model_construct(base_url="https://tok:pw@gw.example/v1")  # pragma: allowlist secret
+        am = AgentModelsConfig()
+        am.routes = {"legal": route}
+        receipt = am.routing_receipt()
+        assert receipt["legal"]["base_url"] == "https://gw.example/v1"
+        assert "pw@" not in str(receipt) and "tok:" not in str(receipt)
+
+
+class TestPerAgentRoutesPersistence:
+    """RunMetadata round-trips the per-agent routing receipt (Issue #240)."""
+
+    def test_run_metadata_round_trips_routes(self) -> None:
+        from dd_agents.models.enums import ExecutionMode
+        from dd_agents.models.persistence import RunMetadata
+
+        meta = RunMetadata(
+            run_id="r1",
+            timestamp="2026-06-10",
+            execution_mode=ExecutionMode.FULL,
+            config_hash="h",
+            per_agent_routes={"judge": {"model": "claude-opus-4-8", "base_url": "http://gw"}},
+        )
+        dumped = meta.model_dump(mode="json")
+        restored = RunMetadata.model_validate(dumped)
+        assert restored.per_agent_routes["judge"]["base_url"] == "http://gw"
+
+    def test_per_agent_routes_defaults_empty(self) -> None:
+        from dd_agents.models.enums import ExecutionMode
+        from dd_agents.models.persistence import RunMetadata
+
+        meta = RunMetadata(
+            run_id="r1",
+            timestamp="2026-06-10",
+            execution_mode=ExecutionMode.FULL,
+            config_hash="h",
+        )
+        assert meta.per_agent_routes == {}

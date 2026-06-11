@@ -162,3 +162,59 @@ class TestReadOfficeIntegration:
         assert result["status"] == "ok"
         # No formulas → no audit section appended (non-model spreadsheets stay clean).
         assert "Formula Integrity" not in result["content"]
+
+
+class TestAuditDataRoom:
+    """Data-room-level aggregation reused by the report (Issue #238)."""
+
+    def test_empty_when_no_xlsx(self, tmp_path: Path) -> None:
+        from dd_agents.extraction.formula_audit import audit_data_room
+
+        (tmp_path / "a.txt").write_text("x")
+        report = audit_data_room([tmp_path / "a.txt"])
+        assert report["files_scanned"] == 0
+        assert report["files_with_formulas"] == 0
+        assert report["issues"] == []
+
+    def test_aggregates_issues_with_file_attribution(self, tmp_path: Path) -> None:
+        from dd_agents.extraction.formula_audit import audit_data_room
+
+        good = tmp_path / "values.xlsx"
+        _write_xlsx(good, {"Data": {"A1": 1, "A2": 2}})  # no formulas
+        bad = tmp_path / "model.xlsx"
+        _write_xlsx(
+            bad,
+            {"Model": {"B2": "=A2*1.1", "B3": "=A3*1.1", "B4": "=A4*1.1", "B5": "=1234"}},
+        )
+        report = audit_data_room([good, bad])
+        assert report["files_scanned"] == 2
+        assert report["files_with_formulas"] == 1
+        assert report["files_with_issues"] == 1
+        assert report["total_issues"] >= 1
+        # Every issue cites its originating file.
+        assert all(r["file"] == str(bad) for r in report["issues"])
+        assert "hardcoded_override" in report["by_kind"]
+
+    def test_truncation_flagged_not_silent(self, tmp_path: Path) -> None:
+        from dd_agents.extraction.formula_audit import audit_data_room
+
+        p = tmp_path / "model.xlsx"
+        # Many overrides in one column → exceed a tiny max_issues cap.
+        cells = {f"B{r}": f"=A{r}*1.1" for r in range(2, 8)}
+        cells["B20"] = "=11"
+        cells["B21"] = "=22"
+        cells["B22"] = "=33"
+        _write_xlsx(p, {"M": cells})
+        report = audit_data_room([p], max_issues=1)
+        assert report["truncated"] is True
+        assert len(report["issues"]) == 1
+
+    def test_result_is_json_serializable(self, tmp_path: Path) -> None:
+        import json
+
+        from dd_agents.extraction.formula_audit import audit_data_room
+
+        p = tmp_path / "m.xlsx"
+        _write_xlsx(p, {"S": {"C1": "=[1]Ext!A1"}})
+        report = audit_data_room([p])
+        json.dumps(report)  # must not raise

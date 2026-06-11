@@ -391,6 +391,7 @@ dd-agents chat [OPTIONS]
 | `--max-turns` | Int | 200 | Max tool-use turns per question (max: 500) |
 | `--no-limit` | Flag | Off | Remove per-turn caps for complex tasks (session cost is the only brake) |
 | `--no-tools` | Flag | Off | Disable document tools (findings-only mode) |
+| `--question / -q` | String | — | Ask a single question non-interactively and exit (scriptable; no TTY needed) |
 | `--verbose / -v` | Flag | Off | Enable verbose logging |
 
 Chat mode provides MCP document tools (citation verification, page reading, entity resolution), persistent memory, and document export. The model can save key insights during conversation, recall them in future sessions, and generate Excel workbooks, Word documents, and CSV files on request using the `run_export_script` tool. Exported files are saved to `_dd/exports/`.
@@ -417,6 +418,9 @@ dd-agents chat --no-limit --max-cost 25.0
 
 # Higher budget with specific model
 dd-agents chat --max-cost 20.0 --model claude-sonnet-4-6
+
+# Single question, non-interactively (scriptable — prints the answer and exits)
+dd-agents chat -q "What are the top 3 P0 findings and their citations?"
 ```
 
 ---

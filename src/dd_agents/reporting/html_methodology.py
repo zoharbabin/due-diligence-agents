@@ -70,6 +70,51 @@ class MethodologyRenderer(SectionRenderer):
                             "<tbody>" + "".join(rows) + "</tbody></table>"
                         )
 
+                # Per-provider cost rollup (Issue #240). Only meaningful for a
+                # mixed-provider run (per-agent routing); a single-provider run
+                # rolls up under one "(run default)" bucket, so render the table
+                # only when more than one provider bucket exists.
+                cost_by_provider = run_meta.get("llm_cost_by_provider") or {}
+                if isinstance(cost_by_provider, dict) and len(cost_by_provider) > 1:
+                    prov_rows: list[str] = []
+                    for prov_id, info in sorted(cost_by_provider.items()):
+                        if not isinstance(info, dict):
+                            continue
+                        cost = info.get("cost", 0.0)
+                        host = info.get("base_url")
+                        host_str = f" <span class='text-muted'>({self.escape(str(host))})</span>" if host else ""
+                        prov_rows.append(
+                            f"<tr><td>{self.escape(str(prov_id))}{host_str}</td><td>${cost:,.2f}</td></tr>"
+                        )
+                    if prov_rows:
+                        parts.append(
+                            "<table class='subject-table'><caption>Estimated cost by provider</caption>"
+                            "<thead><tr><th scope='col'>Provider</th><th scope='col'>Est. cost (USD)</th></tr>"
+                            "</thead><tbody>" + "".join(prov_rows) + "</tbody></table>"
+                        )
+
+                # Per-agent routing receipt (Issue #240): which agents ran on a
+                # non-default route. Secret-free (host-only). Rendered only when
+                # per-agent routes were configured (mixed-provider run).
+                per_agent_routes = run_meta.get("llm_per_agent_routes") or {}
+                if isinstance(per_agent_routes, dict) and per_agent_routes:
+                    route_rows: list[str] = []
+                    for agent_name, route in sorted(per_agent_routes.items()):
+                        if not isinstance(route, dict):
+                            continue
+                        model = self.escape(str(route.get("model", "—")))
+                        host = self.escape(str(route.get("base_url", "—")))
+                        route_rows.append(
+                            f"<tr><td>{self.escape(str(agent_name))}</td><td>{model}</td><td>{host}</td></tr>"
+                        )
+                    if route_rows:
+                        parts.append(
+                            "<table class='subject-table'><caption>Per-agent routing</caption>"
+                            "<thead><tr><th scope='col'>Agent</th><th scope='col'>Model</th>"
+                            "<th scope='col'>Gateway</th></tr></thead>"
+                            "<tbody>" + "".join(route_rows) + "</tbody></table>"
+                        )
+
         # Key stats
         parts.append(
             "<div class='metrics-strip'>"

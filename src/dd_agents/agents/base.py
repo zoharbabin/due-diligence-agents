@@ -152,6 +152,26 @@ class BaseAgentRunner(ABC):
                 env["ANTHROPIC_AUTH_TOKEN"] = token
         return env
 
+    def get_route_provider(self) -> tuple[str | None, str | None]:
+        """Return ``(provider, safe_base_url)`` for this agent's call (Issue #240).
+
+        Cost/audit attribution counterpart to :meth:`get_route_env`. When the
+        agent has a per-agent gateway route, the provider is ``"gateway"`` and
+        the base_url is the credential-stripped host. Otherwise ``(None, None)``
+        — the run-wide provider (``resolve_provider()``) covers it. Secret-free
+        and read-only; never touches process env.
+        """
+        if self.deal_config is None:
+            return (None, None)
+        agent_models = getattr(self.deal_config, "agent_models", None)
+        if agent_models is None or not hasattr(agent_models, "resolve_route"):
+            return (None, None)
+        route = agent_models.resolve_route(self.get_agent_name())
+        if route is None or not getattr(route, "base_url", None):
+            return (None, None)
+        # A per-agent base_url is, by definition, an Anthropic-compatible gateway.
+        return ("gateway", getattr(route, "safe_base_url", None))
+
     @abstractmethod
     def get_system_prompt(self) -> str:
         """Return the system-level preamble injected before the user prompt."""
@@ -229,6 +249,11 @@ class BaseAgentRunner(ABC):
             # the model that produced them. See CostTracker.record(model=...).
             "model": self.get_model_id() or "",
         }
+        # Per-agent provider attribution for the cost/audit receipt (Issue #240).
+        # Both None when the agent rides the run-wide default route. Secret-free.
+        route_provider, route_base_url = self.get_route_provider()
+        result["provider"] = route_provider
+        result["base_url"] = route_base_url
 
         start = time.monotonic()
         try:

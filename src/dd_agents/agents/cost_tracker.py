@@ -183,6 +183,14 @@ class AgentCostEntry(BaseModel):
     output_tokens: int = Field(default=0, description="Number of output tokens produced")
     model: str = Field(default="", description="Model ID used for this invocation")
     cost_usd: float = Field(default=0.0, description="Estimated cost in USD")
+    # Per-agent routing attribution (Issue #240): which provider/gateway answered
+    # this call. None when the agent rode the run-wide default (no per-agent
+    # route) — rolled up under the run's provider. base_url is secret-free
+    # (host-only, credentials stripped) so the cost artifact is safe to persist.
+    provider: str | None = Field(
+        default=None, description="LLM provider for this call: anthropic|bedrock|vertex|gateway"
+    )
+    base_url: str | None = Field(default=None, description="Gateway base URL (host only, credentials stripped), if any")
 
     @property
     def total_tokens(self) -> int:
@@ -221,8 +229,17 @@ class CostTracker:
         input_tokens: int,
         output_tokens: int,
         model: str,
+        provider: str | None = None,
+        base_url: str | None = None,
     ) -> AgentCostEntry:
-        """Record a usage entry and return it.  Thread-safe."""
+        """Record a usage entry and return it.  Thread-safe.
+
+        ``provider``/``base_url`` attribute the call to the LLM endpoint that
+        answered it (Issue #240). They are None for an agent on the run-wide
+        default route; a per-agent gateway route supplies both. ``base_url`` must
+        already be secret-free (host-only) — callers pass the route's
+        ``safe_base_url`` / the resolved provider receipt, never a raw URL.
+        """
         cost = _estimate_cost(model, input_tokens, output_tokens)
         entry = AgentCostEntry(
             agent_name=agent_name,
@@ -231,6 +248,8 @@ class CostTracker:
             output_tokens=output_tokens,
             model=model,
             cost_usd=cost,
+            provider=provider,
+            base_url=base_url,
         )
         with self._lock:
             self.entries.append(entry)
@@ -288,6 +307,38 @@ class CostTracker:
             bucket["estimated"] = bucket["estimated"] or _is_estimated_pricing(e.model)
         return {k: {**v, "cost": round(v["cost"], 4)} for k, v in agg.items()}
 
+    def cost_by_provider(self) -> dict[str, dict[str, Any]]:
+        """Return per-provider cost rollup for mixed-provider runs (Issue #240).
+
+        Maps provider id → ``{cost, input_tokens, output_tokens, base_url}``.
+        Entries with no per-agent provider attribution (the run-wide default
+        route) are keyed as ``"(run default)"`` so a single-provider run rolls up
+        under one bucket. ``base_url`` is the (secret-free) gateway host when the
+        bucket is a single gateway, else None. Empty when no entries recorded.
+        """
+        agg: dict[str, dict[str, Any]] = {}
+        for e in self.entries:
+            key = e.provider or "(run default)"
+            bucket = agg.setdefault(
+                key,
+                {"cost": 0.0, "input_tokens": 0, "output_tokens": 0, "base_urls": set()},
+            )
+            bucket["cost"] += e.cost_usd
+            bucket["input_tokens"] += e.input_tokens
+            bucket["output_tokens"] += e.output_tokens
+            if e.base_url:
+                bucket["base_urls"].add(e.base_url)
+        result: dict[str, dict[str, Any]] = {}
+        for key, v in agg.items():
+            urls: set[str] = v.pop("base_urls")
+            result[key] = {
+                **v,
+                "cost": round(v["cost"], 4),
+                # One host → report it; multiple (or none) → None to stay unambiguous.
+                "base_url": next(iter(urls)) if len(urls) == 1 else None,
+            }
+        return result
+
     def is_budget_exceeded(self) -> bool:
         """Return True if total cost exceeds the budget limit."""
         if self.budget_limit_usd is None:
@@ -318,5 +369,8 @@ class CostTracker:
             "by_agent": {k: round(v, 4) for k, v in self.cost_by_agent().items()},
             "by_step": {k: round(v, 4) for k, v in self.cost_by_step().items()},
             "by_model": self.cost_by_model(),
+            # Per-provider rollup for mixed-provider runs (Issue #240). A
+            # single-provider run rolls up under one "(run default)" bucket.
+            "by_provider": self.cost_by_provider(),
             "entries": [e.model_dump() for e in self.entries],
         }

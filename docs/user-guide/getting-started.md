@@ -187,7 +187,7 @@ See [Running the Pipeline](running-pipeline.md) for all options including resume
 After the pipeline completes, find the outputs in `_dd/forensic-dd/runs/latest/report/`:
 
 - `dd_report.html` -- Interactive HTML report with cross-domain findings, severity filtering, and drill-down to exact clauses
-- `dd_report.xlsx` -- 14-sheet Excel report for detailed analysis and downstream work
+- `dd_report.xlsx` -- 16-sheet Excel report for detailed analysis and downstream work
 
 Open `dd_report.html` in a browser. See [Reading the Report](reading-report.md) for a walkthrough of each section.
 

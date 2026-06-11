@@ -34,6 +34,14 @@ class RunMetadata(BaseModel):
         default=None, description="Gateway base URL (host only, credentials stripped), if any"
     )
     llm_models: list[str] = Field(default_factory=list, description="Distinct model ids actually used across the run")
+    # Per-agent provider/model routing receipt (Issue #240): which agents ran on
+    # a non-default route, for mixed-provider audit. Maps agent name → secret-free
+    # {model?, base_url?} (base_url is host-only; credentials never persisted).
+    # Empty when no per-agent routes were configured (single-provider run).
+    per_agent_routes: dict[str, dict[str, str]] = Field(
+        default_factory=dict,
+        description="Per-agent routing receipt: agent name → {model, base_url} (secret-free). Empty for default runs.",
+    )
     cross_skill_run_ids: dict[str, str] = Field(
         default_factory=dict, description="Map of skill name to run_id for cross-skill data"
     )

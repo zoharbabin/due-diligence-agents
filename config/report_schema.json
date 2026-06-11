@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "description": "14-sheet Excel report schema for forensic M&A due diligence. Loaded by build_report.py at runtime -- never hardcode sheet definitions.",
+  "description": "Excel report schema for forensic M&A due diligence. Loaded by build_report.py at runtime -- never hardcode sheet definitions.",
   "global_formatting": {
     "header_bold": true,
     "header_bg_color": "#4472C4",
@@ -463,6 +463,49 @@
         "bottom": [
           { "column": "change_type", "formula": "COUNTA(change_type)" },
           { "column": "subject", "formula": "COUNTA_UNIQUE(subject)" }
+        ]
+      }
+    },
+    {
+      "name": "Request_List_Completeness",
+      "required": false,
+      "activation_condition": "always",
+      "description": "Requested-document reconciliation: received vs. missing-required vs. missing-optional (Issue #192/#238).",
+      "source": "inventory/request_list.json",
+      "_source_note": "One row per status bucket; empty when no request_list configured.",
+      "row_rule": "one_row_per_status_bucket",
+      "columns": [
+        { "name": "Status", "key": "status", "type": "string", "width": 24 },
+        { "name": "Count", "key": "count", "type": "integer", "width": 10 },
+        { "name": "Items", "key": "items", "type": "string", "width": 70 }
+      ],
+      "sort_order": [],
+      "conditional_formatting": [],
+      "summary_formulas": {}
+    },
+    {
+      "name": "Model_Integrity",
+      "required": false,
+      "activation_condition": "always",
+      "description": "Spreadsheet formula-integrity issues citing exact cells: hardcoded overrides, circular refs, #REF!, broken links (Issue #194/#238).",
+      "source": "inventory/formula_audit.json",
+      "_source_note": "One row per detected issue; empty when no spreadsheet formulas.",
+      "row_rule": "one_row_per_issue",
+      "columns": [
+        { "name": "File", "key": "file", "type": "string", "width": 40 },
+        { "name": "Sheet", "key": "sheet", "type": "string", "width": 18 },
+        { "name": "Cell", "key": "cell", "type": "string", "width": 10 },
+        { "name": "Issue Type", "key": "kind", "type": "string", "width": 22 },
+        { "name": "Detail", "key": "detail", "type": "string", "width": 60 }
+      ],
+      "sort_order": [
+        { "column": "file", "direction": "asc" }
+      ],
+      "conditional_formatting": [],
+      "summary_formulas": {
+        "bottom": [
+          { "column": "file", "value": "TOTAL" },
+          { "column": "kind", "formula": "COUNTA(kind)" }
         ]
       }
     },

@@ -192,7 +192,7 @@ _dd/forensic-dd/
         │   └── merged/            # Deduplicated merged findings
         ├── report/
         │   ├── dd_report.html     # Interactive HTML report
-        │   └── dd_report.xlsx     # 14-sheet Excel report
+        │   └── dd_report.xlsx     # 16-sheet Excel report
         ├── pre_merge_validation.json  # Cross-agent validation report
         ├── audit.json             # QA validation results
         ├── metadata.json          # Run metadata and costs

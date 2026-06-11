@@ -1024,6 +1024,12 @@ class PipelineEngine:
         # completeness view to the inventory tier. Absent config = no-op.
         self._reconcile_request_list(state, files, inv_dir)
 
+        # --- Formula-integrity audit of spreadsheets (Issue #194/#238) ---
+        # Deterministic model-integrity audit across every .xlsx, persisted so
+        # the report surfaces it independently of whether the Finance agent also
+        # flagged it. Parity-safe: a room with no formulas writes nothing.
+        self._audit_spreadsheet_formulas(state, files, inv_dir)
+
         logger.info(
             "Inventory: %d subjects, %d reference files",
             state.total_subjects,
@@ -1044,6 +1050,51 @@ class PipelineEngine:
             ov = prec.get("vdr_overrides")
             if isinstance(ov, dict):
                 return {str(k): str(v) for k, v in ov.items()}
+        return {}
+
+    def _audit_spreadsheet_formulas(self, state: PipelineState, files: list[Any], inv_dir: Path) -> None:
+        """Audit every .xlsx for model-integrity issues and persist (Issue #238).
+
+        Writes ``inventory/formula_audit.json`` (serializable; loaded into the
+        report's run_metadata) when any spreadsheet contains formulas. Best-effort
+        and parity-safe: any failure (or a room with no .xlsx formulas) leaves the
+        run unchanged and writes nothing.
+        """
+        try:
+            from dd_agents.extraction.formula_audit import audit_data_room
+
+            xlsx_paths = [state.project_dir / f.path for f in files if str(f.path).lower().endswith(".xlsx")]
+            if not xlsx_paths:
+                return
+            report = audit_data_room(xlsx_paths)
+            if not report["files_with_formulas"]:
+                return
+            # Re-root issue file paths to data-room-relative (no local-path leak).
+            base = str(state.project_dir).rstrip("/") + "/"
+            for row in report["issues"]:
+                file_val = row.get("file")
+                if isinstance(file_val, str):
+                    row["file"] = file_val.removeprefix(base)
+            (inv_dir / "formula_audit.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+            logger.info(
+                "Formula audit: %d file(s) with formulas, %d issue(s)",
+                report["files_with_formulas"],
+                report["total_issues"],
+            )
+        except Exception as exc:  # noqa: BLE001 — advisory; never block the run
+            logger.debug("Formula audit skipped: %s", exc)
+
+    def _per_agent_routes(self, state: PipelineState) -> dict[str, dict[str, str]]:
+        """Secret-free per-agent routing receipt for the report (Issue #240).
+
+        Mirrors what is persisted into RunMetadata.per_agent_routes, sourced from
+        the typed deal config's agent_models. Empty for a single-provider run.
+        """
+        typed_cfg = self._typed_deal_config(state) if state.deal_config else None
+        am = getattr(typed_cfg, "agent_models", None) if typed_cfg is not None else None
+        if am is not None and hasattr(am, "routing_receipt"):
+            result: dict[str, dict[str, str]] = am.routing_receipt()
+            return result
         return {}
 
     def _reconcile_request_list(self, state: PipelineState, files: list[Any], inv_dir: Path) -> None:
@@ -1641,6 +1692,8 @@ class PipelineEngine:
                 input_tokens=result.get("input_tokens_est", 0),
                 output_tokens=result.get("output_tokens_est", 0),
                 model=result.get("model", ""),
+                provider=result.get("provider"),
+                base_url=result.get("base_url"),
             )
 
             # Write per-agent audit log entry (DoD #11)
@@ -2491,6 +2544,8 @@ class PipelineEngine:
                 input_tokens=result.get("input_tokens_est", 0),
                 output_tokens=result.get("output_tokens_est", 0),
                 model=result.get("model", ""),
+                provider=result.get("provider"),
+                base_url=result.get("base_url"),
             )
 
             if result.get("is_error"):
@@ -2722,6 +2777,8 @@ class PipelineEngine:
             input_tokens=result.get("input_tokens_est", 0),
             output_tokens=result.get("output_tokens_est", 0),
             model=result.get("model", ""),
+            provider=result.get("provider"),
+            base_url=result.get("base_url"),
         )
 
         # Write per-agent audit log entry (DoD #11)
@@ -3568,6 +3625,10 @@ class PipelineEngine:
             # Per-model cost rollup (Issue #232) — surfaced in the report; flags
             # estimated (default-rate) models so non-Claude spend isn't shown as exact.
             "llm_cost_by_model": (ctm.cost_by_model() if (ctm := getattr(self, "cost_tracker", None)) else {}),
+            # Per-provider cost rollup + per-agent routing (Issue #240) — surfaced
+            # in the report's provenance section for mixed-provider runs.
+            "llm_cost_by_provider": (ctp.cost_by_provider() if (ctp := getattr(self, "cost_tracker", None)) else {}),
+            "llm_per_agent_routes": self._per_agent_routes(state),
         }
 
         inv_dir = self._inventory_dir(state)
@@ -3616,6 +3677,20 @@ class PipelineEngine:
         if diff_path.exists():
             with contextlib.suppress(json.JSONDecodeError, OSError):
                 run_metadata["report_diff"] = json.loads(diff_path.read_text(encoding="utf-8"))
+
+        # Request-list completeness (Issue #192/#238) — surface received vs.
+        # missing vs. unexpected in the report (HTML subsection + Excel sheet).
+        rl_path = inv_dir / "request_list.json"
+        if rl_path.exists():
+            with contextlib.suppress(json.JSONDecodeError, OSError):
+                run_metadata["request_list"] = json.loads(rl_path.read_text(encoding="utf-8"))
+
+        # Formula-integrity audit (Issue #194/#238) — surface model-integrity
+        # issues citing exact cells, independent of any agent finding.
+        fa_path = inv_dir / "formula_audit.json"
+        if fa_path.exists():
+            with contextlib.suppress(json.JSONDecodeError, OSError):
+                run_metadata["formula_audit"] = json.loads(fa_path.read_text(encoding="utf-8"))
 
         # Finding and gap counts from merged data
         total_findings = 0
@@ -3855,6 +3930,8 @@ class PipelineEngine:
                 input_tokens=es_result.get("input_tokens_est", 0),
                 output_tokens=es_result.get("output_tokens_est", 0),
                 model=es_result.get("model", ""),
+                provider=es_result.get("provider"),
+                base_url=es_result.get("base_url"),
             )
             state.agent_costs["executive_synthesis"] = es_result.get("cost_usd", 0.0)
 
@@ -3907,6 +3984,8 @@ class PipelineEngine:
                     input_tokens=ai_result.get("input_tokens_est", 0),
                     output_tokens=ai_result.get("output_tokens_est", 0),
                     model=ai_result.get("model", ""),
+                    provider=ai_result.get("provider"),
+                    base_url=ai_result.get("base_url"),
                 )
                 state.agent_costs["acquirer_intelligence"] = ai_result.get("cost_usd", 0.0)
 
@@ -4012,6 +4091,8 @@ class PipelineEngine:
                     input_tokens=narr_result.get("input_tokens_est", 0),
                     output_tokens=narr_result.get("output_tokens_est", 0),
                     model=narr_result.get("model", ""),
+                    provider=narr_result.get("provider"),
+                    base_url=narr_result.get("base_url"),
                 )
                 state.agent_costs["narrative_generation"] = narr_result.get("cost_usd", 0.0)
 
@@ -4136,6 +4217,14 @@ class PipelineEngine:
 
         routing = resolve_provider().as_receipt()
 
+        # Per-agent routing receipt (Issue #240): secret-free {agent → {model, base_url}}
+        # for mixed-provider audit. Empty for a single-provider run.
+        per_agent_routes: dict[str, dict[str, str]] = {}
+        typed_cfg = self._typed_deal_config(state) if state.deal_config else None
+        am = getattr(typed_cfg, "agent_models", None) if typed_cfg is not None else None
+        if am is not None and hasattr(am, "routing_receipt"):
+            per_agent_routes = am.routing_receipt()
+
         metadata = RunMetadata(
             run_id=state.run_id,
             timestamp=state.run_dir.name if state.run_dir else state.run_id,
@@ -4146,6 +4235,7 @@ class PipelineEngine:
             llm_provider=routing["provider"],  # type: ignore[arg-type]
             llm_base_url=routing["base_url"],  # type: ignore[arg-type]
             llm_models=self.cost_tracker.models_used(),
+            per_agent_routes=per_agent_routes,
             completion_status=CompletionStatus.COMPLETED,
             finding_counts=finding_counts,
             gap_counts=gap_counts,

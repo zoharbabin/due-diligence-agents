@@ -16,7 +16,7 @@ so the pipeline's headline capability — **cross-domain cross-referencing** —
 ## What you'll build
 
 Running the pipeline produces a `_dd/` output directory containing extracted findings, entity
-graphs, a cross-domain HTML report (with a Go/No-Go view), and a 14-sheet Excel companion.
+graphs, a cross-domain HTML report (with a Go/No-Go view), and a 16-sheet Excel companion.
 
 The pipeline will:
 1. Discover and inventory every document in the data room.
@@ -24,7 +24,7 @@ The pipeline will:
 3. Resolve entity names across documents.
 4. Run the specialist agents (Legal, Finance, Commercial, ProductTech, Cybersecurity, HR, Tax, Regulatory, ESG).
 5. Cross-reference findings across domains (the Legal→Finance change-of-control link is the hero).
-6. Produce the HTML report + 14-sheet Excel companion.
+6. Produce the HTML report + 16-sheet Excel companion.
 
 ## Prerequisites
 

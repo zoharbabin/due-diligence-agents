@@ -363,6 +363,8 @@ class ExcelReportGenerator:
             "Entity_Resolution_Log": self._data_entity_log,
             "Quality_Audit": self._data_quality_audit,
             "Run_Diff": self._data_run_diff,
+            "Request_List_Completeness": self._data_request_list,
+            "Model_Integrity": self._data_model_integrity,
             "_Metadata": self._data_metadata,
         }
 
@@ -537,6 +539,65 @@ class ExcelReportGenerator:
         diff = run_metadata.get("report_diff", {})
         result: list[dict[str, Any]] = diff.get("changes", [])
         return result
+
+    # -- Request-list completeness (Issue #192/#238) -------------------
+
+    def _data_request_list(
+        self,
+        merged: dict[str, dict[str, Any]],
+        deal_config: dict[str, Any],
+        run_metadata: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """One row per request-list status bucket. Empty when no request list."""
+        rl = run_metadata.get("request_list")
+        if not isinstance(rl, dict) or not rl:
+            return []
+        buckets = [
+            ("Received", rl.get("received", [])),
+            ("Missing — required", rl.get("missing_required", [])),
+            ("Missing — optional", rl.get("missing_optional", [])),
+        ]
+        rows: list[dict[str, Any]] = []
+        for status, items in buckets:
+            item_list = [str(i) for i in items if i] if isinstance(items, list) else []
+            rows.append({"status": status, "count": len(item_list), "items": ", ".join(item_list)})
+        rows.append(
+            {
+                "status": "Unexpected files",
+                "count": int(rl.get("unexpected_count", 0) or 0),
+                "items": "Files present but not on the request list (informational)",
+            }
+        )
+        return rows
+
+    # -- Model-integrity audit (Issue #194/#238) -----------------------
+
+    def _data_model_integrity(
+        self,
+        merged: dict[str, dict[str, Any]],
+        deal_config: dict[str, Any],
+        run_metadata: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """One row per detected formula-integrity issue. Empty when no formulas."""
+        fa = run_metadata.get("formula_audit")
+        if not isinstance(fa, dict) or not fa.get("files_with_formulas"):
+            return []
+        issues = fa.get("issues")
+        if not isinstance(issues, list):
+            return []
+        rows: list[dict[str, Any]] = []
+        for row in issues:
+            if isinstance(row, dict):
+                rows.append(
+                    {
+                        "file": str(row.get("file", "")),
+                        "sheet": str(row.get("sheet", "")),
+                        "cell": str(row.get("cell", "")),
+                        "kind": str(row.get("kind", "")),
+                        "detail": str(row.get("detail", "")),
+                    }
+                )
+        return rows
 
     # -- Metadata ------------------------------------------------------
 

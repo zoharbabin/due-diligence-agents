@@ -2856,13 +2856,27 @@ class TestReportSchemaPackageResolution:
         raise FileNotFoundError(msg)
 
     def test_config_schema_exists_in_repo(self) -> None:
-        """The 14-sheet report schema exists at repo_root/config/report_schema.json."""
+        """The report schema exists at repo_root/config/report_schema.json.
+
+        The repo copy and the wheel-bundled copy must define the SAME sheets
+        (the package mirror is generated from the source of truth) — assert
+        equality rather than a hardcoded count so the guard tracks the schema.
+        """
         repo_root = self._repo_root()
         schema_path = repo_root / "config" / "report_schema.json"
         assert schema_path.exists(), f"Expected schema at {schema_path}"
 
         schema = ReportSchema.model_validate_json(schema_path.read_text())
-        assert len(schema.sheets) == 14
+        assert len(schema.sheets) >= 1
+
+        import dd_agents as _pkg
+
+        bundled = Path(_pkg.__file__).resolve().parent / "config" / "report_schema.json"
+        bundled_schema = ReportSchema.model_validate_json(bundled.read_text())
+        assert [s.name for s in schema.sheets] == [s.name for s in bundled_schema.sheets], (
+            "Repo config/report_schema.json and the bundled package copy have drifted — "
+            "re-sync src/dd_agents/config/report_schema.json from config/report_schema.json."
+        )
 
     def test_bundled_schema_exists_in_package(self) -> None:
         """The schema is bundled inside the dd_agents package for wheel installs."""
@@ -2873,7 +2887,7 @@ class TestReportSchemaPackageResolution:
         assert bundled.exists(), f"Expected bundled schema at {bundled}"
 
         schema = ReportSchema.model_validate_json(bundled.read_text())
-        assert len(schema.sheets) == 14
+        assert len(schema.sheets) >= 1
 
     def test_package_relative_resolution_order(self, tmp_path: Path) -> None:
         """Resolution finds schema via bundled package path when project_dir has none."""

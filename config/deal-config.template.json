@@ -116,6 +116,22 @@
       "enabled": true
     }
   },
+  "agent_models": {
+    "profile": "standard",
+    "overrides": {},
+    "routes": {},
+    "budget_limit_usd": null,
+    "_routes_example": {
+      "_note": "Per-agent provider/model routing. Move an entry into 'routes' (keyed by agent name) to activate it. Token VALUE is never stored here — give the env-var NAME in 'auth_token_env'; its value is read at run time. base_url must not embed credentials.",
+      "red_flag_scanner": {
+        "model": "claude-haiku-4-5-20251001"
+      },
+      "judge": {
+        "base_url": "https://EXAMPLE_GATEWAY_HOST/v1",
+        "auth_token_env": "MY_GATEWAY_TOKEN"
+      }
+    }
+  },
   "extraction": {
     "ocr_backend": "auto"
   },

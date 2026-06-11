@@ -479,6 +479,27 @@ class AgentModelsConfig(BaseModel):
         """
         return self.routes.get(agent_name)
 
+    def routing_receipt(self) -> dict[str, dict[str, str]]:
+        """Return a secret-free per-agent routing receipt (Issue #240).
+
+        Maps agent name → ``{model?, base_url?}`` for every agent with a
+        configured route, using the credential-stripped ``safe_base_url`` (the
+        auth-token env-var name is intentionally omitted — it's neither a secret
+        nor useful in an audit trail). Empty when no routes are configured, so a
+        single-provider run records an empty map. Persisted into RunMetadata.
+        """
+        receipt: dict[str, dict[str, str]] = {}
+        for agent_name, route in self.routes.items():
+            entry: dict[str, str] = {}
+            if route.model:
+                entry["model"] = route.model
+            safe = route.safe_base_url
+            if safe:
+                entry["base_url"] = safe
+            if entry:
+                receipt[agent_name] = entry
+        return receipt
+
 
 class PrecedenceConfig(BaseModel):
     """Document precedence configuration (Issue #163).

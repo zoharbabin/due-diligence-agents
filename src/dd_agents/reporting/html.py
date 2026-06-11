@@ -32,6 +32,7 @@ from dd_agents.reporting.html_analysis import (
     TfCAnalysisRenderer,
 )
 from dd_agents.reporting.html_base import render_css, render_js, render_nav_bar
+from dd_agents.reporting.html_completeness import CompletenessRenderer
 from dd_agents.reporting.html_compliance import ComplianceRenderer
 from dd_agents.reporting.html_config_panel import ConfigPanelRenderer
 from dd_agents.reporting.html_cross import CrossRefRenderer
@@ -278,6 +279,7 @@ class HTMLReportGenerator:
             IntegrationPlaybookRenderer(computed, merged_data, renderer_config),
             GovernanceGraphRenderer(computed, merged_data, renderer_config),
             GapRenderer(computed, merged_data, renderer_config),
+            CompletenessRenderer(computed, merged_data, renderer_config),
             SubjectRenderer(computed, merged_data, renderer_config),
             ConfigPanelRenderer(computed, merged_data, renderer_config),
             MethodologyRenderer(computed, merged_data, renderer_config),

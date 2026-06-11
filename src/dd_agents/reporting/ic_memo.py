@@ -157,6 +157,13 @@ def render_ic_memo(computed: ReportComputedData, deal_config: dict[str, Any] | N
 
     Pure + side-effect-free; same input → same output. Sections with no data are
     omitted so the memo stays clean for thin deals.
+
+    Language: the memo is **language-agnostic by design**. Its fixed scaffolding
+    (headings, labels) is English, but every substantive cell — finding titles,
+    descriptions, evidence quotes, recommendations — is passed through verbatim
+    from the findings. So when ``deal.output_language`` drove the specialists to
+    write findings in another language, those appear in the memo unchanged; no
+    separate translation pass exists or is needed.
     """
     parts: list[str] = []
     parts += _deal_header(deal_config)

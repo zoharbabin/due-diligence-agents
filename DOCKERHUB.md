@@ -57,7 +57,7 @@ Output appears in your data room at `_dd/forensic-dd/runs/latest/report/`.
 ## Output
 
 - **Interactive HTML report** — Go/No-Go verdict, executive narrative, severity filtering, cross-domain synthesis
-- **14-sheet Excel report** — structured findings for downstream modeling
+- **16-sheet Excel report** — structured findings for downstream modeling
 - **Per-subject JSON** — every finding with severity, citations, and cross-references
 
 ## Architecture

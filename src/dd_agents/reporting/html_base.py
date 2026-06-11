@@ -1348,6 +1348,7 @@ def render_nav_bar(section_rag: dict[str, str] | None = None) -> str:
         "<div class='toc-group-label'>Evidence</div>"
         "<a href='#sec-subjects'>Entity Detail</a>"
         f"<a href='#sec-gaps'>{_rag('gaps')} Data Gaps</a>"
+        "<a href='#sec-completeness'>Completeness</a>"
         "<a href='#sec-methodology'>Methodology</a>"
         "</div>"
         "<div class='sidebar-footer'>"
