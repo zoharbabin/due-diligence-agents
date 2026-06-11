@@ -273,6 +273,84 @@ class TestDoctorCommand:
         assert "secret" not in result.output
 
 
+class TestDoctorConfigPreflight:
+    """doctor --config pre-flight validation (Issue #239)."""
+
+    def _write_config(self, tmp_path: Path, extra: dict) -> Path:  # type: ignore[type-arg]
+        base = {
+            "config_version": "1.0.0",
+            "buyer": {"name": "B"},
+            "target": {"name": "T"},
+            "deal": {"type": "acquisition", "focus_areas": ["ip_ownership"]},
+        }
+        base.update(extra)
+        p = tmp_path / "deal-config.json"
+        p.write_text(json.dumps(base))
+        return p
+
+    def _invoke(self, monkeypatch: pytest.MonkeyPatch, config_path: Path, env: dict[str, str] | None = None):
+        from click.testing import CliRunner
+
+        from dd_agents.cli import main
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-x")
+        for k, v in (env or {}).items():
+            monkeypatch.setenv(k, v)
+        return CliRunner().invoke(main, ["doctor", "--config", str(config_path), "--json"])
+
+    def test_valid_config_passes(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        cfg = self._write_config(
+            tmp_path,
+            {"precedence": {"vdr_overrides": {"contracts": "legal"}}},
+        )
+        result = self._invoke(monkeypatch, cfg)
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        cv = payload["config_validation"]
+        assert cv["ok"] is True
+        names = {c["name"] for c in cv["checks"]}
+        assert "vdr_overrides" in names
+
+    def test_missing_auth_token_env_fails(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("MY_GW_TOKEN", raising=False)
+        cfg = self._write_config(
+            tmp_path,
+            {"agent_models": {"routes": {"legal": {"base_url": "http://gw", "auth_token_env": "MY_GW_TOKEN"}}}},
+        )
+        result = self._invoke(monkeypatch, cfg)
+        assert result.exit_code == 1
+        cv = json.loads(result.output)["config_validation"]
+        assert cv["ok"] is False
+        assert any("MY_GW_TOKEN" in e for e in cv["errors"])
+
+    def test_invalid_vdr_domain_fails(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        cfg = self._write_config(tmp_path, {"precedence": {"vdr_overrides": {"contracts": "not_a_domain"}}})
+        result = self._invoke(monkeypatch, cfg)
+        assert result.exit_code == 1
+        cv = json.loads(result.output)["config_validation"]
+        assert any("vdr_overrides" in e for e in cv["errors"])
+
+    def test_unavailable_ocr_backend_fails(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import dd_agents.extraction.ocr_registry as ocr_mod
+
+        monkeypatch.setattr(ocr_mod.OCRBackendRegistry, "detect_available", staticmethod(lambda: []))
+        cfg = self._write_config(tmp_path, {"extraction": {"ocr_backend": "glm_ocr"}})
+        result = self._invoke(monkeypatch, cfg)
+        assert result.exit_code == 1
+        cv = json.loads(result.output)["config_validation"]
+        assert any("ocr_backend" in e for e in cv["errors"])
+
+    def test_no_config_unchanged(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from click.testing import CliRunner
+
+        from dd_agents.cli import main
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-x")
+        result = CliRunner().invoke(main, ["doctor", "--json"])
+        assert result.exit_code == 0
+        assert "config_validation" not in json.loads(result.output)
+
+
 # ---------------------------------------------------------------------------
 # Audit receipt: agent result carries the resolved model id
 # ---------------------------------------------------------------------------
