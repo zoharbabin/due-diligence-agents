@@ -34,7 +34,7 @@ Edit a single master timeline, then export three cuts:
 **Production specs:**
 - Subtitles burned in (open captions) — most watch muted; the dialogue/VO must read silently.
 - Terminal + screen recordings at 2× readability: large font (≥18pt), high-contrast theme, cursor-zoom on key moments (Screen Studio / Screen Charm style). Never show a raw 12-pt terminal.
-- Real product, real (synthetic) data — actual `dd-agents` CLI output and the live HTML sample report (`zoharbabin.github.io/due-diligence-agents/sample-report/`). No faked UI.
+- Real product, real (synthetic) data — actual `dd-agents` CLI output and the live HTML sample report (`zoharbabin.com/due-diligence-agents/sample-report/`). No faked UI.
 - Brand: iris logo + palette (`docs/marketing/assets/logo.svg`); reuse `social-preview.png` end card.
 - Music: tense, minimal, building pulse (think understated electronic) → resolves to a clean, confident button at the CTA. Duck under all VO.
 - Pace: cold open fast; demo section breathes (let one real finding land); CTA crisp.

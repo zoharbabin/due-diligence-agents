@@ -1,7 +1,7 @@
 # Due Diligence Agents — Launch Copy Pack (final, ship-ready)
 
 **Maker:** Zohar Babin (solo) · **Launch:** Product Hunt, 12:01am PT
-**Links:** github.com/zoharbabin/due-diligence-agents · `pip install dd-agents` · sample report: zoharbabin.github.io/due-diligence-agents/sample-report/
+**Links:** github.com/zoharbabin/due-diligence-agents · `pip install dd-agents` · sample report: zoharbabin.com/due-diligence-agents/sample-report/
 
 **Unified voice (applied throughout):** dry, confident, evidence-first. No swagger, no buzzword soup. The villain is always the *gap between silos*, never a person. The hero is *clarity*. Every claim is literally true to the product. The tool **accelerates** advisors and **cites** its work — humans decide.
 
@@ -47,7 +47,7 @@ So I built Due Diligence Agents. 13 AI agents read your entire data room across 
 
 What makes it different: the cross-domain connection is the whole point, and forensic citation is the proof. It's open-source (Apache-2.0) and runs locally — your documents only leave as API calls to your own LLM provider. **No vendor lock-in:** run it on the Anthropic API, your own AWS Bedrock or Google Vertex account, or *any* model (GPT, Gemini, a local model) behind an Anthropic-compatible gateway — all by env config, no code change. `dd-agents doctor` verifies your setup before a run, and every run records which provider/model produced the findings. It accelerates your advisors; humans still decide.
 
-See a sample report (no install): https://zoharbabin.github.io/due-diligence-agents/sample-report/
+See a sample report (no install): https://zoharbabin.com/due-diligence-agents/sample-report/
 Code: https://github.com/zoharbabin/due-diligence-agents · `pip install dd-agents`
 
 I'm here all day. Drop feature requests in the comments and I'll build live, and I'm happy to give anyone a personal walkthrough.
@@ -193,7 +193,7 @@ We're live on Product Hunt today and I'd genuinely love your feedback — what's
 
 → PH: [Product Hunt link]
 → Code: github.com/zoharbabin/due-diligence-agents
-→ Live sample report: zoharbabin.github.io/due-diligence-agents/sample-report/
+→ Live sample report: zoharbabin.com/due-diligence-agents/sample-report/
 
 Built solo. Tell me where it's wrong. 🙏
 
@@ -215,7 +215,7 @@ Runs locally. Your documents never leave your environment except as API calls to
 
 We're live on Product Hunt today. I'd genuinely value your read on it — see a sample report and tell me where it's wrong:
 
-Sample report: https://zoharbabin.github.io/due-diligence-agents/sample-report/
+Sample report: https://zoharbabin.com/due-diligence-agents/sample-report/
 Code: github.com/zoharbabin/due-diligence-agents
 
 Feedback welcome — especially the critical kind.
@@ -227,13 +227,13 @@ Feedback welcome — especially the critical kind.
 ## 6. Supporter DM Templates (feedback, never upvotes)
 
 **1. Close connection**
-Hey [Name] — launching something today I think you'll have opinions on. It's an open-source tool that cross-references M&A diligence findings across domains (the legal-flag-meets-finance-flag problem we've both lived) and cites every flag to an exact quote. I'm not after upvotes — I genuinely want your gut reaction, especially anything that feels off. Sample report's here if you have 5 min: https://zoharbabin.github.io/due-diligence-agents/sample-report/ — would love your honest take.
+Hey [Name] — launching something today I think you'll have opinions on. It's an open-source tool that cross-references M&A diligence findings across domains (the legal-flag-meets-finance-flag problem we've both lived) and cites every flag to an exact quote. I'm not after upvotes — I genuinely want your gut reaction, especially anything that feels off. Sample report's here if you have 5 min: https://zoharbabin.com/due-diligence-agents/sample-report/ — would love your honest take.
 
 **2. Professional network**
-Hi [Name] — I've been building a forensic M&A diligence tool and it's live on Product Hunt today. The idea came from a pain I suspect you know: siloed advisor reports where the real risk lives between the domains nobody connects. It reads the full data room across nine domains, cross-references, and traces every finding to a verbatim source. It accelerates a deal team, doesn't replace it. No ask for votes — I'd just value your professional read and any pushback. Sample: https://zoharbabin.github.io/due-diligence-agents/sample-report/
+Hi [Name] — I've been building a forensic M&A diligence tool and it's live on Product Hunt today. The idea came from a pain I suspect you know: siloed advisor reports where the real risk lives between the domains nobody connects. It reads the full data room across nine domains, cross-references, and traces every finding to a verbatim source. It accelerates a deal team, doesn't replace it. No ask for votes — I'd just value your professional read and any pushback. Sample: https://zoharbabin.com/due-diligence-agents/sample-report/
 
 **3. Fellow founder**
-Hey [Name] — shipped my thing today, open-source, on Product Hunt. It's AI agents for M&A due diligence: read every doc, connect every domain, cite every flag — and it halts rather than ship anything it can't verify. You know the launch-day drill, so no upvote ask — what I'd actually value is a builder's eye on it. Where's the positioning weak? What would make you bounce? Repo and a live sample report: github.com/zoharbabin/due-diligence-agents · https://zoharbabin.github.io/due-diligence-agents/sample-report/ — brutal feedback more than welcome.
+Hey [Name] — shipped my thing today, open-source, on Product Hunt. It's AI agents for M&A due diligence: read every doc, connect every domain, cite every flag — and it halts rather than ship anything it can't verify. You know the launch-day drill, so no upvote ask — what I'd actually value is a builder's eye on it. Where's the positioning weak? What would make you bounce? Repo and a live sample report: github.com/zoharbabin/due-diligence-agents · https://zoharbabin.com/due-diligence-agents/sample-report/ — brutal feedback more than welcome.
 
 ---
 

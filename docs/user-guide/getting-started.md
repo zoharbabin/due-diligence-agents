@@ -122,7 +122,7 @@ data_room/
 
 **Folder structure matters:** The tool uses folder names to identify which documents belong to which subject. A flat folder of files with no subfolder structure will still work — the tool groups them as a single entity — but organizing by subject produces better results.
 
-A pre-built sample deal — **Project Atlas** — is included at [`examples/project-atlas/`](https://github.com/zoharbabin/due-diligence-agents/tree/main/examples/project-atlas) so you can try the tool before setting up your own files. It is the same synthetic deal behind the [live sample report](https://zoharbabin.github.io/due-diligence-agents/sample-report/). Run it with `dd-agents run examples/project-atlas/deal-config.json`.
+A pre-built sample deal — **Project Atlas** — is included at [`examples/project-atlas/`](https://github.com/zoharbabin/due-diligence-agents/tree/main/examples/project-atlas) so you can try the tool before setting up your own files. It is the same synthetic deal behind the [live sample report](https://zoharbabin.com/due-diligence-agents/sample-report/). Run it with `dd-agents run examples/project-atlas/deal-config.json`.
 
 ## Pre-Flight Check
 

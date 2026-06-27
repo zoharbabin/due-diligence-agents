@@ -6,7 +6,7 @@
 [![PyPI](https://img.shields.io/pypi/v/dd-agents.svg)](https://pypi.org/project/dd-agents/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](https://github.com/zoharbabin/due-diligence-agents/blob/main/LICENSE)
 
-**[📄 Documentation](https://zoharbabin.github.io/due-diligence-agents/)** · **[📊 Sample Report](https://zoharbabin.github.io/due-diligence-agents/sample-report/)** · **[💻 Source Code](https://github.com/zoharbabin/due-diligence-agents)**
+**[📄 Documentation](https://zoharbabin.com/due-diligence-agents/)** · **[📊 Sample Report](https://zoharbabin.com/due-diligence-agents/sample-report/)** · **[💻 Source Code](https://github.com/zoharbabin/due-diligence-agents)**
 
 ---
 
@@ -111,8 +111,8 @@ services:
 
 ## Links
 
-- **Documentation:** https://zoharbabin.github.io/due-diligence-agents/
-- **Sample Report:** https://zoharbabin.github.io/due-diligence-agents/sample-report/
+- **Documentation:** https://zoharbabin.com/due-diligence-agents/
+- **Sample Report:** https://zoharbabin.com/due-diligence-agents/sample-report/
 - **Source Code:** https://github.com/zoharbabin/due-diligence-agents
 - **PyPI:** https://pypi.org/project/dd-agents/
 - **Issues:** https://github.com/zoharbabin/due-diligence-agents/issues

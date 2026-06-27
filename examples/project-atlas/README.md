@@ -51,7 +51,7 @@ Output lands at `examples/project-atlas/sample_data_room/_dd/forensic-dd/runs/la
 (`dd_report.html` + `dd_report.xlsx`). The `_dd/` working directory is gitignored.
 
 > Want to see the result without running anything? Open the
-> [live sample report](https://zoharbabin.github.io/due-diligence-agents/sample-report/) —
+> [live sample report](https://zoharbabin.com/due-diligence-agents/sample-report/) —
 > it is this exact deal's real output.
 
 ## The data room

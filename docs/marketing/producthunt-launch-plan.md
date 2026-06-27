@@ -232,7 +232,7 @@ The launch is the **starting line**, not the finish (every guide hammers this):
 ### Source notes
 Synthesized 2026-06-05 from: GojiberryAI #1 guide (Czerny/LinkedIn), Momen #1 case study (Alex Chen), Unusual Ventures × Social Growth Labs (100+ top-3 launches; the "1 comment ≈ 40–50 upvotes" + karma/credibility data), Meetric Top-5 "what NOT to do" (Boudet), the 4-week SaaS-directory guide (AutoSaaSLaunch), the macOS-app PH guide, Preevy OSS playbook (Livecycle, 1.5k★), OpenSaaS OSS guide (Wasp, 6k★). All are point-in-time external advice — re-verify PH's current submission specs/limits on the PH site before locking assets.
 
-[sample report]: https://zoharbabin.github.io/due-diligence-agents/sample-report/
-[presentation]: https://zoharbabin.github.io/due-diligence-agents/marketing/presentation.html
+[sample report]: https://zoharbabin.com/due-diligence-agents/sample-report/
+[presentation]: https://zoharbabin.com/due-diligence-agents/marketing/presentation.html
 [demo video]: ./LAUNCH-ASSETS.md
 [trust-layer article]: ./devto-trust-layer.md

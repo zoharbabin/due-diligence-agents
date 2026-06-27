@@ -1,7 +1,7 @@
 # Documentation
 
 The full documentation site is published at
-**[zoharbabin.github.io/due-diligence-agents](https://zoharbabin.github.io/due-diligence-agents/)**.
+**[zoharbabin.com/due-diligence-agents](https://zoharbabin.com/due-diligence-agents/)**.
 This page indexes the same content for browsing on GitHub.
 
 ## User Guide

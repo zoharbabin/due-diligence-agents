@@ -67,7 +67,7 @@ docs = ["mkdocs-material>=9.5"]
 [project.urls]
 Homepage = "https://github.com/zoharbabin/due-diligence-agents"
 Repository = "https://github.com/zoharbabin/due-diligence-agents"
-Documentation = "https://zoharbabin.github.io/due-diligence-agents/"
+Documentation = "https://zoharbabin.com/due-diligence-agents/"
 Issues = "https://github.com/zoharbabin/due-diligence-agents/issues"
 Changelog = "https://github.com/zoharbabin/due-diligence-agents/releases"
 

@@ -22,17 +22,17 @@
 
 ---
 
-**[See a sample report](https://zoharbabin.github.io/due-diligence-agents/sample-report/)** — interactive HTML output from a synthetic deal, no install required.
+**[See a sample report](https://zoharbabin.com/due-diligence-agents/sample-report/)** — interactive HTML output from a synthetic deal, no install required.
 
 ### 📑 Walkthrough deck
 
 <p align="center">
-<a href="https://zoharbabin.github.io/due-diligence-agents/marketing/presentation.html">
+<a href="https://zoharbabin.com/due-diligence-agents/marketing/presentation.html">
 <img src="docs/marketing/assets/presentation-cover.png" alt="Due Diligence Agents — interactive walkthrough presentation (23 slides)" width="720">
 </a>
 </p>
 <p align="center">
-<a href="https://zoharbabin.github.io/due-diligence-agents/marketing/presentation.html"><strong>▶ Open the interactive walkthrough →</strong></a> · 23 slides · architecture, cross-domain synthesis, trust layer, and ROI · use <kbd>←</kbd>/<kbd>→</kbd> to navigate, <kbd>N</kbd> for speaker notes
+<a href="https://zoharbabin.com/due-diligence-agents/marketing/presentation.html"><strong>▶ Open the interactive walkthrough →</strong></a> · 23 slides · architecture, cross-domain synthesis, trust layer, and ROI · use <kbd>←</kbd>/<kbd>→</kbd> to navigate, <kbd>N</kbd> for speaker notes
 </p>
 
 ---

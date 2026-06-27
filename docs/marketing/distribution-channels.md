@@ -85,7 +85,7 @@ Every new install path = a new discovery surface + credibility:
 ## Positioning notes per track (keep messaging honest + on-brand)
 - **Dev channels** → lead with the tagline's *mechanism*: open-source, 13 agents, cross-reference across 9 domains, cite to an exact quote, runs local. Show `pip install dd-agents` + the sample report.
 - **M&A channels** → lead with the *pain*: the buried clause nobody connects across siloed workstreams; "accelerates your advisors, doesn't replace them" (never "board-ready", never "replaces advisors").
-- **Everywhere**: the [live sample report](https://zoharbabin.github.io/due-diligence-agents/sample-report/) is the zero-friction "aha" — link it in every listing.
+- **Everywhere**: the [live sample report](https://zoharbabin.com/due-diligence-agents/sample-report/) is the zero-friction "aha" — link it in every listing.
 
 ## Anti-patterns (from the research)
 - Don't dump the same blurb everywhere (duplicate-content penalty).

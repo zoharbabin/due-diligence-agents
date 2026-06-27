@@ -11,7 +11,7 @@ dd-agents init --data-room ./your_data_room
 dd-agents run deal-config.json
 ```
 
-**[See a sample report →](https://zoharbabin.github.io/due-diligence-agents/sample-report/)**
+**[See a sample report →](https://zoharbabin.com/due-diligence-agents/sample-report/)**
 
 ## What It Does
 

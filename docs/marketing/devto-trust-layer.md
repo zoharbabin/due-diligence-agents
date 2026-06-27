@@ -187,7 +187,7 @@ And the meta-point: **be honest in your own docs about which layer is which.** I
 
 Open-source (Apache 2.0), Python 3.12+. No vendor lock-in: runs on the Anthropic API, your own AWS Bedrock or Google Vertex account, or any model (GPT, Gemini, local) behind an Anthropic-compatible gateway — all by env config.
 
-**See the output without installing → [interactive sample report](https://zoharbabin.github.io/due-diligence-agents/sample-report/)** (from a synthetic deal — no real data).
+**See the output without installing → [interactive sample report](https://zoharbabin.com/due-diligence-agents/sample-report/)** (from a synthetic deal — no real data).
 
 ```bash
 pip install dd-agents
@@ -195,6 +195,6 @@ pip install dd-agents
 
 {% github zoharbabin/due-diligence-agents %}
 
-Go deeper: the [System Card](https://zoharbabin.github.io/due-diligence-agents/system-card/) (full trust posture, stated limits) and ["How the Agents Work"](https://zoharbabin.github.io/due-diligence-agents/agent-anatomy/) (a plain-English tour of the agents and the safety floor).
+Go deeper: the [System Card](https://zoharbabin.com/due-diligence-agents/system-card/) (full trust posture, stated limits) and ["How the Agents Work"](https://zoharbabin.com/due-diligence-agents/agent-anatomy/) (a plain-English tour of the agents and the safety floor).
 
 If you're building LLM systems where being wrong has a real cost, I'd genuinely like to hear how you draw the deterministic-vs-probabilistic line. The mechanisms above are my current best answers — and the honest limit is where I'd most welcome better ideas.
