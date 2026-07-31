@@ -145,6 +145,19 @@ or duplicate the marker, the tool refuses to run rather than guess (a
 
 ---
 
+## The clause library
+
+Every finding a specialist writes up is also checked against a built-in
+**clause taxonomy** (`reporting/clause_library.py`) — canonical clause types
+like change of control, termination for convenience, indemnification, and
+liability caps, each with its typical market norm and risk implications.
+Matched findings are grouped by clause type into a **Clause Analysis** section
+in the HTML report, so a reviewer can see, for example, every finding that
+touches change-of-control clauses across all subjects in one place, alongside
+what "standard" looks like for that clause type.
+
+---
+
 ## The contract-search templates
 
 Separate from the full diligence pipeline, the tool offers a focused

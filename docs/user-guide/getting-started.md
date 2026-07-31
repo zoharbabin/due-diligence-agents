@@ -46,6 +46,8 @@ pip install dd-agents[ocr]        # OCR for scanned PDFs (English)
 pip install dd-agents[glm-ocr]    # Multilingual OCR (100+ languages, Apple Silicon)
 ```
 
+See [When to Enable Vector Search](#when-to-enable-vector-search) below for guidance on `dd-agents[vector]`.
+
 ### Optional System Dependencies
 
 | Dependency | macOS | Linux | Purpose |
@@ -123,6 +125,24 @@ data_room/
 **Folder structure matters:** The tool uses folder names to identify which documents belong to which subject. A flat folder of files with no subfolder structure will still work — the tool groups them as a single entity — but organizing by subject produces better results.
 
 A pre-built sample deal — **Project Atlas** — is included at [`examples/project-atlas/`](https://github.com/zoharbabin/due-diligence-agents/tree/main/examples/project-atlas) so you can try the tool before setting up your own files. It is the same synthetic deal behind the [live sample report](https://zoharbabin.com/due-diligence-agents/sample-report/). Run it with `dd-agents run examples/project-atlas/deal-config.json`.
+
+### Audio/Video Transcription
+
+Audio and video files in the data room (`.mp3`, `.wav`, `.m4a`, `.mp4`, `.mov`, and similar) are automatically transcribed to text before analysis — no extra step needed. Board call recordings, earnings calls, or deposition audio drop into a subject folder like any other document.
+
+Transcription tries three backends in order, using whichever is installed:
+
+1. **mlx_whisper** — Apple Silicon, fastest on macOS
+2. **whisperx** — GPU-accelerated, cross-platform
+3. **openai-whisper** — broadest compatibility, no GPU required
+
+Install at least one (e.g. `pip install openai-whisper`) for transcription to run; without any backend, media files are skipped. Force a specific backend with `DD_TRANSCRIPTION_BACKEND` (`mlx`, `whisperx`, or `openai`), and override the model with `DD_TRANSCRIPTION_MODEL`.
+
+### When to Enable Vector Search
+
+Keyword search and agent tool access are sufficient for most data rooms. Vector search (`pip install dd-agents[vector]`, backed by ChromaDB) adds value for semantic, cross-document queries, but isn't necessary for the core analysis pipeline below **500 documents** — see [Knowledge Architecture](../knowledge-architecture.md#optional-vector-search-vs-mandatory-vector-search) for the full reasoning. Past that threshold, or once cross-document semantic patterns become a primary analysis mode, install the extra.
+
+If your data room crosses ~500 files and `dd-agents[vector]` isn't installed, `dd-agents run` logs an advisory warning (with `--verbose`) — it never blocks the pipeline.
 
 ## Pre-Flight Check
 

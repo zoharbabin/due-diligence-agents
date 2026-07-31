@@ -26,9 +26,11 @@ class DiffRenderer(SectionRenderer):
         merged_data: dict[str, Any],
         config: dict[str, Any] | None = None,
         run_dir: Path | None = None,
+        diff_data: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(data, merged_data, config)
         self._run_dir = run_dir
+        self._diff_data = diff_data
 
     def render(self) -> str:
         diff = self._load_diff()
@@ -98,7 +100,9 @@ class DiffRenderer(SectionRenderer):
         return "\n".join(parts)
 
     def _load_diff(self) -> dict[str, Any] | None:
-        """Load report_diff.json from the run directory."""
+        """Return the pre-supplied diff dict, else load report_diff.json from the run directory."""
+        if self._diff_data is not None:
+            return self._diff_data
         if self._run_dir is None:
             return None
         diff_path = self._run_dir / "report" / "report_diff.json"

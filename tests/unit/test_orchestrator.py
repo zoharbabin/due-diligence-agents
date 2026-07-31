@@ -15,6 +15,7 @@ Covers:
 from __future__ import annotations
 
 import json
+import logging
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
@@ -4641,3 +4642,57 @@ class TestBuildSourceFindingsLookup:
 
         lookup = engine._build_source_findings_lookup(state)
         assert lookup == {}
+
+
+class TestVectorSearchHint:
+    """Tests for the #255 advisory vector-search hint (issue #269 rule 4.2)."""
+
+    def test_no_warning_under_threshold(self, caplog: pytest.LogCaptureFixture) -> None:
+        with caplog.at_level(logging.WARNING, logger="dd_agents.orchestrator.engine"):
+            PipelineEngine._maybe_warn_vector_search(10)
+        assert "vector-search" not in caplog.text
+
+    def test_warning_over_threshold_without_chromadb(self, caplog: pytest.LogCaptureFixture) -> None:
+        with (
+            patch("dd_agents.vector_store.store.CHROMADB_AVAILABLE", False),
+            caplog.at_level(logging.WARNING, logger="dd_agents.orchestrator.engine"),
+        ):
+            PipelineEngine._maybe_warn_vector_search(501)
+        assert "vector-search" in caplog.text
+        assert "dd-agents[vector]" in caplog.text
+
+    def test_no_warning_over_threshold_with_chromadb_installed(self, caplog: pytest.LogCaptureFixture) -> None:
+        with (
+            patch("dd_agents.vector_store.store.CHROMADB_AVAILABLE", True),
+            caplog.at_level(logging.WARNING, logger="dd_agents.orchestrator.engine"),
+        ):
+            PipelineEngine._maybe_warn_vector_search(501)
+        assert "vector-search" not in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_step_04_reuses_discovered_count_no_second_walk(self, tmp_path: Path) -> None:
+        """Rule 4.2: the hint must read the count step_04 already computed, not re-walk."""
+        config_path = tmp_path / "deal-config.json"
+        config_path.write_text("{}")
+        engine = PipelineEngine(tmp_path, config_path)
+        run_dir = tmp_path / "runs" / "test_run"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        state = PipelineState(run_id="test_run", project_dir=tmp_path, run_dir=run_dir)
+
+        (tmp_path / "a.txt").write_text("x")
+        (tmp_path / "b.txt").write_text("x")
+
+        with (
+            patch.object(PipelineEngine, "_maybe_warn_vector_search") as mock_hint,
+            patch("dd_agents.inventory.discovery.FileDiscovery.discover") as mock_discover,
+        ):
+            from dd_agents.models.inventory import FileEntry
+
+            mock_discover.return_value = [
+                FileEntry(path="a.txt", size=1, mtime=0.0, mtime_iso=""),
+                FileEntry(path="b.txt", size=1, mtime=0.0, mtime_iso=""),
+            ]
+            await engine._step_04_file_discovery(state)
+
+        mock_discover.assert_called_once()
+        mock_hint.assert_called_once_with(2)

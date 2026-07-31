@@ -1271,6 +1271,13 @@ def auto_config(
     default=False,
     help="Enable verbose logging output.",
 )
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    default=False,
+    help="Print structured per-subject results as JSON instead of writing an Excel report.",
+)
 def search(
     prompts_path: Path,
     data_room: Path,
@@ -1281,6 +1288,7 @@ def search(
     yes: bool,
     no_file: bool,
     verbose: bool,
+    as_json: bool,
 ) -> None:
     """Search subject contracts using custom prompts.
 
@@ -1292,6 +1300,7 @@ def search(
         dd-agents search prompts.json --data-room ./data_room
         dd-agents search prompts.json --data-room ./data_room --groups Commercial
         dd-agents search prompts.json --data-room ./data_room --subjects "Acme,Beta" -y
+        dd-agents search prompts.json --data-room ./data_room --json -y
     """
     if verbose:
         logging.basicConfig(level=logging.WARNING, format="%(name)s: %(message)s")
@@ -1310,8 +1319,12 @@ def search(
         concurrency=concurrency,
         auto_confirm=yes,
         verbose=verbose,
+        as_json=as_json,
     )
-    runner.run()
+    results = runner.run()
+
+    if as_json:
+        click.echo(json.dumps([r.model_dump() for r in results]))
 
 
 # ---------------------------------------------------------------------------
@@ -1435,6 +1448,99 @@ def _print_cost_summary(data: dict[str, Any]) -> None:
             + (f" models=[{models}]" if models else "")
         )
     console.print()
+
+
+# ---------------------------------------------------------------------------
+# diff command (Issue #257 — standalone run comparison)
+# ---------------------------------------------------------------------------
+
+
+@main.command()
+@click.argument(
+    "run_a",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+@click.argument(
+    "run_b",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output the diff as JSON.")
+@click.option(
+    "--output",
+    "output_path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Write a standalone diff HTML report to this path.",
+)
+def diff(run_a: Path, run_b: Path, as_json: bool, output_path: Path | None) -> None:
+    """Compare findings between two arbitrary run directories.
+
+    RUN_A is treated as the current (newer) run, RUN_B as the prior (older)
+    run — matching the direction reported by resolved/new findings. Reads
+    only the ``findings/merged/`` directories under each path; no recompute,
+    no LLM call.
+
+    \b
+    Example:
+        dd-agents diff runs/run_b runs/run_a
+        dd-agents diff runs/run_b runs/run_a --json
+        dd-agents diff runs/run_b runs/run_a --output diff_report.html
+    """
+    from dd_agents.reporting.diff import ReportDiffBuilder
+
+    builder = ReportDiffBuilder()
+    result = builder.build_diff(
+        current_findings_dir=run_a / "findings",
+        prior_findings_dir=run_b / "findings",
+        current_run_id=run_a.name,
+        prior_run_id=run_b.name,
+    )
+
+    if as_json:
+        click.echo(result.model_dump_json())
+    else:
+        _print_diff_summary(result)
+
+    if output_path is not None:
+        import html as _html
+
+        from dd_agents.reporting.html_diff import DiffRenderer
+
+        html_body = DiffRenderer(None, {}, run_dir=None, diff_data=result.model_dump()).render()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            "<!DOCTYPE html><html lang='en'><head><meta charset='utf-8'>"
+            f"<title>Diff: {_html.escape(run_a.name)} vs {_html.escape(run_b.name)}</title>"
+            "</head><body>" + html_body + "</body></html>",
+            encoding="utf-8",
+        )
+        console.print(f"[dim]Diff report written to {output_path}[/dim]")
+
+
+def _print_diff_summary(result: Any) -> None:
+    """Render a ReportDiff as a rich summary table."""
+    s = result.summary
+    console.print(
+        Panel(
+            f"[bold]{result.prior_run_id}[/bold] -> [bold]{result.current_run_id}[/bold]\n\n"
+            f"[red]New findings:[/red] {s.new_findings}   "
+            f"[green]Resolved:[/green] {s.resolved_findings}   "
+            f"[yellow]Changed severity:[/yellow] {s.changed_severity}\n"
+            f"[red]New gaps:[/red] {s.new_gaps}   [green]Resolved gaps:[/green] {s.resolved_gaps}\n"
+            f"[cyan]New subjects:[/cyan] {s.new_subjects}   [cyan]Removed subjects:[/cyan] {s.removed_subjects}",
+            title="Run Diff",
+            border_style="cyan",
+        )
+    )
+    if result.changes:
+        table = Table(show_header=True)
+        table.add_column("Type", width=18)
+        table.add_column("Subject", width=24)
+        table.add_column("Detail")
+        for c in result.changes:
+            detail = c.finding_summary or c.details
+            table.add_row(c.change_type, c.subject, detail[:100])
+        console.print(table)
 
 
 # ---------------------------------------------------------------------------
@@ -1761,7 +1867,14 @@ def export_pdf(html_path: Path, output_path: Path | None, engine: str) -> None:
     default=None,
     help="Path to deal-config.json (for the memo header). Auto-discovered from the run dir if omitted.",
 )
-def memo(report_dir: Path, output_path: Path | None, deal_config_path: Path | None) -> None:
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    default=False,
+    help="Print the memo's Go/No-Go + risks + recommendations as JSON instead of writing Markdown/HTML files.",
+)
+def memo(report_dir: Path, output_path: Path | None, deal_config_path: Path | None, as_json: bool) -> None:
     """Generate an Investment Committee memo from a completed run.
 
     Deterministically assembles a distributable memo (Markdown + HTML) from the
@@ -1772,6 +1885,7 @@ def memo(report_dir: Path, output_path: Path | None, deal_config_path: Path | No
     \b
     Example:
         dd-agents memo --report _dd/forensic-dd/runs/latest
+        dd-agents memo --report _dd/forensic-dd/runs/latest --json
     """
     import json as _json
 
@@ -1781,10 +1895,11 @@ def memo(report_dir: Path, output_path: Path | None, deal_config_path: Path | No
     run_dir = report_dir.resolve()
     merged_dir = run_dir / "findings" / "merged"
     if not merged_dir.is_dir() or not any(merged_dir.glob("*.json")):
-        _print_error(
-            "No Merged Findings",
-            f"No merged findings found at {merged_dir}.\n  Run the full pipeline first: dd-agents run deal-config.json",
-        )
+        msg = f"No merged findings found at {merged_dir}. Run the full pipeline first: dd-agents run deal-config.json"
+        if as_json:
+            click.echo(_json.dumps({"error": msg}))
+            raise SystemExit(1)
+        _print_error("No Merged Findings", msg)
         raise SystemExit(1)
 
     # Load merged findings into {safe_name: subject_dict} — same shape the
@@ -1801,6 +1916,23 @@ def memo(report_dir: Path, output_path: Path | None, deal_config_path: Path | No
     deal_config = _read_optional_json(deal_config_path) if deal_config_path else _discover_deal_config(run_dir)
 
     computed = ReportDataComputer().compute(merged_data, executive_synthesis=exec_synth)
+
+    if as_json:
+        click.echo(
+            _json.dumps(
+                {
+                    "go_no_go": computed.verdict,
+                    "deal_risk_score": computed.deal_risk_score,
+                    "deal_risk_label": computed.deal_risk_label,
+                    "top_risks": computed.wolf_pack,
+                    "recommendations": computed.recommendations,
+                    "subjects_analyzed": computed.subjects_analyzed,
+                    "total_findings": computed.total_findings,
+                    "total_gaps": computed.total_gaps,
+                }
+            )
+        )
+        return
 
     memo_md = render_ic_memo(computed, deal_config if isinstance(deal_config, dict) else None)
     md_path = output_path.resolve() if output_path else run_dir / "report" / "ic_memo.md"
@@ -3052,13 +3184,15 @@ def lineage(
     help="Path to the data room folder.",
 )
 @click.option("--auto-fix", is_flag=True, default=False, help="Auto-fix broken links and orphan articles.")
-def health(data_room: Path, auto_fix: bool) -> None:
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output the health-check result as JSON.")
+def health(data_room: Path, auto_fix: bool, as_json: bool) -> None:
     """Run knowledge base health checks.
 
     \b
     Example:
         dd-agents health --data-room ./data_room
         dd-agents health --data-room ./data_room --auto-fix
+        dd-agents health --data-room ./data_room --json
     """
     from dd_agents.knowledge.base import DealKnowledgeBase
     from dd_agents.knowledge.health import KnowledgeHealthChecker
@@ -3067,11 +3201,18 @@ def health(data_room: Path, auto_fix: bool) -> None:
     kb = DealKnowledgeBase(project_dir)
 
     if not kb.exists:
-        console.print("[dim]No knowledge base found. Run the pipeline first.[/dim]")
+        if as_json:
+            click.echo(json.dumps({"error": "No knowledge base found. Run the pipeline first."}))
+        else:
+            console.print("[dim]No knowledge base found. Run the pipeline first.[/dim]")
         return
 
     checker = KnowledgeHealthChecker(kb, data_room_path=project_dir)
     result = checker.run_all_checks(auto_fix=auto_fix)
+
+    if as_json:
+        click.echo(result.model_dump_json())
+        return
 
     # Summary
     status_color = "green" if result.total_issues == 0 else "yellow" if result.total_issues < 5 else "red"

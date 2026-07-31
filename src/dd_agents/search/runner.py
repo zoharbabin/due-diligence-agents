@@ -43,6 +43,9 @@ class SearchRunner:
         Skip cost confirmation prompt.
     verbose:
         Enable debug logging.
+    as_json:
+        Suppress console chrome/progress and skip the Excel write — the
+        caller (CLI) serializes the returned results as JSON instead.
     """
 
     def __init__(
@@ -55,6 +58,7 @@ class SearchRunner:
         concurrency: int = 5,
         auto_confirm: bool = False,
         verbose: bool = False,
+        as_json: bool = False,
     ) -> None:
         self._prompts_path = prompts_path
         self._data_room = data_room_path.resolve()
@@ -63,6 +67,7 @@ class SearchRunner:
         self._concurrency = concurrency
         self._auto_confirm = auto_confirm
         self._verbose = verbose
+        self._as_json = as_json
 
         # Derive output path from prompts file name if not provided.
         if output_path is not None:
@@ -71,15 +76,20 @@ class SearchRunner:
             stem = prompts_path.stem
             self._output_path = self._data_room / f"search_{stem}.xlsx"
 
-        self._console = Console()
+        self._console = Console(quiet=as_json)
         self._err_console = Console(stderr=True)
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
-    def run(self) -> None:
-        """Execute the full search workflow."""
+    def run(self) -> list[SearchSubjectResult]:
+        """Execute the full search workflow and return the per-subject results.
+
+        Writes the Excel report and prints the console summary unless
+        ``as_json`` was set at construction, in which case both are skipped
+        so the caller can serialize the returned results as JSON.
+        """
         # 1. Load prompts.
         prompts = self._load_prompts()
 
@@ -218,7 +228,7 @@ class SearchRunner:
             confirm = input("Type 'yes' to proceed, or press Enter to cancel: ").strip().lower()
             if confirm not in ("y", "yes"):
                 self._console.print("[yellow]Cancelled.[/yellow]")
-                return
+                return []
 
         # 6. Run analysis with progress bar.
 
@@ -250,6 +260,9 @@ class SearchRunner:
                 len(subjects),
                 len(analyzed),
             )
+
+        if self._as_json:
+            return analyzed
 
         # 8. Write Excel report.
         from dd_agents.search.excel_writer import SearchExcelWriter
@@ -305,6 +318,8 @@ class SearchRunner:
                 border_style="green" if not failures else "yellow",
             )
         )
+
+        return analyzed
 
     # ------------------------------------------------------------------
     # Pipeline integration steps

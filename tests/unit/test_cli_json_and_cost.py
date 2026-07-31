@@ -1,4 +1,4 @@
-"""Tests for --json parity (Issue #241) + the cost reader / assess pre-flight (#246)."""
+"""Tests for --json parity (Issue #241, #256) + the cost reader / assess pre-flight (#246)."""
 
 from __future__ import annotations
 
@@ -146,3 +146,133 @@ class TestCostCommand:
         r = CliRunner().invoke(main, ["cost", str(rd)])
         assert "By Step" in r.output
         assert "Routing:" in r.output
+
+
+class TestHealthJson:
+    def test_health_json_no_knowledge_base(self, tmp_path: Path) -> None:
+        r = CliRunner().invoke(main, ["health", "--data-room", str(tmp_path), "--json"])
+        assert r.exit_code == 0, r.output
+        assert "error" in json.loads(r.output)
+
+    def test_health_json_matches_model_dump(self, tmp_path: Path) -> None:
+        from dd_agents.knowledge.base import DealKnowledgeBase
+
+        kb = DealKnowledgeBase(tmp_path)
+        kb.ensure_dirs()
+
+        r = CliRunner().invoke(main, ["health", "--data-room", str(tmp_path), "--json"])
+        assert r.exit_code == 0, r.output
+        out = json.loads(r.output)
+        assert "total_issues" in out
+        assert "knowledge_base_stats" in out
+
+    def test_health_no_json_prints_console_chrome(self, tmp_path: Path) -> None:
+        from dd_agents.knowledge.base import DealKnowledgeBase
+
+        kb = DealKnowledgeBase(tmp_path)
+        kb.ensure_dirs()
+
+        r = CliRunner().invoke(main, ["health", "--data-room", str(tmp_path)])
+        assert r.exit_code == 0, r.output
+        # Rich panel/table output, not raw JSON.
+        assert not r.output.lstrip().startswith("{")
+
+
+class TestMemoJson:
+    def _run_with_findings(self, tmp_path: Path) -> Path:
+        run = tmp_path / "_dd" / "forensic-dd" / "runs" / "run_x"
+        merged = run / "findings" / "merged"
+        merged.mkdir(parents=True)
+        (merged / "northwind.json").write_text(
+            json.dumps(
+                {
+                    "subject": "Northwind",
+                    "findings": [
+                        {
+                            "title": "CoC auto-termination",
+                            "severity": "P0",
+                            "description": "Customer MSA terminates on change of control.",
+                            "citations": [{"exact_quote": "terminates on change of control", "location": "§12.3"}],
+                        }
+                    ],
+                    "gaps": [],
+                }
+            )
+        )
+        return run
+
+    def test_memo_json_has_go_no_go_and_risks(self, tmp_path: Path) -> None:
+        run = self._run_with_findings(tmp_path)
+        r = CliRunner().invoke(main, ["memo", "--report", str(run), "--json"])
+        assert r.exit_code == 0, r.output
+        out = json.loads(r.output)
+        assert "go_no_go" in out
+        assert "top_risks" in out
+        assert "recommendations" in out
+        assert out["total_findings"] == 1
+
+    def test_memo_json_skips_markdown_html_writes(self, tmp_path: Path) -> None:
+        run = self._run_with_findings(tmp_path)
+        CliRunner().invoke(main, ["memo", "--report", str(run), "--json"])
+        assert not (run / "report" / "ic_memo.md").exists()
+
+    def test_memo_json_missing_findings_emits_error_json(self, tmp_path: Path) -> None:
+        run = tmp_path / "run_empty"
+        (run / "findings" / "merged").mkdir(parents=True)
+        r = CliRunner().invoke(main, ["memo", "--report", str(run), "--json"])
+        assert r.exit_code == 1
+        assert "error" in json.loads(r.output)
+
+
+class TestDiffCommand:
+    def _write_run(self, run_dir: Path, subject: str, findings: list[dict]) -> None:  # type: ignore[type-arg]
+        merged = run_dir / "findings" / "merged"
+        merged.mkdir(parents=True, exist_ok=True)
+        (merged / f"{subject}.json").write_text(
+            json.dumps({"subject": subject, "subject_safe_name": subject, "findings": findings}),
+        )
+        (merged / "gaps").mkdir(exist_ok=True)
+
+    def test_diff_json_reports_new_finding(self, tmp_path: Path) -> None:
+        run_a = tmp_path / "run_a"  # current: has the new finding
+        run_b = tmp_path / "run_b"  # prior: empty
+        self._write_run(run_a, "acme", [{"category": "ip", "citations": [{"source_path": "a.pdf"}]}])
+        self._write_run(run_b, "acme", [])
+
+        r = CliRunner().invoke(main, ["diff", str(run_a), str(run_b), "--json"])
+        assert r.exit_code == 0, r.output
+        out = json.loads(r.output)
+        assert out["summary"]["new_findings"] == 1
+        assert out["summary"]["resolved_findings"] == 0
+        assert out["current_run_id"] == "run_a"
+        assert out["prior_run_id"] == "run_b"
+
+    def test_diff_human_summary_shows_panel(self, tmp_path: Path) -> None:
+        run_a = tmp_path / "run_a"
+        run_b = tmp_path / "run_b"
+        self._write_run(run_a, "acme", [])
+        self._write_run(run_b, "acme", [])
+
+        r = CliRunner().invoke(main, ["diff", str(run_a), str(run_b)])
+        assert r.exit_code == 0, r.output
+        assert "Run Diff" in r.output
+
+    def test_diff_output_writes_standalone_html(self, tmp_path: Path) -> None:
+        run_a = tmp_path / "run_a"
+        run_b = tmp_path / "run_b"
+        self._write_run(run_a, "acme", [{"category": "ip", "citations": [{"source_path": "a.pdf"}]}])
+        self._write_run(run_b, "acme", [])
+        out_html = tmp_path / "diff.html"
+
+        r = CliRunner().invoke(main, ["diff", str(run_a), str(run_b), "--output", str(out_html)])
+        assert r.exit_code == 0, r.output
+        assert out_html.exists()
+        html = out_html.read_text(encoding="utf-8")
+        assert html.startswith("<!DOCTYPE html>")
+        assert "Run-over-Run Changes" in html
+
+    def test_diff_nonexistent_run_dir_errors(self, tmp_path: Path) -> None:
+        run_a = tmp_path / "run_a"
+        self._write_run(run_a, "acme", [])
+        r = CliRunner().invoke(main, ["diff", str(run_a), str(tmp_path / "missing")])
+        assert r.exit_code != 0

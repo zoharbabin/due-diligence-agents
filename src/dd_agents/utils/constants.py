@@ -171,6 +171,15 @@ SHORT_NAME_MAX_LEN = int(os.getenv("DD_SHORT_NAME_MAX_LEN", "5"))  # Never fuzzy
 TFIDF_THRESHOLD = float(os.getenv("DD_TFIDF_THRESHOLD", "0.80"))  # Cosine similarity for TF-IDF
 
 # ---------------------------------------------------------------------------
+# Vector search advisory threshold (Issue #255)
+# ---------------------------------------------------------------------------
+
+# Document count above which optional vector search (pip install dd-agents[vector])
+# starts paying for itself. Advisory only -- crossing it never blocks the
+# pipeline. Override via DD_VECTOR_SEARCH_THRESHOLD.
+VECTOR_SEARCH_DOC_THRESHOLD = int(os.getenv("DD_VECTOR_SEARCH_THRESHOLD", "500"))
+
+# ---------------------------------------------------------------------------
 # Non-subject JSON stems (used by merge and pre-merge validation)
 # ---------------------------------------------------------------------------
 

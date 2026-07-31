@@ -419,6 +419,12 @@ Every architecture embodies tradeoffs. These are the ones we made explicitly, wi
 **Why**: Keyword search and agent tool access are sufficient for 400 documents. Vector search adds value for semantic queries ("find clauses similar to this indemnification") but is not necessary for the core analysis pipeline.
 **Reconsidering at**: 500+ documents, or when cross-document semantic patterns become a primary analysis mode.
 
+### Experimental graph reasoning vs. wiring `ContractKnowledgeGraph` into a query surface
+
+**Chose**: Document as experimental. `ContractKnowledgeGraph` (`reasoning/contract_graph.py`) is a standalone, non-wired reasoning primitive — no pipeline step, CLI command, or report section constructs one today.
+**Why**: this milestone's scope is discoverability/DX, not new reasoning capability. Wiring the graph into a query surface is a materially larger, LLM-touching change that's harder to test deterministically than a docs/DX pass.
+**Reconsidering at**: a concrete query surface (chat tool, CLI command) needs cross-contract relationship queries the existing per-subject findings and search tools can't answer.
+
 ---
 
 ## 11. Research Foundations

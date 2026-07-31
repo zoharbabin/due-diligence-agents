@@ -69,3 +69,6 @@ node_modules/
 # Development artifacts
 cache/
 report-*.png
+
+# Discoverability & DX harness run logs (scripts/discoverability-dx-harness.sh)
+.dx-harness-out/

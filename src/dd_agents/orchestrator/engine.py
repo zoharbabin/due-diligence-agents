@@ -41,6 +41,7 @@ from dd_agents.utils.constants import (
     SEVERITY_P2,
     SEVERITY_P3,
     SUBJECTS_CSV,
+    VECTOR_SEARCH_DOC_THRESHOLD,
     _sev_count_init,
 )
 
@@ -924,7 +925,28 @@ class PipelineEngine:
         state._discovered_files = files  # type: ignore[attr-defined]
 
         logger.info("Discovered %d files", state.total_files)
+        self._maybe_warn_vector_search(state.total_files)
         return state
+
+    @staticmethod
+    def _maybe_warn_vector_search(total_files: int) -> None:
+        """Advisory-only hint to install optional vector search past the doc threshold (#255).
+
+        Reuses the file count already computed by ``_step_04_file_discovery`` --
+        no second filesystem walk. Never blocks the pipeline (Design Rule 8).
+        """
+        if total_files <= VECTOR_SEARCH_DOC_THRESHOLD:
+            return
+        from dd_agents.vector_store.store import CHROMADB_AVAILABLE
+
+        if not CHROMADB_AVAILABLE:
+            logger.warning(
+                "Data room has %d files, above the %d-document vector-search threshold. "
+                "Consider `pip install dd-agents[vector]` for semantic search across documents. "
+                "See docs/user-guide/getting-started.md#when-to-enable-vector-search.",
+                total_files,
+                VECTOR_SEARCH_DOC_THRESHOLD,
+            )
 
     async def _step_05_bulk_extraction(self, state: PipelineState) -> PipelineState:
         """Bulk pre-extraction of text from documents.  BLOCKING GATE."""

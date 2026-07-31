@@ -70,8 +70,50 @@ class TestSearchCLI:
         data_room.mkdir()
 
         with patch("dd_agents.search.runner.SearchRunner.run") as mock_run:
+            mock_run.return_value = []
             result = runner.invoke(main, ["search", str(prompts_path), "--data-room", str(data_room)])
 
         # The command should call SearchRunner.run.
         assert mock_run.called
         assert result.exit_code == 0
+
+    def test_json_flag_serializes_runner_results(self, tmp_path: Path) -> None:
+        """--json prints the SearchSubjectResult list SearchRunner.run returns, verbatim."""
+        from dd_agents.models.search import SearchColumnResult, SearchSubjectResult
+
+        runner = CliRunner()
+        prompts_path = _write_prompts_file(tmp_path)
+        data_room = tmp_path / "dr"
+        data_room.mkdir()
+
+        canned_result = SearchSubjectResult(
+            subject_name="Acme Corp",
+            group="Commercial",
+            files_analyzed=2,
+            total_files=2,
+            columns={"Q1": SearchColumnResult(answer="YES", confidence="high")},
+        )
+
+        with patch("dd_agents.search.runner.SearchRunner.run") as mock_run:
+            mock_run.return_value = [canned_result]
+            result = runner.invoke(main, ["search", str(prompts_path), "--data-room", str(data_room), "--json"])
+
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        assert payload == [canned_result.model_dump()]
+
+    def test_json_flag_passed_through_to_runner(self, tmp_path: Path) -> None:
+        """--json must reach SearchRunner's constructor, not just the CLI layer."""
+        runner = CliRunner()
+        prompts_path = _write_prompts_file(tmp_path)
+        data_room = tmp_path / "dr"
+        data_room.mkdir()
+
+        with (
+            patch("dd_agents.search.runner.SearchRunner.run", return_value=[]),
+            patch("dd_agents.search.runner.SearchRunner.__init__", return_value=None) as mock_init,
+        ):
+            result = runner.invoke(main, ["search", str(prompts_path), "--data-room", str(data_room), "--json"])
+
+        assert result.exit_code == 0, result.output
+        assert mock_init.call_args.kwargs["as_json"] is True

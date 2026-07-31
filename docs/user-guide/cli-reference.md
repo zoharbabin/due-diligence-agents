@@ -269,6 +269,7 @@ dd-agents search PROMPTS_PATH [OPTIONS]
 | `--yes / -y` | flag | off | Skip cost confirmation prompt |
 | `--no-file` | flag | off | Skip filing search results back to Knowledge Base |
 | `--verbose / -v` | flag | off | Enable debug logging |
+| `--json` | flag | off | Print structured per-subject results as JSON instead of writing an Excel report (scriptable; skips the Excel write and console chrome) |
 
 **Examples:**
 
@@ -283,6 +284,9 @@ dd-agents search prompts.json --data-room ./data_room \
 # Save to specific file with higher concurrency
 dd-agents search prompts.json --data-room ./data_room \
   --output results.xlsx --concurrency 10
+
+# Machine-readable output for scripting/CI
+dd-agents search prompts.json --data-room ./data_room --json -y
 ```
 
 ---
@@ -367,6 +371,7 @@ dd-agents memo --report <run_dir> [OPTIONS]
 | `--report` | Path | (required) | Pipeline run directory (contains `findings/merged/`) |
 | `--output` | Path | `<run>/report/ic_memo.md` | Output memo path (Markdown); an `.html` sibling is also written |
 | `--deal-config` | Path | auto-discovered | `deal-config.json` for the memo header; found by walking up from the run dir if omitted |
+| `--json` | flag | off | Print the memo's Go/No-Go + risks + recommendations as JSON instead of writing Markdown/HTML files |
 
 Deterministically assembles a memo (Markdown + HTML) from the run's merged
 findings — Go/No-Go signal, key takeaways, top risks with cited evidence,
@@ -378,6 +383,9 @@ PDF with `dd-agents export-pdf` on the emitted `.html`.
 ```bash
 dd-agents memo --report _dd/forensic-dd/runs/latest
 dd-agents export-pdf _dd/forensic-dd/runs/latest/report/ic_memo.html
+
+# Machine-readable output for scripting/CI (skips the Markdown/HTML write)
+dd-agents memo --report _dd/forensic-dd/runs/latest --json
 ```
 
 ---
@@ -678,6 +686,39 @@ dd-agents lineage --data-room ./data_room --format csv --output lineage.csv
 
 ---
 
+## diff
+
+Compare findings between two arbitrary run directories.
+
+```
+dd-agents diff RUN_A RUN_B [OPTIONS]
+```
+
+**Arguments:**
+- `RUN_A` -- The current (newer) run directory
+- `RUN_B` -- The prior (older) run directory
+
+`RUN_A` is treated as the current run and `RUN_B` as the prior run — matching
+the direction reported by resolved/new findings. Reads only the
+`findings/merged/` directories under each path; no recompute, no LLM call.
+
+**Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--json` | flag | off | Output the diff as JSON |
+| `--output` | path | none | Write a standalone diff HTML report to this path |
+
+**Examples:**
+
+```bash
+dd-agents diff runs/run_b runs/run_a
+dd-agents diff runs/run_b runs/run_a --json
+dd-agents diff runs/run_b runs/run_a --output diff_report.html
+```
+
+---
+
 ## health
 
 Run automated integrity checks against the Deal Knowledge Base.
@@ -692,12 +733,14 @@ dd-agents health [OPTIONS]
 |--------|------|---------|-------------|
 | `--data-room` | path | required | Path to the data room folder |
 | `--auto-fix` | flag | off | Automatically fix broken links and orphan articles |
+| `--json` | flag | off | Output the health-check result as JSON |
 
 **Examples:**
 
 ```bash
 dd-agents health --data-room ./data_room
 dd-agents health --data-room ./data_room --auto-fix
+dd-agents health --data-room ./data_room --json
 ```
 
 Checks 7 categories: staleness, orphans, broken links, missing coverage, citation drift, graph integrity, and lineage gaps.

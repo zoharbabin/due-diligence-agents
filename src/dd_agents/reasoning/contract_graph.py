@@ -5,6 +5,11 @@ document relationships, and obligations. Supports queries like:
 - "What happens if Company X triggers a change of control?"
 - "Which contracts have conflicting governing law?"
 - "What's the total liability cap across Customer Y's contracts?"
+
+**Experimental / not wired in**: this is a standalone reasoning primitive.
+No pipeline step, CLI command, or report section constructs it today — see
+docs/knowledge-architecture.md for the wire-in-vs-document-as-experimental
+decision (Issue #258).
 """
 
 from __future__ import annotations

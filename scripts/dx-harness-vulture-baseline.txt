@@ -1,0 +1,5 @@
+src/dd_agents/cli.py: unused variable 'no_file' (100% confidence)
+src/dd_agents/knowledge/health.py: unused variable 'max_age_runs' (100% confidence)
+src/dd_agents/orchestrator/team.py: unused variable 'run_suffix' (100% confidence)
+src/dd_agents/reporting/excel.py: unused variable 'column_key' (100% confidence)
+src/dd_agents/vector_store/store.py: unused import 'Settings' (90% confidence)
