@@ -249,6 +249,14 @@ Export the HTML report to a print-ready PDF:
 dd-agents export-pdf _dd/forensic-dd/runs/latest/report/dd_report.html
 ```
 
+### Compare Runs
+
+Diff findings between two arbitrary run directories — e.g. after new documents land, or to compare two analysts' runs:
+
+```bash
+dd-agents diff _dd/forensic-dd/runs/run_a _dd/forensic-dd/runs/run_b
+```
+
 ### Portfolio Management
 
 Track multiple due diligence projects and compare risk profiles across deals:

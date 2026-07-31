@@ -127,6 +127,7 @@ dd-agents portfolio compare                                 # Compare risk acros
 dd-agents export-pdf report.html                            # Export to PDF
 dd-agents log --data-room ./data_room                       # Browse the deal knowledge timeline
 dd-agents lineage --data-room ./data_room                   # Trace finding evolution across runs
+dd-agents diff run_a/ run_b/                                # Compare findings between two run directories
 dd-agents health --data-room ./data_room                    # Check knowledge base integrity
 dd-agents annotate --data-room ./data_room "Confirmed with counsel"  # Add analyst notes
 ```

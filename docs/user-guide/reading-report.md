@@ -121,7 +121,7 @@ The Excel report at `dd_report.xlsx` contains 16 sheets:
 | Reference_Files_Index | Index of reference/cross-cutting documents |
 | Entity_Resolution_Log | Entity matching decisions and confidence scores |
 | Quality_Audit | QA validation results and audit trail |
-| Run_Diff | Changes from prior run (incremental mode only) |
+| Run_Diff | Changes from prior run (incremental mode only) — to diff two arbitrary run directories outside incremental mode, use `dd-agents diff run_a run_b` (see [CLI Reference](cli-reference.md#diff)) |
 | Request_List_Completeness | Requested-document reconciliation: received vs. missing-required vs. missing-optional (when a `request_list` is configured) |
 | Model_Integrity | Spreadsheet formula-integrity issues citing exact cells (hardcoded overrides, circular refs, `#REF!`, broken external links) |
 | _Metadata | Run configuration, timing, costs, versions |

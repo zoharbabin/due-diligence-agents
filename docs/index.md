@@ -31,6 +31,7 @@ dd-agents run deal-config.json
 | `dd-agents chat` | Interactive multi-turn chat about findings |
 | `dd-agents query` | Single-question mode |
 | `dd-agents assess` | Data room quality check |
+| `dd-agents diff` | Compare findings between two run directories |
 
 ## What dd-agents does (and does not) do
 

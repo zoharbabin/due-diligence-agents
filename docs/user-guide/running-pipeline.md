@@ -47,7 +47,7 @@ dd-agents run deal-config.json --mode incremental
 | `--model-override AGENT=MODEL` | Per-agent model, e.g. `--model-override legal=claude-opus-4-8` |
 | `--no-knowledge` | Skip knowledge compilation after pipeline run |
 | `--no-narrative` | Skip LLM narrative generation (deterministic report only) |
-| `--verbose / -v` | Enable debug logging |
+| `--verbose / -v` | Enable debug logging (also surfaces the advisory vector-search hint past 500 documents — see [Getting Started](getting-started.md#when-to-enable-vector-search)) |
 
 ### Examples
 
