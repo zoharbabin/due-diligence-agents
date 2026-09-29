@@ -1312,6 +1312,8 @@ class ExtractionPipeline:
             chain,
             failure_reasons,
             method_label="primary",
+            check_readability=True,
+            check_control_chars=True,
         )
         if entry is not None:
             return entry
@@ -1327,6 +1329,8 @@ class ExtractionPipeline:
             chain,
             failure_reasons,
             method_label="fallback_read",
+            check_readability=True,
+            check_control_chars=True,
         )
         if entry is not None:
             return entry

@@ -2,6 +2,8 @@
 
 Run dd-agents on **any provider** — Anthropic API, AWS Bedrock, Google Vertex AI — and on **any model**, including non-Claude models (GPT, Gemini, DeepSeek, local), through an Anthropic-compatible gateway. Selection is entirely by environment; no code change, no vendor hardcoded.
 
+> **The model is swappable. The runtime is not.** Any provider or gateway model can answer the calls, but the orchestration loop (tool use, agent turns) always runs in the Claude Agent SDK's bundled CLI. Which flows are verified live on which providers: [Provider Coverage](provider-coverage.md).
+
 ## Quick config (pick one)
 
 ```bash

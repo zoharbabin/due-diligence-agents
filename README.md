@@ -7,6 +7,9 @@
     Legal flags a risk. Finance flags another. <strong>We connect and cite.</strong> Open-source forensic M&A due diligence — 13 AI agents read your entire data room across 9 domains, cross-reference findings no single reviewer connects, and trace every one to an exact page and quote.
   </p>
   <p align="center">
+    <strong>Citation-verified, not RAG.</strong> Agents read the documents directly instead of retrieving embedded chunks, and citations are checked against the extracted source text, and P0/P1 quotes get a deterministic fidelity re-check. See <a href="docs/knowledge-architecture.md#2-why-not-vector-rag">why not vector RAG</a>.
+  </p>
+  <p align="center">
     <a href="https://pypi.org/project/dd-agents/"><img src="https://img.shields.io/pypi/v/dd-agents.svg" alt="PyPI version"></a>
     <a href="https://pypi.org/project/dd-agents/"><img src="https://img.shields.io/pypi/dm/dd-agents.svg" alt="PyPI downloads"></a>
     <a href="https://github.com/zoharbabin/due-diligence-agents/actions"><img src="https://github.com/zoharbabin/due-diligence-agents/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -69,7 +72,17 @@ The numbers tell the story:
 
 This tool runs all nine workstreams in parallel across every document, cross-references findings automatically, and produces structured analysis your team can search, filter, and drill into — the kind of cross-domain picture that used to take weeks to assemble manually.
 
-**Who uses this:** Corp dev teams screening targets, PE firms running portfolio DD, legal teams doing contract review, advisors accelerating workstreams. Anyone who needs to search hundreds of contracts and connect findings across domains — it's already run on real acquisitions, not just demo data rooms.
+**Who uses this:** Corp dev teams screening targets, PE firms running portfolio DD, legal teams doing contract review, advisors accelerating workstreams. Anyone who needs to search hundreds of contracts and connect findings across domains. It has already run on real acquisitions, not just demo data rooms.
+
+**Built for small teams:**
+
+| If you are | What you get |
+|------------|--------------|
+| A boutique PE firm | Nine-domain coverage on every deal without a bench of reviewers. You run it yourself, on your own infrastructure and LLM account. |
+| A solo M&A advisor | A first pass across the whole data room in one run, with every finding cited so you can check it fast. Your judgment stays the deliverable. |
+| A mid-market corp-dev team | Cross-domain findings, a Go/No-Go view and Excel output your team can filter and share. |
+
+You can run it on your own machine or in your own cloud account. Document text is sent to the LLM provider you configure. See [Model Providers](docs/user-guide/model-providers.md).
 
 ## What You Can Do
 

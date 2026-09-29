@@ -204,6 +204,12 @@ At the scale of a typical data room (200 customers, 600-1,000 governance edges),
 
 At 100,000+ edges, this decision would be worth revisiting. At our current scale, simplicity wins.
 
+**If you hit the ceiling** (graph builds or queries slow down noticeably, or the graph no longer fits in memory):
+
+1. Keep NetworkX as the in-memory query layer. Load a per-deal or per-subject subgraph, not the whole graph.
+2. If you need a server graph store, put it behind `DealKnowledgeGraph` (`knowledge/graph.py`). `save()`, `load()` and `to_serializable()` define the data that must round-trip.
+3. Do not swap in a vector-graph hybrid to fix graph scale. Graph and vector search stay separate tools (see above).
+
 ---
 
 ## 6. Map-Merge-Resolve: Analysis Without Losing Context
@@ -392,6 +398,12 @@ Every architecture embodies tradeoffs. These are the ones we made explicitly, wi
 **Chose**: Three-tier file-based JSON/JSONL.
 **Why**: At 400 documents / 200 subjects, file-based queries complete in <1 second. Agent outputs are naturally per-subject JSON files. Audit trail is human-readable. No deployment dependency.
 **Reconsidering at**: 10,000+ subjects.
+**If you hit the ceiling** (listing or reading per-subject files becomes the slow step in a run):
+
+1. Keep the per-subject file contract. Findings stay one JSON file per subject at `findings/{agent_name}/{subject_safe_name}.json`. Never move to aggregate files.
+2. Move only the read-heavy indexes and lookups (knowledge index, entity cache) into a database. Treat the JSON files as the record and the database as a rebuildable index.
+3. Preserve the three tiers (`persistence/tiers.py`, `TierManager`): PERMANENT is never wiped, VERSIONED is archived per run, FRESH is rebuilt each run. A database must honor the same lifecycle.
+4. Run on a copy of a finished project first and compare reports before switching.
 
 ### Thoroughness vs. speed
 

@@ -8,7 +8,11 @@ hide:
 
 **Legal flags a risk. Finance flags another. We connect and cite.** Open-source forensic M&A due diligence — 13 AI agents read your entire data room across 9 specialist domains, cross-reference the findings no single reviewer connects, and trace every one to an exact page and verbatim quote. Quality-gated HTML + Excel reports.
 
+**Citation-verified, not RAG.** Agents read the documents directly instead of retrieving embedded chunks, and citations are checked against the extracted source text, and P0/P1 quotes get a deterministic fidelity re-check. See [why not vector RAG](knowledge-architecture.md#2-why-not-vector-rag).
+
 Battle-tested across multiple completed acquisitions — the fail-closed quality gates and verification stack exist because of what actually broke on real deals, not hypothetical edge cases.
+
+**Built for small teams:** boutique PE firms, solo M&A advisors and mid-market corp-dev teams that need nine-domain coverage without a bench of reviewers. You run it on your own machine or cloud account, and document text goes to the LLM provider you configure. See [Model Providers](user-guide/model-providers.md).
 
 ## Quick Start
 

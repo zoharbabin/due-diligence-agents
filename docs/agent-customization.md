@@ -212,6 +212,12 @@ A starter library of deal-shape profiles ships in
 Run `dd-agents agents preview --agent legal` against a project whose
 `dd-config/agents/legal.md` declares `extends: saas` to see the merged result.
 
+### AML and sanctions coverage
+
+The Regulatory specialist (AML, BSA, OFAC and sanctions are in its keyword and focus list) and the `regulated-fintech` profile (AML/KYC adequacy) review **what the data room contains**: the target's own AML program documents, licenses, examinations, consent orders and sanctions-related contract terms.
+
+dd-agents does **not** screen parties against sanctions, debarment or exclusion lists. A clean AML/sanctions section in a report means the data room showed no issue. It does not mean the target, its owners or its counterparties were checked against any list. Do that screening separately.
+
 ---
 
 ## The safety floor (always enforced)

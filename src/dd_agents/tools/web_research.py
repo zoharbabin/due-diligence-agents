@@ -1,6 +1,6 @@
 """Web research tool definition (Issue #139).
 
-Provides the tool schema for the optional google-researcher-mcp integration.
+Provides the tool schema for the optional web-researcher-mcp integration.
 The actual web research is performed by the MCP server at runtime; this module
 defines the tool interface and returns structured results.
 """
@@ -14,8 +14,8 @@ from typing import Any
 def web_research_tool_schema() -> dict[str, Any]:
     """Return the tool definition schema for web research.
 
-    This schema is registered with the Judge agent when
-    ``web_research_enabled`` is True in the deal config.
+    Not registered with any agent yet: ``JudgeConfig.web_research_enabled``
+    is reserved and nothing reads it.
     """
     return {
         "name": "web_research",
