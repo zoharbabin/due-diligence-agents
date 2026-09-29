@@ -171,7 +171,9 @@ class JudgeConfig(BaseModel):
     )
     web_research_enabled: bool = Field(
         default=False,
-        description="Enable web research via google-researcher-mcp for claim verification (Issue #139).",
+        description=(
+            "Reserved for web research via web-researcher-mcp (Issue #139). Currently has no effect: no agent reads it."
+        ),
     )
 
 

@@ -297,7 +297,7 @@ Controls the optional Judge agent that reviews specialist findings:
   - `p3`: 0.0 (skip informational findings)
 - `ocr_completeness_check`: verify OCR extraction quality (default: true)
 - `cross_agent_contradiction_check`: detect conflicting findings across agents (default: true)
-- `web_research_enabled`: enable web research via google-researcher-mcp for claim verification (default: false)
+- `web_research_enabled`: reserved for web research via [web-researcher-mcp](https://github.com/zoharbabin/web-researcher-mcp) claim verification (default: false). **Currently has no effect:** no agent reads it yet, so setting it to `true` changes nothing.
 
 ### extraction (optional)
 

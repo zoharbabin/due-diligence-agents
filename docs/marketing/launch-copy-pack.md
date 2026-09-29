@@ -15,6 +15,20 @@
 
 ---
 
+## Technical differentiator: citation-verified, not RAG
+
+Use this as the technical proof line on any surface with room for one more sentence. Source of truth: `docs/knowledge-architecture.md` section 2.
+
+> **Citation-verified, not RAG.** Agents read the documents directly instead of retrieving embedded chunks, and citations are checked against the extracted source text, and P0/P1 quotes get a deterministic fidelity re-check.
+
+Rules:
+- Describe dd-agents' own architecture only. Never name or compare another product.
+- Keep "not RAG" scoped to the analysis path. Vector search exists as an optional supplementary tool, so do not write "no vector search".
+- Do not pair it with "nothing leaves your machine". Document text goes to the configured LLM provider.
+- Do not claim zero hallucinations. The claim is that citations are checked and unverified ones are caught.
+
+---
+
 ## 1. Product Hunt Listing Fields
 
 | Field | Value | Chars |
@@ -45,7 +59,7 @@ As a corp-dev lead, I'd sit on top of siloed advisor reports — legal, finance,
 
 So I built Due Diligence Agents. 13 AI agents read your entire data room across 9 domains (Legal, Finance, Commercial, Product/Tech, Cybersecurity, HR, Tax, Regulatory, ESG), cross-reference what no single-domain reviewer ever links, and trace every finding to an exact page and a verbatim quote. If a finding can't be verified against the source, the quality gate halts rather than ship it.
 
-What makes it different: the cross-domain connection is the whole point, and forensic citation is the proof. It's been run on real acquisitions, not just synthetic benchmarks. It's open-source (Apache-2.0) and runs locally — your documents only leave as API calls to your own LLM provider. **No vendor lock-in:** run it on the Anthropic API, your own AWS Bedrock or Google Vertex account, or *any* model (GPT, Gemini, a local model) behind an Anthropic-compatible gateway — all by env config, no code change. `dd-agents doctor` verifies your setup before a run, and every run records which provider/model produced the findings. It accelerates your advisors; humans still decide.
+What makes it different: the cross-domain connection is the whole point, and forensic citation is the proof. It is citation-verified, not RAG: agents read the documents directly instead of retrieving embedded chunks, and citations are checked against the extracted source text, and P0/P1 quotes get a deterministic fidelity re-check. It's been run on real acquisitions, not just synthetic benchmarks. It's open-source (Apache-2.0) and runs locally — your documents only leave as API calls to your own LLM provider. **No vendor lock-in:** run it on the Anthropic API, your own AWS Bedrock or Google Vertex account, or *any* model (GPT, Gemini, a local model) behind an Anthropic-compatible gateway — all by env config, no code change. `dd-agents doctor` verifies your setup before a run, and every run records which provider/model produced the findings. It accelerates your advisors; humans still decide.
 
 See a sample report (no install): https://zoharbabin.com/due-diligence-agents/sample-report/
 Code: https://github.com/zoharbabin/due-diligence-agents · `pip install dd-agents`

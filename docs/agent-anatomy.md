@@ -113,6 +113,8 @@ usually says, what to do if it's missing" notes).
 > `specialists/*.md` file for the full, current playbook. That file is the
 > source of truth; this table just orients you.
 
+> **AML and sanctions:** the Regulatory specialist reviews what the data room contains (AML program documents, licenses, examinations, sanctions-related terms). It does not screen parties against sanctions lists. See [Agent Customization](agent-customization.md#aml-and-sanctions-coverage).
+
 If a specialist looks for something but the document is silent, it's instructed
 to record a **gap** ("Not Found") rather than guess — a deliberate, auditable
 "we looked and it wasn't there."

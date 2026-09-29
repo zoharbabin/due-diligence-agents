@@ -7,6 +7,8 @@ extractor instead of markitdown.
 
 from __future__ import annotations
 
+import io
+import zipfile
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
@@ -319,6 +321,111 @@ class TestMediaFileRouting:
 
         mock_gen.assert_called_once()
         mock_media.assert_not_called()
+
+
+# ===================================================================
+# Quality gates on the generic (Office/other) chain
+# ===================================================================
+
+
+def _minimal_docx_bytes(text: str) -> bytes:
+    """Build a small but valid .docx from raw parts (no python-docx dependency)."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(
+            "[Content_Types].xml",
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="xml" ContentType="application/xml"/>'
+            '<Override PartName="/word/document.xml" '
+            'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+            "</Types>",
+        )
+        zf.writestr(
+            "_rels/.rels",
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" '
+            'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" '
+            'Target="word/document.xml"/></Relationships>',
+        )
+        zf.writestr(
+            "word/document.xml",
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+            f"<w:body><w:p><w:r><w:t>{text}</w:t></w:r></w:p></w:body></w:document>",
+        )
+    return buf.getvalue()
+
+
+class TestGenericChainQualityGates:
+    """Binary garbage must fail closed on the generic chain, like the PDF chain."""
+
+    def test_truncated_docx_fails_closed(self, tmp_path: Path) -> None:
+        pipeline = _make_pipeline(tmp_path)
+        full = _minimal_docx_bytes("Synthetic clause text. " * 40)
+        docx_file = tmp_path / "data_room" / "truncated.docx"
+        docx_file.write_bytes(full[: len(full) // 2])
+        out_dir = tmp_path / "output"
+
+        entry = pipeline.extract_single(docx_file, out_dir)
+
+        assert entry.method == "failed"
+        assert entry.bytes_extracted == 0
+        assert not any(out_dir.glob("*.md")) and not any(out_dir.glob("*.txt"))
+
+    def test_binary_garbage_with_office_extension_fails_closed(self, tmp_path: Path) -> None:
+        pipeline = _make_pipeline(tmp_path)
+        out_dir = tmp_path / "output"
+        for name in ("garbage.docx", "garbage.rtf"):
+            f = tmp_path / "data_room" / name
+            f.write_bytes(_ZIP_MAGIC + bytes(range(256)) * 20)
+
+            entry = pipeline.extract_single(f, out_dir)
+
+            assert entry.method == "failed", name
+            assert entry.bytes_extracted == 0, name
+
+    def test_failure_reasons_are_recorded(self, tmp_path: Path) -> None:
+        pipeline = _make_pipeline(tmp_path)
+        f = tmp_path / "data_room" / "garbage.docx"
+        f.write_bytes(_ZIP_MAGIC + bytes(range(256)) * 20)
+
+        entry = pipeline.extract_single(f, tmp_path / "output")
+
+        assert entry.fallback_chain[:2] == ["markitdown", "direct_read"]
+        assert entry.failure_reasons
+
+    def test_control_char_corruption_fails_closed(self, tmp_path: Path) -> None:
+        pipeline = _make_pipeline(tmp_path)
+        f = tmp_path / "data_room" / "corrupt.docx"
+        # Printable text with ~5% ESC bytes: passes readability, fails the control-char gate.
+        f.write_text(("Synthetic agreement text for Subject A. " * 2 + "\x1b" * 4) * 30)
+
+        entry = pipeline.extract_single(f, tmp_path / "output")
+
+        assert entry.method == "failed"
+
+    def test_valid_docx_still_extracts(self, tmp_path: Path) -> None:
+        pipeline = _make_pipeline(tmp_path)
+        docx_file = tmp_path / "data_room" / "valid.docx"
+        docx_file.write_bytes(_minimal_docx_bytes("Synthetic termination clause for Subject A."))
+
+        entry = pipeline.extract_single(docx_file, tmp_path / "output")
+
+        assert entry.method != "failed"
+        assert entry.bytes_extracted > 0
+
+    def test_readable_text_with_unknown_extension_still_extracts(self, tmp_path: Path) -> None:
+        pipeline = _make_pipeline(tmp_path)
+        f = tmp_path / "data_room" / "notes.unknownext"
+        f.write_text("This is a plain text note about a synthetic agreement between parties. " * 5)
+
+        entry = pipeline.extract_single(f, tmp_path / "output")
+
+        assert entry.method != "failed"
+        assert entry.bytes_extracted > 0
 
 
 # ===================================================================
