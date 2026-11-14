@@ -9,17 +9,17 @@
 # the litellm_params decide which model actually answers.
 model_list:
   # Example: map a Claude id dd-agents actually requests to OpenAI GPT-4o.
-  - model_name: claude-sonnet-4-6
+  - model_name: claude-sonnet-5-5
     litellm_params:
       model: openai/gpt-4o
       api_key: os.environ/OPENAI_API_KEY
 
   # Example alternates (uncomment one and set its key/creds):
-  # - model_name: claude-sonnet-4-6
+  # - model_name: claude-sonnet-5-5
   #   litellm_params:
   #     model: gemini/gemini-2.5-flash
   #     api_key: os.environ/GEMINI_API_KEY
-  # - model_name: claude-sonnet-4-6
+  # - model_name: claude-sonnet-5-5
   #   litellm_params:
   #     model: bedrock/deepseek.v3.2          # non-Claude model on your Bedrock account
   #     aws_region_name: os.environ/AWS_REGION

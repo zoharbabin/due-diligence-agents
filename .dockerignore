@@ -19,3 +19,8 @@ build/
 *.egg
 .coverage
 htmlcov/
+.env.*
+cache/
+.devcontainer/
+examples/
+Formula/

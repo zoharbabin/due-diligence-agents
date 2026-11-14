@@ -5,7 +5,7 @@
 If you discover a security vulnerability, please report it responsibly:
 
 1. **Do NOT open a public GitHub issue** for security vulnerabilities.
-2. Email the maintainers with details of the vulnerability.
+2. Use [GitHub private vulnerability reporting](https://github.com/zoharbabin/due-diligence-agents/security/advisories/new).
 3. Include steps to reproduce, potential impact, and any suggested fixes.
 
 We will acknowledge receipt within 48 hours and aim to provide a fix or mitigation within 7 days for critical issues.

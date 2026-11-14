@@ -58,7 +58,7 @@ dd-agents run deal-config.json --resume-from 17
 dd-agents run deal-config.json --quick-scan --model-profile economy
 
 # Premium legal analysis, standard for the rest
-dd-agents run deal-config.json --model-override legal=claude-opus-4-8
+dd-agents run deal-config.json --model-override legal=claude-opus-5-5
 ```
 
 ---
@@ -436,7 +436,7 @@ dd-agents chat [OPTIONS]
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `--report` | Path | `runs/latest` | Path to the pipeline run directory |
-| `--model` | String | SDK default | Override the LLM model (e.g. `claude-sonnet-4-6`) |
+| `--model` | String | SDK default | Override the LLM model (e.g. `claude-sonnet-5-5`) |
 | `--max-cost` | Float | 10.00 | Maximum session cost in USD |
 | `--max-turns` | Int | 200 | Max tool-use turns per question (max: 500) |
 | `--no-limit` | Flag | Off | Remove per-turn caps for complex tasks (session cost is the only brake) |
@@ -467,7 +467,7 @@ dd-agents chat --no-tools
 dd-agents chat --no-limit --max-cost 25.0
 
 # Higher budget with specific model
-dd-agents chat --max-cost 20.0 --model claude-sonnet-4-6
+dd-agents chat --max-cost 20.0 --model claude-sonnet-5-5
 
 # Single question, non-interactively (scriptable — prints the answer and exits)
 dd-agents chat -q "What are the top 3 P0 findings and their citations?"

@@ -253,9 +253,9 @@ class TestPricingAgnostic:
         from dd_agents.agents.cost_tracker import _estimate_cost
 
         # Use a model whose table rate DIFFERS from the default fallback, so a
-        # regression to the fallback path would fail this test. Opus = 15/75.
-        # 1M input + 1M output = 15 + 75 = $90 (default would give $18).
-        assert _estimate_cost("claude-opus-4-8", 1_000_000, 1_000_000) == pytest.approx(90.0)
+        # regression to the fallback path would fail this test. Opus 5.5 = 4/20.
+        # 1M input + 1M output = 4 + 20 = $24 (default would give $18).
+        assert _estimate_cost("claude-opus-5-5", 1_000_000, 1_000_000) == pytest.approx(24.0)
 
     def test_unknown_model_falls_back_and_warns_once(self, caplog: pytest.LogCaptureFixture) -> None:
         import dd_agents.agents.cost_tracker as ct

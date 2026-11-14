@@ -32,12 +32,12 @@ class TestResolveModelAndRoute:
     def test_profile_default_when_no_route_or_override(self) -> None:
         am = AgentModelsConfig(profile="economy")
         # economy → Haiku for specialists (real profile resolution).
-        assert am.resolve_model("legal") == "claude-haiku-4-5-20251001"
+        assert am.resolve_model("legal") == "claude-haiku-5-5"
 
     def test_route_without_model_keeps_profile_model(self) -> None:
         # A route that only sets base_url (no model) must NOT blank the model.
         am = AgentModelsConfig(profile="economy", routes={"legal": AgentRoute(base_url="http://gw")})
-        assert am.resolve_model("legal") == "claude-haiku-4-5-20251001"
+        assert am.resolve_model("legal") == "claude-haiku-5-5"
 
 
 class TestRoutingFingerprint:
