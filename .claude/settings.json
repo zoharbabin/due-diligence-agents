@@ -1,38 +1,40 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
+    "defaultMode": "acceptEdits",
     "allow": [
-      "Bash(python:*)",
-      "Bash(python3:*)",
-      "Bash(pip:*)",
-      "Bash(pytest:*)",
-      "Bash(mypy:*)",
-      "Bash(ruff:*)",
-      "Bash(git:*)",
-      "Bash(ls:*)",
-      "Bash(mkdir:*)",
-      "Bash(mv:*)",
-      "Bash(cp:*)",
-      "Bash(touch:*)",
-      "Bash(chmod:*)",
-      "Bash(head:*)",
-      "Bash(tail:*)",
-      "Bash(find:*)",
-      "Bash(grep:*)",
-      "Bash(rg:*)",
-      "Bash(cat:*)",
-      "Bash(wc:*)",
-      "Bash(diff:*)",
-      "Bash(echo:*)",
-      "Bash(docker:*)",
-      "Bash(docker-compose:*)",
-      "Bash(dd-agents:*)",
-      "Write(*)",
-      "Edit(*)",
-      "Read(*)"
+      "Bash(python *)",
+      "Bash(python3 *)",
+      "Bash(pip *)",
+      "Bash(pytest *)",
+      "Bash(mypy *)",
+      "Bash(ruff *)",
+      "Bash(git *)",
+      "Bash(ls *)",
+      "Bash(chmod *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(grep *)",
+      "Bash(rg *)",
+      "Bash(cat *)",
+      "Bash(wc *)",
+      "Bash(diff *)",
+      "Bash(echo *)",
+      "Bash(docker build *)",
+      "Bash(docker compose *)",
+      "Bash(dd-agents *)"
+    ],
+    "ask": [
+      "Bash(git push *)",
+      "Bash(git reset *)",
+      "Bash(git clean *)",
+      "Bash(git rebase *)"
     ],
     "deny": [
       "Bash(rm -rf /*)",
-      "Bash(rm -rf ~/*)"
+      "Bash(rm -rf ~/*)",
+      "Read(./.env)",
+      "Read(./.env.local)"
     ]
   },
   "hooks": {
@@ -42,7 +44,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash scripts/post-edit-lint.sh"
+            "command": "bash \"${CLAUDE_PROJECT_DIR}/scripts/post-edit-lint.sh\""
           }
         ]
       }
@@ -53,7 +55,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash scripts/pre-commit-gate.sh"
+            "if": "Bash(git commit *)",
+            "command": "bash \"${CLAUDE_PROJECT_DIR}/scripts/pre-commit-gate.sh\""
           }
         ]
       }

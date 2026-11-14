@@ -1,6 +1,7 @@
 #!/bin/bash
-# Pre-commit gate: block git commit unless tests and type checks pass.
-# This hook fires before every Bash command. It only activates for git commit.
+# Pre-commit gate: block git commit unless tests, type checks and lint pass.
+# Registered as a PreToolUse hook on Bash with `if: Bash(git commit *)`.
+# `if` is best-effort, so the command check below stays as the enforcing guard.
 
 INPUT=$(cat)
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
@@ -9,23 +10,22 @@ COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
 if echo "$COMMAND" | grep -q "git commit"; then
     cd "$(git rev-parse --show-toplevel)" 2>/dev/null || exit 0
 
-    # Run unit tests (stdin redirected to /dev/null to avoid depleted stdin issues)
-    if ! python -m pytest tests/unit/ -x -q --tb=no </dev/null 2>/dev/null; then
-        echo "BLOCKED: Unit tests must pass before committing. Run: pytest tests/unit/ -x" >&2
-        exit 2
-    fi
+    # Run a check; on failure, print the last lines of its output and block (exit 2).
+    run_gate() {
+        local label="$1"; shift
+        local out
+        if ! out=$("$@" </dev/null 2>&1); then
+            {
+                echo "BLOCKED: $label failed. Fix it before committing."
+                echo "$out" | tail -n 30
+            } >&2
+            exit 2
+        fi
+    }
 
-    # Run type check
-    if ! python -m mypy src/ --strict --no-error-summary </dev/null 2>/dev/null; then
-        echo "BLOCKED: Type check must pass before committing. Run: mypy src/ --strict" >&2
-        exit 2
-    fi
-
-    # Run lint
-    if ! python -m ruff check src/ tests/ --quiet </dev/null 2>/dev/null; then
-        echo "BLOCKED: Lint must pass before committing. Run: ruff check src/ tests/" >&2
-        exit 2
-    fi
+    run_gate "Unit tests (pytest tests/unit/ -x)" python -m pytest tests/unit/ -x -q --tb=short
+    run_gate "Type check (mypy src/ --strict)" python -m mypy src/ --strict --no-error-summary
+    run_gate "Lint (ruff check src/ tests/)" python -m ruff check src/ tests/ --quiet
 fi
 
 exit 0

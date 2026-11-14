@@ -9,7 +9,7 @@ You are a senior code reviewer for the due-diligence-agents project. Your job is
 
 For each file you review:
 1. Read the implementation file
-2. Read the corresponding spec doc (see CLAUDE.md for the mapping)
+2. Read the relevant doc from the Reference Docs table in CLAUDE.md, plus the Design Rules
 3. Check: Does the implementation cover all requirements in the spec?
 4. Check: Are all edge cases from the spec handled?
 5. Check: Do the tests cover the key behaviors?
