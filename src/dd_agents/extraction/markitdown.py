@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 from dd_agents.extraction._constants import CONFIDENCE_FAILURE, CONFIDENCE_FALLBACK_READ, PLAINTEXT_EXTENSIONS
 from dd_agents.extraction._constants import CONFIDENCE_MARKITDOWN as _CONFIDENCE_SUCCESS
 from dd_agents.extraction._helpers import read_text
+from dd_agents.extraction.office_convert import convert_to_markdown
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -105,17 +106,13 @@ class MarkitdownExtractor:
         caller catches and falls through to the text-read fallback.
         """
         try:
-            from markitdown import MarkItDown
+            text = convert_to_markdown(filepath)
         except ImportError:
             logger.warning(
                 "markitdown is not installed -- falling back to direct read.  Install with: pip install markitdown"
             )
             raise
 
-        converter = MarkItDown()
-        result = converter.convert(str(filepath))
-
-        text = result.text_content if hasattr(result, "text_content") else ""
         if text and text.strip():
             return text, _CONFIDENCE_SUCCESS
         return "", CONFIDENCE_FAILURE

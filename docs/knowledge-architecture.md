@@ -124,7 +124,7 @@ Each file is routed through a fallback chain based on pre-inspection (~8ms per f
 ```
 Normal PDF:   pymupdf → pdftotext → markitdown → GLM-OCR → Tesseract → Claude vision
 Scanned PDF:  GLM-OCR → Tesseract → Claude vision (skips text extractors)
-Office docs:  markitdown (handles DOCX, PPTX, XLSX natively)
+Office docs:  markitdown (handles DOCX, PPTX, XLSX natively). Python 3.15 has no markitdown, so `extraction/office_convert.py` converts DOCX, PPTX, XLSX and HTML directly; legacy .doc/.xls/.ppt/.rtf and images are not converted there
 Images:       markitdown → GLM-OCR → Tesseract → Claude vision → placeholder
 ```
 
