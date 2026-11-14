@@ -28,12 +28,6 @@
       "Bash(docker compose *)",
       "Bash(dd-agents *)"
     ],
-    "ask": [
-      "Bash(git push *)",
-      "Bash(git reset *)",
-      "Bash(git clean *)",
-      "Bash(git rebase *)"
-    ],
     "deny": [
       "Bash(rm -rf /*)",
       "Bash(rm -rf ~/*)",
