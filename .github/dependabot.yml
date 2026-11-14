@@ -15,7 +15,17 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # Supported Python is 3.12 and 3.13 (CI matrix). Move this floor with the matrix.
+      - dependency-name: python
+        versions: [">=3.14"]
   - package-ecosystem: pre-commit
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # mypy hook additional_dependencies mirror the pyproject.toml floors. Bump them there first.
+      - dependency-name: click
+      - dependency-name: networkx
+      - dependency-name: openpyxl
+      - dependency-name: pydantic
