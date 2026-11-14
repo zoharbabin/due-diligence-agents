@@ -366,10 +366,9 @@ def _col_letter(index: int) -> str:
 
 def _read_with_markitdown(path: Path) -> str:
     """Read Word/PowerPoint using markitdown."""
-    from markitdown import MarkItDown
+    from dd_agents.extraction.office_convert import convert_to_markdown
 
-    result = MarkItDown().convert(str(path))
-    text: str = result.text_content
+    text = convert_to_markdown(path)
     if not text or not text.strip():
         raise ValueError(f"markitdown returned empty content for {path.name}")
     return text

@@ -21,6 +21,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
     "Topic :: Office/Business",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Intended Audience :: Financial and Insurance Industry",
@@ -36,7 +37,13 @@ dependencies = [
     "networkx>=3.0",
     "numpy>=1.24",
     "rapidfuzz>=3.0",
-    "markitdown[docx,xlsx,pptx]>=0.1",
+    # markitdown needs onnxruntime (via magika), which has no wheels for Python 3.15 yet.
+    # Without it, extraction/office_convert.py converts with the libraries below.
+    "markitdown[docx,xlsx,pptx]>=0.1; python_version < '3.15'",
+    "mammoth>=1.8",
+    "markdownify>=0.13",
+    "python-pptx>=1.0",
+    "beautifulsoup4>=4.12",
     "xlrd>=2.0",
     "scikit-learn>=1.5",
     "click>=8.0",

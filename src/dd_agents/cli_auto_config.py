@@ -202,11 +202,9 @@ def convert_document_to_markdown(filepath: Path) -> str:
 def _convert_via_markitdown(filepath: Path) -> str:
     """Convert using markitdown library. Returns empty string on failure."""
     try:
-        from markitdown import MarkItDown
+        from dd_agents.extraction.office_convert import convert_to_markdown
 
-        converter = MarkItDown()
-        result = converter.convert(str(filepath))
-        text = result.text_content if hasattr(result, "text_content") else ""
+        text = convert_to_markdown(filepath)
         if text and text.strip():
             logger.debug("markitdown converted %s (%d chars)", filepath.name, len(text))
             return text

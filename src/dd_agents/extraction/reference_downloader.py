@@ -432,17 +432,16 @@ def _extract_text(raw_bytes: bytes, url: str) -> str:
     try:
         import tempfile
 
-        from markitdown import MarkItDown
+        from dd_agents.extraction.office_convert import convert_to_markdown
 
         with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as tmp:
             tmp.write(raw_bytes)
             tmp_path = tmp.name
 
-        md = MarkItDown()
-        result = md.convert(tmp_path)
-        if result and result.text_content and len(result.text_content.strip()) >= 50:
+        converted = convert_to_markdown(tmp_path)
+        if len(converted.strip()) >= 50:
             # Prepend source URL as a header.
-            return f"# External Reference: {url}\n\n{result.text_content}"
+            return f"# External Reference: {url}\n\n{converted}"
     except Exception:
         logger.debug("markitdown failed for %s, falling back to raw decode", url)
     finally:
