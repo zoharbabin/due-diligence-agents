@@ -60,6 +60,12 @@ class FileDiscovery:
                 full_path = Path(dirpath) / fname
                 rel_path = str(full_path.relative_to(data_room))
 
+                # A symlink whose target leaves the data room would let a
+                # planted link pull outside files into extraction and prompts.
+                if full_path.is_symlink() and not full_path.resolve().is_relative_to(data_room):
+                    logger.warning("Skipping symlink that points outside the data room: %s", rel_path)
+                    continue
+
                 try:
                     st = full_path.stat()
                     size = st.st_size

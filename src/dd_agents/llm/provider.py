@@ -148,6 +148,12 @@ def resolve_provider() -> ProviderInfo:
     return ProviderInfo(provider=provider, base_url=base_url, max_output_tokens=_max_output_tokens())
 
 
+# Built-in tools no dd-agents call may use. Shell, network and sub-agent tools
+# are never part of the pipeline's contract; denying them here (the one place
+# options are built) holds even when a caller runs with bypassPermissions.
+DENIED_BUILTIN_TOOLS: tuple[str, ...] = ("Bash", "WebFetch", "WebSearch", "Agent", "Task", "NotebookEdit")
+
+
 def build_agent_options(
     *,
     model: str | None = None,
@@ -181,6 +187,9 @@ def build_agent_options(
 
     if model is not None:
         kwargs["model"] = model
+
+    denied = list(dict.fromkeys([*(kwargs.get("disallowed_tools") or []), *DENIED_BUILTIN_TOOLS]))
+    kwargs["disallowed_tools"] = denied
 
     cli_path = resolve_sdk_cli_path()
     if cli_path is not None:

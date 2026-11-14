@@ -9,6 +9,8 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from dd_agents.reporting.excel import _sanitize_cell
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -53,6 +55,14 @@ class SearchExcelWriter:
 
         self._write_summary(wb, results, prompts)
         self._write_details(wb, results, prompts)
+
+        # Subject names, answers and quotes come from data-room documents:
+        # defuse anything a spreadsheet would evaluate as a formula.
+        for ws in wb.worksheets:
+            for row in ws.iter_rows():
+                for cell in row:
+                    if isinstance(cell.value, str):
+                        cell.value = _sanitize_cell(cell.value)
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         wb.save(str(output_path))

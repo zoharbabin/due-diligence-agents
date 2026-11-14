@@ -342,3 +342,14 @@ class TestSearchExcelWriter:
         ws = wb["Summary"]
 
         assert ws.cell(row=2, column=6).value == "NOT_ADDRESSED"
+
+
+def test_formula_like_document_text_is_neutralized(tmp_path: Path) -> None:
+    results = _make_results()
+    results[0].subject_name = "=1+1"
+    results[0].columns["Q1"].citations[0].exact_quote = '=HYPERLINK("http://example.invalid")'
+    out = SearchExcelWriter().write(results, _make_prompts(), tmp_path / "r.xlsx")
+    wb = load_workbook(out)
+    values = [c.value for ws in wb.worksheets for row in ws.iter_rows() for c in row if isinstance(c.value, str)]
+    assert not any(v.startswith(("=", "+", "@")) for v in values)
+    assert "'=1+1" in values

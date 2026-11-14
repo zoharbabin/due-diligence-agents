@@ -280,7 +280,13 @@ def assemble_safety_floor(agent_type: str) -> str:
 
 
 def wrap_untrusted(content: str) -> str:
-    """Wrap untrusted data-room *content* in provenance delimiters (§7.1)."""
+    """Wrap untrusted data-room *content* in provenance delimiters (§7.1).
+
+    Delimiter look-alikes inside *content* are neutralized so a document cannot
+    close the block early and have its remaining text read as instructions.
+    """
+    for marker in (UNTRUSTED_OPEN, UNTRUSTED_CLOSE):
+        content = content.replace(marker, marker.replace("<", "[").replace(">", "]"))
     return f"{UNTRUSTED_OPEN}\n{content}\n{UNTRUSTED_CLOSE}"
 
 

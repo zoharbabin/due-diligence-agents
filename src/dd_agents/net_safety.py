@@ -26,8 +26,12 @@ _BLOCKED_HOSTS: frozenset[str] = frozenset(
         "metadata.goog",
         "169.254.169.254",
         "169.254.170.2",  # AWS ECS task metadata
+        "100.100.100.200",  # Alibaba Cloud metadata
     }
 )
+
+# Only standard web ports are allowed (blocks probing of internal services).
+_ALLOWED_PORTS: frozenset[int] = frozenset({80, 443})
 
 
 class UnsafeURLError(ValueError):
@@ -41,6 +45,9 @@ def _is_unsafe_ip(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     by extracting and re-checking the embedded IPv4 address.
     """
     if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved or addr.is_multicast:
+        return True
+    # Anything not globally routable (includes CGNAT 100.64.0.0/10).
+    if not addr.is_global:
         return True
     # Check IPv4-mapped IPv6 addresses (::ffff:x.x.x.x)
     if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
@@ -119,6 +126,14 @@ def _validate_common(url: str, *, allow_http: bool = False) -> tuple[str, list[s
     if parsed.username or parsed.password:
         raise UnsafeURLError("URLs with embedded credentials (userinfo) are not allowed")
 
+    # Port check
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise UnsafeURLError(f"Invalid port in URL: {url!r}") from exc
+    if port is not None and port not in _ALLOWED_PORTS:
+        raise UnsafeURLError(f"URL port {port} not allowed (permitted: {sorted(_ALLOWED_PORTS)})")
+
     # Blocklist check
     if host in _BLOCKED_HOSTS:
         raise UnsafeURLError(f"Requests to {host!r} are blocked (cloud metadata endpoint)")
@@ -136,7 +151,8 @@ def validate_url(url: str, *, allow_http: bool = False) -> str:
     2. No userinfo component (``user:pass@host`` is rejected).
     3. Hostname does not resolve to a private/reserved IP range.
     4. Hostname is not a known cloud metadata endpoint.
-    5. IPv4-mapped IPv6 and multicast addresses are blocked.
+    5. IPv4-mapped IPv6, multicast and non-global (incl. CGNAT) addresses are blocked.
+    6. Port is 80 or 443.
 
     Returns the original *url* unchanged on success.
 

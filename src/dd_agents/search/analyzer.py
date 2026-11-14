@@ -29,7 +29,7 @@ import re
 from typing import TYPE_CHECKING, Any
 
 from dd_agents.agents.personas import DD_LEGAL_ANALYST
-from dd_agents.agents.prompt_constants import NO_FABRICATION
+from dd_agents.agents.prompt_constants import NO_FABRICATION, UNTRUSTED_DOCUMENT_RULE, wrap_untrusted
 from dd_agents.models.enums import Confidence
 from dd_agents.models.search import (
     SearchCitation,
@@ -780,7 +780,7 @@ class SearchAnalyzer:
         from dd_agents.llm import build_agent_options
 
         options_kwargs: dict[str, Any] = {
-            "system_prompt": system_prompt,
+            "system_prompt": f"{system_prompt}\n\n{UNTRUSTED_DOCUMENT_RULE}",
             "max_turns": 1,
             "permission_mode": "bypassPermissions",
             "tools": [],
@@ -965,7 +965,7 @@ class SearchAnalyzer:
             elif seg.is_partial:
                 page_info = f" (Part {seg.part_number} of {seg.total_parts})"
 
-            doc_block = f"\n---\n## Document: {seg.file_path}{page_info}\n---\n{seg.text}\n"
+            doc_block = f"\n---\n## Document: {seg.file_path}{page_info}\n---\n{wrap_untrusted(seg.text)}\n"
             parts.append(doc_block)
 
         return "\n".join(parts)

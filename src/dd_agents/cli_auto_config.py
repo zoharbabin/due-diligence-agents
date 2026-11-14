@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from rich.table import Table
 
-from dd_agents.agents.prompt_constants import NO_FABRICATION
+from dd_agents.agents.prompt_constants import NO_FABRICATION, UNTRUSTED_DOCUMENT_RULE, wrap_untrusted
 from dd_agents.agents.prompts.loader import load_named_prompt
 from dd_agents.cli_init import DEFAULT_FOCUS_AREAS, VALID_DEAL_TYPES
 
@@ -435,7 +435,7 @@ class DataRoomAnalyzer:
         if deal_type_hint:
             parts.append(f"## Deal Type (user-specified)\n{deal_type_hint}\n")
 
-        parts.append(f"## Data Room Directory Tree (depth 4)\n```\n{tree_output}\n```\n")
+        parts.append(f"## Data Room Directory Tree (depth 4)\n```\n{wrap_untrusted(tree_output)}\n```\n")
 
         # Statistics
         stats_lines = [
@@ -469,7 +469,7 @@ class DataRoomAnalyzer:
                 "The following excerpt from the SPA may contain entity names, "
                 "holding companies, and share structures. Use these to improve "
                 "entity resolution.\n\n"
-                f"{spa_entities[:5000]}\n"
+                f"{wrap_untrusted(spa_entities[:5000])}\n"
             )
 
         return "\n".join(parts)
@@ -632,9 +632,11 @@ class DataRoomAnalyzer:
         # Model inherits the provider default unless pinned via DD_AUTOCONFIG_MODEL.
         options = build_agent_options(
             model=os.getenv("DD_AUTOCONFIG_MODEL") or None,
-            system_prompt=system_prompt,
+            system_prompt=f"{system_prompt}\n\n{UNTRUSTED_DOCUMENT_RULE}",
             max_turns=3,
             permission_mode="bypassPermissions",
+            tools=[],
+            allowed_tools=[],
         )
 
         text_parts: list[str] = []

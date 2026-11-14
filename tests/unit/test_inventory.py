@@ -126,6 +126,18 @@ class TestFileDiscovery:
         paths = {f.path for f in files}
         assert not any("dd_output" in p for p in paths)
 
+    def test_discover_skips_symlink_outside_data_room(self, tmp_path: Path) -> None:
+        """discover should skip symlinks that resolve outside the data room."""
+        dr = _create_data_room(tmp_path)
+        outside = tmp_path / "outside.txt"
+        outside.write_text("not part of the data room")
+        (dr / "link_out.txt").symlink_to(outside)
+        (dr / "link_in.pdf").symlink_to(dr / "pricing_schedule.pdf")
+
+        paths = {f.path for f in FileDiscovery().discover(dr)}
+        assert "link_out.txt" not in paths
+        assert "link_in.pdf" in paths
+
     def test_discover_excludes_patterns(self, tmp_path: Path) -> None:
         """discover should skip files matching exclude patterns."""
         dr = _create_data_room(tmp_path)

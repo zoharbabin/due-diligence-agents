@@ -521,6 +521,24 @@ class TestChatEngine:
             assert "Stop" not in hooks
             assert "PreToolUse" in hooks
 
+    def test_pre_tool_guard_fails_closed(
+        self, run_dir: Path, project_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import asyncio
+
+        from dd_agents.chat.engine import ChatEngine
+
+        def _boom(*args: object, **kwargs: object) -> dict[str, str]:
+            raise RuntimeError("guard failure")
+
+        monkeypatch.setattr("dd_agents.hooks.pre_tool.path_guard", _boom)
+        engine = ChatEngine(run_dir=run_dir, project_dir=project_dir)
+        hooks = engine._build_hooks()
+        assert hooks is not None
+        hook = hooks["PreToolUse"][0].hooks[0]
+        result = asyncio.run(hook({"tool_name": "Glob", "tool_input": {}}))
+        assert result["decision"] == "block"
+
     def test_memory_store_initialized(self, run_dir: Path, project_dir: Path) -> None:
         from dd_agents.chat.engine import ChatEngine
 
