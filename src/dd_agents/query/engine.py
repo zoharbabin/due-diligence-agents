@@ -154,6 +154,8 @@ class QueryEngine:
             options = build_agent_options(
                 model=os.getenv("DD_QUERY_MODEL") or None,
                 max_turns=1,
+                tools=[],
+                allowed_tools=[],
             )
 
             answer_parts: list[str] = []

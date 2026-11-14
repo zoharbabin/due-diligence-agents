@@ -676,7 +676,8 @@ class ChatEngine:
                 if result["decision"] == "block":
                     return {"decision": "block", "reason": result["reason"]}
             except Exception:
-                pass
+                logger.warning("chat path_guard raised; blocking tool call", exc_info=True)
+                return {"decision": "block", "reason": "guard error"}
             return {}
 
         self._hooks = {

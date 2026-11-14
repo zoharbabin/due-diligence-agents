@@ -10,6 +10,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from dd_agents.extraction.reference_downloader import (
     ReferenceDownloader,
     _url_to_safe_filename,
@@ -400,3 +402,27 @@ class TestPrecompiledKeywordRegex:
         """Pre-compiled pattern rejects non-keyword URLs."""
         assert is_reference_url("https://example.com/products/widget") is False
         assert is_reference_url("https://example.com/blog/post") is False
+
+
+class TestPinnedConnection:
+    """Connections must validate the address they actually connect to."""
+
+    def test_pinned_socket_rejects_internal_resolution(self) -> None:
+        from dd_agents.extraction.reference_downloader import _pinned_socket
+        from dd_agents.net_safety import UnsafeURLError
+
+        with (
+            patch("dd_agents.net_safety.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("127.0.0.1", 0))]),
+            pytest.raises(UnsafeURLError),
+        ):
+            _pinned_socket("example.com", 443, 5)
+
+    def test_pinned_socket_connects_to_validated_ip(self) -> None:
+        from dd_agents.extraction.reference_downloader import _pinned_socket
+
+        with (
+            patch("dd_agents.net_safety.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("93.184.216.34", 0))]),
+            patch("dd_agents.extraction.reference_downloader.socket.create_connection") as conn,
+        ):
+            _pinned_socket("example.com", 443, 5)
+        conn.assert_called_once_with(("93.184.216.34", 443), 5)

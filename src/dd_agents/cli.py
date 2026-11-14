@@ -763,7 +763,7 @@ def _probe_provider() -> tuple[bool, str]:
 
             from dd_agents.llm import build_agent_options
 
-            options = build_agent_options(max_turns=1)
+            options = build_agent_options(max_turns=1, tools=[], allowed_tools=[])
             text = ""
             async for message in query(prompt="Reply with the single word: OK", options=options):
                 for attr in ("content", "result", "text"):

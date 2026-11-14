@@ -2297,8 +2297,10 @@ class TestSystemPromptConstraints:
 
         assert len(captured_options) == 1
         opts = captured_options[0]
-        # disallowed_tools is not used — tool control is handled via hooks
-        assert "disallowed_tools" not in opts.kwargs  # type: ignore[union-attr]
+        # Built-in shell/web/sub-agent tools are denied at the seam.
+        from dd_agents.llm.provider import DENIED_BUILTIN_TOOLS
+
+        assert set(DENIED_BUILTIN_TOOLS) <= set(opts.kwargs["disallowed_tools"])  # type: ignore[union-attr]
 
 
 # ---------------------------------------------------------------------------

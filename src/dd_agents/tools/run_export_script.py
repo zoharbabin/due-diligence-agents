@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -111,6 +112,63 @@ _BLOCKED_ATTR_CALLS: set[str] = {
     "forkpty",
     "import_module",
 }
+
+
+# Runtime guard, installed after the preamble imports and before user code.
+# The static scan above can be sidestepped (``from os import system``, dynamic
+# attribute lookup, asyncio subprocesses, ...), so the subprocess also installs
+# a PEP 578 audit hook that denies process creation, network use and writes
+# outside OUTPUT_DIR / the temp dir at the interpreter level. Best-effort
+# defense in depth, not an OS sandbox.
+_RUNTIME_GUARD = """
+def _install_guard():
+    import os, sys, tempfile
+
+    # Bind everything the hook needs now, so later monkeypatching of os/sys
+    # by the script cannot weaken the checks.
+    realpath, fsdecode, sep, PathLike = os.path.realpath, os.fsdecode, os.sep, os.PathLike
+    roots = tuple(realpath(p) for p in (str(OUTPUT_DIR), tempfile.gettempdir()) if p)
+    denied = frozenset({
+        "subprocess.Popen", "os.system", "os.exec", "os.posix_spawn", "os.spawn",
+        "os.fork", "os.forkpty", "pty.spawn", "ctypes.dlopen", "ctypes.dlsym",
+        "socket.connect", "socket.bind", "socket.sendto", "socket.getaddrinfo",
+        "socket.gethostbyname", "socket.gethostbyaddr", "socket.sendmsg",
+    })
+    path_events = frozenset({
+        "os.remove", "os.rename", "os.rmdir", "os.mkdir", "os.truncate",
+        "os.chmod", "os.chown", "os.symlink", "os.link", "shutil.rmtree",
+        "shutil.copyfile", "shutil.move", "shutil.copytree",
+    })
+    write_flags = os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_APPEND | os.O_TRUNC
+
+    def inside(path):
+        try:
+            real = realpath(fsdecode(path))
+        except Exception:
+            return False
+        return any(real == r or real.startswith(r + sep) for r in roots)
+
+    def audit(event, args):
+        if event in denied:
+            raise PermissionError("blocked by export sandbox: " + event)
+        if event == "open":
+            path, mode, flags = args[0], args[1], args[2]
+            if isinstance(path, int):
+                return
+            writing = bool(flags & write_flags) or (isinstance(mode, str) and any(c in mode for c in "wax+"))
+            if writing and not inside(path):
+                raise PermissionError("blocked by export sandbox: write outside OUTPUT_DIR")
+        elif event in path_events:
+            for a in args[:2]:
+                if isinstance(a, (str, bytes, PathLike)) and not inside(a):
+                    raise PermissionError("blocked by export sandbox: " + event)
+
+    sys.addaudithook(audit)
+
+
+_install_guard()
+del _install_guard
+"""
 
 
 def _check_blocked_imports(code: str) -> set[str]:
@@ -220,7 +278,7 @@ def _check_blocked_imports(code: str) -> set[str]:
     return found
 
 
-def _build_safe_env(out_path: Path) -> dict[str, str]:
+def _build_safe_env(out_path: Path, scratch_dir: Path | None = None) -> dict[str, str]:
     """Build a minimal environment for the export subprocess.
 
     Only passes allowlisted variables plus OUTPUT_DIR.  This prevents
@@ -234,6 +292,10 @@ def _build_safe_env(out_path: Path) -> dict[str, str]:
             env[key] = val
     env["OUTPUT_DIR"] = str(out_path)
     env["PYTHONDONTWRITEBYTECODE"] = "1"
+    if scratch_dir is not None:
+        # Private temp dir: the runtime guard allows writes only here and in OUTPUT_DIR.
+        for key in ("TMPDIR", "TEMP", "TMP"):
+            env[key] = str(scratch_dir)
     return env
 
 
@@ -313,17 +375,18 @@ def run_export_script(
 
     """)
 
-    full_script = preamble + code
+    full_script = preamble + _RUNTIME_GUARD + "\n" + code
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8") as f:
         f.write(full_script)
         script_path = f.name
 
+    scratch_dir = Path(tempfile.mkdtemp(prefix="dd-export-"))
     try:
-        env = _build_safe_env(out_path)
+        env = _build_safe_env(out_path, scratch_dir)
 
         result = subprocess.run(
-            [sys.executable, script_path],
+            [sys.executable, "-I", script_path],
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -340,6 +403,7 @@ def run_export_script(
         return {"error": "execution_failed", "reason": str(exc), "stderr": ""}
     finally:
         Path(script_path).unlink(missing_ok=True)
+        shutil.rmtree(scratch_dir, ignore_errors=True)
 
     if result.returncode != 0:
         stderr = result.stderr[-2000:] if len(result.stderr) > 2000 else result.stderr

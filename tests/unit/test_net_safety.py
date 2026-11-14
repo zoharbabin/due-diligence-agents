@@ -202,3 +202,24 @@ class TestIPv4MappedIPv6:
     def test_blocks_ipv4_mapped_private(self, _mock_dns: object) -> None:
         with pytest.raises(UnsafeURLError, match="private"):
             validate_url("https://internal-mapped.example.com")
+
+
+class TestExtraBlocks:
+    """CGNAT, metadata and port restrictions."""
+
+    @pytest.mark.parametrize("ip", ["100.64.0.1", "100.100.100.200", "100.127.255.254"])
+    def test_blocks_cgnat_resolution(self, ip: str) -> None:
+        with (
+            patch("dd_agents.net_safety.socket.getaddrinfo", return_value=[(2, 1, 6, "", (ip, 0))]),
+            pytest.raises(UnsafeURLError),
+        ):
+            validate_url("https://example.com/")
+
+    @pytest.mark.parametrize("url", ["https://example.com:8080/", "https://example.com:22/", "https://example.com:0/"])
+    def test_blocks_non_web_ports(self, url: str) -> None:
+        with pytest.raises(UnsafeURLError, match="port"):
+            validate_url(url)
+
+    def test_allows_standard_port(self) -> None:
+        with patch("dd_agents.net_safety.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("93.184.216.34", 0))]):
+            assert validate_url("https://example.com:443/x") == "https://example.com:443/x"

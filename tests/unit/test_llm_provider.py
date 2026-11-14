@@ -81,6 +81,16 @@ class TestResolveProvider:
 
 
 class TestBuildAgentOptions:
+    def test_shell_web_and_subagent_tools_always_denied(self) -> None:
+        opts = build_agent_options(max_turns=1, permission_mode="bypassPermissions")
+        for tool in ("Bash", "WebFetch", "WebSearch", "Agent", "Task"):
+            assert tool in opts.disallowed_tools
+
+    def test_caller_denials_are_kept_and_deduplicated(self) -> None:
+        opts = build_agent_options(max_turns=1, disallowed_tools=["Read", "Bash"])
+        assert "Read" in opts.disallowed_tools
+        assert opts.disallowed_tools.count("Bash") == 1
+
     def test_sets_model_when_given(self) -> None:
         opts = build_agent_options(model="claude-sonnet-4-6", system_prompt="x", max_turns=1)
         assert opts.model == "claude-sonnet-4-6"

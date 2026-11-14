@@ -270,3 +270,66 @@ class TestExportScriptNoFalsePositives:
         from dd_agents.tools.run_export_script import run_export_script
 
         assert run_export_script(code, tmp_path).get("error") == "blocked_import"
+
+
+class TestRuntimeGuard:
+    """The runtime audit guard stops what the static scan misses."""
+
+    @staticmethod
+    def _run(code: str, tmp_path: Path) -> dict:
+        return run_export_script(code, tmp_path / "out", timeout=20)
+
+    def test_from_import_system_blocked(self, tmp_path: Path) -> None:
+        result = self._run("from os import system\nsystem('echo hi > pwned.txt')\n", tmp_path)
+        assert "error" in result
+        assert not (tmp_path / "out" / "pwned.txt").exists()
+
+    def test_dynamic_getattr_blocked(self, tmp_path: Path) -> None:
+        code = "import os\nf = getattr(os, 'sys' + 'tem')\nf('echo hi > pwned.txt')\n"
+        result = self._run(code, tmp_path)
+        assert "error" in result
+        assert not (tmp_path / "out" / "pwned.txt").exists()
+
+    def test_asyncio_subprocess_blocked(self, tmp_path: Path) -> None:
+        code = (
+            "import asyncio\n"
+            "async def go():\n"
+            "    p = await asyncio.create_subprocess_exec('echo', 'hi')\n"
+            "    await p.wait()\n"
+            "asyncio.run(go())\n"
+        )
+        result = self._run(code, tmp_path)
+        assert "error" in result
+
+    def test_socket_via_alternate_import_blocked(self, tmp_path: Path) -> None:
+        code = "import _socket\ns = _socket.socket()\ns.connect(('127.0.0.1', 9))\n"
+        result = self._run(code, tmp_path)
+        assert "error" in result
+
+    def test_write_outside_output_dir_blocked(self, tmp_path: Path) -> None:
+        target = tmp_path / "outside.txt"
+        result = self._run(f"open({str(target)!r}, 'w').write('x')\n", tmp_path)
+        assert "error" in result
+        assert not target.exists()
+
+    def test_delete_outside_output_dir_blocked(self, tmp_path: Path) -> None:
+        victim = tmp_path / "victim.txt"
+        victim.write_text("keep")
+        result = self._run(f"import os\nos.remove({str(victim)!r})\n", tmp_path)
+        assert "error" in result
+        assert victim.exists()
+
+    def test_normal_workbook_still_works(self, tmp_path: Path) -> None:
+        code = "wb = openpyxl.Workbook()\nwb.active['A1'] = 'ok'\nwb.save(OUTPUT_DIR / 'a.xlsx')\n"
+        result = self._run(code, tmp_path)
+        assert result.get("status") == "ok", result
+        assert result["file_count"] == 1
+
+    def test_csv_and_subdir_write_inside_output_dir(self, tmp_path: Path) -> None:
+        code = (
+            "(OUTPUT_DIR / 'sub').mkdir()\n"
+            "with open(OUTPUT_DIR / 'sub' / 'a.csv', 'w', newline='') as fh:\n"
+            "    csv.writer(fh).writerow(['a', 'b'])\n"
+        )
+        result = self._run(code, tmp_path)
+        assert result.get("status") == "ok", result

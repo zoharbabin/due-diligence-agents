@@ -21,8 +21,10 @@ from __future__ import annotations
 
 import concurrent.futures
 import hashlib
+import http.client
 import logging
 import re
+import socket
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
@@ -353,6 +355,42 @@ class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)  # type: ignore[arg-type]
 
 
+def _pinned_socket(host: str, port: int, timeout: float | None) -> socket.socket:
+    """Resolve *host* once, validate every address, then connect to the validated IP.
+
+    Resolving and connecting in one step closes the DNS-rebinding gap between
+    the URL check and the actual connection.
+    """
+    from dd_agents.net_safety import resolve_and_validate
+
+    scheme = "https" if port == 443 else "http"
+    _url, ips = resolve_and_validate(f"{scheme}://{host}", allow_http=True)
+    if not ips:
+        raise urllib.error.URLError(f"No usable address for {host!r}")
+    return socket.create_connection((ips[0], port), timeout)
+
+
+class _PinnedHTTPConnection(http.client.HTTPConnection):
+    def connect(self) -> None:
+        self.sock = _pinned_socket(self.host, self.port, self.timeout)
+
+
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    def connect(self) -> None:
+        sock = _pinned_socket(self.host, self.port, self.timeout)
+        self.sock = self._context.wrap_socket(sock, server_hostname=self.host)  # type: ignore[attr-defined]
+
+
+class _PinnedHTTPHandler(urllib.request.HTTPHandler):
+    def http_open(self, req: urllib.request.Request) -> http.client.HTTPResponse:
+        return self.do_open(_PinnedHTTPConnection, req)
+
+
+class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
+    def https_open(self, req: urllib.request.Request) -> http.client.HTTPResponse:
+        return self.do_open(_PinnedHTTPSConnection, req)
+
+
 def _fetch_url(url: str, timeout: int, max_bytes: int) -> bytes:
     """Fetch URL content via urllib (stdlib, no new dependencies).
 
@@ -364,7 +402,7 @@ def _fetch_url(url: str, timeout: int, max_bytes: int) -> bytes:
 
     validate_url(url, allow_http=True)
 
-    opener = urllib.request.build_opener(_NoRedirectHandler)
+    opener = urllib.request.build_opener(_NoRedirectHandler, _PinnedHTTPHandler, _PinnedHTTPSHandler)
     req = urllib.request.Request(
         url,
         headers={
