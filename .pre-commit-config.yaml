@@ -14,7 +14,7 @@ repos:
         additional_dependencies:
           - pydantic>=2.0
           - click>=8.0
-          - openpyxl>=3.1
+          - openpyxl>=3.1.5
           - networkx>=3.0
           - types-openpyxl
           - types-networkx
