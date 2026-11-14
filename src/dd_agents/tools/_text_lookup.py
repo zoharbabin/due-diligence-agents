@@ -12,6 +12,7 @@ that document tools work regardless of how the agent references the file.
 
 from __future__ import annotations
 
+import glob
 from pathlib import Path
 
 
@@ -66,7 +67,7 @@ def resolve_text_path(
     # 4. Glob fallback — match on the filename stem
     stem = Path(source_path).stem
     if stem:
-        for md_file in td.glob(f"*{stem}*.md"):
+        for md_file in td.glob(f"*{glob.escape(stem)}*.md"):
             if md_file.is_file():
                 return md_file
 
