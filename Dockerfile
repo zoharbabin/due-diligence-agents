@@ -1,5 +1,5 @@
 # ---- Build stage ----
-FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS builder
+FROM python:3.13-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90 AS builder
 
 WORKDIR /build
 
@@ -13,7 +13,7 @@ COPY src/ src/
 RUN pip install --no-cache-dir --prefix=/install .
 
 # ---- Runtime stage ----
-FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
+FROM python:3.13-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90
 
 LABEL maintainer="dd-agents team"
 LABEL description="Forensic M&A due diligence pipeline using Claude Agent SDK"
