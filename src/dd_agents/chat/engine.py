@@ -385,9 +385,8 @@ class ChatEngine:
                     if result_subtype == "error_max_turns":
                         hit_max_turns = True
                         logger.debug("Hit max turns limit (%d turns)", self._config.max_turns_per_query)
-                    elif message.is_error:
-                        if message.result:
-                            logger.debug("SDK error result: %s", message.result)
+                    elif message.is_error and message.result:
+                        logger.debug("SDK error result: %s", message.result)
         except Exception as exc:
             sdk_error = str(exc)
             # Log captured stderr from the CLI subprocess

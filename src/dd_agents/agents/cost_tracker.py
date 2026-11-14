@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Pricing (per 1M tokens, Claude model family, as of 2026-03)
+# Pricing (per 1M tokens, Claude model family, as of 2026-11, base input/output rates)
 # Update these when model pricing changes.
 #
 # dd-agents is provider/model-agnostic (see dd_agents.llm.provider), so a run
@@ -32,10 +32,18 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _MODEL_PRICING: dict[str, dict[str, float]] = {
-    "claude-opus-4-8": {"input": 15.0, "output": 75.0},
-    "claude-opus-4-6": {"input": 15.0, "output": 75.0},
+    "claude-fable-5-2": {"input": 8.0, "output": 40.0},
+    "claude-fable-5-1": {"input": 10.0, "output": 50.0},
+    "claude-opus-5-5": {"input": 4.0, "output": 20.0},
+    "claude-opus-5": {"input": 5.0, "output": 25.0},
+    "claude-opus-4-8": {"input": 5.0, "output": 25.0},
+    "claude-opus-4-6": {"input": 5.0, "output": 25.0},
+    "claude-sonnet-5-5": {"input": 2.0, "output": 10.0},
+    "claude-sonnet-5": {"input": 2.0, "output": 10.0},
     "claude-sonnet-4-6": {"input": 3.0, "output": 15.0},
-    "claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.0},
+    # Haiku 5.5 rates apply to prompts up to 100K tokens (0.50 / 2.50 beyond).
+    "claude-haiku-5-5": {"input": 0.10, "output": 0.50},
+    "claude-haiku-4-5-20251001": {"input": 1.0, "output": 5.0},
 }
 
 # Fallback for unknown models (Sonnet-shaped — an estimate, flagged when used).
@@ -147,24 +155,24 @@ def get_model_profiles() -> dict[str, ModelProfile]:
     return {
         "economy": ModelProfile(
             name="economy",
-            specialist_model="claude-haiku-4-5-20251001",
-            judge_model="claude-haiku-4-5-20251001",
-            executive_synthesis_model="claude-sonnet-4-6",
-            red_flag_scanner_model="claude-haiku-4-5-20251001",
+            specialist_model="claude-haiku-5-5",
+            judge_model="claude-haiku-5-5",
+            executive_synthesis_model="claude-sonnet-5-5",
+            red_flag_scanner_model="claude-haiku-5-5",
         ),
         "standard": ModelProfile(
             name="standard",
-            specialist_model="claude-sonnet-4-6",
-            judge_model="claude-sonnet-4-6",
-            executive_synthesis_model="claude-sonnet-4-6",
-            red_flag_scanner_model="claude-haiku-4-5-20251001",
+            specialist_model="claude-sonnet-5-5",
+            judge_model="claude-sonnet-5-5",
+            executive_synthesis_model="claude-sonnet-5-5",
+            red_flag_scanner_model="claude-haiku-5-5",
         ),
         "premium": ModelProfile(
             name="premium",
-            specialist_model="claude-sonnet-4-6",
-            judge_model="claude-sonnet-4-6",
-            executive_synthesis_model="claude-opus-4-8",
-            red_flag_scanner_model="claude-sonnet-4-6",
+            specialist_model="claude-sonnet-5-5",
+            judge_model="claude-sonnet-5-5",
+            executive_synthesis_model="claude-opus-5-5",
+            red_flag_scanner_model="claude-sonnet-5-5",
         ),
     }
 

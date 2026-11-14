@@ -166,7 +166,7 @@ def main() -> None:
     "--model-override",
     "model_overrides",
     multiple=True,
-    help="Per-agent model override in agent=model format (e.g. --model-override legal=claude-sonnet-4-20250514).",
+    help="Per-agent model override in agent=model format (e.g. --model-override legal=claude-sonnet-5-5).",
 )
 def run(
     config_path: Path,
@@ -225,7 +225,7 @@ def run(
                 _print_error(
                     "Invalid Option",
                     f"--model-override must be agent=model format, got: '{override}'\n"
-                    f"  Example: --model-override legal=claude-haiku-4-5-20251001\n"
+                    f"  Example: --model-override legal=claude-haiku-5-5\n"
                     f"  Valid agents: {', '.join(valid_agents)}",
                 )
                 raise SystemExit(1)
@@ -236,7 +236,7 @@ def run(
                 _print_error(
                     "Invalid Option",
                     f"--model-override requires both agent and model, got: '{override}'\n"
-                    f"  Example: --model-override legal=claude-haiku-4-5-20251001\n"
+                    f"  Example: --model-override legal=claude-haiku-5-5\n"
                     f"  Valid agents: {', '.join(valid_agents)}",
                 )
                 raise SystemExit(1)
@@ -2257,7 +2257,7 @@ def _run_chat_query(
     "--model",
     "model",
     default=None,
-    help="Override the LLM model for chat (e.g. claude-sonnet-4-6).",
+    help="Override the LLM model for chat (e.g. claude-sonnet-5-5).",
 )
 @click.option(
     "--max-cost",

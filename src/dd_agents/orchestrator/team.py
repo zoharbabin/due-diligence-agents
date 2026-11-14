@@ -733,10 +733,9 @@ class AgentTeam:
                 if mt > latest_mtime:
                     latest_mtime = mt
                     latest_name = f.stem
-            elif since is None:
-                if mt > latest_mtime:
-                    latest_mtime = mt
-                    latest_name = f.stem
+            elif since is None and mt > latest_mtime:
+                latest_mtime = mt
+                latest_name = f.stem
         if since is None:
             modified = total
         return total, modified, latest_name

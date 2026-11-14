@@ -38,8 +38,8 @@ __all__ = ["BINDU_AGENT_PROVIDERS", "build_agent", "get_agent", "report_path"]
 # tool-calling models; the example reasons over deterministic tools, so any
 # solid tool-calling model works. Update as providers release newer models.
 _DEFAULT_MODEL_ID: dict[str, str] = {
-    "bedrock": "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
-    "anthropic": "claude-sonnet-4-5-20250929",
+    "bedrock": "global.anthropic.claude-sonnet-5-5",
+    "anthropic": "claude-sonnet-5-5",
     "openai": "gpt-4o",
     "google": "gemini-2.5-flash",
     "openrouter": "anthropic/claude-sonnet-4.5",

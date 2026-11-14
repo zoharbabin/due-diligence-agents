@@ -44,7 +44,7 @@ matrix, which has no proxy — run it manually against your gateway):
 ```bash
 DD_TEST_GATEWAY_URL=http://localhost:4011 \
 DD_TEST_GATEWAY_KEY=sk-anything \
-DD_TEST_GATEWAY_MODEL=claude-sonnet-4-6 \
+DD_TEST_GATEWAY_MODEL=claude-sonnet-5-5 \
 DD_MAX_OUTPUT_TOKENS=4096 \
 pytest tests/e2e/test_gateway_provider.py -m gateway
 ```

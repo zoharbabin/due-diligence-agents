@@ -27,6 +27,21 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
             item.add_marker(pytest.mark.timeout(0))
 
 
+@pytest.fixture(autouse=True)
+def _no_real_sdk_in_unit_tests(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep unit tests from reaching the real Claude SDK (and any paid provider).
+
+    Agents that find ``_HAS_SDK`` false return empty output. Tests that need
+    SDK behavior opt in with ``sdk_mocks.patch(monkeypatch)``, which runs later
+    and re-enables the flag with mock classes.
+    """
+    if "unit" not in Path(str(request.node.fspath)).parts:
+        return
+    import dd_agents.agents.base as base_mod
+
+    monkeypatch.setattr(base_mod, "_HAS_SDK", False)
+
+
 # ---------------------------------------------------------------------------
 # Config fixtures
 # ---------------------------------------------------------------------------

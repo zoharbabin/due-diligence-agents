@@ -44,7 +44,7 @@ dd-agents run deal-config.json --mode incremental
 | `--dry-run` | Validate config and print step plan without executing |
 | `--quick-scan` | Add a Red Flag Scanner stoplight-triage pass to the run (full pipeline still runs; the scanner reads merged findings) |
 | `--model-profile PROFILE` | Override model tier: `economy`, `standard`, `premium` |
-| `--model-override AGENT=MODEL` | Per-agent model, e.g. `--model-override legal=claude-opus-4-8` |
+| `--model-override AGENT=MODEL` | Per-agent model, e.g. `--model-override legal=claude-opus-5-5` |
 | `--no-knowledge` | Skip knowledge compilation after pipeline run |
 | `--no-narrative` | Skip LLM narrative generation (deterministic report only) |
 | `--verbose / -v` | Enable debug logging (also surfaces the advisory vector-search hint past 500 documents — see [Getting Started](getting-started.md#when-to-enable-vector-search)) |
@@ -72,7 +72,7 @@ dd-agents run deal-config.json --quick-scan --model-profile economy
 Use Opus for the legal agent, standard for everything else:
 
 ```bash
-dd-agents run deal-config.json --model-override legal=claude-opus-4-8
+dd-agents run deal-config.json --model-override legal=claude-opus-5-5
 ```
 
 ## The 38-Step Pipeline
