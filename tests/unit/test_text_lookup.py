@@ -85,6 +85,15 @@ class TestResolveTextPath:
         assert result is not None
         assert "sow" in result.name
 
+    def test_glob_fallback_with_special_chars_in_stem(self, text_dir: Path) -> None:
+        """Glob metacharacters in the file name are matched literally."""
+        (text_dir / "x__report[v2]_abc123.md").write_text("bracket content")
+        (text_dir / "x__reportv_abc123.md").write_text("wrong file")
+
+        result = resolve_text_path("contracts/report[v2].pdf", text_dir)
+        assert result is not None
+        assert result.name == "x__report[v2]_abc123.md"
+
     def test_returns_none_when_not_found(self, text_dir: Path) -> None:
         """Returns None when no matching text file exists."""
         result = resolve_text_path("nonexistent/file.pdf", text_dir)

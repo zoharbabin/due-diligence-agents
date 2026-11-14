@@ -10,6 +10,7 @@ durations, negations) so fabricated or materially-edited quotes are caught.
 
 from __future__ import annotations
 
+import glob
 import json
 import logging
 import random
@@ -467,7 +468,7 @@ class NumericalAuditor:
             return ""
         basename = source_path.rsplit("/", 1)[-1] if "/" in source_path else source_path
         for suffix in [".md", ""]:
-            for txt_file in text_dir.rglob(f"{basename}{suffix}"):
+            for txt_file in text_dir.rglob(f"{glob.escape(basename)}{suffix}"):
                 try:
                     return txt_file.read_text(errors="replace")[:500_000]
                 except OSError:
@@ -537,7 +538,7 @@ class NumericalAuditor:
         basename = source_path.rsplit("/", 1)[-1] if "/" in source_path else source_path
         # Search text_dir recursively for the basename (with .md suffix).
         for suffix in [".md", ""]:
-            for txt_file in text_dir.rglob(f"{basename}{suffix}"):
+            for txt_file in text_dir.rglob(f"{glob.escape(basename)}{suffix}"):
                 try:
                     return txt_file.read_text(errors="replace")[:500_000]  # Cap at 500K chars
                 except OSError:
