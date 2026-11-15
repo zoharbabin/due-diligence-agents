@@ -63,6 +63,11 @@ class AgentRunner(Protocol):
 # ---------------------------------------------------------------------------
 
 
+def _none_to_empty(v: object) -> object:
+    """Agents often write ``null`` for "nothing". Treat it as an empty string."""
+    return "" if v is None else v
+
+
 class OfficerCandidate(BaseModel):
     """A person the discovery agent found in the data room."""
 
@@ -73,6 +78,8 @@ class OfficerCandidate(BaseModel):
     company: str = Field(default="", max_length=200)
     source_file: str = Field(min_length=1, max_length=500)
     quote: str = Field(min_length=3, max_length=1000)
+
+    _nulls = field_validator("title", "company", mode="before")(_none_to_empty)
 
 
 class ProfileLead(BaseModel):
@@ -89,6 +96,8 @@ class ProfileLead(BaseModel):
     summary: str = Field(default="", max_length=2000)
     quote: str = Field(default="", max_length=1000)
     access_date: str
+
+    _nulls = field_validator("query", "source_url", "summary", "quote", mode="before")(_none_to_empty)
 
     @field_validator("access_date")
     @classmethod

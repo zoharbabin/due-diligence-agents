@@ -123,6 +123,34 @@ class TestRecords:
         with pytest.raises(ValidationError):
             ProfileLead.model_validate(_lead(category="cleared"))
 
+    def test_null_optional_fields_are_empty_strings(self) -> None:
+        lead = ProfileLead.model_validate(
+            _lead(result="no_result", source_url=None, summary=None, quote=None, query=None)
+        )
+        assert (lead.source_url, lead.quote, lead.summary, lead.query) == ("", "", "", "")
+
+    def test_null_officer_title_and_company_are_empty(self) -> None:
+        cand = OfficerCandidate.model_validate(
+            {"name": OFFICER, "title": None, "company": None, "source_file": "a.md", "quote": f"{OFFICER} signed"}
+        )
+        assert (cand.title, cand.company) == ("", "")
+
+    def test_prompts_name_every_record_field_and_category(self) -> None:
+        """The agents only know the record shape from their prompt. Keep the two in sync."""
+        from typing import get_args
+
+        from dd_agents.agents.prompts.loader import load_named_prompt
+        from dd_agents.screening.research import ResearchCategory
+
+        research = load_named_prompt("screening", "profile_research")
+        for name in ProfileLead.model_fields:
+            assert f"`{name}`" in research, name
+        for category in get_args(ResearchCategory):
+            assert f"`{category}`" in research, category
+        discovery = load_named_prompt("screening", "officer_discovery")
+        for name in OfficerCandidate.model_fields:
+            assert f"`{name}`" in discovery, name
+
     def test_read_records_counts_invalid_entries(self, tmp_path: Path) -> None:
         path = tmp_path / LEADS_FILE
         path.write_text(json.dumps([_lead(), {"target_name": "x"}, "junk"]), encoding="utf-8")
