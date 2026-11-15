@@ -297,11 +297,11 @@ Controls the optional Judge agent that reviews specialist findings:
   - `p3`: 0.0 (skip informational findings)
 - `ocr_completeness_check`: verify OCR extraction quality (default: true)
 - `cross_agent_contradiction_check`: detect conflicting findings across agents (default: true)
-- `web_research_enabled`: reserved for web research via [web-researcher-mcp](https://github.com/zoharbabin/web-researcher-mcp) claim verification (default: false). **Currently has no effect:** no agent reads it yet, so setting it to `true` changes nothing.
+- `web_research_enabled`: let the Judge check sampled claims against public sources (default: false). Needs `external_verification.enabled` too. With only this flag set, the Judge runs without web tools and logs a warning. When active, the Judge sends entity names and public identifiers to the configured server, never document text, and writes each lookup to `judge/web_checks.json` with a mandatory access date. Results stay low confidence unless a data room document supports the same fact. No result is not clearance.
 
 ### external_verification (optional)
 
-Opt-in lookups against public sources through an MCP server. **Off by default. Not used by any agent yet:** the block is validated and its settings are part of the run provenance hash, so changing them rejects a resume. The agents that use it arrive in later releases.
+Opt-in lookups against public sources through an MCP server. **Off by default.** Entity names leave the machine when it is on. Today the Judge is the only agent that uses it, and only when `judge.web_research_enabled` is also true. The block is part of the run provenance hash, so changing it rejects a resume.
 
 ```json
 "external_verification": {

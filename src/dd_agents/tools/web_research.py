@@ -14,8 +14,8 @@ from typing import Any
 def web_research_tool_schema() -> dict[str, Any]:
     """Return the tool definition schema for web research.
 
-    Not registered with any agent yet: ``JudgeConfig.web_research_enabled``
-    is reserved and nothing reads it.
+    Not registered with any agent. The Judge reaches web research through the
+    allowlisted external MCP tools (``external_verification``), not this schema.
     """
     return {
         "name": "web_research",

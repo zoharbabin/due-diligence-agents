@@ -174,7 +174,8 @@ class JudgeConfig(BaseModel):
     web_research_enabled: bool = Field(
         default=False,
         description=(
-            "Reserved for web research via web-researcher-mcp (Issue #139). Currently has no effect: no agent reads it."
+            "Let the Judge check sampled claims against public sources (Issue #274). "
+            "Also needs external_verification.enabled. Sends entity names to the configured server."
         ),
     )
 
