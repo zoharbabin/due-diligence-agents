@@ -151,6 +151,7 @@ disable_error_code = ["import-untyped", "unused-ignore"]
 [[tool.mypy.overrides]]
 module = [
     "anydoc.*",
+    "pdf_inspector.*",
     "chromadb.*",
     "markitdown.*",
     "rapidfuzz.*",
