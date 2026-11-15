@@ -216,3 +216,31 @@ class TestCli:
         result = self._invoke(["--languages", "eng", str(sample)])
         assert result.exit_code == 1
         assert "CYRILLIC" in result.output
+
+
+class TestCorpusScripts:
+    """Script checks against the synthetic corpus (ground-truth phrases per language)."""
+
+    @staticmethod
+    def _text(language: str) -> str:
+        import json
+        from pathlib import Path
+
+        truth = Path(__file__).parent.parent / "fixtures" / "extraction_corpus" / "ground_truth.json"
+        files = json.loads(truth.read_text())["files"]
+        pdfs = [e for e in files.values() if e["language"] == language and e["kind"] == "pdf"]
+        return " ".join(p for e in pdfs for p in e["key_phrases"])
+
+    @pytest.mark.parametrize(
+        ("language", "good", "bad"),
+        [("ja", ["jpn"], ["eng"]), ("zh", ["chi_sim"], ["eng"]), ("ko", ["kor"], ["eng"])],
+    )
+    def test_cjk_languages(self, language: str, good: list[str], bad: list[str]) -> None:
+        text = self._text(language)
+        assert text
+        assert langs.script_warnings(text, good + ["eng"]) == []
+        assert langs.script_warnings(text, bad)
+
+    @pytest.mark.parametrize("language", ["en", "de", "fr", "es"])
+    def test_latin_languages_never_warn(self, language: str) -> None:
+        assert langs.script_warnings(self._text(language), ["eng"]) == []
