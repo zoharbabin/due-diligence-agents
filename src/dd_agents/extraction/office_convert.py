@@ -1,41 +1,104 @@
-"""Document-to-markdown conversion with a built-in fallback.
+"""Document-to-markdown conversion.
 
-``markitdown`` is preferred. It needs ``onnxruntime`` (through ``magika``),
-which has no wheels on some Python versions, so the dependency is
-conditional in ``pyproject.toml``. When ``markitdown`` cannot be imported,
-common Office and HTML formats are converted with the libraries
-``markitdown`` itself builds on.
+``markitdown`` is preferred. It imports ``magika``, which needs
+``onnxruntime``, and ``onnxruntime`` has no wheels on some Python versions.
+There ``markitdown`` can be installed without its dependencies
+(``pip install --no-deps markitdown``). This module then loads it with a
+stand-in for ``magika`` that reports "no guess". ``markitdown`` handles that
+by using the extension, which the caller can correct with the *extension*
+argument (see ``extraction/file_type.py``).
+
+When ``markitdown`` is not installed at all, common Office and HTML formats
+are converted with the libraries ``markitdown`` itself builds on.
 """
 
 from __future__ import annotations
 
 import logging
 import re
+import sys
+import threading
+import types
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Modules whose absence is the known onnxruntime gap, not a broken install.
+_MAGIC_DEPS = frozenset({"magika", "onnxruntime"})
+_import_lock = threading.Lock()
 
-def convert_to_markdown(path: str | Path) -> str:
+
+class _NoGuess:
+    """``magika`` result that ``markitdown`` treats as "could not identify"."""
+
+    status = "error"
+
+
+class _NoMagika:
+    """Stand-in for ``magika.Magika`` when it cannot be imported."""
+
+    def identify_stream(self, stream: Any) -> _NoGuess:
+        return _NoGuess()
+
+
+def _load_markitdown() -> Any:
+    """Return the ``MarkItDown`` class. Raises ``ImportError`` if unavailable.
+
+    If only ``magika``/``onnxruntime`` are missing, ``markitdown`` is imported
+    with a temporary ``magika`` stand-in. The stand-in is removed from
+    ``sys.modules`` afterwards, so no other code sees it.
+    """
+    try:
+        from markitdown import MarkItDown
+
+        return MarkItDown
+    except ModuleNotFoundError as exc:
+        if exc.name not in _MAGIC_DEPS:
+            raise
+
+    with _import_lock:
+        stub = types.ModuleType("magika")
+        stub.Magika = _NoMagika  # type: ignore[attr-defined]
+        previous = sys.modules.get("magika")
+        sys.modules["magika"] = stub
+        try:
+            from markitdown import MarkItDown
+        finally:
+            if previous is None:
+                sys.modules.pop("magika", None)
+            else:
+                sys.modules["magika"] = previous
+    logger.info("magika is unavailable: markitdown identifies files by extension only")
+    return MarkItDown
+
+
+def convert_to_markdown(path: str | Path, extension: str | None = None) -> str:
     """Convert *path* to markdown text.
+
+    *extension* (for example ``".xlsx"``) overrides the file name's extension
+    when the caller knows the real type.
 
     Raises ``ImportError`` when ``markitdown`` is unavailable and the built-in
     fallback does not handle the file type. Conversion errors propagate.
     """
     filepath = Path(path)
+    suffix = (extension or filepath.suffix).lower()
     try:
-        from markitdown import MarkItDown
+        markitdown_cls = _load_markitdown()
     except ImportError:
-        converter = _FALLBACKS.get(filepath.suffix.lower())
+        converter = _FALLBACKS.get(suffix)
         if converter is None:
-            raise ImportError(
-                f"markitdown is not installed and no built-in converter handles {filepath.suffix!r}"
-            ) from None
+            raise ImportError(f"markitdown is not installed and no built-in converter handles {suffix!r}") from None
         logger.debug("markitdown unavailable, using built-in converter for %s", filepath.name)
         return converter(filepath)
 
-    result = MarkItDown().convert(str(filepath))
+    kwargs: dict[str, Any] = {}
+    if extension:
+        from markitdown import StreamInfo
+
+        kwargs["stream_info"] = StreamInfo(extension=extension)
+    result = markitdown_cls().convert(str(filepath), **kwargs)
     text: str = result.text_content if hasattr(result, "text_content") else ""
     return text
 

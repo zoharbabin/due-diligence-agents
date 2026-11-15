@@ -1,12 +1,13 @@
 """Layout-aware PDF extraction with table detection.
 
-Optional backend using pymupdf's ``page.get_text("blocks")`` for
+Optional backend using the PDFium engine's text blocks
+(:func:`dd_agents.extraction.pdf_engine.extract_blocks`) for
 detecting tabular structures.  Falls back gracefully when tables
 are not detected.
 
 Algorithm:
-    ``get_text("blocks")`` returns ``(x0, y0, x1, y1, text, block_no, type)``
-    tuples.  Blocks are grouped by Y-coordinate (tolerance-based) to form
+    Each block becomes an ``(x0, y0, x1, y1, text, block_no, type)``
+    tuple.  Blocks are grouped by Y-coordinate (tolerance-based) to form
     rows, then sorted by X within each row.  Three or more rows with the
     same column count are rendered as a Markdown table.
 """
@@ -29,7 +30,7 @@ _Y_TOLERANCE = 5.0
 
 
 class LayoutPDFBackend:
-    """Optional backend using pymupdf block coordinates for table detection."""
+    """Optional backend using PDF block coordinates for table detection."""
 
     @property
     def name(self) -> str:
@@ -48,37 +49,25 @@ class LayoutPDFBackend:
             ``(extracted_text, confidence)``.  Returns ``("", 0.0)`` on
             failure.
         """
+        from dd_agents.extraction import pdf_engine
+
         try:
-            import fitz
-        except ImportError:
-            logger.debug("pymupdf (fitz) not available for layout extraction")
+            pdf_blocks = pdf_engine.extract_blocks(filepath)
+        except pdf_engine.PdfError:
+            logger.warning("PDFium failed to open %s for layout extraction", filepath)
             return "", CONFIDENCE_FAILURE
 
-        from dd_agents.extraction.pipeline import _FITZ_LOCK
+        by_page: dict[int, list[Any]] = {}
+        for i, b in enumerate(pdf_blocks):
+            by_page.setdefault(b.page, []).append((b.x0, b.y0, b.x1, b.y1, b.text, i, 0))
 
         parts: list[str] = []
-        with _FITZ_LOCK:
-            try:
-                doc = fitz.open(str(filepath))
-            except Exception:
-                logger.warning("pymupdf failed to open %s for layout extraction", filepath)
-                return "", CONFIDENCE_FAILURE
-
-            try:
-                for page_num in range(len(doc)):
-                    page = doc[page_num]
-                    blocks = page.get_text("blocks")
-                    if not blocks:
-                        continue
-
-                    text_blocks = [b for b in blocks if b[6] == 0]  # type 0 = text
-
-                    tables = self._detect_tables(text_blocks)
-                    page_text = self._blocks_to_markdown(text_blocks, tables, page_num + 1)
-                    if page_text.strip():
-                        parts.append(page_text)
-            finally:
-                doc.close()
+        for page_num in sorted(by_page):
+            text_blocks = by_page[page_num]
+            tables = self._detect_tables(text_blocks)
+            page_text = self._blocks_to_markdown(text_blocks, tables, page_num)
+            if page_text.strip():
+                parts.append(page_text)
 
         if parts:
             return "\n\n".join(parts), _CONFIDENCE_LAYOUT

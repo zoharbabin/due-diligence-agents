@@ -121,3 +121,72 @@ def test_prefers_markitdown_when_available(tmp_path: Path, monkeypatch: pytest.M
     f = tmp_path / "a.docx"
     f.write_bytes(b"x")
     assert convert_to_markdown(f) == "from markitdown"
+
+
+class TestMagikaStandIn:
+    """Without ``magika`` (no onnxruntime wheel), real markitdown still loads."""
+
+    @pytest.fixture()
+    def markitdown_without_magika(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import importlib.util
+
+        if importlib.util.find_spec("markitdown") is None:
+            pytest.skip("markitdown is not installed")
+        for name in [m for m in sys.modules if m == "markitdown" or m.startswith("markitdown.")]:
+            monkeypatch.delitem(sys.modules, name)
+        monkeypatch.setitem(sys.modules, "magika", None)
+
+    def test_converts_by_extension(self, markitdown_without_magika: None, tmp_path: Path) -> None:
+        f = tmp_path / "a.html"
+        f.write_text("<h1>Title</h1><p>Body</p>", encoding="utf-8")
+        text = convert_to_markdown(f)
+        assert "Title" in text
+        assert "Body" in text
+
+    def test_stand_in_does_not_leak(self, markitdown_without_magika: None, tmp_path: Path) -> None:
+        f = tmp_path / "a.html"
+        f.write_text("<p>x</p>", encoding="utf-8")
+        convert_to_markdown(f)
+        assert sys.modules.get("magika") is None
+
+    def test_repeated_calls_work(self, markitdown_without_magika: None, tmp_path: Path) -> None:
+        f = tmp_path / "a.html"
+        f.write_text("<p>x</p>", encoding="utf-8")
+        assert convert_to_markdown(f) == convert_to_markdown(f)
+
+    def test_unrelated_import_error_still_falls_back(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setitem(sys.modules, "markitdown", None)
+        f = tmp_path / "a.html"
+        f.write_text("<h1>Fallback</h1>", encoding="utf-8")
+        assert "Fallback" in convert_to_markdown(f)
+
+
+class TestExtensionHint:
+    def test_hint_overrides_wrong_filename_extension(self, tmp_path: Path) -> None:
+        f = tmp_path / "wrong.docx"
+        f.write_text("<h1>Real HTML</h1>", encoding="utf-8")
+        assert "Real HTML" in convert_to_markdown(f, extension=".html")
+
+    def test_hint_works_in_fallback(self, no_markitdown: None, tmp_path: Path) -> None:
+        f = tmp_path / "wrong.docx"
+        f.write_text("<h1>Real HTML</h1>", encoding="utf-8")
+        assert "Real HTML" in convert_to_markdown(f, extension=".html")
+
+
+class TestMisnamedFiles:
+    def test_xlsx_named_docx_is_converted_by_content(self, tmp_path: Path) -> None:
+        import openpyxl
+
+        from dd_agents.extraction.markitdown import MarkitdownExtractor
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        assert ws is not None
+        ws.append(["Item", "Qty"])
+        ws.append(["Widget", 7])
+        f = tmp_path / "report.docx"
+        wb.save(f)
+
+        text, confidence = MarkitdownExtractor().extract(f)
+        assert "Widget" in text
+        assert confidence > 0

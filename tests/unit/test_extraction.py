@@ -19,6 +19,7 @@ import pytest
 
 from dd_agents.extraction.cache import ExtractionCache
 from dd_agents.extraction.markitdown import MarkitdownExtractor
+from dd_agents.extraction.pdf_engine import PdfError, PdfProbe
 from dd_agents.extraction.pipeline import (
     _MIN_EXTRACTION_CHARS,
     ExtractionPipeline,
@@ -186,13 +187,13 @@ class TestExtractionQualityTracker:
     def test_record_with_failure_reasons(self) -> None:
         """failure_reasons are stored and round-trip through save/load."""
         tracker = ExtractionQualityTracker()
-        reasons = ["pymupdf: too short (10 < 500)", "pdftotext: low density"]
+        reasons = ["pdfium: too short (10 < 500)", "pdftotext: low density"]
         entry = tracker.record(
             "hard.pdf",
             "fallback_ocr",
             1200,
             0.6,
-            fallback_chain=["pymupdf", "pdftotext", "ocr"],
+            fallback_chain=["pdfium", "pdftotext", "ocr"],
             failure_reasons=reasons,
         )
         assert entry.failure_reasons == reasons
@@ -579,7 +580,7 @@ class TestExtractionPipeline:
         src = tmp_path / "scanned.pdf"
         src.write_bytes(b"%PDF-1.4 fake")  # Placeholder — we mock extraction
 
-        # Simulate pymupdf returning sparse text across 32 pages (12.5 chars/page).
+        # Simulate pdfium returning sparse text across 32 pages (12.5 chars/page).
         sparse_pages = []
         for i in range(1, 33):
             sparse_pages.append(f"\n--- Page {i} ---\n\nSig.")
@@ -591,7 +592,7 @@ class TestExtractionPipeline:
         pipeline = ExtractionPipeline()
 
         with (
-            patch.object(pipeline, "_run_pymupdf", return_value=sparse_text),
+            patch.object(pipeline, "_run_pdfium", return_value=sparse_text),
             patch.object(pipeline, "_run_pdftotext", return_value=""),
             patch.object(pipeline._markitdown, "extract", return_value=("", 0.0)),
             patch.object(pipeline._ocr, "extract", return_value=(ocr_text, 0.7)),
@@ -617,7 +618,7 @@ class TestExtractionPipeline:
         pipeline = ExtractionPipeline()
 
         with (
-            patch.object(pipeline, "_run_pymupdf", return_value=""),
+            patch.object(pipeline, "_run_pdfium", return_value=""),
             patch.object(pipeline, "_run_pdftotext", return_value=sparse_pdftotext),
             patch.object(pipeline._markitdown, "extract", return_value=("", 0.0)),
             patch.object(pipeline._ocr, "extract", return_value=(ocr_text, 0.7)),
@@ -643,7 +644,7 @@ class TestExtractionPipeline:
         pipeline = ExtractionPipeline()
 
         with (
-            patch.object(pipeline, "_run_pymupdf", return_value=""),
+            patch.object(pipeline, "_run_pdfium", return_value=""),
             patch.object(pipeline, "_run_pdftotext", return_value=""),
             patch.object(pipeline._markitdown, "extract", return_value=(binary_garbage, 0.5)),
             patch.object(pipeline._ocr, "extract", return_value=(ocr_text, 0.7)),
@@ -778,7 +779,7 @@ class TestExtractionPipeline:
 
     # Issue #13: Minimum extraction threshold.
 
-    def test_near_empty_pymupdf_falls_through(self, tmp_path: Path) -> None:
+    def test_near_empty_pdfium_falls_through(self, tmp_path: Path) -> None:
         """Pymupdf returning < 500 chars should fall through to next method."""
         output_dir = tmp_path / "output"
         output_dir.mkdir()
@@ -786,14 +787,14 @@ class TestExtractionPipeline:
         src = tmp_path / "signed_po.pdf"
         src.write_bytes(b"%PDF-1.4 fake")
 
-        # Simulate pymupdf returning only 151 chars (like a signed PO).
+        # Simulate pdfium returning only 151 chars (like a signed PO).
         short_text = "\n--- Page 1 ---\n\n" + "1/23/2025\n" * 10  # ~130 chars
         ocr_text = "OCR extracted full content of the signed purchase order. " * 20
 
         pipeline = ExtractionPipeline()
 
         with (
-            patch.object(pipeline, "_run_pymupdf", return_value=short_text),
+            patch.object(pipeline, "_run_pdfium", return_value=short_text),
             patch.object(pipeline, "_run_pdftotext", return_value=short_text),
             patch.object(pipeline._markitdown, "extract", return_value=("", 0.0)),
             patch.object(pipeline._ocr, "extract", return_value=(ocr_text, 0.7)),
@@ -804,7 +805,7 @@ class TestExtractionPipeline:
         assert entry.method == "fallback_ocr"
         assert entry.confidence == 0.7
 
-    def test_pymupdf_accepts_above_threshold(self, tmp_path: Path) -> None:
+    def test_pdfium_accepts_above_threshold(self, tmp_path: Path) -> None:
         """Pymupdf returning >= 500 chars with good density should be accepted."""
         output_dir = tmp_path / "output"
         output_dir.mkdir()
@@ -812,7 +813,7 @@ class TestExtractionPipeline:
         src = tmp_path / "good_contract.pdf"
         src.write_bytes(b"%PDF-1.4 fake")
 
-        # Simulate pymupdf returning ~600 chars across 2 pages.
+        # Simulate pdfium returning ~600 chars across 2 pages.
         good_text = (
             "\n--- Page 1 ---\n\n"
             + "This is a contract clause with substantive content. " * 5
@@ -822,7 +823,7 @@ class TestExtractionPipeline:
 
         pipeline = ExtractionPipeline()
 
-        with patch.object(pipeline, "_run_pymupdf", return_value=good_text):
+        with patch.object(pipeline, "_run_pdfium", return_value=good_text):
             entry = pipeline.extract_single(src, output_dir)
 
         assert entry.method == "primary"
@@ -871,7 +872,7 @@ class TestExtractionPipeline:
         assert ExtractionPipeline._is_watermark_only("line 1\nline 2\nline 3") is False
 
     def test_watermark_pdf_falls_through_to_glm_ocr(self, tmp_path: Path) -> None:
-        """Watermark-only PDFs fall through pymupdf/pdftotext to GLM-OCR."""
+        """Watermark-only PDFs fall through pdfium/pdftotext to GLM-OCR."""
         from dd_agents.extraction.glm_ocr import GlmOcrExtractor
 
         output_dir = tmp_path / "output"
@@ -887,7 +888,7 @@ class TestExtractionPipeline:
         pipeline = ExtractionPipeline(glm_ocr=glm_extractor)
 
         with (
-            patch.object(pipeline, "_run_pymupdf", return_value=watermark_text),
+            patch.object(pipeline, "_run_pdfium", return_value=watermark_text),
             patch.object(pipeline, "_run_pdftotext", return_value=watermark_text),
             patch.object(pipeline._markitdown, "extract", return_value=("", 0.0)),
             patch.object(glm_extractor, "extract", return_value=(glm_text, 0.8)),
@@ -931,138 +932,56 @@ class TestExtractionPipeline:
 
 
 class TestPdfInspection:
-    """Tests for ExtractionPipeline._inspect_pdf."""
+    """Tests for ExtractionPipeline._inspect_pdf (PDFium probe mocked)."""
+
+    @staticmethod
+    def _inspect(
+        tmp_path: Path,
+        *,
+        text: str = "",
+        pages: int = 1,
+        encrypted: bool = False,
+    ) -> str:
+        pdf_path = tmp_path / "x.pdf"
+        pdf_path.write_bytes(b"%PDF-1.4 fake")
+        probe = PdfProbe(encrypted=encrypted, page_count=pages, first_page_text=text)
+        with patch("dd_agents.extraction.pipeline.pdf_engine.probe", return_value=probe):
+            return ExtractionPipeline._inspect_pdf(pdf_path)
 
     def test_inspect_normal_pdf(self, tmp_path: Path) -> None:
-        """Normal PDF (not encrypted, text > 100 chars, no Identity-H) → 'normal'."""
-        pdf_path = tmp_path / "normal.pdf"
-        pdf_path.write_bytes(b"%PDF-1.4 fake")
-
-        mock_page = MagicMock()
-        mock_page.get_text.return_value = "A" * 200
-        mock_page.get_fonts.return_value = [
-            (1, "ext", "Type1", "Helvetica", "name", "WinAnsiEncoding", "extra"),
-        ]
-
-        mock_doc = MagicMock()
-        mock_doc.is_encrypted = False
-        mock_doc.__len__ = lambda self: 1
-        mock_doc.__getitem__ = lambda self, idx: mock_page
-
-        mock_fitz = MagicMock()
-        mock_fitz.open.return_value = mock_doc
-
-        with patch.dict("sys.modules", {"fitz": mock_fitz}):
-            result = ExtractionPipeline._inspect_pdf(pdf_path)
-
-        assert result == "normal"
+        """Not encrypted, text >= 100 chars, no corruption → 'normal'."""
+        assert self._inspect(tmp_path, text="A" * 200) == "normal"
 
     def test_inspect_encrypted_pdf(self, tmp_path: Path) -> None:
         """Encrypted PDF → 'encrypted'."""
-        pdf_path = tmp_path / "encrypted.pdf"
-        pdf_path.write_bytes(b"%PDF-1.4 fake")
-
-        mock_doc = MagicMock()
-        mock_doc.is_encrypted = True
-
-        mock_fitz = MagicMock()
-        mock_fitz.open.return_value = mock_doc
-
-        with patch.dict("sys.modules", {"fitz": mock_fitz}):
-            result = ExtractionPipeline._inspect_pdf(pdf_path)
-
-        assert result == "encrypted"
+        assert self._inspect(tmp_path, encrypted=True, pages=0) == "encrypted"
 
     def test_inspect_scanned_pdf(self, tmp_path: Path) -> None:
         """First page text < 100 chars → 'scanned'."""
-        pdf_path = tmp_path / "scanned.pdf"
-        pdf_path.write_bytes(b"%PDF-1.4 fake")
-
-        mock_page = MagicMock()
-        mock_page.get_text.return_value = "Short"  # < 100 chars
-
-        mock_doc = MagicMock()
-        mock_doc.is_encrypted = False
-        mock_doc.__len__ = lambda self: 1
-        mock_doc.__getitem__ = lambda self, idx: mock_page
-
-        mock_fitz = MagicMock()
-        mock_fitz.open.return_value = mock_doc
-
-        with patch.dict("sys.modules", {"fitz": mock_fitz}):
-            result = ExtractionPipeline._inspect_pdf(pdf_path)
-
-        assert result == "scanned"
+        assert self._inspect(tmp_path, text="Short") == "scanned"
 
     def test_inspect_missing_tounicode(self, tmp_path: Path) -> None:
-        """Identity-H encoding + control-char corruption → 'missing_tounicode'."""
-        pdf_path = tmp_path / "garbled.pdf"
-        pdf_path.write_bytes(b"%PDF-1.4 fake")
-
-        # Text with >1% control chars simulating garbled Identity-H output.
+        """Control-char corruption (garbled Identity-H output) → 'missing_tounicode'."""
         garbled_text = "A" * 100 + "\x00\x01\x02\x03\x04" * 10 + "B" * 50
-        mock_page = MagicMock()
-        mock_page.get_text.return_value = garbled_text
-        mock_page.get_fonts.return_value = [
-            (1, "ext", "Type0", "Arial", "name", "Identity-H", "extra"),
-        ]
-
-        mock_doc = MagicMock()
-        mock_doc.is_encrypted = False
-        mock_doc.__len__ = lambda self: 1
-        mock_doc.__getitem__ = lambda self, idx: mock_page
-
-        mock_fitz = MagicMock()
-        mock_fitz.open.return_value = mock_doc
-
-        with patch.dict("sys.modules", {"fitz": mock_fitz}):
-            result = ExtractionPipeline._inspect_pdf(pdf_path)
-
-        assert result == "missing_tounicode"
+        assert self._inspect(tmp_path, text=garbled_text) == "missing_tounicode"
 
     def test_inspect_empty_pdf(self, tmp_path: Path) -> None:
         """Empty PDF (0 pages) → 'scanned'."""
-        pdf_path = tmp_path / "empty.pdf"
-        pdf_path.write_bytes(b"%PDF-1.4 fake")
+        assert self._inspect(tmp_path, pages=0) == "scanned"
 
-        mock_doc = MagicMock()
-        mock_doc.is_encrypted = False
-        mock_doc.__len__ = lambda self: 0
+    def test_inspect_unreadable_pdf(self, tmp_path: Path) -> None:
+        """Unreadable file → graceful degradation to 'normal'."""
+        pdf_path = tmp_path / "bad.pdf"
+        pdf_path.write_bytes(b"not a pdf")
+        with patch("dd_agents.extraction.pipeline.pdf_engine.probe", side_effect=PdfError("boom")):
+            assert ExtractionPipeline._inspect_pdf(pdf_path) == "normal"
 
-        mock_fitz = MagicMock()
-        mock_fitz.open.return_value = mock_doc
-
-        with patch.dict("sys.modules", {"fitz": mock_fitz}):
-            result = ExtractionPipeline._inspect_pdf(pdf_path)
-
-        assert result == "scanned"
-
-    def test_inspect_fitz_unavailable(self, tmp_path: Path) -> None:
-        """fitz import raises ImportError → graceful degradation to 'normal'."""
-        import sys
-
-        pdf_path = tmp_path / "any.pdf"
-        pdf_path.write_bytes(b"%PDF-1.4 fake")
-
-        # Remove fitz from sys.modules if present, and block re-import.
-        saved = sys.modules.pop("fitz", None)
-        import builtins
-
-        original_import = builtins.__import__
-
-        def fake_import(name: str, *args: object, **kwargs: object) -> object:
-            if name == "fitz":
-                raise ImportError("No module named 'fitz'")
-            return original_import(name, *args, **kwargs)
-
-        try:
-            with patch("builtins.__import__", side_effect=fake_import):
-                result = ExtractionPipeline._inspect_pdf(pdf_path)
-        finally:
-            if saved is not None:
-                sys.modules["fitz"] = saved
-
-        assert result == "normal"
+    def test_inspect_unexpected_error(self, tmp_path: Path) -> None:
+        """Any unexpected engine error → 'normal'."""
+        pdf_path = tmp_path / "bad.pdf"
+        pdf_path.write_bytes(b"x")
+        with patch("dd_agents.extraction.pipeline.pdf_engine.probe", side_effect=RuntimeError("boom")):
+            assert ExtractionPipeline._inspect_pdf(pdf_path) == "normal"
 
 
 # ======================================================================
@@ -1197,7 +1116,7 @@ class TestTryMethod:
         # This has ~32 pages with very few chars per page
 
         result = pipeline._try_method(
-            "pymupdf",
+            "pdfium",
             sparse_text,
             0.9,
             out_file,
@@ -1253,7 +1172,7 @@ class TestTryMethod:
         )
 
         result = pipeline._try_method(
-            "pymupdf",
+            "pdfium",
             watermark_text,
             0.9,
             out_file,
@@ -1282,7 +1201,7 @@ class TestTryMethod:
         corrupted = corrupted * 5
 
         result = pipeline._try_method(
-            "pymupdf",
+            "pdfium",
             corrupted,
             0.9,
             out_file,
@@ -1335,7 +1254,7 @@ class TestTryMethod:
 
         # First method fails: too short
         pipeline._try_method(
-            "pymupdf",
+            "pdfium",
             "short",
             0.9,
             out_file,
@@ -1374,7 +1293,7 @@ class TestTryMethod:
         )
 
         assert len(failure_reasons) == 3
-        assert "pymupdf" in failure_reasons[0]
+        assert "pdfium" in failure_reasons[0]
         assert "pdftotext" in failure_reasons[1]
         assert "markitdown" in failure_reasons[2]
 
@@ -1387,8 +1306,8 @@ class TestTryMethod:
 class TestPdfRouting:
     """Tests for pre-inspection routing in _extract_pdf."""
 
-    def test_scanned_pdf_skips_pymupdf_pdftotext_markitdown(self, tmp_path: Path) -> None:
-        """'scanned' inspection → pymupdf, pdftotext, and markitdown NOT called."""
+    def test_scanned_pdf_skips_pdfium_pdftotext_markitdown(self, tmp_path: Path) -> None:
+        """'scanned' inspection → pdfium, pdftotext, and markitdown NOT called."""
         output_dir = tmp_path / "output"
         output_dir.mkdir()
         src = tmp_path / "scanned.pdf"
@@ -1396,27 +1315,27 @@ class TestPdfRouting:
 
         pipeline = ExtractionPipeline()
 
-        mock_pymupdf = MagicMock(return_value="")
+        mock_pdfium = MagicMock(return_value="")
         mock_pdftotext = MagicMock(return_value="")
         mock_markitdown = MagicMock(return_value=("", 0.0))
         ocr_text = "OCR content " * 50
 
         with (
             patch.object(ExtractionPipeline, "_inspect_pdf", return_value="scanned"),
-            patch.object(pipeline, "_run_pymupdf", mock_pymupdf),
+            patch.object(pipeline, "_run_pdfium", mock_pdfium),
             patch.object(pipeline, "_run_pdftotext", mock_pdftotext),
             patch.object(pipeline._markitdown, "extract", mock_markitdown),
             patch.object(pipeline._ocr, "extract", return_value=(ocr_text, 0.7)),
         ):
             entry = pipeline.extract_single(src, output_dir)
 
-        mock_pymupdf.assert_not_called()
+        mock_pdfium.assert_not_called()
         mock_pdftotext.assert_not_called()
         mock_markitdown.assert_not_called()
         assert entry.method == "fallback_ocr"
 
     def test_missing_tounicode_skips_text_extractors(self, tmp_path: Path) -> None:
-        """'missing_tounicode' inspection → pymupdf, pdftotext, and markitdown NOT called."""
+        """'missing_tounicode' inspection → pdfium, pdftotext, and markitdown NOT called."""
         output_dir = tmp_path / "output"
         output_dir.mkdir()
         src = tmp_path / "garbled.pdf"
@@ -1424,27 +1343,27 @@ class TestPdfRouting:
 
         pipeline = ExtractionPipeline()
 
-        mock_pymupdf = MagicMock(return_value="")
+        mock_pdfium = MagicMock(return_value="")
         mock_pdftotext = MagicMock(return_value="")
         mock_markitdown = MagicMock(return_value=("", 0.0))
         ocr_text = "OCR content " * 50
 
         with (
             patch.object(ExtractionPipeline, "_inspect_pdf", return_value="missing_tounicode"),
-            patch.object(pipeline, "_run_pymupdf", mock_pymupdf),
+            patch.object(pipeline, "_run_pdfium", mock_pdfium),
             patch.object(pipeline, "_run_pdftotext", mock_pdftotext),
             patch.object(pipeline._markitdown, "extract", mock_markitdown),
             patch.object(pipeline._ocr, "extract", return_value=(ocr_text, 0.7)),
         ):
             entry = pipeline.extract_single(src, output_dir)
 
-        mock_pymupdf.assert_not_called()
+        mock_pdfium.assert_not_called()
         mock_pdftotext.assert_not_called()
         mock_markitdown.assert_not_called()
         assert entry.method == "fallback_ocr"
 
-    def test_normal_pdf_tries_pymupdf_first(self, tmp_path: Path) -> None:
-        """'normal' inspection → pymupdf IS called."""
+    def test_normal_pdf_tries_pdfium_first(self, tmp_path: Path) -> None:
+        """'normal' inspection → pdfium IS called."""
         output_dir = tmp_path / "output"
         output_dir.mkdir()
         src = tmp_path / "normal.pdf"
@@ -1459,15 +1378,15 @@ class TestPdfRouting:
             + "More contract text with additional provisions. " * 15
         )
 
-        mock_pymupdf = MagicMock(return_value=good_text)
+        mock_pdfium = MagicMock(return_value=good_text)
 
         with (
             patch.object(ExtractionPipeline, "_inspect_pdf", return_value="normal"),
-            patch.object(pipeline, "_run_pymupdf", mock_pymupdf),
+            patch.object(pipeline, "_run_pdfium", mock_pdfium),
         ):
             entry = pipeline.extract_single(src, output_dir)
 
-        mock_pymupdf.assert_called_once()
+        mock_pdfium.assert_called_once()
         assert entry.method == "primary"
 
 
@@ -1521,8 +1440,8 @@ class TestFailureReasons:
     def test_failure_reasons_in_failed_entry(self, tmp_path: Path) -> None:
         """_failed_entry includes failure_reasons."""
         filepath = tmp_path / "bad.pdf"
-        chain = ["pymupdf", "pdftotext"]
-        reasons = ["pymupdf: too short (10 < 500)", "pdftotext: low density"]
+        chain = ["pdfium", "pdftotext"]
+        reasons = ["pdfium: too short (10 < 500)", "pdftotext: low density"]
 
         entry = ExtractionPipeline._failed_entry(filepath, chain, failure_reasons=reasons)
 
@@ -1551,7 +1470,7 @@ class TestFailureReasons:
 
         # First: too short
         pipeline._try_method(
-            "pymupdf",
+            "pdfium",
             "tiny",
             0.9,
             out_file,
@@ -1576,7 +1495,7 @@ class TestFailureReasons:
         )
 
         assert len(failure_reasons) == 2
-        assert "pymupdf" in failure_reasons[0]
+        assert "pdfium" in failure_reasons[0]
         assert "pdftotext" in failure_reasons[1]
 
     def test_successful_extraction_preserves_reasons(self, tmp_path: Path) -> None:
@@ -1586,7 +1505,7 @@ class TestFailureReasons:
         filepath = tmp_path / "source.txt"
         filepath.write_text("x" * 100, encoding="utf-8")
         chain: list[str] = []
-        failure_reasons: list[str] = ["pymupdf: too short (10 < 500)"]
+        failure_reasons: list[str] = ["pdfium: too short (10 < 500)"]
 
         result = pipeline._try_method(
             "pdftotext",
@@ -1600,7 +1519,7 @@ class TestFailureReasons:
         )
 
         assert result is not None
-        assert "pymupdf: too short (10 < 500)" in result.failure_reasons
+        assert "pdfium: too short (10 < 500)" in result.failure_reasons
 
     def test_pdf_chain_collects_all_reasons(self, tmp_path: Path) -> None:
         """Full PDF chain collects reasons from all failed methods."""
@@ -1616,7 +1535,7 @@ class TestFailureReasons:
 
         with (
             patch.object(ExtractionPipeline, "_inspect_pdf", return_value="normal"),
-            patch.object(pipeline, "_run_pymupdf", return_value="short"),
+            patch.object(pipeline, "_run_pdfium", return_value="short"),
             patch.object(pipeline, "_run_pdftotext", return_value="short"),
             patch.object(pipeline._markitdown, "extract", return_value=("", 0.0)),
             patch.object(pipeline._ocr, "extract", return_value=(ocr_text, 0.7)),
@@ -1624,9 +1543,9 @@ class TestFailureReasons:
             entry = pipeline.extract_single(src, output_dir)
 
         assert entry.method == "fallback_ocr"
-        # Should have failure reasons from pymupdf, pdftotext, and markitdown
+        # Should have failure reasons from pdfium, pdftotext, and markitdown
         assert len(entry.failure_reasons) >= 3
-        assert any("pymupdf" in r for r in entry.failure_reasons)
+        assert any("pdfium" in r for r in entry.failure_reasons)
         assert any("pdftotext" in r for r in entry.failure_reasons)
         assert any("markitdown" in r for r in entry.failure_reasons)
 
@@ -1690,63 +1609,30 @@ class TestBinaryImageDetection:
 
 
 # ======================================================================
-# TestInspectPdfIdentityH — Bug 3: Identity-H clean text → "normal"
+# TestInspectPdfIdentityH — clean Identity-H text → "normal"
 # ======================================================================
 
 
 class TestInspectPdfIdentityH:
-    """Tests for _inspect_pdf Identity-H classification fix."""
+    """Classification keys on control-char corruption, not on font encoding."""
+
+    @staticmethod
+    def _inspect(tmp_path: Path, text: str) -> str:
+        pdf_path = tmp_path / "x.pdf"
+        pdf_path.write_bytes(b"%PDF-1.4 fake")
+        probe = PdfProbe(encrypted=False, page_count=1, first_page_text=text)
+        with patch("dd_agents.extraction.pipeline.pdf_engine.probe", return_value=probe):
+            return ExtractionPipeline._inspect_pdf(pdf_path)
 
     def test_identity_h_clean_text_returns_normal(self, tmp_path: Path) -> None:
-        """Identity-H encoding with clean extracted text → 'normal'."""
-        pdf_path = tmp_path / "clean_identity_h.pdf"
-        pdf_path.write_bytes(b"%PDF-1.4 fake")
-
-        # Clean text — no control-char corruption.
-        mock_page = MagicMock()
-        mock_page.get_text.return_value = "This is perfectly clean text from an Identity-H font. " * 5
-        mock_page.get_fonts.return_value = [
-            (1, "ext", "Type0", "NotoSans", "name", "Identity-H", "extra"),
-        ]
-
-        mock_doc = MagicMock()
-        mock_doc.is_encrypted = False
-        mock_doc.__len__ = lambda self: 1
-        mock_doc.__getitem__ = lambda self, idx: mock_page
-
-        mock_fitz = MagicMock()
-        mock_fitz.open.return_value = mock_doc
-
-        with patch.dict("sys.modules", {"fitz": mock_fitz}):
-            result = ExtractionPipeline._inspect_pdf(pdf_path)
-
-        assert result == "normal"
+        """Clean extracted text → 'normal'."""
+        text = "This is perfectly clean text from an Identity-H font. " * 5
+        assert self._inspect(tmp_path, text) == "normal"
 
     def test_identity_h_garbled_text_returns_missing_tounicode(self, tmp_path: Path) -> None:
-        """Identity-H encoding with garbled text → 'missing_tounicode'."""
-        pdf_path = tmp_path / "garbled_identity_h.pdf"
-        pdf_path.write_bytes(b"%PDF-1.4 fake")
-
-        # Garbled text with control chars (>1% threshold).
+        """Garbled text with control chars (>1% threshold) → 'missing_tounicode'."""
         garbled = "A" * 80 + "\x00\x01\x02\x03\x04\x05" * 5 + "B" * 20
-        mock_page = MagicMock()
-        mock_page.get_text.return_value = garbled
-        mock_page.get_fonts.return_value = [
-            (1, "ext", "Type0", "Arial", "name", "Identity-H", "extra"),
-        ]
-
-        mock_doc = MagicMock()
-        mock_doc.is_encrypted = False
-        mock_doc.__len__ = lambda self: 1
-        mock_doc.__getitem__ = lambda self, idx: mock_page
-
-        mock_fitz = MagicMock()
-        mock_fitz.open.return_value = mock_doc
-
-        with patch.dict("sys.modules", {"fitz": mock_fitz}):
-            result = ExtractionPipeline._inspect_pdf(pdf_path)
-
-        assert result == "missing_tounicode"
+        assert self._inspect(tmp_path, garbled) == "missing_tounicode"
 
     def test_scanned_pdf_skips_markitdown(self, tmp_path: Path) -> None:
         """Scanned PDFs skip markitdown (pdfminer can't extract from images)."""

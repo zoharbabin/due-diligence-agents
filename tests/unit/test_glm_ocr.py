@@ -413,7 +413,7 @@ class TestPipelineIntegration:
         pipeline = ExtractionPipeline(glm_ocr=glm_extractor, ocr=ocr_extractor)
 
         with (
-            patch.object(pipeline, "_run_pymupdf", return_value=""),
+            patch.object(pipeline, "_run_pdfium", return_value=""),
             patch.object(pipeline, "_run_pdftotext", return_value=""),
             patch.object(pipeline._markitdown, "extract", return_value=("", 0.0)),
             patch.object(glm_extractor, "extract", return_value=(glm_text, 0.8)),
@@ -445,7 +445,7 @@ class TestPipelineIntegration:
         pipeline = ExtractionPipeline(glm_ocr=glm_extractor, ocr=ocr_extractor)
 
         with (
-            patch.object(pipeline, "_run_pymupdf", return_value=""),
+            patch.object(pipeline, "_run_pdfium", return_value=""),
             patch.object(pipeline, "_run_pdftotext", return_value=""),
             patch.object(pipeline._markitdown, "extract", return_value=("", 0.0)),
             patch.object(glm_extractor, "extract", return_value=("", 0.0)),
@@ -473,7 +473,7 @@ class TestPipelineIntegration:
         pipeline = ExtractionPipeline()  # No glm_ocr injected
 
         with (
-            patch.object(pipeline, "_run_pymupdf", return_value=""),
+            patch.object(pipeline, "_run_pdfium", return_value=""),
             patch.object(pipeline, "_run_pdftotext", return_value=""),
             patch.object(pipeline._markitdown, "extract", return_value=("", 0.0)),
             patch.object(pipeline._ocr, "extract", return_value=(ocr_text, 0.6)),

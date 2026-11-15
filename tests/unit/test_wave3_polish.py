@@ -679,13 +679,13 @@ class TestMultiLanguage:
     def test_extraction_quality_has_language(self) -> None:
         from dd_agents.models.inventory import ExtractionQualityEntry
 
-        entry = ExtractionQualityEntry(file_path="/test.pdf", method="pymupdf", source_language="fr")
+        entry = ExtractionQualityEntry(file_path="/test.pdf", method="pdfium", source_language="fr")
         assert entry.source_language == "fr"
 
     def test_extraction_quality_language_default(self) -> None:
         from dd_agents.models.inventory import ExtractionQualityEntry
 
-        entry = ExtractionQualityEntry(file_path="/test.pdf", method="pymupdf")
+        entry = ExtractionQualityEntry(file_path="/test.pdf", method="pdfium")
         assert entry.source_language == "en"
 
 

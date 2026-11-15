@@ -306,7 +306,7 @@ Controls the optional Judge agent that reviews specialist findings:
   - `pytesseract`: English-only OCR (hardcoded `lang="eng"`)
   - `glm_ocr`: multilingual OCR via GLM vision-language model (100+ languages, recommended for non-English data rooms)
 
-Text extraction (non-scanned PDFs) uses a separate chain: pymupdf → pdftotext → markitdown → OCR fallback.
+Text extraction (non-scanned PDFs) uses a separate chain: pdfium → pdftotext → markitdown → OCR fallback.
 
 ### reporting
 

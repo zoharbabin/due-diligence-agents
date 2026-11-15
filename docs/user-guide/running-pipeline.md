@@ -85,7 +85,7 @@ Step 1 is effectively blocking — if config validation fails, the pipeline halt
 
 **Phase 2: Discovery and Extraction (Steps 4-5)**
 Discover files in the data room. Extract text from PDFs and Office documents using
-pymupdf with fallback to markitdown, OCR, or Claude vision. Step 5 is a **blocking gate** —
+pypdfium2 (PDFium) with fallback to markitdown, OCR, or Claude vision. Step 5 is a **blocking gate** —
 extraction must succeed for at least a minimum threshold of files.
 
 **Phase 3: Inventory and Resolution (Steps 6-12)**

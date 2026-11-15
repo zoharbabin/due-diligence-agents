@@ -1,6 +1,6 @@
 """Coordinate index for visual grounding of findings.
 
-Stores block-level coordinate data from pymupdf extraction and
+Stores block-level coordinate data from PDF extraction and
 provides reverse lookup from text quotes to page positions.
 """
 

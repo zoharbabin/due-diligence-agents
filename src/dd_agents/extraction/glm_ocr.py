@@ -36,6 +36,7 @@ from typing import Any
 
 from dd_agents.extraction._constants import CONFIDENCE_FAILURE, IMAGE_EXTENSIONS
 from dd_agents.extraction._constants import CONFIDENCE_GLM_OCR as _CONFIDENCE_GLM_OCR
+from dd_agents.extraction.pdf_engine import PDF_LOCK
 
 logger = logging.getLogger(__name__)
 
@@ -119,11 +120,11 @@ def _import_ollama() -> Any:
 
 # ── PDF → image rendering ────────────────────────────────────────────
 
-# pypdfium2's underlying PDFium C library is not thread-safe — concurrent
-# render() calls from multiple worker threads cause intermittent crashes.
-# Serialize individual page renders through this lock (narrower than locking
-# the entire function, so threads can interleave open/save/close work).
-_pdfium_lock = threading.Lock()
+# PDFium is not thread-safe: concurrent calls from worker threads cause
+# intermittent crashes. One lock, shared with the text extraction engine,
+# guards every PDFium call (open, render, close). Image resize and save run
+# outside it.
+_pdfium_lock = PDF_LOCK
 
 
 def _render_pdf_pages(filepath: Path, work_dir: Path) -> list[Path]:
@@ -132,9 +133,8 @@ def _render_pdf_pages(filepath: Path, work_dir: Path) -> list[Path]:
     Returns a list of image paths in *work_dir*.  Images are capped at
     :data:`MAX_IMAGE_DIM` pixels on their longest side.
 
-    Individual page render calls are serialized through ``_pdfium_lock``
-    because the underlying PDFium C library is not thread-safe, but
-    document open/close and image saving happen outside the lock.
+    Every PDFium call (open, render, close) takes ``_pdfium_lock``;
+    image resize and save happen outside it.
     """
     pdfium = _import_pdfium()
     if pdfium is None:
@@ -142,7 +142,8 @@ def _render_pdf_pages(filepath: Path, work_dir: Path) -> list[Path]:
         return []
 
     try:
-        doc = pdfium.PdfDocument(str(filepath))
+        with _pdfium_lock:
+            doc = pdfium.PdfDocument(str(filepath))
     except Exception as exc:
         # Password-protected and corrupt PDFs are common in data rooms —
         # log a clean one-liner instead of a full traceback.
@@ -158,8 +159,6 @@ def _render_pdf_pages(filepath: Path, work_dir: Path) -> list[Path]:
         num_pages = min(len(doc), _MAX_PAGES)
         for i in range(num_pages):
             try:
-                # Only the render() call needs the lock — it invokes the
-                # PDFium C library which is not thread-safe.
                 with _pdfium_lock:
                     page = doc[i]
                     bitmap = page.render(scale=DPI / 72)
@@ -173,7 +172,8 @@ def _render_pdf_pages(filepath: Path, work_dir: Path) -> list[Path]:
             except Exception:
                 logger.warning("Failed to render page %d of %s", i + 1, filepath)
     finally:
-        doc.close()
+        with _pdfium_lock:
+            doc.close()
 
     return paths
 

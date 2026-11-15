@@ -15,6 +15,6 @@ Third-party notices:
 - click: BSD 3-Clause License, Copyright Pallets Projects
 - rich: MIT License, Copyright Will McGugan
 
-Optional dependency with copyleft license:
-- pymupdf (fitz): AGPL-3.0 or Artifex Commercial License.
-  Not included in core installation. Install separately via `pip install dd-agents[pdf]`.
+Optional dependencies (`pip install dd-agents[pdf]`):
+- pypdfium2: Apache-2.0 or BSD-3-Clause (wraps PDFium, BSD-3-Clause / Apache-2.0).
+- pikepdf: MPL-2.0 (wraps qpdf, Apache-2.0). Used unmodified.

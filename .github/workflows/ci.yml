@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.14"
+          python-version: "3.15"
           cache: pip
       - name: Install dependencies
         run: pip install -e ".[dev]"
@@ -38,10 +38,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.14"
+          python-version: "3.15"
           cache: pip
       - name: Install dependencies
-        run: pip install -e ".[dev]" types-openpyxl types-networkx
+        run: pip install -e ".[dev,pdf]" types-openpyxl types-networkx
+      - name: Install markitdown without magika (no onnxruntime wheel on 3.15)
+        run: pip install --no-deps "markitdown>=0.1"
       - name: Mypy strict
         run: mypy src/ --strict
 
@@ -62,7 +64,10 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev,pdf]"
+      - name: Install markitdown without magika (no onnxruntime wheel on 3.15)
+        if: matrix.python-version == '3.15'
+        run: pip install --no-deps "markitdown>=0.1"
       - name: Run unit tests
         run: pytest tests/unit/ -v --tb=short --junitxml=results/unit-${{ matrix.python-version }}.xml
       - name: Run deterministic eval tests (no API key)
@@ -85,10 +90,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.14"
+          python-version: "3.15"
           cache: pip
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev,pdf]"
+      - name: Install markitdown without magika (no onnxruntime wheel on 3.15)
+        run: pip install --no-deps "markitdown>=0.1"
       - name: Run integration tests
         run: pytest tests/integration/ -v --tb=short -k "not test_agent_spawning" --junitxml=results/integration.xml
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -109,7 +116,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.14"
+          python-version: "3.15"
           cache: pip
       - name: Install build tools
         run: pip install build twine
@@ -150,10 +157,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.12"
+          python-version: "3.15"
           cache: pip
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev,pdf]"
+      - name: Install markitdown without magika (no onnxruntime wheel on 3.15)
+        run: pip install --no-deps "markitdown>=0.1"
       - name: Run end-to-end tests
         run: pytest tests/e2e/ -v --tb=long -m "e2e" --junitxml=results/e2e.xml
         env:
@@ -183,10 +192,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.12"
+          python-version: "3.15"
           cache: pip
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev,pdf]"
+      - name: Install markitdown without magika (no onnxruntime wheel on 3.15)
+        run: pip install --no-deps "markitdown>=0.1"
       - name: Run eval tier
         run: pytest tests/evals/ -v --tb=short -m "eval" --junitxml=results/evals.xml
         env:
@@ -222,12 +233,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.12"
+          python-version: "3.15"
           cache: pip
       - name: Install dependencies + LiteLLM proxy
         run: |
-          pip install -e ".[dev]"
+          pip install -e ".[dev,pdf]"
           pip install 'litellm[proxy]==1.109.1'
+      - name: Install markitdown without magika (no onnxruntime wheel on 3.15)
+        run: pip install --no-deps "markitdown>=0.1"
       - name: Start LiteLLM gateway (fronts the Anthropic Messages API)
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

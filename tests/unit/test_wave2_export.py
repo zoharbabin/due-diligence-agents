@@ -134,7 +134,7 @@ class TestFindingProvenanceModel:
         from dd_agents.models.finding import FindingProvenance
 
         p = FindingProvenance(
-            extraction_method="pymupdf",
+            extraction_method="pdfium",
             extraction_confidence=0.95,
             agent_name="legal",
             citation_verified=True,
