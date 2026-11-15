@@ -17,6 +17,7 @@ import pytest
 from dd_agents.extraction import glm_ocr, pdf_pages
 from dd_agents.extraction.glm_ocr import GlmOcrExtractor
 from dd_agents.extraction.ocr import OCRExtractor
+from dd_agents.extraction.pdf_pages import collapse_repeats
 from dd_agents.extraction.pipeline import ExtractionPipeline
 
 CORPUS = Path(__file__).resolve().parent.parent / "fixtures" / "extraction_corpus"
@@ -118,6 +119,46 @@ class TestPipeline:
         ocr = FakeOcr({})
         _extract(ExtractionPipeline(ocr=ocr), TEXT_ONLY, tmp_path)  # type: ignore[arg-type]
         assert ocr.calls == []
+
+
+LOOP_LINE = "Synthetic test document. All names, amounts and dates are invented."
+
+
+class TestCollapseRepeats:
+    def test_looping_output_is_trimmed_to_first_copy(self) -> None:
+        text, looped = collapse_repeats(f"{PAGE2}\n" + (f"{LOOP_LINE}\n" * 50))
+        assert looped is True
+        assert text.count(LOOP_LINE) == 1
+        assert PAGE2 in text
+
+    def test_repeated_block_is_trimmed(self) -> None:
+        block = "Section 2.1 The Customer shall pay USD 1,250,000.00 per year.\nSection 2.2 Invoices are due soon.\n"
+        text, looped = collapse_repeats(block * 20)
+        assert looped is True
+        assert text.count("Section 2.1") == 1
+        assert text.count("Section 2.2") == 1
+
+    def test_normal_text_is_untouched(self) -> None:
+        original = f"{PAGE2}\n{LOOP_LINE}\n{LOOP_LINE}\nN/A\nN/A\nN/A\nN/A\nN/A\n"
+        text, looped = collapse_repeats(original)
+        assert looped is False
+        assert text == original
+
+    def test_short_lines_never_count_as_a_loop(self) -> None:
+        original = "Yes\n" * 30
+        assert collapse_repeats(original) == (original, False)
+
+
+@pytest.mark.usefixtures("inspector_mode")
+class TestLoopingOcr:
+    def test_loop_is_trimmed_and_reported(self, tmp_path: Path) -> None:
+        looping = f"{PAGE2}\n" + f"{LOOP_LINE}\n" * 40
+        entry, text = _extract(ExtractionPipeline(ocr=FakeOcr({2: looping, 4: PAGE4})), MIXED, tmp_path)  # type: ignore[arg-type]
+        assert PAGE2 in text
+        assert text.count(LOOP_LINE) <= 4  # one per text page at most, none from the loop
+        joined = " ".join(entry.failure_reasons)
+        assert "page 2" in joined
+        assert "repeated itself" in joined
 
 
 class TestGlmPages:

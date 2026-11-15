@@ -305,6 +305,10 @@ def _try_mlx_extract_on_images(image_paths: list[Path], model: Any, processor: A
 # ── Ollama backend ───────────────────────────────────────────────────
 
 
+OLLAMA_PAGE_TIMEOUT_SECONDS = 180.0
+OLLAMA_MAX_PAGE_TOKENS = 4096
+
+
 def _ollama_ocr_pages(image_paths: list[Path]) -> list[str]:
     """Run GLM-OCR on each image via Ollama.  Returns per-page text."""
     ollama = _import_ollama()
@@ -312,9 +316,12 @@ def _ollama_ocr_pages(image_paths: list[Path]) -> list[str]:
         return []
 
     results: list[str] = []
+    # A page of text is well under the token cap. Without caps, a page the model
+    # cannot read can loop for tens of minutes and block the whole extraction.
+    client = ollama.Client(timeout=OLLAMA_PAGE_TIMEOUT_SECONDS)
     for img_path in image_paths:
         try:
-            response = ollama.chat(
+            response = client.chat(
                 model=MODEL_ID_OLLAMA,
                 messages=[
                     {
@@ -323,6 +330,7 @@ def _ollama_ocr_pages(image_paths: list[Path]) -> list[str]:
                         "images": [str(img_path)],
                     }
                 ],
+                options={"num_predict": OLLAMA_MAX_PAGE_TOKENS},
             )
             text = response["message"]["content"]
             results.append(text if isinstance(text, str) else str(text))

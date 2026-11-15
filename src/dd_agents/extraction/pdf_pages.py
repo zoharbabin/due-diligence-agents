@@ -25,6 +25,39 @@ MIN_PAGE_TEXT_CHARS = 20
 MAX_OCR_PAGES = 50
 
 
+# A small OCR model can get stuck and repeat the same lines until it hits its token cap.
+# A page where one long line appears this many times is treated as looping.
+LOOP_MIN_LINE_CHARS = 20
+LOOP_MIN_REPEATS = 4
+
+
+def collapse_repeats(text: str) -> tuple[str, bool]:
+    """Drop repeated lines from OCR output that looped. Returns ``(text, looped)``.
+
+    Only acts when a line of at least :data:`LOOP_MIN_LINE_CHARS` characters
+    appears :data:`LOOP_MIN_REPEATS` times or more. Then every repeat of a long
+    line is dropped. Text that does not loop is returned unchanged.
+    """
+    lines = text.split("\n")
+    counts: dict[str, int] = {}
+    for line in lines:
+        key = line.strip()
+        if len(key) >= LOOP_MIN_LINE_CHARS:
+            counts[key] = counts.get(key, 0) + 1
+    if not any(n >= LOOP_MIN_REPEATS for n in counts.values()):
+        return text, False
+    seen: set[str] = set()
+    kept: list[str] = []
+    for line in lines:
+        key = line.strip()
+        if len(key) >= LOOP_MIN_LINE_CHARS:
+            if key in seen:
+                continue
+            seen.add(key)
+        kept.append(line)
+    return "\n".join(kept), True
+
+
 def pages_from_text(page_texts: Sequence[str]) -> list[int]:
     """1-based pages whose text layer is empty or nearly empty."""
     return [n for n, text in enumerate(page_texts, start=1) if len("".join(text.split())) < MIN_PAGE_TEXT_CHARS]

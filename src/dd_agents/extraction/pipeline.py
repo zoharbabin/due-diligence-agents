@@ -1357,6 +1357,11 @@ class ExtractionPipeline:
                 found.update(backend.extract_pages(filepath, todo))
             except Exception as exc:
                 logger.warning("Page OCR failed for %s: %s", filepath.name, exc)
+        looped: list[int] = []
+        for n in sorted(found):
+            found[n], did_loop = pdf_pages.collapse_repeats(found[n])
+            if did_loop:
+                looped.append(n)
         merged = [found.get(n, text) for n, text in enumerate(pages, start=1)]
         missing = [n for n in gaps if n not in found]
         chain.append(f"ocr_pages({', '.join(str(n) for n in sorted(found))})" if found else "ocr_pages(none)")
@@ -1364,6 +1369,10 @@ class ExtractionPipeline:
             failure_reasons.append(
                 f"pages {', '.join(str(n) for n in missing)} have no text layer and OCR could not read them: "
                 "extracted text is incomplete"
+            )
+        for n in looped:
+            failure_reasons.append(
+                f"page {n} OCR output repeated itself and was trimmed: text after the repeat may be missing"
             )
         return self._join_pages(merged)
 

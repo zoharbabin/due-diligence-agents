@@ -23,6 +23,8 @@ PDFium reads the pages that have a text layer. Pages without one are rendered an
 | Some pages scanned, OCR works | Full text, chain shows `ocr_pages(...)` |
 | Some pages scanned, OCR unavailable or empty | Text from the readable pages, and the failure reason `pages N, M have no text layer and OCR could not read them: extracted text is incomplete` |
 
+Small OCR models can get stuck and repeat the same lines. When a page repeats a long line four or more times, the repeats are dropped and the entry gets the reason `page N OCR output repeated itself and was trimmed`. Ollama GLM-OCR calls are capped at 4096 output tokens and 180 seconds per page.
+
 Scanned pages are never dropped silently. Treat an "incomplete" entry as a coverage gap.
 
 Page detection uses `pdf-inspector` when installed (`pip install "dd-agents[pdf-fast]"`). Otherwise a page with fewer than 20 characters counts as scanned. At most 50 pages per file go to OCR.
