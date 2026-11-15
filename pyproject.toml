@@ -37,6 +37,7 @@ dependencies = [
     "networkx>=3.0",
     "numpy>=1.24",
     "rapidfuzz>=3.0",
+    "defusedxml>=0.7",  # safe XML parsing for the sanctions list downloads (screening/)
     # markitdown needs onnxruntime (via magika), which has no wheels for Python 3.15 yet.
     # On 3.15 install it without dependencies (`pip install --no-deps markitdown`);
     # extraction/office_convert.py then loads it with a magika stand-in. The lines
@@ -46,7 +47,6 @@ dependencies = [
     "pandas>=2.0; python_version >= '3.15'",
     "lxml>=5.0; python_version >= '3.15'",
     "charset-normalizer>=3.0; python_version >= '3.15'",
-    "defusedxml>=0.7; python_version >= '3.15'",
     "requests>=2.28; python_version >= '3.15'",
     "mammoth>=1.8",
     "markdownify>=0.13",
@@ -118,6 +118,7 @@ markers = [
     "slow: tests that take more than 1 minute",
     "local: deep validation tests, local-only (not for CI)",
     "gateway: provider-agnostic live test through an Anthropic-compatible gateway (requires DD_TEST_GATEWAY_URL)",
+    "screening_live: downloads the real sanctions lists (requires DD_TEST_SCREENING_LIVE=1)",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",

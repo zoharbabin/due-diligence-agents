@@ -846,6 +846,62 @@ nothing unless `--output` is given. Exits non-zero on an unknown agent name.
 See [Agent Customization](../agent-customization.md) for the full customization
 workflow.
 
+## screening
+
+Download the official sanctions lists and check how fresh they are. Lists are
+stored on your machine. No entry names are ever printed.
+
+```
+dd-agents screening COMMAND [OPTIONS]
+```
+
+Where files go: `DD_SCREENING_DIR` (default `~/.dd-agents/screening`), under
+`lists/{source}.json`. Source ids are the keys of `SOURCES` in
+`src/dd_agents/screening/sources/__init__.py`. Each adapter's module docstring
+records its URL, file format and the publisher's terms.
+
+### screening update
+
+Download lists and store them. **Writes** to the screening dir. Safe to repeat.
+
+```
+dd-agents screening update [--source ID ...] [--json]
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--source` | choice, repeatable | all sources | Only update these sources |
+| `--json` | flag | off | Print results as JSON (`screening_dir`, `results`) |
+
+```bash
+dd-agents screening update
+dd-agents screening update --source uk --json
+```
+
+- Needs network. HTTPS only, with a size cap and time limits.
+- Each source is stored as one file, replaced in a single step. A failed download or parse never touches the list you already have. It only writes `{source}.failure.json`, which the next success removes.
+- Exits 1 if any requested source failed. The other sources still run.
+- Prints counts and dates only.
+
+### screening status
+
+Show which lists are stored and how fresh they are. **Read-only.** No network,
+no files written, the screening dir is not created.
+
+```
+dd-agents screening status [--json]
+```
+
+| Status | Meaning |
+|--------|---------|
+| `screened` | Stored and downloaded within the age limit |
+| `stale` | Stored but older than the age limit. Run `screening update` |
+| `missing` | Never downloaded |
+| `failed` | No usable list: the last update failed, or the stored file is unreadable |
+
+The age limit is `LIST_MAX_AGE_DAYS` in `src/dd_agents/screening/store.py`. The
+JSON output also carries it as `max_age_days`. Always exits 0.
+
 ## Global Options
 
 The `--version` flag is available on the top-level group:
