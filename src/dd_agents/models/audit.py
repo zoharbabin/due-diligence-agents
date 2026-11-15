@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from dd_agents.models.enums import (  # noqa: TC001
     AuditAction,
@@ -106,6 +106,33 @@ class SpotCheck(BaseModel):
     dimension: SpotCheckDimension = Field(description="Quality dimension being evaluated")
     result: SpotCheckResult = Field(description="Check outcome: pass, partial, or fail")
     notes: str = Field(default="", description="Judge's explanation or commentary")
+
+
+class WebCheck(BaseModel):
+    """One Judge lookup of a sampled claim against public sources (Issue #274).
+
+    ``access_date`` is mandatory. Confidence stays ``low`` unless a data room
+    document corroborates the same fact.
+    """
+
+    finding_id: str = Field(description="Identifier of the finding whose claim was checked")
+    agent: str = Field(description="AgentName value of the agent that produced the finding")
+    analysis_unit: str = Field(description="Subject name being analyzed")
+    query: str = Field(min_length=1, description="Entity names and public identifiers sent to the tool")
+    source_url: str = Field(default="", description="Public source URL, empty when the lookup returned nothing")
+    access_date: str = Field(min_length=1, description="Date the source was accessed (YYYY-MM-DD)")
+    result: Literal["corroborates", "contradicts", "no_result", "unavailable"] = Field(
+        description="Lookup outcome. no_result and unavailable are never clearance"
+    )
+    confidence: Literal["low", "medium", "high"] = Field(default="low")
+    corroborated_by_data_room: bool = Field(default=False)
+    notes: str = Field(default="")
+
+    @model_validator(mode="after")
+    def confidence_needs_corroboration(self) -> WebCheck:
+        if self.confidence != "low" and not self.corroborated_by_data_room:
+            raise ValueError("confidence above 'low' requires corroborated_by_data_room")
+        return self
 
 
 class Contradiction(BaseModel):

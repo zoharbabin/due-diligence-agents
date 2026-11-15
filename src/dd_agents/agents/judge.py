@@ -12,6 +12,7 @@ from typing import Any
 from dd_agents.agents.base import BaseAgentRunner
 from dd_agents.agents.prompt_builder import PromptBuilder
 from dd_agents.models.audit import AgentScoreDimensions, QualityScores
+from dd_agents.tools.external_mcp import ExternalAccess, resolve_external_access
 
 logger = logging.getLogger(__name__)
 
@@ -143,13 +144,28 @@ class JudgeAgent(BaseAgentRunner):
     def get_tools(self) -> list[str]:
         return ["Read", "Write", "Glob", "Grep", "verify_citation", "get_subject_files"]
 
+    def get_external_access(self) -> ExternalAccess | None:
+        """Web tools for claim verification (Issue #274). Needs both opt-ins."""
+        cfg = self.deal_config
+        if cfg is None or not cfg.judge.web_research_enabled:
+            return None
+        access = resolve_external_access(cfg)
+        if access is None:
+            logger.warning(
+                "judge.web_research_enabled is true but external_verification.enabled is false. "
+                "The Judge runs without web tools."
+            )
+        return access
+
     def build_prompt(self, state: dict[str, Any]) -> str:
         builder = PromptBuilder(self.project_dir, self.run_dir, self.run_id)
         findings_dir = state.get("findings_dir", str(self.run_dir / "findings"))
+        access = self.get_external_access()
         return builder.build_judge_prompt(
             findings_dir=findings_dir,
             quality_targets={"score_threshold": self.score_threshold},
             sampling_rates=self.sampling_rates,
+            web_research_tools=access.tool_names if access is not None else None,
         )
 
     # ------------------------------------------------------------------

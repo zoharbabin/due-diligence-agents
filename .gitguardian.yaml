@@ -1,0 +1,5 @@
+version: 2
+secret:
+  ignored_paths:
+    # Synthetic, encrypted test PDFs. The passwords are public test values.
+    - "tests/fixtures/extraction_corpus/**"

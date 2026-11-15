@@ -346,8 +346,8 @@ class TestPipelineInitialization:
         assert engine.project_dir == data_room.resolve()
         assert engine.deal_config_path == config_path.resolve()
         assert engine.max_retries == 1
-        assert engine.TOTAL_STEPS == 38
-        assert len(engine._step_registry) == 38
+        assert engine.TOTAL_STEPS == 39
+        assert len(engine._step_registry) == 39
 
     def test_all_steps_registered(self, tmp_path: Path) -> None:
         """Every PipelineStep has a registered handler."""

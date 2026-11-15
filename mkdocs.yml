@@ -64,12 +64,14 @@ nav:
     - Provider Coverage: user-guide/provider-coverage.md
     - Running the Pipeline: user-guide/running-pipeline.md
     - Reading the Report: user-guide/reading-report.md
+    - Sanctions Screening: user-guide/screening.md
     - CLI Reference: user-guide/cli-reference.md
     - Troubleshooting: user-guide/troubleshooting.md
   - Guides:
     - How the Agents Work: agent-anatomy.md
     - Agent Customization: agent-customization.md
     - Contract Search: search-guide.md
+    - Extraction Coverage: extraction-coverage.md
     - Knowledge Architecture: knowledge-architecture.md
   - Trust & Safety:
     - System Card: system-card.md

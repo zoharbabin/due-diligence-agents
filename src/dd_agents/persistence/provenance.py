@@ -58,6 +58,22 @@ def compute_persona_hashes(personas: dict[str, str]) -> dict[str, str]:
     }
 
 
+def screening_persona_texts(screening_cfg: dict[str, Any] | None, user_content_hash: str) -> dict[str, str]:
+    """Extra provenance inputs for the local screening step (Issue #274).
+
+    Empty when screening is off, so deals that do not use it keep their hash.
+    When on, the screening settings and the hash of the user's
+    ``dd-config/screening/`` files are included. Editing either busts resume.
+    The caller reads the files and passes the hash in (this module stays pure).
+    """
+    if not isinstance(screening_cfg, dict) or not screening_cfg.get("enabled"):
+        return {}
+    return {
+        "screening:config": json.dumps(screening_cfg, sort_keys=True, separators=(",", ":")),
+        "screening:user_lists": user_content_hash,
+    }
+
+
 def compute_provenance_hash(
     config_hash: str,
     prompt_version: str,

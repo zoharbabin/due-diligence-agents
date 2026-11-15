@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<export xmlns="http://eu.europa.ec/fpi/fsd/export" generationDate="2026-10-23T17:05:43.888+02:00" globalFileId="1">
+    <sanctionEntity designationDate="2012-06-29" designationDetails="" unitedNationId="" euReferenceNumber="EU.0.01" logicalId="90001">
+        <remark>Synthetic record for unit tests.</remark>
+        <regulation regulationType="regulation" organisationType="commission" publicationDate="2003-07-08" entryIntoForceDate="2003-07-07" numberTitle="1/2003 (OJ L1)" programme="TSTA" logicalId="1">
+            <publicationUrl>http://eur-lex.example.test/old</publicationUrl>
+        </regulation>
+        <regulation regulationType="amendment" organisationType="council" publicationDate="2024-02-01" entryIntoForceDate="2024-02-02" numberTitle="2/2024 (OJ L2)" programme="TSTB" logicalId="2">
+            <publicationUrl>https://eur-lex.example.test/new</publicationUrl>
+        </regulation>
+        <subjectType code="person" classificationCode="P"/>
+        <nameAlias firstName="Test" middleName="Person" lastName="Alpha" wholeName="Test Person Alpha" function="" gender="M" title="" nameLanguage="" strong="true" regulationLanguage="en" logicalId="10"/>
+        <nameAlias firstName="" middleName="" lastName="" wholeName="Тест Персона Альфа" function="" title="" nameLanguage="RU" strong="true" regulationLanguage="en" logicalId="11"/>
+        <nameAlias firstName="Tester" middleName="" lastName="Alfa" wholeName="" function="" title="" nameLanguage="" strong="false" regulationLanguage="en" logicalId="12"/>
+        <citizenship region="" countryIso2Code="XA" countryDescription="EXAMPLESTAN" regulationLanguage="en" logicalId="20"/>
+        <citizenship region="" countryIso2Code="XB" countryDescription="TESTLAND" regulationLanguage="en" logicalId="21"/>
+        <address city="Exampleville" countryIso2Code="XA" countryDescription="EXAMPLESTAN" logicalId="22" place="" poBox="" region="" street="" zipCode="" asAtListingTime="false" regulationLanguage="en"/>
+        <birthdate circa="false" calendarType="GREGORIAN" city="Exampleville" zipCode="" birthdate="1937-04-28" dayOfMonth="28" monthOfYear="4" year="1937" region="" place="" countryIso2Code="XA" countryDescription="EXAMPLESTAN" regulationLanguage="en" logicalId="30"/>
+        <birthdate circa="false" calendarType="GREGORIAN" city="" zipCode="" birthdate="" dayOfMonth="" monthOfYear="" year="1940" region="" place="" countryIso2Code="" countryDescription="" regulationLanguage="en" logicalId="31"/>
+        <birthdate circa="true" calendarType="GREGORIAN" city="" zipCode="" yearRangeFrom="1953" yearRangeTo="1955" region="" place="" countryIso2Code="" countryDescription="" regulationLanguage="en" logicalId="32"/>
+        <birthdate circa="false" calendarType="GREGORIAN" city="" zipCode="" region="" place="" countryIso2Code="" countryDescription="" regulationLanguage="en" logicalId="33"/>
+    </sanctionEntity>
+    <sanctionEntity designationDetails="" unitedNationId="" euReferenceNumber="EU.0.02" logicalId="90002">
+        <regulation regulationType="amendment" organisationType="council" publicationDate="2025-01-31" entryIntoForceDate="2025-02-01" numberTitle="3/2025 (L 3)" programme="TSTA" logicalId="3">
+            <publicationUrl>https://eur-lex.example.test/entity</publicationUrl>
+        </regulation>
+        <subjectType code="enterprise" classificationCode="E"/>
+        <nameAlias firstName="" middleName="" lastName="" wholeName="Εταιρεία Παράδειγμα" function="" title="" nameLanguage="EL" strong="true" regulationLanguage="en" logicalId="40"/>
+        <nameAlias firstName="" middleName="" lastName="" wholeName="Example Trading Co" function="" title="" nameLanguage="" strong="true" regulationLanguage="en" logicalId="41"/>
+        <nameAlias firstName="" middleName="" lastName="" wholeName="Example Trading Co" function="" title="" nameLanguage="EN" strong="true" regulationLanguage="en" logicalId="42"/>
+    </sanctionEntity>
+    <sanctionEntity designationDetails="" unitedNationId="" euReferenceNumber="EU.0.03" logicalId="90003">
+        <subjectType code="enterprise" classificationCode="E"/>
+        <nameAlias firstName="" middleName="" lastName="" wholeName="Bare Minimum Ltd" function="" title="" nameLanguage="" strong="true" regulationLanguage="en" logicalId="50"/>
+    </sanctionEntity>
+</export>

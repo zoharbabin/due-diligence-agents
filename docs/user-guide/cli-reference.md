@@ -33,7 +33,7 @@ dd-agents run CONFIG_PATH [OPTIONS]
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `--mode` | `full\|incremental` | from config | Override execution mode |
-| `--resume-from` | int (0-38) | 0 (beginning) | Resume from a specific step |
+| `--resume-from` | int (0-39) | 0 (beginning) | Resume from a specific step |
 | `--no-narrative` | flag | off | Skip LLM narrative generation (deterministic report only) |
 | `--dry-run` | flag | off | Print step plan without executing |
 | `--quick-scan` | flag | off | Add a Red Flag Scanner stoplight-triage pass (full pipeline runs; scanner reads merged findings) |
@@ -845,6 +845,117 @@ nothing unless `--output` is given. Exits non-zero on an unknown agent name.
 
 See [Agent Customization](../agent-customization.md) for the full customization
 workflow.
+
+## screening
+
+Download the official sanctions lists, check how fresh they are, and screen
+names against them and your own lists. Lists are stored on your machine and
+matching runs locally. `update` and `status` never print entry names. `check`
+prints the possible matches for the name you typed.
+
+```
+dd-agents screening COMMAND [OPTIONS]
+```
+
+The pipeline step that uses these lists is described in [Sanctions and Watchlist Screening](screening.md).
+
+Where files go: `DD_SCREENING_DIR` (default `~/.dd-agents/screening`), under
+`lists/{source}.json`. Source ids are the keys of `SOURCES` in
+`src/dd_agents/screening/sources/__init__.py`. Each adapter's module docstring
+records its URL, file format and the publisher's terms.
+
+### screening update
+
+Download lists and store them. **Writes** to the screening dir. Safe to repeat.
+
+```
+dd-agents screening update [--source ID ...] [--json]
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--source` | choice, repeatable | all sources | Only update these sources |
+| `--json` | flag | off | Print results as JSON (`screening_dir`, `results`) |
+
+```bash
+dd-agents screening update
+dd-agents screening update --source uk --json
+```
+
+- Needs network. HTTPS only, with a size cap and time limits.
+- Each source is stored as one file, replaced in a single step. A failed download or parse never touches the list you already have. It only writes `{source}.failure.json`, which the next success removes.
+- Exits 1 if any requested source failed. The other sources still run.
+- Prints counts and dates only.
+
+### screening status
+
+Show which lists are stored and how fresh they are. **Read-only.** No network,
+no files written, the screening dir is not created.
+
+```
+dd-agents screening status [--json]
+```
+
+| Status | Meaning |
+|--------|---------|
+| `screened` | Stored and downloaded within the age limit |
+| `stale` | Stored but older than the age limit. Run `screening update` |
+| `missing` | Never downloaded |
+| `failed` | No usable list: the last update failed, or the stored file is unreadable |
+
+The age limit is `LIST_MAX_AGE_DAYS` in `src/dd_agents/screening/store.py`. The
+JSON output also carries it as `max_age_days`. Always exits 0.
+
+### screening check
+
+Screen one name against the stored lists and the lists in `dd-config/screening/`. **Read-only.** No network.
+
+```
+dd-agents screening check NAME [--type person|organization] [--birth-year N] [--country C] [--project-dir DIR] [--json]
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--type` | `organization` | People and companies are matched differently |
+| `--birth-year` | none | Agreeing year is noted. A different year lowers the band |
+| `--country` | none | Agreeing country is noted |
+| `--project-dir` | `.` | Folder that holds `dd-config/screening/` |
+| `--json` | off | Full report: `complete`, `coverage`, `results`, `gaps`, `references`, `user_errors` |
+
+| Exit | Meaning |
+|------|---------|
+| 0 | No possible match, and every list was fresh and readable |
+| 1 | At least one possible match. Needs human review |
+| 2 | No possible match, but a list was missing, stale or unreadable |
+
+Bands: `exact`, `strong`, `possible`. A hit is never a conclusion. No hit is never a clearance: the output lists every list searched and every gap.
+
+### screening validate
+
+Check your own files in `dd-config/screening/`. **Read-only.** Prints each file with its kind and entry count, then every error. Exits 1 if any file has an error.
+
+```
+dd-agents screening validate [--project-dir DIR] [--json]
+```
+
+## extraction
+
+### extraction check
+
+Read-only. Checks that the Tesseract language packs you need are installed. With a sample file, extracts it and warns when the text has a script that no configured language can read.
+
+```bash
+dd-agents extraction check --languages deu,eng
+dd-agents extraction check --config deal-config.json scan.pdf
+```
+
+| Option | Description |
+|--------|-------------|
+| `--config PATH` | Read `extraction.ocr_languages` and `ocr_backend` from a deal config |
+| `--languages CODES` | Comma-separated Tesseract codes. Overrides the config |
+| `SAMPLE` | Optional PDF, image or text file to extract and check |
+
+Exit code `1`: a pack is missing, nothing was extracted, or the sample has an unreadable script.
 
 ## Global Options
 

@@ -1,0 +1,144 @@
+<?xml version="1.0" standalone="yes"?>
+<sdnList xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/XML">
+  <publshInformation>
+    <Publish_Date>11/13/2026</Publish_Date>
+    <Record_Count>5</Record_Count>
+  </publshInformation>
+  <sdnEntry>
+    <uid>90001</uid>
+    <firstName>Test Person</firstName>
+    <lastName>ALPHA</lastName>
+    <title>Director of Example Holdings</title>
+    <sdnType>Individual</sdnType>
+    <remarks>Synthetic record for unit tests.</remarks>
+    <programList>
+      <program>TESTPROG1</program>
+      <program>TESTPROG2</program>
+    </programList>
+    <akaList>
+      <aka>
+        <uid>1</uid>
+        <type>a.k.a.</type>
+        <category>strong</category>
+        <lastName>ALFA</lastName>
+        <firstName>Tester</firstName>
+      </aka>
+      <aka>
+        <uid>2</uid>
+        <type>f.k.a.</type>
+        <category>weak</category>
+        <lastName>Альфа</lastName>
+        <firstName>Тест Персона</firstName>
+      </aka>
+      <aka>
+        <uid>3</uid>
+        <type>n.k.a.</type>
+        <category>strong</category>
+        <lastName>ONLYLAST</lastName>
+      </aka>
+    </akaList>
+    <addressList>
+      <address>
+        <uid>10</uid>
+        <city>Exampleville</city>
+        <country>Examplestan</country>
+      </address>
+      <address>
+        <uid>11</uid>
+        <address1>1 Test Road</address1>
+        <country>Testland</country>
+      </address>
+    </addressList>
+    <nationalityList>
+      <nationality>
+        <uid>20</uid>
+        <country>Examplestan</country>
+        <mainEntry>true</mainEntry>
+      </nationality>
+    </nationalityList>
+    <citizenshipList>
+      <citizenship>
+        <uid>21</uid>
+        <country>Testland</country>
+        <mainEntry>true</mainEntry>
+      </citizenship>
+    </citizenshipList>
+    <dateOfBirthList>
+      <dateOfBirthItem>
+        <uid>30</uid>
+        <dateOfBirth>10 Dec 1948</dateOfBirth>
+        <mainEntry>true</mainEntry>
+      </dateOfBirthItem>
+      <dateOfBirthItem>
+        <uid>31</uid>
+        <dateOfBirth>Dec 1949</dateOfBirth>
+        <mainEntry>false</mainEntry>
+      </dateOfBirthItem>
+      <dateOfBirthItem>
+        <uid>32</uid>
+        <dateOfBirth>circa 1952</dateOfBirth>
+        <mainEntry>false</mainEntry>
+      </dateOfBirthItem>
+      <dateOfBirthItem>
+        <uid>33</uid>
+        <dateOfBirth>1955 to 1957</dateOfBirth>
+        <mainEntry>false</mainEntry>
+      </dateOfBirthItem>
+      <dateOfBirthItem>
+        <uid>34</uid>
+        <dateOfBirth>date unknown</dateOfBirth>
+        <mainEntry>false</mainEntry>
+      </dateOfBirthItem>
+    </dateOfBirthList>
+  </sdnEntry>
+  <sdnEntry>
+    <uid>90002</uid>
+    <lastName>EXAMPLE TRADING CO</lastName>
+    <sdnType>Entity</sdnType>
+    <programList>
+      <program>TESTPROG1</program>
+    </programList>
+    <akaList>
+      <aka>
+        <uid>40</uid>
+        <type>a.k.a.</type>
+        <category>strong</category>
+        <lastName>EXAMPLE TRADING COMPANY LIMITED</lastName>
+      </aka>
+    </akaList>
+    <addressList>
+      <address>
+        <uid>41</uid>
+        <city>Exampleville</city>
+        <country>Examplestan</country>
+      </address>
+    </addressList>
+  </sdnEntry>
+  <sdnEntry>
+    <uid>90003</uid>
+    <lastName>EXAMPLE STAR</lastName>
+    <sdnType>Vessel</sdnType>
+    <programList>
+      <program>TESTPROG2</program>
+    </programList>
+    <vesselInfo>
+      <callSign>XX1234</callSign>
+      <vesselType>Tug</vesselType>
+      <vesselFlag>Testland</vesselFlag>
+    </vesselInfo>
+  </sdnEntry>
+  <sdnEntry>
+    <uid>90004</uid>
+    <lastName>XX-TEST1</lastName>
+    <sdnType>Aircraft</sdnType>
+    <remarks>(Linked To: EXAMPLE TRADING CO)</remarks>
+    <programList>
+      <program>TESTPROG2</program>
+    </programList>
+  </sdnEntry>
+  <sdnEntry>
+    <uid>90005</uid>
+    <lastName>BARE MINIMUM LTD</lastName>
+    <sdnType>Entity</sdnType>
+  </sdnEntry>
+</sdnList>

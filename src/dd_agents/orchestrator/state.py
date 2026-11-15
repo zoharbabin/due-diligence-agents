@@ -10,7 +10,27 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from dd_agents.errors import BlockingGateError
 from dd_agents.orchestrator.steps import PipelineStep
+
+
+def _reject_unknown_steps(data: dict[str, Any]) -> None:
+    """Fail clearly when a checkpoint names a step this version does not have.
+
+    Checkpoints written before the step list changed carry old step names.
+    Resuming from them would pair the saved state with the wrong steps.
+    """
+    names = [data.get("current_step", ""), *data.get("completed_steps", [])]
+    names += [sr.get("step", "") for sr in data.get("step_results", {}).values() if isinstance(sr, dict)]
+    known = {s.value for s in PipelineStep}
+    unknown = sorted({n for n in names if n and n not in known})
+    if unknown:
+        raise BlockingGateError(
+            f"Resume blocked: the checkpoint names pipeline steps this version does not have ({', '.join(unknown)}). "
+            "It was written by an older version that numbered the steps differently. "
+            "Delete the checkpoint directory or re-run without --resume-from to start fresh."
+        )
+
 
 # ---------------------------------------------------------------------------
 # StepResult
@@ -233,6 +253,8 @@ class PipelineState:
     @classmethod
     def from_checkpoint_dict(cls, data: dict[str, Any]) -> PipelineState:
         """Restore a ``PipelineState`` from a checkpoint dictionary."""
+
+        _reject_unknown_steps(data)
 
         step_results: dict[str, StepResult] = {}
         for key, sr_dict in data.get("step_results", {}).items():

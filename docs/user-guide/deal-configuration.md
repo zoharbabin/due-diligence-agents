@@ -297,14 +297,65 @@ Controls the optional Judge agent that reviews specialist findings:
   - `p3`: 0.0 (skip informational findings)
 - `ocr_completeness_check`: verify OCR extraction quality (default: true)
 - `cross_agent_contradiction_check`: detect conflicting findings across agents (default: true)
-- `web_research_enabled`: reserved for web research via [web-researcher-mcp](https://github.com/zoharbabin/web-researcher-mcp) claim verification (default: false). **Currently has no effect:** no agent reads it yet, so setting it to `true` changes nothing.
+- `web_research_enabled`: let the Judge check sampled claims against public sources (default: false). Needs `external_verification.enabled` too. With only this flag set, the Judge runs without web tools and logs a warning. When active, the Judge sends entity names and public identifiers to the configured server, never document text, and writes each lookup to `judge/web_checks.json` with a mandatory access date. Results stay low confidence unless a data room document supports the same fact. No result is not clearance.
+
+### external_verification (optional)
+
+Opt-in lookups against public sources through an MCP server. **Off by default.** Entity names leave the machine when it is on. Today the Judge is the only agent that uses it, and only when `judge.web_research_enabled` is also true. The block is part of the run provenance hash, so changing it rejects a resume.
+
+```json
+"external_verification": {
+  "enabled": false,
+  "server": {
+    "name": "web-researcher",
+    "command": "uvx",
+    "args": ["web-researcher-mcp"],
+    "env_passthrough": ["EDGAR_CONTACT_EMAIL"]
+  },
+  "allowed_tools": ["web_search", "news_search", "scrape_page", "filing_search", "legal_search", "verify_citation"]
+}
+```
+
+- `server.env_passthrough`: names of environment variables to forward to the server. Values are never stored in the config.
+- `allowed_tools`: the only server tools an agent may call. Names are listed one by one. Tools that write or keep state (`archive_source`, `site_login`, `site_logout`, `memory_save`, `memory_recall`, `research_export`) are rejected.
+- Any MCP tool outside the internal `dd_tools` server and this allowlist is blocked for every pipeline agent.
+
+### screening (optional)
+
+Local sanctions and watchlist screening (pipeline step 26). **Off by default.** List matching makes no network call and no LLM call. Download the lists first with `dd-agents screening update`. `discover_officers` and `profile_research` add agent work and are off by default.
+
+```json
+"screening": {
+  "enabled": true,
+  "people": true,
+  "companies": true,
+  "sources": ["ofac_sdn", "uk", "eu"],
+  "discover_officers": false,
+  "profile_research": false,
+  "research_max_targets": 25
+}
+```
+
+- `enabled`: run the step (default: false)
+- `people`: screen `key_executives` (default: true)
+- `companies`: screen the target, its subsidiaries, previous names, name variants and the data room entities (default: true)
+- `sources`: official list ids. Omit it to use every built-in source. An unknown id fails validation.
+- `discover_officers`: an agent proposes officers, directors and owners from the data room text. Each needs a quote that is found in the cited file (default: false). No web access.
+- `profile_research`: search public sources for the screened names (default: false). Needs `external_verification.enabled`, otherwise nothing is searched and the report shows a gap. Sends names, kind and role to the configured server, never document text.
+- `research_max_targets`: most names sent to research, 1 to 200 (default: 25). The target and its executives come first.
+- The block and the files in `dd-config/screening/` are part of the run provenance hash. Changing either rejects a resume.
+
+See [Sanctions and Watchlist Screening](screening.md).
 
 ### extraction (optional)
 
 - `ocr_backend`: OCR engine preference for scanned pages — `auto` (default), `pytesseract`, or `glm_ocr`
   - `auto`: detects best available OCR backend, preferring `glm_ocr` over `pytesseract`
-  - `pytesseract`: English-only OCR (hardcoded `lang="eng"`)
-  - `glm_ocr`: multilingual OCR via GLM vision-language model (100+ languages, recommended for non-English data rooms)
+  - `pytesseract`: Tesseract OCR. Reads the languages in `ocr_languages` (default `["eng"]`)
+  - `glm_ocr`: OCR via a vision-language model. It ignores `ocr_languages`. Per-language accuracy is not measured by this project: test your languages (see [Extraction coverage](../extraction-coverage.md))
+- `ocr_languages`: Tesseract language codes for the `pytesseract` path, e.g. `["deu", "eng"]` or `["script/Cyrillic"]`. Each needs its Tesseract language pack installed. Check with `dd-agents extraction check`
+- `office_backend`: converter for `.docx`, `.pptx` and `.xlsx` files: `markitdown` (default) or `anydoc`
+  - `anydoc`: faster, optional install (`pip install "dd-agents[office-fast]"`). It has no HTML reader, so HTML and other formats stay on markitdown. markitdown is also the fallback if anydoc fails. See [Extraction coverage](../extraction-coverage.md)
 
 Text extraction (non-scanned PDFs) uses a separate chain: pdfium → pdftotext → markitdown → OCR fallback.
 

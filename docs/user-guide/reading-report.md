@@ -24,6 +24,7 @@ The report uses a 4-layer progressive disclosure design. You get the answer firs
 - Financial impact quantification
 - Valuation bridge (risk-adjusted)
 - Buyer strategy alignment (when configured)
+- Sanctions and watchlist screening: lists used, possible matches, gaps (when `screening.enabled` is true; see [Sanctions Screening](screening.md))
 
 **Layer 3: Domain Details (click to expand)**
 - Domain overview cards with finding previews and narrative headlines

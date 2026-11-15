@@ -11,11 +11,12 @@ import json
 import logging
 import traceback
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import click
 from rich.console import Console
 from rich.markdown import Markdown
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 
@@ -123,7 +124,7 @@ def main() -> None:
     "resume_from",
     type=int,
     default=0,
-    help="Resume pipeline from a specific step number (0-38).",
+    help="Resume pipeline from a specific step number (0-39).",
 )
 @click.option(
     "--dry-run",
@@ -219,7 +220,8 @@ def run(
     if model_overrides:
         from dd_agents.models.enums import AgentName
 
-        valid_agents = tuple(e.value for e in AgentName)
+        # The screening step is deterministic and has no model to override.
+        valid_agents = tuple(e.value for e in AgentName if e is not AgentName.EXTERNAL_SCREENING)
         for override in model_overrides:
             if "=" not in override:
                 _print_error(
@@ -245,11 +247,12 @@ def run(
     _print_config_summary(deal_config)
 
     # --- Validate resume-from ---
-    if resume_from < 0 or resume_from > 38:
+    if resume_from < 0 or resume_from > 39:
         _print_error(
             "Invalid Option",
-            f"--resume-from must be 0-38, got {resume_from}\n"
-            "  Key steps: 0=start, 6=inventory, 14=prompts, 16=agents, 24=merge, 31=QA, 33=reports, 38=end",
+            f"--resume-from must be 0-39, got {resume_from}\n"
+            "  Key steps: 0=start, 6=inventory, 14=prompts, 16=agents, 26=screening, 28=merge, 32=QA, "
+            "34=reports, 39=end",
         )
         raise SystemExit(1)
 
@@ -3367,8 +3370,248 @@ def _print_dry_run(deal_config: object, resume_from: int) -> None:
                 if step in judge_steps and not deal_config.judge.enabled:
                     will_skip = True
 
+                if step == PipelineStep.EXTERNAL_SCREENING and not deal_config.screening.enabled:
+                    will_skip = True
+
             status = "[yellow]skip[/yellow]" if will_skip else "[green]run[/green]"
 
         table.add_row(str(num), label, step_type, status)
 
     console.print(table)
+
+
+# ---------------------------------------------------------------------------
+# screening group (Issue #274): sanctions list download and coverage
+# ---------------------------------------------------------------------------
+
+
+@main.group()
+def screening() -> None:
+    """Download official sanctions lists and show screening coverage."""
+
+
+def _screening_source_choice() -> click.Choice[str]:
+    from dd_agents.screening.sources import SOURCES
+
+    return click.Choice(list(SOURCES))
+
+
+@screening.command("update")
+@click.option(
+    "--source",
+    "source_ids",
+    multiple=True,
+    type=_screening_source_choice(),
+    help="Source to download. Repeat for several. Default: all sources.",
+)
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output the results as JSON.")
+def screening_update(source_ids: tuple[str, ...], as_json: bool) -> None:
+    """Download sanctions lists and store them locally (writes to the screening dir).
+
+    Safe to repeat. A failed download never replaces a stored list. Exits 1 if any
+    requested source failed. Prints counts and dates only, never entry names.
+    """
+    from dd_agents.screening import store
+    from dd_agents.screening.sources import SOURCES
+
+    results: list[dict[str, Any]] = []
+    for source_id in source_ids or tuple(SOURCES):
+        try:
+            snapshot = store.update(source_id)
+        except store.StoreError as exc:
+            results.append({"source": source_id, "ok": False, "error": str(exc)})
+        else:
+            results.append(
+                {
+                    "source": source_id,
+                    "ok": True,
+                    "entries": len(snapshot.entries),
+                    "published": snapshot.published,
+                    "fetched_at": snapshot.fetched_at,
+                    "sha256": snapshot.sha256,
+                }
+            )
+    failed = any(not r["ok"] for r in results)
+
+    if as_json:
+        click.echo(json.dumps({"screening_dir": str(store.screening_dir()), "results": results}))
+    else:
+        table = Table(title="Sanctions list update", show_header=True)
+        table.add_column("Source", style="bold")
+        table.add_column("Result")
+        table.add_column("Entries", justify="right")
+        table.add_column("List date")
+        table.add_column("Detail", overflow="fold")
+        for r in results:
+            if r["ok"]:
+                table.add_row(r["source"], "[green]ok[/green]", str(r["entries"]), r["published"] or "-", "")
+            else:
+                table.add_row(r["source"], "[red]failed[/red]", "-", "-", escape(r["error"]))
+        console.print(table)
+        console.print(f"[dim]Stored in {escape(str(store.screening_dir()))}[/dim]")
+
+    if failed:
+        raise SystemExit(1)
+
+
+@screening.command("status")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output the coverage table as JSON.")
+def screening_status(as_json: bool) -> None:
+    """Show which lists are stored and how fresh they are (read-only).
+
+    Status is one of: screened, stale, missing, failed. Writes nothing and uses
+    no network. Prints counts and dates only, never entry names.
+    """
+    from dd_agents.screening import store
+    from dd_agents.screening.sources import SOURCES
+
+    rows = store.coverage(list(SOURCES))
+    if as_json:
+        click.echo(
+            json.dumps(
+                {
+                    "screening_dir": str(store.screening_dir()),
+                    "max_age_days": store.LIST_MAX_AGE_DAYS,
+                    "sources": [r.model_dump() for r in rows],
+                }
+            )
+        )
+        return
+
+    colors = {"screened": "green", "stale": "yellow", "missing": "red", "failed": "red"}
+    table = Table(title="Screening coverage", show_header=True)
+    table.add_column("Source", style="bold")
+    table.add_column("Status")
+    table.add_column("Entries", justify="right")
+    table.add_column("List date")
+    table.add_column("Detail", overflow="fold")
+    for r in rows:
+        color = colors[r.status]
+        table.add_row(
+            r.source,
+            f"[{color}]{r.status}[/{color}]",
+            str(r.entry_count) if r.entry_count else "-",
+            r.list_date or "-",
+            escape(r.detail),
+        )
+    console.print(table)
+    console.print(
+        f"[dim]Stored in {escape(str(store.screening_dir()))}. "
+        f"Lists older than {store.LIST_MAX_AGE_DAYS} days are stale.[/dim]"
+    )
+
+
+@screening.command("check")
+@click.argument("name")
+@click.option(
+    "--type",
+    "kind",
+    type=click.Choice(["person", "organization"]),
+    default="organization",
+    show_default=True,
+    help="Kind of party. People and companies are matched differently.",
+)
+@click.option("--birth-year", type=int, default=None, help="Birth year, to corroborate or weaken a person match.")
+@click.option("--country", default=None, help="Country, to corroborate a match.")
+@click.option(
+    "--project-dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=Path("."),
+    show_default=True,
+    help="Project folder that holds dd-config/screening/ (your own lists).",
+)
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output the full report as JSON.")
+def screening_check(
+    name: str, kind: str, birth_year: int | None, country: str | None, project_dir: Path, as_json: bool
+) -> None:
+    """Screen one name against the stored lists and your own lists (read-only, no network).
+
+    Hits are possible matches that need human review. Exit codes: 0 = no hit and
+    every list was fresh, 1 = at least one possible match, 2 = no hit but some
+    lists were missing, stale or unreadable (not a clearance).
+    """
+    from dd_agents.screening.service import ScreeningService, ScreenTarget
+
+    party: Literal["person", "organization"] = "person" if kind == "person" else "organization"
+    target = ScreenTarget(name=name, kind=party, birth_year=birth_year, country=country)
+    report = ScreeningService.load(project_dir).screen([target])
+    hits = report.results[0].hits
+    code = 1 if hits else (0 if report.complete else 2)
+
+    if as_json:
+        click.echo(json.dumps({"complete": report.complete, **report.model_dump(mode="json")}))
+        raise SystemExit(code)
+
+    colors = {"screened": "green", "stale": "yellow", "missing": "red", "failed": "red"}
+    cov = Table(title="Lists searched", show_header=True)
+    cov.add_column("Source", style="bold")
+    cov.add_column("Status")
+    cov.add_column("Entries", justify="right")
+    cov.add_column("List date")
+    for r in report.coverage:
+        cov.add_row(
+            r.source,
+            f"[{colors[r.status]}]{r.status}[/{colors[r.status]}]",
+            str(r.entry_count) if r.entry_count else "-",
+            r.list_date or "-",
+        )
+    console.print(cov)
+
+    if hits:
+        table = Table(title=f"Possible matches for {escape(name)} (needs review)", show_header=True)
+        table.add_column("Band", style="bold")
+        table.add_column("Score", justify="right")
+        table.add_column("List")
+        table.add_column("Listed name")
+        table.add_column("Programs", overflow="fold")
+        table.add_column("Notes", overflow="fold")
+        for h in hits:
+            table.add_row(
+                h.band,
+                f"{h.score:.0f}",
+                h.entry.source,
+                escape(h.matched_name),
+                escape(", ".join(h.entry.programs) or "-"),
+                escape(", ".join(h.corroboration) or "-"),
+            )
+        console.print(table)
+    else:
+        console.print("No possible match found in the lists above. This is not a clearance.")
+    for gap in report.gaps:
+        console.print(f"[yellow]Coverage gap:[/yellow] {escape(gap)}")
+    raise SystemExit(code)
+
+
+@screening.command("validate")
+@click.option(
+    "--project-dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=Path("."),
+    show_default=True,
+    help="Project folder that holds dd-config/screening/.",
+)
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output the result as JSON.")
+def screening_validate(project_dir: Path, as_json: bool) -> None:
+    """Check your own lists in dd-config/screening/ (read-only). Exits 1 on any error."""
+    from dd_agents.screening.user_lists import load_user_screening
+
+    cfg = load_user_screening(project_dir)
+    lists = [
+        {"name": item.name, "kind": item.kind, "file": item.file, "entries": len(item.entries)} for item in cfg.lists
+    ]
+    if as_json:
+        click.echo(json.dumps({"lists": lists, "errors": cfg.errors}))
+    else:
+        for item in lists:
+            console.print(f"[green]ok[/green] {escape(str(item['file']))} ({item['kind']}, {item['entries']} entries)")
+        for error in cfg.errors:
+            console.print(f"[red]error[/red] {escape(error)}")
+        if not lists and not cfg.errors:
+            console.print("No files in dd-config/screening/.")
+    if cfg.errors:
+        raise SystemExit(1)
+
+
+from dd_agents.cli_extraction import extraction as _extraction_group  # noqa: E402
+
+main.add_command(_extraction_group)

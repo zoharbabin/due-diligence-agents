@@ -306,7 +306,12 @@ SAFETY_FLOOR_NEGATION_PATTERNS: tuple[re.Pattern[str], ...] = (
     # "do not / don't / never <report|cite|flag|mention|write|create> ..."
     re.compile(r"(?:do not|don't|never)\s+(?:report|cite|flag|mention|write|create|disclose)", re.IGNORECASE),
     # "mark/treat/classify everything|all ... as P3" (severity suppression)
-    re.compile(r"(?:mark|treat|classify|rate|set)\s+(?:everything|all|every finding|all findings)", re.IGNORECASE),
+    # Needs a severity-style target, so "treat all figures as unverified" is not a match.
+    re.compile(
+        r"(?:mark|treat|classify|rate|set)\s+(?:everything|all(?:\s+\w+){0,2}|every\s+\w+)"
+        r"(?:\s+(?:as|to|at))?\s+(?:P[0-4]\b|low\b|info\w*|minor|none\b|safe\b|acceptable|compliant|clean\b|no\s+risk)",
+        re.IGNORECASE,
+    ),
     re.compile(r"fabricate", re.IGNORECASE),
     re.compile(r"never write not_found", re.IGNORECASE),
 )

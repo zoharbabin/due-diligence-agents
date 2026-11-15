@@ -280,7 +280,7 @@ Supports PDFs, Word, Excel, PowerPoint, and images. Scanned PDFs are handled via
        ▼
   ┌─────────────────────────────────────┐
   │        Python Orchestrator          │
-  │         38-step pipeline            │
+  │         39-step pipeline            │
   │       5 blocking quality gates      │
   └──────────────┬──────────────────────┘
                  │
@@ -424,7 +424,7 @@ docker pull zoharbabin/due-diligence-agents:latest
 pip install dd-agents           # Core only (no PDF extraction)
 pip install 'dd-agents[vector]'   # + semantic search via ChromaDB
 pip install 'dd-agents[ocr]'      # + OCR for scanned documents (English)
-pip install 'dd-agents[glm-ocr]'  # + multilingual OCR (100+ languages, Apple Silicon)
+pip install 'dd-agents[glm-ocr]'  # + GLM-OCR for scanned, non-English pages (Apple Silicon)
 ```
 </details>
 
@@ -471,6 +471,7 @@ All core dependencies use permissive open-source licenses (Apache 2.0, MIT, BSD)
 | [Deal Configuration](docs/user-guide/deal-configuration.md) | Config file structure, auto-generation |
 | [Running the Pipeline](docs/user-guide/running-pipeline.md) | Execution modes, resume, quality gates |
 | [Reading the Report](docs/user-guide/reading-report.md) | Navigating the HTML and Excel output |
+| [Sanctions Screening](docs/user-guide/screening.md) | Opt-in local screening against official sanctions lists and your own watchlists |
 | [CLI Reference](docs/user-guide/cli-reference.md) | Complete command reference |
 | [Troubleshooting](docs/user-guide/troubleshooting.md) | Common errors, exit codes, recovery steps |
 | [Search Guide](docs/search-guide.md) | Contract search for legal teams |

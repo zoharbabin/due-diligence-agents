@@ -93,6 +93,18 @@ PermissionError: [Errno 13] Permission denied
 Ensure you have read access to the data room and write access to the output
 directory. The pipeline writes to `{data_room_path}/_dd/`.
 
+### Screening says "Public source research is incomplete"
+
+The research agent could not search. Check `screening/profile_leads.json` in the run folder: each `unavailable` record says why in `summary`.
+
+| Cause | Fix |
+|-------|-----|
+| Search provider keys rejected (auth or invalid token) | Refresh the keys passed through `external_verification.server.env_passthrough` |
+| Provider rate limit | Run again later |
+| `external_verification.enabled` is `false` | Turn it on. See [Public Source Research](screening.md#public-source-research) |
+
+An incomplete run is never clearance. Run again once the cause is fixed.
+
 ## Blocking Gate Recovery
 
 Five pipeline steps are blocking gates that halt on failure. Each has a specific
@@ -102,9 +114,9 @@ recovery path:
 |------|------|-------------|------------|
 | Bulk Extraction | 5 | Corrupted or password-protected files | Remove or replace problem files, then `--resume-from 4` |
 | Coverage Gate | 17 | Too few documents per subject | Add missing documents to the data room, then `--resume-from 6` |
-| Numerical Audit | 30 | Contradictory financial figures | Review `audit.json` in the run directory, then `--resume-from 30` |
-| Full QA Audit | 31 | Quality checks failed (missing citations) | Review `dod_results.json` for specifics, then `--resume-from 31` |
-| Post-Generation | 34 | Incomplete report output | Check disk space, then `--resume-from 33` |
+| Numerical Audit | 31 | Contradictory financial figures | Review `audit.json` in the run directory, then `--resume-from 31` |
+| Full QA Audit | 32 | Quality checks failed (missing citations) | Review `dod_results.json` for specifics, then `--resume-from 32` |
+| Post-Generation | 35 | Incomplete report output | Check disk space, then `--resume-from 34` |
 
 Resume after fixing the issue:
 

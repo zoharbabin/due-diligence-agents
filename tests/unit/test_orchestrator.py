@@ -59,20 +59,20 @@ from dd_agents.orchestrator.steps import (
 class TestPipelineStep:
     """Tests for the PipelineStep enum."""
 
-    def test_step_count_is_38(self) -> None:
+    def test_step_count_is_39(self) -> None:
         """The enum must contain exactly 38 members."""
-        assert len(PipelineStep) == 38
+        assert len(PipelineStep) == 39
 
     def test_step_number_property(self) -> None:
         """step_number should parse the leading digits from the value."""
         assert PipelineStep.VALIDATE_CONFIG.step_number == 1
-        assert PipelineStep.SHUTDOWN.step_number == 38
+        assert PipelineStep.SHUTDOWN.step_number == 39
         assert PipelineStep.COVERAGE_GATE.step_number == 17
 
     def test_step_numbers_are_sequential(self) -> None:
-        """Every step from 1..38 should appear exactly once."""
+        """Every step from 1..39 should appear exactly once."""
         numbers = sorted(s.step_number for s in PipelineStep)
-        assert numbers == list(range(1, 39))
+        assert numbers == list(range(1, 40))
 
     def test_blocking_gates_count(self) -> None:
         """Five formal blocking gates."""
@@ -94,8 +94,8 @@ class TestPipelineStep:
         assert PipelineStep.SHUTDOWN.is_blocking_gate is False
 
     def test_conditional_steps_count(self) -> None:
-        """Eleven conditional steps."""
-        assert len(_CONDITIONAL_STEPS) == 11
+        """Twelve conditional steps."""
+        assert len(_CONDITIONAL_STEPS) == 12
 
     def test_conditional_step_members(self) -> None:
         expected = {
@@ -109,6 +109,7 @@ class TestPipelineStep:
             PipelineStep.JUDGE_REVIEW,
             PipelineStep.JUDGE_RESPAWN,
             PipelineStep.JUDGE_ROUND2,
+            PipelineStep.EXTERNAL_SCREENING,
             PipelineStep.BUILD_REPORT_DIFF,
         }
         assert expected == _CONDITIONAL_STEPS
@@ -574,7 +575,7 @@ class TestPipelineEngine:
     def test_init(self, tmp_path: Path) -> None:
         engine = self._make_engine(tmp_path)
         assert engine.project_dir == tmp_path.resolve()
-        assert engine.TOTAL_STEPS == 38
+        assert engine.TOTAL_STEPS == 39
 
     def test_step_registry_completeness(self, tmp_path: Path) -> None:
         """Every PipelineStep must have a handler in the registry."""
@@ -584,7 +585,7 @@ class TestPipelineEngine:
         for step in PipelineStep:
             assert step in registry, f"Missing handler for {step.value}"
 
-        assert len(registry) == 38
+        assert len(registry) == 39
 
     def test_step_registry_values_are_callable(self, tmp_path: Path) -> None:
         engine = self._make_engine(tmp_path)
@@ -653,16 +654,16 @@ class TestStep30NumericalAudit:
         )
 
     @pytest.mark.asyncio
-    async def test_step_30_raises_on_missing_manifest(self, tmp_path: Path) -> None:
+    async def test_step_31_raises_on_missing_manifest(self, tmp_path: Path) -> None:
         engine = self._make_engine(tmp_path)
         state = self._make_state(tmp_path)
         # No numerical_manifest.json exists
         with pytest.raises(BlockingGateError, match="Numerical manifest not found"):
-            await engine._step_30_numerical_audit(state)
+            await engine._step_31_numerical_audit(state)
         assert state.validation_results["numerical_audit"] is False
 
     @pytest.mark.asyncio
-    async def test_step_30_raises_on_audit_failure(self, tmp_path: Path) -> None:
+    async def test_step_31_raises_on_audit_failure(self, tmp_path: Path) -> None:
 
         from dd_agents.models.audit import AuditCheck
 
@@ -701,11 +702,11 @@ class TestStep30NumericalAudit:
             ),
             pytest.raises(BlockingGateError, match="Numerical audit failed"),
         ):
-            await engine._step_30_numerical_audit(state)
+            await engine._step_31_numerical_audit(state)
         assert state.validation_results["numerical_audit"] is False
 
     @pytest.mark.asyncio
-    async def test_step_30_passes_on_success(self, tmp_path: Path) -> None:
+    async def test_step_31_passes_on_success(self, tmp_path: Path) -> None:
 
         from dd_agents.models.audit import AuditCheck
 
@@ -741,11 +742,11 @@ class TestStep30NumericalAudit:
             "dd_agents.validation.numerical_audit.NumericalAuditor.run_full_audit",
             return_value=passing_checks,
         ):
-            result = await engine._step_30_numerical_audit(state)
+            result = await engine._step_31_numerical_audit(state)
         assert result.validation_results["numerical_audit"] is True
 
     @pytest.mark.asyncio
-    async def test_step_30_passes_text_dir_when_index_exists(self, tmp_path: Path) -> None:
+    async def test_step_31_passes_text_dir_when_index_exists(self, tmp_path: Path) -> None:
         """Wiring guard: step 30 must pass a non-None text_dir to run_full_audit when
         the extracted-text index exists, so Layers 6 & 7 actually run. Dropping the
         kwarg would silently disable the quote-fidelity gate with green tests."""
@@ -773,11 +774,11 @@ class TestStep30NumericalAudit:
             "dd_agents.validation.numerical_audit.NumericalAuditor.run_full_audit",
             return_value=[AuditCheck(passed=True, rule="ok")],
         ) as mock_audit:
-            await engine._step_30_numerical_audit(state)
+            await engine._step_31_numerical_audit(state)
         assert mock_audit.call_args.kwargs.get("text_dir") == text_dir
 
     @pytest.mark.asyncio
-    async def test_step_30_passes_none_text_dir_when_index_absent(self, tmp_path: Path) -> None:
+    async def test_step_31_passes_none_text_dir_when_index_absent(self, tmp_path: Path) -> None:
         """Sibling guard: when the text index is absent, text_dir must be None
         (Layers 6/7 non-blocking-skip) — never a path that doesn't exist."""
         from unittest.mock import patch
@@ -801,7 +802,7 @@ class TestStep30NumericalAudit:
             "dd_agents.validation.numerical_audit.NumericalAuditor.run_full_audit",
             return_value=[AuditCheck(passed=True, rule="ok")],
         ) as mock_audit:
-            await engine._step_30_numerical_audit(state)
+            await engine._step_31_numerical_audit(state)
         assert mock_audit.call_args.kwargs.get("text_dir") is None
 
 
@@ -819,7 +820,7 @@ class TestStep27TamperWiring:
         return PipelineState(run_id="test_run", project_dir=tmp_path, run_dir=run_dir, subject_safe_names=["acme"])
 
     @pytest.mark.asyncio
-    async def test_step_27_injects_tamper_finding_into_persisted_output(self, tmp_path: Path) -> None:
+    async def test_step_28_injects_tamper_finding_into_persisted_output(self, tmp_path: Path) -> None:
         """A specialist finding whose quote carries an injection must surface as a
         persisted P1 document_integrity finding after step 27 — proving the engine
         calls inject_tamper_findings, not just that the merger method works."""
@@ -852,7 +853,7 @@ class TestStep27TamperWiring:
         }
         (legal_dir / "acme.json").write_text(json.dumps(agent_output))
 
-        await engine._step_27_merge_dedup(state)
+        await engine._step_28_merge_dedup(state)
 
         merged_path = state.run_dir / "findings" / "merged" / "acme.json"
         assert merged_path.exists()
@@ -968,7 +969,7 @@ class TestStep31FullQAAudit:
         )
 
     @pytest.mark.asyncio
-    async def test_step_31_raises_on_qa_failure(self, tmp_path: Path) -> None:
+    async def test_step_32_raises_on_qa_failure(self, tmp_path: Path) -> None:
 
         from dd_agents.models.audit import AuditCheck, AuditReport
 
@@ -995,12 +996,12 @@ class TestStep31FullQAAudit:
             ),
             pytest.raises(BlockingGateError, match="QA audit failed"),
         ):
-            await engine._step_31_full_qa_audit(state)
+            await engine._step_32_full_qa_audit(state)
         assert state.validation_results["qa_audit"] is False
         assert state.audit_passed is False
 
     @pytest.mark.asyncio
-    async def test_step_31_passes_on_success(self, tmp_path: Path) -> None:
+    async def test_step_32_passes_on_success(self, tmp_path: Path) -> None:
 
         from dd_agents.models.audit import AuditCheck, AuditReport
 
@@ -1025,13 +1026,13 @@ class TestStep31FullQAAudit:
                 "dd_agents.validation.qa_audit.QAAuditor.write_audit_json",
             ),
         ):
-            result = await engine._step_31_full_qa_audit(state)
+            result = await engine._step_32_full_qa_audit(state)
         assert result.validation_results["qa_audit"] is True
         assert result.audit_passed is True
 
 
 class TestStep38Shutdown:
-    """Tests for step 38: shutdown DoD persistence and exit status (Issue #56)."""
+    """Tests for step 39: shutdown DoD persistence and exit status (Issue #56)."""
 
     def _make_engine(self, tmp_path: Path) -> PipelineEngine:
         config_path = tmp_path / "deal-config.json"
@@ -1051,7 +1052,7 @@ class TestStep38Shutdown:
         )
 
     @pytest.mark.asyncio
-    async def test_step_38_persists_dod_results(self, tmp_path: Path) -> None:
+    async def test_step_39_persists_dod_results(self, tmp_path: Path) -> None:
         from dd_agents.models.audit import AuditCheck
 
         engine = self._make_engine(tmp_path)
@@ -1066,7 +1067,7 @@ class TestStep38Shutdown:
             "dd_agents.validation.dod.DefinitionOfDoneChecker.check_all",
             return_value=mock_checks,
         ):
-            await engine._step_38_shutdown(state)
+            await engine._step_39_shutdown(state)
 
         dod_path = state.run_dir / "dod_results.json"
         assert dod_path.exists(), "dod_results.json must be written"
@@ -1077,7 +1078,7 @@ class TestStep38Shutdown:
         assert len(data["checks"]) == 3
 
     @pytest.mark.asyncio
-    async def test_step_38_stores_dod_in_validation_results(self, tmp_path: Path) -> None:
+    async def test_step_39_stores_dod_in_validation_results(self, tmp_path: Path) -> None:
         """Issue #56: DoD results must be stored in state.validation_results['dod']."""
         from dd_agents.models.audit import AuditCheck
 
@@ -1093,12 +1094,12 @@ class TestStep38Shutdown:
             "dd_agents.validation.dod.DefinitionOfDoneChecker.check_all",
             return_value=mock_checks,
         ):
-            result = await engine._step_38_shutdown(state)
+            result = await engine._step_39_shutdown(state)
 
         assert result.validation_results["dod"] is True
 
     @pytest.mark.asyncio
-    async def test_step_38_critical_failure_sets_dod_false(self, tmp_path: Path) -> None:
+    async def test_step_39_critical_failure_sets_dod_false(self, tmp_path: Path) -> None:
         """Issue #56: Critical DoD failure sets validation_results['dod'] to False."""
         from dd_agents.models.audit import AuditCheck
 
@@ -1114,12 +1115,12 @@ class TestStep38Shutdown:
             "dd_agents.validation.dod.DefinitionOfDoneChecker.check_all",
             return_value=mock_checks,
         ):
-            result = await engine._step_38_shutdown(state)
+            result = await engine._step_39_shutdown(state)
 
         assert result.validation_results["dod"] is False
 
     @pytest.mark.asyncio
-    async def test_step_38_non_critical_failure_keeps_dod_true(self, tmp_path: Path) -> None:
+    async def test_step_39_non_critical_failure_keeps_dod_true(self, tmp_path: Path) -> None:
         """Issue #56: Non-critical DoD failure should not set dod to False."""
         from dd_agents.models.audit import AuditCheck
 
@@ -1135,12 +1136,12 @@ class TestStep38Shutdown:
             "dd_agents.validation.dod.DefinitionOfDoneChecker.check_all",
             return_value=mock_checks,
         ):
-            result = await engine._step_38_shutdown(state)
+            result = await engine._step_39_shutdown(state)
 
         assert result.validation_results["dod"] is True
 
     @pytest.mark.asyncio
-    async def test_step_38_critical_failures_listed_in_output(self, tmp_path: Path) -> None:
+    async def test_step_39_critical_failures_listed_in_output(self, tmp_path: Path) -> None:
         """Issue #56: dod_results.json should list critical failures."""
         from dd_agents.models.audit import AuditCheck
 
@@ -1156,7 +1157,7 @@ class TestStep38Shutdown:
             "dd_agents.validation.dod.DefinitionOfDoneChecker.check_all",
             return_value=mock_checks,
         ):
-            await engine._step_38_shutdown(state)
+            await engine._step_39_shutdown(state)
 
         dod_path = state.run_dir / "dod_results.json"
         data = json.loads(dod_path.read_text())
@@ -3224,7 +3225,7 @@ class TestStep23To25JudgeCycleDegradedMode:
 
 
 class TestStep38WithMixedCriticalAndNonCriticalFailures:
-    """Tests for step 38 with mixed critical/non-critical DoD failures."""
+    """Tests for step 39 with mixed critical/non-critical DoD failures."""
 
     def _make_engine(self, tmp_path: Path) -> PipelineEngine:
         config_path = tmp_path / "deal-config.json"
@@ -3244,7 +3245,7 @@ class TestStep38WithMixedCriticalAndNonCriticalFailures:
         )
 
     @pytest.mark.asyncio
-    async def test_step_38_mixed_failures_critical_sets_dod_false(self, tmp_path: Path) -> None:
+    async def test_step_39_mixed_failures_critical_sets_dod_false(self, tmp_path: Path) -> None:
         """When both critical and non-critical checks fail, dod should be False."""
         from dd_agents.models.audit import AuditCheck
 
@@ -3262,7 +3263,7 @@ class TestStep38WithMixedCriticalAndNonCriticalFailures:
             "dd_agents.validation.dod.DefinitionOfDoneChecker.check_all",
             return_value=mock_checks,
         ):
-            result = await engine._step_38_shutdown(state)
+            result = await engine._step_39_shutdown(state)
 
         assert result.validation_results["dod"] is False
 
@@ -3273,7 +3274,7 @@ class TestStep38WithMixedCriticalAndNonCriticalFailures:
         assert len(data["critical_failures"]) == 2
 
     @pytest.mark.asyncio
-    async def test_step_38_only_non_critical_failures_keeps_dod_true(self, tmp_path: Path) -> None:
+    async def test_step_39_only_non_critical_failures_keeps_dod_true(self, tmp_path: Path) -> None:
         """When only non-critical checks fail, dod should remain True."""
         from dd_agents.models.audit import AuditCheck
 
@@ -3291,7 +3292,7 @@ class TestStep38WithMixedCriticalAndNonCriticalFailures:
             "dd_agents.validation.dod.DefinitionOfDoneChecker.check_all",
             return_value=mock_checks,
         ):
-            result = await engine._step_38_shutdown(state)
+            result = await engine._step_39_shutdown(state)
 
         assert result.validation_results["dod"] is True
 
@@ -3302,7 +3303,7 @@ class TestStep38WithMixedCriticalAndNonCriticalFailures:
         assert len(data["critical_failures"]) == 0
 
     @pytest.mark.asyncio
-    async def test_step_38_all_checks_pass(self, tmp_path: Path) -> None:
+    async def test_step_39_all_checks_pass(self, tmp_path: Path) -> None:
         """When all checks pass, dod should be True with zero critical failures."""
         from dd_agents.models.audit import AuditCheck
 
@@ -3318,7 +3319,7 @@ class TestStep38WithMixedCriticalAndNonCriticalFailures:
             "dd_agents.validation.dod.DefinitionOfDoneChecker.check_all",
             return_value=mock_checks,
         ):
-            result = await engine._step_38_shutdown(state)
+            result = await engine._step_39_shutdown(state)
 
         assert result.validation_results["dod"] is True
 
@@ -3329,7 +3330,7 @@ class TestStep38WithMixedCriticalAndNonCriticalFailures:
         assert data["critical_failures"] == []
 
     @pytest.mark.asyncio
-    async def test_step_38_critical_dod_numbers_match_spec(self, tmp_path: Path) -> None:
+    async def test_step_39_critical_dod_numbers_match_spec(self, tmp_path: Path) -> None:
         """Verify that CRITICAL_DOD_CHECKS matches the expected set from the spec."""
         _engine = self._make_engine(tmp_path)
         assert frozenset({1, 2, 3, 11, 13, 14, 15, 17, 19}) == PipelineEngine.CRITICAL_DOD_CHECKS
@@ -4082,7 +4083,7 @@ class TestManifestRecalibratedCounts:
 
         (merged_dir / "subject_a.json").write_text(json.dumps({"findings": [finding], "gaps": []}))
 
-        await engine._step_29_build_numerical_manifest(state)
+        await engine._step_30_build_numerical_manifest(state)
 
         manifest_path = state.run_dir / "numerical_manifest.json"
         manifest = json.loads(manifest_path.read_text())
@@ -4508,6 +4509,21 @@ class TestBuildTargetedPrompt:
         }
         prompt = engine._build_targeted_prompt("legal", [trigger])
         assert "findings/legal_pass2/" in prompt
+
+    def test_prompt_uses_absolute_output_directory(self, tmp_path: Path) -> None:
+        """A relative path made the agent write into the data room (its working directory)."""
+        engine = self._make_engine(tmp_path)
+        out = tmp_path / "run" / "findings" / "legal_pass2"
+        prompt = engine._build_targeted_prompt("legal", [], output_dir=out)
+        assert f"Write findings to: {out}/" in prompt
+        assert "Write findings to: findings/" not in prompt
+
+    def test_prompt_names_the_subject_file(self, tmp_path: Path) -> None:
+        """Without a file name the agent named files after the PDF and the merge lost the subject."""
+        engine = self._make_engine(tmp_path)
+        prompt = engine._build_targeted_prompt("legal", [], subjects=["acme", "beta_co"])
+        assert "`acme.json`" in prompt and "`beta_co.json`" in prompt
+        assert "one file per subject" in prompt
 
     def test_prompt_includes_source_finding_detail(self, tmp_path: Path) -> None:
         engine = self._make_engine(tmp_path)

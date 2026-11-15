@@ -33,7 +33,7 @@ class SourceType(StrEnum):
 
 
 class AgentName(StrEnum):
-    """All agent identifiers (9 specialists + 4 synthesis/validation)."""
+    """All agent identifiers (9 specialists + 4 synthesis/validation + the local screening step)."""
 
     LEGAL = "legal"
     FINANCE = "finance"
@@ -48,6 +48,7 @@ class AgentName(StrEnum):
     EXECUTIVE_SYNTHESIS = "executive_synthesis"
     RED_FLAG_SCANNER = "red_flag_scanner"
     ACQUIRER_INTELLIGENCE = "acquirer_intelligence"
+    EXTERNAL_SCREENING = "external_screening"  # deterministic step 26, no LLM (Issue #274)
 
 
 class GapType(StrEnum):

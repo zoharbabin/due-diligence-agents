@@ -32,11 +32,14 @@ import shutil
 import tempfile
 import threading
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dd_agents.extraction._constants import CONFIDENCE_FAILURE, IMAGE_EXTENSIONS
 from dd_agents.extraction._constants import CONFIDENCE_GLM_OCR as _CONFIDENCE_GLM_OCR
 from dd_agents.extraction.pdf_engine import PDF_LOCK
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -127,8 +130,11 @@ def _import_ollama() -> Any:
 _pdfium_lock = PDF_LOCK
 
 
-def _render_pdf_pages(filepath: Path, work_dir: Path) -> list[Path]:
+def _render_pdf_pages(filepath: Path, work_dir: Path, pages: Sequence[int] | None = None) -> list[Path]:
     """Render PDF pages to PNG images using pypdfium2.
+
+    *pages* are 1-based page numbers. ``None`` renders the first ``_MAX_PAGES``.
+    Files are named after the real page number, so a subset keeps its numbering.
 
     Returns a list of image paths in *work_dir*.  Images are capped at
     :data:`MAX_IMAGE_DIM` pixels on their longest side.
@@ -156,8 +162,10 @@ def _render_pdf_pages(filepath: Path, work_dir: Path) -> list[Path]:
 
     paths: list[Path] = []
     try:
-        num_pages = min(len(doc), _MAX_PAGES)
-        for i in range(num_pages):
+        with _pdfium_lock:
+            total = len(doc)
+        indexes = list(range(min(total, _MAX_PAGES))) if pages is None else [n - 1 for n in pages if 1 <= n <= total]
+        for i in indexes:
             try:
                 with _pdfium_lock:
                     page = doc[i]
@@ -297,6 +305,10 @@ def _try_mlx_extract_on_images(image_paths: list[Path], model: Any, processor: A
 # ── Ollama backend ───────────────────────────────────────────────────
 
 
+OLLAMA_PAGE_TIMEOUT_SECONDS = 180.0
+OLLAMA_MAX_PAGE_TOKENS = 4096
+
+
 def _ollama_ocr_pages(image_paths: list[Path]) -> list[str]:
     """Run GLM-OCR on each image via Ollama.  Returns per-page text."""
     ollama = _import_ollama()
@@ -304,9 +316,12 @@ def _ollama_ocr_pages(image_paths: list[Path]) -> list[str]:
         return []
 
     results: list[str] = []
+    # A page of text is well under the token cap. Without caps, a page the model
+    # cannot read can loop for tens of minutes and block the whole extraction.
+    client = ollama.Client(timeout=OLLAMA_PAGE_TIMEOUT_SECONDS)
     for img_path in image_paths:
         try:
-            response = ollama.chat(
+            response = client.chat(
                 model=MODEL_ID_OLLAMA,
                 messages=[
                     {
@@ -315,6 +330,7 @@ def _ollama_ocr_pages(image_paths: list[Path]) -> list[str]:
                         "images": [str(img_path)],
                     }
                 ],
+                options={"num_predict": OLLAMA_MAX_PAGE_TOKENS},
             )
             text = response["message"]["content"]
             results.append(text if isinstance(text, str) else str(text))
@@ -349,6 +365,15 @@ def _try_ollama_extract(filepath: Path) -> tuple[str, float]:
         return "", CONFIDENCE_FAILURE
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
+
+
+def _mlx_pages_on_images(image_paths: list[Path], model: Any, processor: Any) -> list[str]:
+    """Per-page MLX text for pre-rendered images. Empty list if mlx-vlm is missing."""
+    imports = _import_mlx_vlm()
+    if imports is None:
+        return []
+    _load_fn, generate_fn, apply_chat_template_fn = imports
+    return _mlx_ocr_pages(image_paths, model, processor, generate_fn, apply_chat_template_fn)
 
 
 # ── Public extractor class ───────────────────────────────────────────
@@ -435,6 +460,27 @@ class GlmOcrExtractor:
             return self._mlx_model is not None
         with self._mlx_lock:
             return self._ensure_mlx_model()
+
+    def extract_pages(self, filepath: Path, pages: Sequence[int]) -> dict[int, str]:
+        """OCR only the given 1-based *pages* of a PDF. Returns ``{page: text}`` for pages with text."""
+        if filepath.suffix.lower() != ".pdf" or not pages or not filepath.exists():
+            return {}
+        work_dir = Path(tempfile.mkdtemp(prefix="dd_glm_pages_"))
+        try:
+            paths = _render_pdf_pages(filepath, work_dir, pages)
+            if not paths:
+                return {}
+            texts: list[str] = _ollama_ocr_pages(paths) if _import_ollama() is not None else []
+            if not any(t.strip() for t in texts) and self._has_mlx():
+                with self._mlx_lock:
+                    texts = _mlx_pages_on_images(paths, self._mlx_model, self._mlx_processor)
+            numbers = [int(p.stem.split("_")[1]) for p in paths]
+            return {n: t for n, t in zip(numbers, texts, strict=False) if t.strip()}
+        except Exception:
+            logger.exception("GLM-OCR page extraction failed for %s", filepath)
+            return {}
+        finally:
+            shutil.rmtree(work_dir, ignore_errors=True)
 
     def extract(self, filepath: Path) -> tuple[str, float]:
         """Extract text from *filepath* using GLM-OCR.

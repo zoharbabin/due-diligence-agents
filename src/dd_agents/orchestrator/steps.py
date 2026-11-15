@@ -1,4 +1,4 @@
-"""PipelineStep enum enumerating all 38 pipeline steps.
+"""PipelineStep enum enumerating all 39 pipeline steps.
 
 Each step has a canonical string value used in checkpoints, logs, and error
 messages.  Properties expose the step number, whether the step is a blocking
@@ -11,7 +11,7 @@ from enum import StrEnum
 
 
 class PipelineStep(StrEnum):
-    """All 38 pipeline steps.  String values used in checkpoint filenames."""
+    """All 39 pipeline steps.  String values used in checkpoint filenames."""
 
     # Phase 1: Setup (Steps 1-3)
     VALIDATE_CONFIG = "01_validate_config"
@@ -50,22 +50,25 @@ class PipelineStep(StrEnum):
     JUDGE_RESPAWN = "24_judge_respawn"  # CONDITIONAL
     JUDGE_ROUND2 = "25_judge_round2"  # CONDITIONAL
 
-    # Phase 6: Reporting (Steps 26-34)
-    PRE_MERGE_VALIDATION = "26_pre_merge_validation"
-    MERGE_DEDUP = "27_merge_dedup"
-    MERGE_GAPS = "28_merge_gaps"
-    BUILD_NUMERICAL_MANIFEST = "29_build_numerical_manifest"
-    NUMERICAL_AUDIT = "30_numerical_audit"  # BLOCKING GATE
-    FULL_QA_AUDIT = "31_full_qa_audit"  # BLOCKING GATE
-    BUILD_REPORT_DIFF = "32_build_report_diff"  # CONDITIONAL
-    GENERATE_REPORTS = "33_generate_reports"
-    POST_GENERATION_VALIDATION = "34_post_generation_validation"  # BLOCKING GATE
+    # Phase 5b: External screening (Step 26) -- Issue #274
+    EXTERNAL_SCREENING = "26_external_screening"  # CONDITIONAL
 
-    # Phase 7: Finalization (Steps 35-38)
-    FINALIZE_METADATA = "35_finalize_metadata"
-    UPDATE_RUN_HISTORY = "36_update_run_history"
-    SAVE_ENTITY_CACHE = "37_save_entity_cache"
-    SHUTDOWN = "38_shutdown"
+    # Phase 6: Reporting (Steps 27-35)
+    PRE_MERGE_VALIDATION = "27_pre_merge_validation"
+    MERGE_DEDUP = "28_merge_dedup"
+    MERGE_GAPS = "29_merge_gaps"
+    BUILD_NUMERICAL_MANIFEST = "30_build_numerical_manifest"
+    NUMERICAL_AUDIT = "31_numerical_audit"  # BLOCKING GATE
+    FULL_QA_AUDIT = "32_full_qa_audit"  # BLOCKING GATE
+    BUILD_REPORT_DIFF = "33_build_report_diff"  # CONDITIONAL
+    GENERATE_REPORTS = "34_generate_reports"
+    POST_GENERATION_VALIDATION = "35_post_generation_validation"  # BLOCKING GATE
+
+    # Phase 7: Finalization (Steps 36-39)
+    FINALIZE_METADATA = "36_finalize_metadata"
+    UPDATE_RUN_HISTORY = "37_update_run_history"
+    SAVE_ENTITY_CACHE = "38_save_entity_cache"
+    SHUTDOWN = "39_shutdown"
 
     # ------------------------------------------------------------------
     # Properties
@@ -73,7 +76,7 @@ class PipelineStep(StrEnum):
 
     @property
     def step_number(self) -> int:
-        """Return the numeric step index (1-38) parsed from the value prefix."""
+        """Return the numeric step index (1-39) parsed from the value prefix."""
         return int(self.value.split("_")[0])
 
     @property
@@ -95,9 +98,9 @@ _BLOCKING_GATES: frozenset[PipelineStep] = frozenset(
     {
         PipelineStep.BULK_EXTRACTION,  # Step 5
         PipelineStep.COVERAGE_GATE,  # Step 17
-        PipelineStep.NUMERICAL_AUDIT,  # Step 30
-        PipelineStep.FULL_QA_AUDIT,  # Step 31
-        PipelineStep.POST_GENERATION_VALIDATION,  # Step 34
+        PipelineStep.NUMERICAL_AUDIT,  # Step 31
+        PipelineStep.FULL_QA_AUDIT,  # Step 32
+        PipelineStep.POST_GENERATION_VALIDATION,  # Step 35
     }
 )
 
@@ -121,6 +124,7 @@ _CONDITIONAL_STEPS: frozenset[PipelineStep] = frozenset(
         PipelineStep.JUDGE_REVIEW,  # Only if judge.enabled
         PipelineStep.JUDGE_RESPAWN,  # Only if judge.enabled
         PipelineStep.JUDGE_ROUND2,  # Only if judge.enabled
+        PipelineStep.EXTERNAL_SCREENING,  # Only if screening.enabled
         PipelineStep.BUILD_REPORT_DIFF,  # Only if prior run exists
     }
 )

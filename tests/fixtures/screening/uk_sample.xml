@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Designations xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <DateGenerated>12/11/2026</DateGenerated>
+  <Designation>
+    <LastUpdated>04/08/2026</LastUpdated>
+    <DateDesignated>29/06/2012</DateDesignated>
+    <UniqueID>TST0001</UniqueID>
+    <OFSIGroupID>90001</OFSIGroupID>
+    <Names>
+      <Name>
+        <Name1>Test</Name1>
+        <Name2>Person</Name2>
+        <Name6>Alpha</Name6>
+        <NameType>Primary Name</NameType>
+      </Name>
+      <Name>
+        <Name1>Tester</Name1>
+        <Name6>Alfa</Name6>
+        <NameType>Alias</NameType>
+        <AliasStrength>Good quality a.k.a</AliasStrength>
+      </Name>
+      <Name>
+        <Name1>Test</Name1>
+        <Name6>Alpha-Variant</Name6>
+        <NameType>Primary name variation</NameType>
+      </Name>
+    </Names>
+    <NonLatinNames>
+      <NonLatinName>
+        <NameNonLatinScript>Тест Персона Альфа</NameNonLatinScript>
+      </NonLatinName>
+    </NonLatinNames>
+    <RegimeName>The Testland (Sanctions) Regulations 2020</RegimeName>
+    <IndividualEntityShip>Individual</IndividualEntityShip>
+    <DesignationSource>UK</DesignationSource>
+    <SanctionsImposed>Asset freeze</SanctionsImposed>
+    <OtherInformation>Synthetic record for unit tests.</OtherInformation>
+    <Addresses>
+      <Address>
+        <AddressLine6>Exampleville</AddressLine6>
+        <AddressCountry>Examplestan</AddressCountry>
+      </Address>
+    </Addresses>
+    <IndividualDetails>
+      <Individual>
+        <DOBs>
+          <DOB>dd/mm/1945</DOB>
+          <DOB>03/04/1950</DOB>
+          <DOB>dd/09/1951</DOB>
+          <DOB>1960</DOB>
+          <DOB>not known</DOB>
+        </DOBs>
+        <Nationalities>
+          <Nationality>Testland</Nationality>
+          <Nationality>Examplestan</Nationality>
+        </Nationalities>
+      </Individual>
+    </IndividualDetails>
+  </Designation>
+  <Designation>
+    <LastUpdated>14/04/2026</LastUpdated>
+    <DateDesignated>25/01/2001</DateDesignated>
+    <UniqueID>TST0002</UniqueID>
+    <Names>
+      <Name>
+        <Name6>EXAMPLE TRADING CO</Name6>
+        <NameType>Primary name</NameType>
+      </Name>
+      <Name>
+        <Name6>Example Trading Company</Name6>
+        <NameType>ALias</NameType>
+      </Name>
+    </Names>
+    <RegimeName>The Testland (Sanctions) Regulations 2020</RegimeName>
+    <IndividualEntityShip>Entity</IndividualEntityShip>
+    <DesignationSource>UN</DesignationSource>
+    <Addresses>
+      <Address>
+        <AddressLine1>1 Test Road</AddressLine1>
+        <AddressCountry>Testland</AddressCountry>
+      </Address>
+    </Addresses>
+    <EntityDetails>
+      <Entity>
+        <TypeOfEntities>
+          <TypeOfEntity>Company</TypeOfEntity>
+        </TypeOfEntities>
+      </Entity>
+    </EntityDetails>
+  </Designation>
+  <Designation>
+    <LastUpdated>18/12/2021</LastUpdated>
+    <DateDesignated>03/10/2017</DateDesignated>
+    <UniqueID>TST0003</UniqueID>
+    <Names>
+      <Name>
+        <Name6>Example Star</Name6>
+        <NameType>Primary name</NameType>
+      </Name>
+      <Name>
+        <Name6>Example_Star</Name6>
+        <NameType>Alias</NameType>
+      </Name>
+    </Names>
+    <RegimeName>The Testland (Sanctions) Regulations 2019</RegimeName>
+    <IndividualEntityShip>Ship</IndividualEntityShip>
+    <DesignationSource>UN</DesignationSource>
+    <ShipDetails>
+      <Ship>
+        <IMONumbers>
+          <IMONumber>IMO0000000</IMONumber>
+        </IMONumbers>
+        <CurrentBelievedFlagOfShips>
+          <CurrentBelievedFlagOfShip>Testland</CurrentBelievedFlagOfShip>
+        </CurrentBelievedFlagOfShips>
+      </Ship>
+    </ShipDetails>
+  </Designation>
+  <Designation>
+    <UniqueID>TST0004</UniqueID>
+    <Names>
+      <Name>
+        <Name6>Bare Minimum Ltd</Name6>
+        <NameType>Primary Name</NameType>
+      </Name>
+    </Names>
+    <IndividualEntityShip>Entity</IndividualEntityShip>
+  </Designation>
+</Designations>

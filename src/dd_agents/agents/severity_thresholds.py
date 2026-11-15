@@ -35,3 +35,22 @@ COC_REVENUE_PCT: Final[int] = 5
 #: An automatic-termination CoC clause is most severe when revenue at risk
 #: exceeds this percentage.
 COC_AUTOTERM_REVENUE_PCT: Final[int] = 20
+
+# --- Sanctions / watchlist screening (Issue #274) ---
+# Severity of a screening hit by match band. These are possible matches that
+# need human review, so the numbers stay here and nowhere else. The merge step
+# (resolve_severity) still has the final say.
+SCREENING_SEVERITY_EXACT: Final[str] = "P0"
+SCREENING_SEVERITY_STRONG: Final[str] = "P1"
+SCREENING_SEVERITY_POSSIBLE: Final[str] = "P2"
+
+#: Starting severity for a public-source lead found by profile research (Issue #274).
+#: The merge step still decides the final severity through ``resolve_severity()``.
+PROFILE_LEAD_SEVERITY: Final[dict[str, str]] = {
+    "sanctions": "P1",
+    "enforcement": "P1",
+    "litigation": "P2",
+    "regulatory": "P2",
+    "adverse_media": "P3",
+    "other": "P3",
+}

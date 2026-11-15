@@ -579,6 +579,7 @@ class PromptBuilder:
         findings_dir: str | Path | None = None,
         quality_targets: dict[str, Any] | None = None,
         sampling_rates: dict[str, float] | None = None,
+        web_research_tools: list[str] | None = None,
     ) -> str:
         """Build the Judge agent prompt.
 
@@ -590,6 +591,9 @@ class PromptBuilder:
             Score threshold and other QA targets.
         sampling_rates:
             Per-severity sampling rates (e.g. ``{"p0": 1.0, "p1": 0.2, ...}``).
+        web_research_tools:
+            Allowlisted external tool names (Issue #274). ``None`` or empty leaves
+            the prompt byte-identical to a run without web research.
         """
         rates = sampling_rates or {"p0": 1.0, "p1": 0.20, "p2": 0.10, "p3": 0.0}
         targets = quality_targets or {"score_threshold": 70}
@@ -634,6 +638,15 @@ class PromptBuilder:
 
         if findings_dir:
             sections.append(f"## FINDINGS DIRECTORY\n\nRead specialist outputs from: {findings_dir}")
+
+        if web_research_tools:
+            from dd_agents.agents.prompts.loader import load_named_prompt
+
+            tool_lines = "\n".join(f"- {name}" for name in web_research_tools)
+            sections.append(
+                load_named_prompt("synthesis", "judge_web_research")
+                + f"\n\nAllowed web tools:\n{tool_lines}\n\nWrite lookups to: {self.run_dir}/judge/web_checks.json"
+            )
 
         sections.append(
             f"## OUTPUT\n\n"

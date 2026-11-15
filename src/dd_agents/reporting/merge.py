@@ -29,7 +29,7 @@ from dd_agents.models.finding import (
 )
 from dd_agents.models.governance import GovernanceEdge, GovernanceGraph
 from dd_agents.reporting.severity_resolver import resolve_severity
-from dd_agents.utils.constants import NON_SUBJECT_STEMS, SEVERITY_ORDER, SEVERITY_P3
+from dd_agents.utils.constants import NON_SUBJECT_STEMS, SEVERITY_ORDER, SEVERITY_P3, is_synthetic_subject
 from dd_agents.utils.naming import subject_safe_name as compute_safe_name
 
 if TYPE_CHECKING:
@@ -297,7 +297,12 @@ class FindingMerger:
         """
         from dd_agents.agents.registry import AgentRegistry
 
-        agents = active_agents if active_agents is not None else AgentRegistry.all_specialist_names()
+        agents = list(active_agents if active_agents is not None else AgentRegistry.all_specialist_names())
+        # The local screening step (Issue #274) is not a specialist but writes the same
+        # per-subject files. Last, so a specialist's file names the subject first.
+        screening_agent = AgentName.EXTERNAL_SCREENING.value
+        if screening_agent not in agents:
+            agents.append(screening_agent)
 
         # Discover all subject safe name across agents
         subject_names: set[str] = set()
@@ -311,7 +316,8 @@ class FindingMerger:
         # Validate discovered stems against expected subject list (Issue #88).
         if expected_subjects is not None:
             expected_set = set(expected_subjects)
-            unknown_stems = subject_names - expected_set
+            # Synthetic deal-wide stems (e.g. the screening target bucket) are never renamed.
+            unknown_stems = {stem for stem in subject_names - expected_set if not is_synthetic_subject(stem)}
             if unknown_stems:
                 _rf_available = True
                 try:
@@ -1060,8 +1066,10 @@ class FindingMerger:
             c["source_type"] = "file"
 
         # Resolve source_path against the file inventory.
+        # Database and web citations (sanctions lists and public sources, Issue #274)
+        # point at a public URL or a config file, never at a data-room file.
         sp = c.get("source_path", "")
-        if sp and not sp.startswith("["):
+        if sp and not sp.startswith("[") and str(c["source_type"]) not in ("database", "web_research"):
             c["source_path"] = self._resolve_citation_path(sp)
 
         # Build location from page / section_ref when location is absent.

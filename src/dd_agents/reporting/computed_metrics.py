@@ -1092,6 +1092,8 @@ class ReportDataComputer:
             return "cybersecurity"
         if "product" in agent or "tech" in agent:
             return "producttech"
+        if "screening" in agent and "regulatory" in self._active_agents:
+            return "regulatory"
         return self._active_agents[0] if self._active_agents else "legal"
 
     @staticmethod

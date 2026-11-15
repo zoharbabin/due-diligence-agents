@@ -15,6 +15,7 @@ from dd_agents.hooks.pre_tool import (
     BATCH_FILE_PATTERN,
     BLOCKED_FILENAMES,
     bash_guard,
+    external_tool_guard,
     file_size_guard,
     finding_schema_guard,
     path_guard,
@@ -36,6 +37,7 @@ def _build_pre_tool_hook(
     agent_name: str,
     run_dir: Path,
     project_dir: Path,
+    external: Any | None = None,
 ) -> Any:
     """Return an async PreToolUse callback compatible with the SDK.
 
@@ -47,6 +49,11 @@ def _build_pre_tool_hook(
         try:
             tn = hook_input.get("tool_name", "") if tool_name is None else tool_name
             ti = hook_input.get("tool_input", {})
+
+            # 0. External MCP guard: only the internal server and the allowlist
+            result = external_tool_guard(tn, external)
+            if result["decision"] == "block":
+                return {"decision": "block", "reason": result["reason"]}
 
             # 1. Bash guard
             result = bash_guard(tn, ti)
@@ -142,6 +149,8 @@ def build_hooks_for_agent(
     run_dir: Path,
     project_dir: Path,
     expected_subjects: int,
+    external: Any | None = None,
+    coverage_stop_guard: bool = True,
 ) -> dict[str, list[HookMatcher]] | None:
     """Build the complete hook configuration for a specialist agent.
 
@@ -158,6 +167,12 @@ def build_hooks_for_agent(
         Path to the project root (for path guard scope).
     expected_subjects:
         Number of subject JSONs the agent is expected to produce.
+    external:
+        Optional :class:`~dd_agents.tools.external_mcp.ExternalAccess`. Without it,
+        every MCP tool outside the internal server is blocked.
+    coverage_stop_guard:
+        When false, no Stop hook is installed. For agents that do not write
+        per-subject findings (the screening research agents, Issue #274).
     """
     try:
         from claude_agent_sdk import HookMatcher as _HookMatcher  # type: ignore[import-not-found]
@@ -165,17 +180,19 @@ def build_hooks_for_agent(
         logger.debug("claude_agent_sdk not installed — hooks unavailable")
         return None
 
-    return {
+    hooks: dict[str, list[HookMatcher]] = {
         "PreToolUse": [
             _HookMatcher(
-                hooks=[_build_pre_tool_hook(agent_name, run_dir, project_dir)],
+                hooks=[_build_pre_tool_hook(agent_name, run_dir, project_dir, external)],
                 timeout=5.0,
             ),
         ],
-        "Stop": [
+    }
+    if coverage_stop_guard:
+        hooks["Stop"] = [
             _HookMatcher(
                 hooks=[_build_stop_hook(agent_name, run_dir, expected_subjects)],
                 timeout=10.0,
             ),
-        ],
-    }
+        ]
+    return hooks
