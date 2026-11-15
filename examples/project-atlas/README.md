@@ -40,7 +40,7 @@ pip install -e ".[dev]"
 dd-agents validate examples/project-atlas/deal-config.json
 dd-agents assess  examples/project-atlas/sample_data_room
 
-# preview the 38-step plan without spending LLM budget
+# preview the 39-step plan without spending LLM budget
 dd-agents run examples/project-atlas/deal-config.json --dry-run
 
 # run the full pipeline
@@ -76,7 +76,7 @@ A full continuity reference (every number/date/entity the documents agree on) is
 
 ## Verified
 
-A real pipeline run completed all 38 steps with every blocking gate passing
+A real pipeline run completed all 39 steps with every blocking gate passing
 (numerical audit 6/6, QA audit, DoD 23/23). It produced 44 merged findings
 (2× P0, 10× P1, 17× P2, 15× P3), with the hero change-of-control cliff surfaced at P0 by both
 Legal and Finance and cited to Meridian MSA §12.3 verbatim. Verdict: **Conditional Go**.

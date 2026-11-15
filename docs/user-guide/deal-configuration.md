@@ -320,6 +320,27 @@ Opt-in lookups against public sources through an MCP server. **Off by default.**
 - `allowed_tools`: the only server tools an agent may call. Names are listed one by one. Tools that write or keep state (`archive_source`, `site_login`, `site_logout`, `memory_save`, `memory_recall`, `research_export`) are rejected.
 - Any MCP tool outside the internal `dd_tools` server and this allowlist is blocked for every pipeline agent.
 
+### screening (optional)
+
+Local sanctions and watchlist screening (pipeline step 26). **Off by default.** The step makes no network call and no LLM call. Download the lists first with `dd-agents screening update`.
+
+```json
+"screening": {
+  "enabled": true,
+  "people": true,
+  "companies": true,
+  "sources": ["ofac_sdn", "uk", "eu"]
+}
+```
+
+- `enabled`: run the step (default: false)
+- `people`: screen `key_executives` (default: true)
+- `companies`: screen the target, its subsidiaries, previous names and the data room entities (default: true)
+- `sources`: official list ids. Omit it to use every built-in source. An unknown id fails validation.
+- The block and the files in `dd-config/screening/` are part of the run provenance hash. Changing either rejects a resume.
+
+See [Sanctions and Watchlist Screening](screening.md).
+
 ### extraction (optional)
 
 - `ocr_backend`: OCR engine preference for scanned pages — `auto` (default), `pytesseract`, or `glm_ocr`

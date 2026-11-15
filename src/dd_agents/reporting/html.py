@@ -60,6 +60,7 @@ from dd_agents.reporting.html_red_flags import RedFlagAssessmentRenderer
 from dd_agents.reporting.html_renewal import RenewalAnalysisRenderer
 from dd_agents.reporting.html_risk import RiskRenderer
 from dd_agents.reporting.html_saas_metrics import SaaSMetricsRenderer
+from dd_agents.reporting.html_screening import ScreeningRenderer
 from dd_agents.reporting.html_strategy import StrategyRenderer
 from dd_agents.reporting.html_subjects import SubjectRenderer
 from dd_agents.reporting.html_timeline import TimelineRenderer
@@ -241,6 +242,7 @@ class HTMLReportGenerator:
         # --- Layer 2: What To Do (actions + financial impact) ---
         layer2_renderers: list[SectionRenderer] = [
             ActionItemsRenderer(computed, merged_data, renderer_config),
+            ScreeningRenderer(computed, merged_data, renderer_config, run_dir=run_dir),
             FinancialImpactRenderer(computed, merged_data, renderer_config),
             ValuationBridgeRenderer(computed, merged_data, renderer_config),
         ]

@@ -133,6 +133,13 @@ class ScreeningService:
         """Hash of the user's screening files. Empty when there are none."""
         return self._user.content_hash()
 
+    def user_list_origin(self, source_id: str) -> tuple[str, str] | None:
+        """``(file name, source_url)`` of the user watchlist behind *source_id*, else ``None``."""
+        for item in self._user.lists:
+            if item.kind == "watchlist" and item.source_id == source_id:
+                return item.file, item.source_url
+        return None
+
     def screen(self, targets: Sequence[ScreenTarget], *, limit: int = DEFAULT_HITS_PER_TARGET) -> ScreeningReport:
         results = [
             TargetResult(

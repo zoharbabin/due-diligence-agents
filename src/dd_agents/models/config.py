@@ -273,6 +273,42 @@ class ExternalVerificationConfig(BaseModel):
         return v
 
 
+class ScreeningConfig(BaseModel):
+    """Local sanctions and watchlist screening step (Issue #274).
+
+    Off by default: the lists must be downloaded first with
+    ``dd-agents screening update``. The step itself does no network call and
+    no LLM call. Names are matched on this machine.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = Field(default=False, description="Run the screening step (pipeline step 26)")
+    people: bool = Field(default=True, description="Screen the key executives from the deal config")
+    companies: bool = Field(
+        default=True,
+        description="Screen the target, its subsidiaries, previous names and the subject names from the data room",
+    )
+    sources: list[str] | None = Field(
+        default=None,
+        description="Official list ids to screen against. None means every built-in source",
+    )
+
+    @field_validator("sources")
+    @classmethod
+    def _check_sources(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return v
+        from dd_agents.screening.sources import SOURCES
+
+        unknown = sorted(set(v) - set(SOURCES))
+        if unknown:
+            raise ValueError(f"unknown screening source(s) {unknown}. Available: {sorted(SOURCES)}")
+        if len(set(v)) != len(v):
+            raise ValueError("duplicate screening source ids")
+        return v
+
+
 class ExtractionConfig(BaseModel):
     """Extraction pipeline configuration."""
 
@@ -709,6 +745,10 @@ class DealConfig(BaseModel):
     external_verification: ExternalVerificationConfig = Field(
         default_factory=ExternalVerificationConfig,
         description="Opt-in lookups against public sources through an external MCP server (Issue #274)",
+    )
+    screening: ScreeningConfig = Field(
+        default_factory=ScreeningConfig,
+        description="Opt-in local sanctions and watchlist screening step (Issue #274)",
     )
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig, description="Pipeline execution config")
     reporting: ReportingConfig = Field(default_factory=ReportingConfig, description="Report generation config")

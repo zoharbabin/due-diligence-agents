@@ -1,4 +1,4 @@
-"""PipelineEngine -- the 38-step forensic due-diligence pipeline.
+"""PipelineEngine -- the 39-step forensic due-diligence pipeline.
 
 Each step is an ``async`` method on the engine class.  The ``run()`` entry
 point walks through the canonical step list, executing each method in order.
@@ -67,7 +67,7 @@ StepFn = Callable[[PipelineState], Awaitable[PipelineState]]
 
 
 class PipelineEngine:
-    """Drives the 38-step forensic DD pipeline.
+    """Drives the 39-step forensic DD pipeline.
 
     Parameters
     ----------
@@ -79,7 +79,7 @@ class PipelineEngine:
         Maximum number of retries per step on recoverable errors.
     """
 
-    TOTAL_STEPS: int = 38
+    TOTAL_STEPS: int = 39
 
     def __init__(
         self,
@@ -126,7 +126,7 @@ class PipelineEngine:
         Parameters
         ----------
         resume_from_step:
-            Step number (1-38) to resume from.  ``0`` means start fresh.
+            Step number (1-39) to resume from.  ``0`` means start fresh.
             The checkpoint for the preceding step is loaded automatically.
         options:
             Optional runtime overrides.  Supported keys:
@@ -255,7 +255,12 @@ class PipelineEngine:
                     PromptBuilder.PROMPT_VERSION,
                     # project_dir folds dd-config/ drift into the recompute too,
                     # matching VALIDATE_CONFIG (Copilot #202 C5).
-                    _cph(_Reg.collect_persona_texts(_active, project_dir=self.project_dir)),
+                    _cph(
+                        {
+                            **_Reg.collect_persona_texts(_active, project_dir=self.project_dir),
+                            **self._screening_persona_texts(self._read_deal_config_raw()),
+                        }
+                    ),
                     # Routing fingerprint: a provider/gateway swap busts the gate.
                     _rp().fingerprint(),
                 )
@@ -380,19 +385,20 @@ class PipelineEngine:
             PipelineStep.JUDGE_REVIEW: self._step_23_judge_review,
             PipelineStep.JUDGE_RESPAWN: self._step_24_judge_respawn,
             PipelineStep.JUDGE_ROUND2: self._step_25_judge_round2,
-            PipelineStep.PRE_MERGE_VALIDATION: self._step_26_pre_merge_validation,
-            PipelineStep.MERGE_DEDUP: self._step_27_merge_dedup,
-            PipelineStep.MERGE_GAPS: self._step_28_merge_gaps,
-            PipelineStep.BUILD_NUMERICAL_MANIFEST: self._step_29_build_numerical_manifest,
-            PipelineStep.NUMERICAL_AUDIT: self._step_30_numerical_audit,
-            PipelineStep.FULL_QA_AUDIT: self._step_31_full_qa_audit,
-            PipelineStep.BUILD_REPORT_DIFF: self._step_32_build_report_diff,
-            PipelineStep.GENERATE_REPORTS: self._step_33_generate_reports,
-            PipelineStep.POST_GENERATION_VALIDATION: self._step_34_post_generation_validation,
-            PipelineStep.FINALIZE_METADATA: self._step_35_finalize_metadata,
-            PipelineStep.UPDATE_RUN_HISTORY: self._step_36_update_run_history,
-            PipelineStep.SAVE_ENTITY_CACHE: self._step_37_save_entity_cache,
-            PipelineStep.SHUTDOWN: self._step_38_shutdown,
+            PipelineStep.EXTERNAL_SCREENING: self._step_26_external_screening,
+            PipelineStep.PRE_MERGE_VALIDATION: self._step_27_pre_merge_validation,
+            PipelineStep.MERGE_DEDUP: self._step_28_merge_dedup,
+            PipelineStep.MERGE_GAPS: self._step_29_merge_gaps,
+            PipelineStep.BUILD_NUMERICAL_MANIFEST: self._step_30_build_numerical_manifest,
+            PipelineStep.NUMERICAL_AUDIT: self._step_31_numerical_audit,
+            PipelineStep.FULL_QA_AUDIT: self._step_32_full_qa_audit,
+            PipelineStep.BUILD_REPORT_DIFF: self._step_33_build_report_diff,
+            PipelineStep.GENERATE_REPORTS: self._step_34_generate_reports,
+            PipelineStep.POST_GENERATION_VALIDATION: self._step_35_post_generation_validation,
+            PipelineStep.FINALIZE_METADATA: self._step_36_finalize_metadata,
+            PipelineStep.UPDATE_RUN_HISTORY: self._step_37_update_run_history,
+            PipelineStep.SAVE_ENTITY_CACHE: self._step_38_save_entity_cache,
+            PipelineStep.SHUTDOWN: self._step_39_shutdown,
         }
 
     # ------------------------------------------------------------------
@@ -683,7 +689,7 @@ class PipelineEngine:
         return {f.path: f for f in discovered}
 
     # ==================================================================
-    # Step implementations  (38 steps)
+    # Step implementations  (39 steps)
     #
     # Each step receives and returns PipelineState.  Steps that interact
     # with downstream modules (extraction, inventory, validation, etc.)
@@ -751,7 +757,10 @@ class PipelineEngine:
         # Pass project_dir so dd-config/ persona+profile overrides are folded into
         # the provenance hash (Copilot #202 C5) — editing them busts resume.
         state.persona_hashes = compute_persona_hashes(
-            AgentRegistry.collect_persona_texts(active_agents, project_dir=self.project_dir)
+            {
+                **AgentRegistry.collect_persona_texts(active_agents, project_dir=self.project_dir),
+                **self._screening_persona_texts(raw),
+            }
         )
         # Fold the secret-free LLM routing fingerprint into provenance so a
         # resume under a different provider/gateway/clamp is rejected (no
@@ -798,6 +807,24 @@ class PipelineEngine:
             self._active_agents,
         )
         return state
+
+    def _read_deal_config_raw(self) -> dict[str, Any]:
+        """Current deal config from disk (not the checkpoint copy). Empty dict if unreadable."""
+        try:
+            data = json.loads(self.deal_config_path.read_bytes().decode("utf-8-sig"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def _screening_persona_texts(self, raw: dict[str, Any]) -> dict[str, str]:
+        """Provenance inputs for the screening step: its settings and the user's list files."""
+        from dd_agents.persistence.provenance import screening_persona_texts
+        from dd_agents.screening.user_lists import load_user_screening
+
+        cfg = raw.get("screening")
+        if not isinstance(cfg, dict) or not cfg.get("enabled"):
+            return {}
+        return screening_persona_texts(cfg, load_user_screening(self.project_dir).content_hash())
 
     def _typed_deal_config(self, state: PipelineState) -> Any:
         """Return the typed ``DealConfig`` built from the EFFECTIVE raw config.
@@ -1152,7 +1179,7 @@ class PipelineEngine:
         ``inventory/formula_audit.json``. Returns the report (or None) so the merge
         step can mint deterministic model-integrity findings that persist to
         ``findings/merged/`` — reaching the findings index (query/chat), counts
-        (step 29), audit (step 30), and the report.
+        (step 30), audit (step 31), and the report.
         """
         report = getattr(state, "_formula_audit_report", None)
         if isinstance(report, dict) and report.get("issues"):
@@ -2743,7 +2770,7 @@ class PipelineEngine:
         """Merge pass-2 findings into main findings directories.  CONDITIONAL.
 
         Pass-2 findings are written alongside pass-1 findings with a ``_pass2``
-        suffix.  The existing merge step (step 27) iterates all JSON files in
+        suffix.  The existing merge step (step 28) iterates all JSON files in
         each agent directory and handles deduplication naturally.
 
         This step never mutates pass-1 findings — it only adds.
@@ -3076,9 +3103,42 @@ class PipelineEngine:
         logger.info("Judge Round 2 complete: blended scores for %d agents", len(failing_agents))
         return state
 
+    async def _step_26_external_screening(self, state: PipelineState) -> PipelineState:
+        """Local sanctions and watchlist screening.  CONDITIONAL on ``screening.enabled``.
+
+        Deterministic: no LLM call, no network call. Writes per-subject findings
+        to ``findings/external_screening/`` and ``screening/coverage.json``
+        (always, even with zero hits, so list gaps are visible). Issue #274.
+        """
+        deal_cfg = self._typed_deal_config(state)
+        if deal_cfg is None or not deal_cfg.screening.enabled:
+            logger.info("Skipping step 26 -- screening not enabled")
+            return state
+
+        from dd_agents.screening.step import run_screening
+
+        entries = self._ensure_subject_entries(state)
+        subjects = [(str(e.name), str(e.safe_name)) for e in entries]
+        if not subjects:
+            subjects = [(name, name) for name in state.subject_safe_names]
+
+        outcome = run_screening(
+            config=deal_cfg,
+            subjects=subjects,
+            project_dir=self.project_dir,
+            run_dir=state.run_dir,
+            run_id=state.run_id,
+        )
+        if not outcome.complete:
+            logger.warning(
+                "Screening used incomplete lists (%d gap(s)). No match is not clearance. See screening/coverage.json",
+                outcome.gaps,
+            )
+        return state
+
     # Phase 6: Reporting ----------------------------------------------------
 
-    async def _step_26_pre_merge_validation(self, state: PipelineState) -> PipelineState:
+    async def _step_27_pre_merge_validation(self, state: PipelineState) -> PipelineState:
         """Pre-merge validation, cross-agent anomaly detection, and P0/P1 follow-up.
 
         Performs deterministic validation of specialist outputs, plus
@@ -3271,7 +3331,7 @@ class PipelineEngine:
 
         return adjusted
 
-    async def _step_27_merge_dedup(self, state: PipelineState) -> PipelineState:
+    async def _step_28_merge_dedup(self, state: PipelineState) -> PipelineState:
         """Merge and deduplicate findings across agents."""
         from dd_agents.reporting.merge import FindingMerger
 
@@ -3333,7 +3393,7 @@ class PipelineEngine:
 
         # Deterministic output-side tamper / prompt-injection detection (audit §7.2).
         # Injection patterns surfaced into findings become P1 document_integrity
-        # findings here — BEFORE write_merged, so step 29 counts them and step 30
+        # findings here — BEFORE write_merged, so step 30 counts them and step 31
         # audits them. Idempotent: safe under --resume.
         tamper_count = merger.inject_tamper_findings(merged)
         if tamper_count:
@@ -3341,7 +3401,7 @@ class PipelineEngine:
 
         # Deterministic formula-integrity findings (Issue #245). The audit ran in
         # step 06; mint findings here — BEFORE write_merged — so they persist to
-        # findings/merged/, are counted (step 29), audited (step 30), and reach
+        # findings/merged/, are counted (step 30), audited (step 31), and reach
         # the findings index (query/chat) + report. Idempotent + parity-safe.
         formula_report = self._formula_audit_for_merge(state)
         if formula_report is not None:
@@ -3356,7 +3416,7 @@ class PipelineEngine:
         logger.info("Merged findings for %d subjects", len(merged))
         return state
 
-    async def _step_28_merge_gaps(self, state: PipelineState) -> PipelineState:
+    async def _step_29_merge_gaps(self, state: PipelineState) -> PipelineState:
         """Merge gap files from all agents."""
         # Gaps are merged as part of the merged subject output in step 24.
         # This step handles any additional gap-specific processing.
@@ -3467,7 +3527,7 @@ class PipelineEngine:
             )
             logger.info("Rebuilt counts.json for audit traceability")
 
-    async def _step_29_build_numerical_manifest(self, state: PipelineState) -> PipelineState:
+    async def _step_30_build_numerical_manifest(self, state: PipelineState) -> PipelineState:
         """Build numerical_manifest.json for audit."""
         # Build a basic numerical manifest from inventory data
         inv_dir = self._inventory_dir(state)
@@ -3596,7 +3656,7 @@ class PipelineEngine:
         logger.info("Built numerical manifest with %d entries", len(manifest["numbers"]))
         return state
 
-    async def _step_30_numerical_audit(self, state: PipelineState) -> PipelineState:
+    async def _step_31_numerical_audit(self, state: PipelineState) -> PipelineState:
         """Seven-layer numerical validation.  BLOCKING GATE."""
         from dd_agents.validation.numerical_audit import NumericalAuditor
 
@@ -3636,7 +3696,7 @@ class PipelineEngine:
         state.validation_results["numerical_audit"] = True
         return state
 
-    async def _step_31_full_qa_audit(self, state: PipelineState) -> PipelineState:
+    async def _step_32_full_qa_audit(self, state: PipelineState) -> PipelineState:
         """Full QA audit — 17 structural checks.  BLOCKING GATE.
 
         Tier 1 of the two-tier validation design.  Runs ``QAAuditor`` which
@@ -3670,10 +3730,10 @@ class PipelineEngine:
 
         return state
 
-    async def _step_32_build_report_diff(self, state: PipelineState) -> PipelineState:
+    async def _step_33_build_report_diff(self, state: PipelineState) -> PipelineState:
         """Build diff against prior run.  CONDITIONAL."""
         if not state.prior_run_id or not state.prior_run_dir:
-            logger.info("Skipping step 32 -- no prior run for diff comparison")
+            logger.info("Skipping step 33 -- no prior run for diff comparison")
             return state
 
         from dd_agents.reporting.diff import ReportDiffBuilder
@@ -3811,7 +3871,7 @@ class PipelineEngine:
         run_metadata["reference_file_count"] = len(run_metadata.get("reference_files", []))
 
         # Numerical manifest entries (N001–N00x) for cross-format parity.
-        # Step 26 writes numerical_manifest.json; surface each N-entry in
+        # Step 30 writes numerical_manifest.json; surface each N-entry in
         # the _Metadata sheet so Excel matches the audit manifest.
         nm_path = state.run_dir / "numerical_manifest.json"
         if nm_path.exists():
@@ -3826,7 +3886,7 @@ class PipelineEngine:
 
         return run_metadata
 
-    async def _step_33_generate_reports(self, state: PipelineState) -> PipelineState:
+    async def _step_34_generate_reports(self, state: PipelineState) -> PipelineState:
         """Generate Excel and HTML reports from merged findings.
 
         Produces:
@@ -3858,8 +3918,8 @@ class PipelineEngine:
         # section (not just the inventory JSON). No-op when no request list.
         self._inject_request_list_gaps(state, merged_findings)
         # NOTE: formula-integrity findings (Issue #245) are injected at the MERGE
-        # step (27), persisted to findings/merged/_model_integrity.json, so they
-        # reach the findings index (query/chat), counts (29), audit (30), AND the
+        # step (28), persisted to findings/merged/_model_integrity.json, so they
+        # reach the findings index (query/chat), counts (30), audit (31), AND the
         # report — not only this in-memory report view. See merge.inject_formula_findings.
 
         # ------------------------------------------------------------------
@@ -3893,7 +3953,7 @@ class PipelineEngine:
                     try:
                         schema = ReportSchema.model_validate_json(config_schema_path.read_text(encoding="utf-8"))
                         logger.info("Loaded report schema from: %s", config_schema_path)
-                        # Copy to run_dir so step 31 can find it
+                        # Copy to run_dir so step 32 can find it
                         run_schema_path.parent.mkdir(parents=True, exist_ok=True)
                         run_schema_path.write_text(config_schema_path.read_text(encoding="utf-8"), encoding="utf-8")
                         break
@@ -4034,7 +4094,7 @@ class PipelineEngine:
             # Record executive synthesis telemetry
             self.cost_tracker.record(
                 agent_name="executive_synthesis",
-                step="33_generate_reports",
+                step="34_generate_reports",
                 input_tokens=es_result.get("input_tokens_est", 0),
                 output_tokens=es_result.get("output_tokens_est", 0),
                 model=es_result.get("model", ""),
@@ -4088,7 +4148,7 @@ class PipelineEngine:
                 # Record acquirer intelligence telemetry
                 self.cost_tracker.record(
                     agent_name="acquirer_intelligence",
-                    step="33_generate_reports",
+                    step="34_generate_reports",
                     input_tokens=ai_result.get("input_tokens_est", 0),
                     output_tokens=ai_result.get("output_tokens_est", 0),
                     model=ai_result.get("model", ""),
@@ -4195,7 +4255,7 @@ class PipelineEngine:
 
                 self.cost_tracker.record(
                     agent_name="narrative_generation",
-                    step="33_generate_reports",
+                    step="34_generate_reports",
                     input_tokens=narr_result.get("input_tokens_est", 0),
                     output_tokens=narr_result.get("output_tokens_est", 0),
                     model=narr_result.get("model", ""),
@@ -4248,7 +4308,7 @@ class PipelineEngine:
 
         return state
 
-    async def _step_34_post_generation_validation(self, state: PipelineState) -> PipelineState:
+    async def _step_35_post_generation_validation(self, state: PipelineState) -> PipelineState:
         """Post-generation validation.  BLOCKING GATE."""
         from dd_agents.models.reporting import ReportSchema
         from dd_agents.validation.schema_validator import SchemaValidator
@@ -4299,7 +4359,7 @@ class PipelineEngine:
 
     # Phase 7: Finalization -------------------------------------------------
 
-    async def _step_35_finalize_metadata(self, state: PipelineState) -> PipelineState:
+    async def _step_36_finalize_metadata(self, state: PipelineState) -> PipelineState:
         """Write metadata.json, update 'latest' symlink.
 
         Populates all RunMetadata fields from pipeline state including
@@ -4458,7 +4518,7 @@ class PipelineEngine:
                 continue
         return assignments
 
-    async def _step_36_update_run_history(self, state: PipelineState) -> PipelineState:
+    async def _step_37_update_run_history(self, state: PipelineState) -> PipelineState:
         """Append entry to run_history.json and the analysis chronicle."""
         # run_history.json is already handled in step 32 by RunManager.finalize_run().
         # Record a PIPELINE_RUN entry in the analysis chronicle so `dd-agents log`
@@ -4470,7 +4530,7 @@ class PipelineEngine:
     def _log_pipeline_to_chronicle(self, state: PipelineState) -> None:
         """Append a PIPELINE_RUN entry to the analysis chronicle (best-effort).
 
-        Idempotent on ``run_id``: a resume that re-executes step 36 will NOT
+        Idempotent on ``run_id``: a resume that re-executes step 37 will NOT
         write a second entry for the same run. Writes to the SAME knowledge dir
         the CLI/chat read from (sourced from ``DealKnowledgeBase.knowledge_dir``,
         not a hand-spelled path). Never blocks the pipeline — failures are
@@ -4492,7 +4552,7 @@ class PipelineEngine:
             chronicle = AnalysisChronicle(chronicle_path)
 
             # Idempotency: skip if this run already has a PIPELINE_RUN entry
-            # (e.g. step 36 re-ran after a resume). Best-effort read.
+            # (e.g. step 37 re-ran after a resume). Best-effort read.
             for existing in chronicle.read_by_type(InteractionType.PIPELINE_RUN):
                 if existing.details.get("run_id") == state.run_id:
                     logger.debug("Chronicle already has run %s — skipping duplicate", state.run_id)
@@ -4532,7 +4592,7 @@ class PipelineEngine:
         except Exception as exc:  # noqa: BLE001 — chronicle logging must never block
             logger.debug("Failed to log pipeline run to chronicle: %s", exc)
 
-    async def _step_37_save_entity_cache(self, state: PipelineState) -> PipelineState:
+    async def _step_38_save_entity_cache(self, state: PipelineState) -> PipelineState:
         """Persist entity resolution cache to PERMANENT tier."""
         resolver = getattr(state, "_entity_resolver", None)
         if resolver is not None:
@@ -4549,13 +4609,13 @@ class PipelineEngine:
     # Failures in these checks cause a non-zero pipeline exit status.
     CRITICAL_DOD_CHECKS: frozenset[int] = frozenset({1, 2, 3, 11, 13, 14, 15, 17, 19})
 
-    async def _step_38_shutdown(self, state: PipelineState) -> PipelineState:
+    async def _step_39_shutdown(self, state: PipelineState) -> PipelineState:
         """Shutdown all agents, run 31 DoD checks, set exit status.
 
         Tier 2 of the two-tier validation design.  Runs
         ``DefinitionOfDoneChecker`` which evaluates analysis completeness
         and quality (all agents ran, gaps tracked, Judge scores met, etc.).
-        Unlike step 28's blocking QA audit, DoD failures are **non-blocking**
+        Unlike step 32's blocking QA audit, DoD failures are **non-blocking**
         — reports are already generated.  Critical failures (defined by
         ``CRITICAL_DOD_CHECKS``) set the pipeline exit status so callers
         can detect quality gaps.  See ``validation/dod.py`` docstring for

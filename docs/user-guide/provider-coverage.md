@@ -36,7 +36,7 @@ Legend: ✅ verified live · ⚙️ exercised via the shared seam (same code pat
 | `doctor --probe` | ✅ | ✅ | ✅ | 🔑 |
 | `query` | ✅ | ✅ | ✅ | 🔑 |
 | `search` | ✅ | ✅ | ⚠️ | 🔑 |
-| full `run` (38 steps) | ⚙️ | ✅ | ✅ | 🔑 |
+| full `run` (39 steps) | ⚙️ | ✅ | ✅ | 🔑 |
 | `auto-config` | ⚙️ | ⚙️ | ⚙️ | 🔑 |
 | `chat` | ⚙️ | ⚙️ | ⚙️ | 🔑 |
 | vision extraction | ⚙️ | ⚙️ | ⚙️ | 🔑 |
@@ -44,7 +44,7 @@ Legend: ✅ verified live · ⚙️ exercised via the shared seam (same code pat
 Notes:
 
 - **Full `run` is proven end-to-end through a gateway on BOTH Claude and a
-  non-Claude model (DeepSeek v3.2 on Bedrock):** 38/38 steps, all gates, real
+  non-Claude model (DeepSeek v3.2 on Bedrock):** 39/39 steps, all gates, real
   multi-domain findings (40+), HTML + Excel reports, and the audit receipt
   records the provider/model. The same engine drives native Bedrock, so that
   column is ⚙️ (identical code path, not separately driven end-to-end here).
@@ -71,7 +71,7 @@ This matrix records what's been validated, so a BYO-model buyer can choose with
 confidence instead of discovering gaps at runtime. Legend: ✅ validated ·
 ⚠️ partial / model-dependent · ❓ untested here.
 
-| Model (family) | Tool-use | Structured output (JSON) | Vision | Full 38-step run |
+| Model (family) | Tool-use | Structured output (JSON) | Vision | Full 39-step run |
 |----------------|:--------:|:------------------------:|:------:|:----------------:|
 | Claude (Anthropic API / Bedrock / Vertex / gateway) | ✅ | ✅ | ✅ | ✅ |
 | DeepSeek v3.2 via gateway (non-Claude) | ⚠️ | ⚠️ | ❓ | ✅ |

@@ -33,7 +33,7 @@ dd-agents run CONFIG_PATH [OPTIONS]
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `--mode` | `full\|incremental` | from config | Override execution mode |
-| `--resume-from` | int (0-38) | 0 (beginning) | Resume from a specific step |
+| `--resume-from` | int (0-39) | 0 (beginning) | Resume from a specific step |
 | `--no-narrative` | flag | off | Skip LLM narrative generation (deterministic report only) |
 | `--dry-run` | flag | off | Print step plan without executing |
 | `--quick-scan` | flag | off | Add a Red Flag Scanner stoplight-triage pass (full pipeline runs; scanner reads merged findings) |
@@ -856,6 +856,8 @@ prints the possible matches for the name you typed.
 ```
 dd-agents screening COMMAND [OPTIONS]
 ```
+
+The pipeline step that uses these lists is described in [Sanctions and Watchlist Screening](screening.md).
 
 Where files go: `DD_SCREENING_DIR` (default `~/.dd-agents/screening`), under
 `lists/{source}.json`. Source ids are the keys of `SOURCES` in

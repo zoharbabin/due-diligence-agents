@@ -102,9 +102,9 @@ recovery path:
 |------|------|-------------|------------|
 | Bulk Extraction | 5 | Corrupted or password-protected files | Remove or replace problem files, then `--resume-from 4` |
 | Coverage Gate | 17 | Too few documents per subject | Add missing documents to the data room, then `--resume-from 6` |
-| Numerical Audit | 30 | Contradictory financial figures | Review `audit.json` in the run directory, then `--resume-from 30` |
-| Full QA Audit | 31 | Quality checks failed (missing citations) | Review `dod_results.json` for specifics, then `--resume-from 31` |
-| Post-Generation | 34 | Incomplete report output | Check disk space, then `--resume-from 33` |
+| Numerical Audit | 31 | Contradictory financial figures | Review `audit.json` in the run directory, then `--resume-from 31` |
+| Full QA Audit | 32 | Quality checks failed (missing citations) | Review `dod_results.json` for specifics, then `--resume-from 32` |
+| Post-Generation | 35 | Incomplete report output | Check disk space, then `--resume-from 34` |
 
 Resume after fixing the issue:
 

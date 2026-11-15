@@ -63,7 +63,7 @@ This means every finding traces to a specific file, page, and quote — not to a
 
 ## 3. The Five-Stage Pipeline
 
-The system runs as a 38-step async state machine organized into five stages. Each step receives pipeline state, performs work, checkpoints, and continues. Five steps are **blocking gates** that halt the pipeline on failure — the system produces nothing rather than something unreliable.
+The system runs as a 39-step async state machine organized into five stages. Each step receives pipeline state, performs work, checkpoints, and continues. Five steps are **blocking gates** that halt the pipeline on failure — the system produces nothing rather than something unreliable.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -81,23 +81,23 @@ The system runs as a 38-step async state machine organized into five stages. Eac
 │  coverage verification with respawn for gaps            │
 │  🚫 GATE: Subject coverage (step 17)                    │
 ├─────────────────────────────────────────────────────────┤
-│  Stage 4: Quality Review (Steps 18-31)                  │
+│  Stage 4: Quality Review (Steps 18-32)                  │
 │  Cross-domain analysis, judge adversarial review,       │
 │  merge & dedup, deterministic numerical audit,          │
 │  31 Definition of Done checks                           │
-│  🚫 GATE: Numerical audit (step 30)                     │
-│  🚫 GATE: Full QA audit (step 31)                       │
+│  🚫 GATE: Numerical audit (step 31)                     │
+│  🚫 GATE: Full QA audit (step 32)                       │
 ├─────────────────────────────────────────────────────────┤
-│  Stage 5: Reporting & Knowledge (Steps 32-38)           │
+│  Stage 5: Reporting & Knowledge (Steps 33-39)           │
 │  Report generation, post-gen validation, knowledge      │
 │  compilation, entity cache persistence                  │
-│  🚫 GATE: Post-generation validation (step 34)          │
+│  🚫 GATE: Post-generation validation (step 35)          │
 └─────────────────────────────────────────────────────────┘
 ```
 
 ### Checkpoint and resume
 
-After every step, state is serialized to a checkpoint file. If the pipeline crashes at step 30, it resumes from step 30 — not from scratch. For the most expensive step (step 16: spawning specialist agents), sub-checkpoints track individual agent completion. If some agents finish before a crash, only the remaining agents are re-spawned.
+After every step, state is serialized to a checkpoint file. If the pipeline crashes at step 31, it resumes from step 31 — not from scratch. For the most expensive step (step 16: spawning specialist agents), sub-checkpoints track individual agent completion. If some agents finish before a crash, only the remaining agents are re-spawned.
 
 ### Three-tier persistence
 
@@ -263,7 +263,7 @@ Nine specialist agents analyze the data room in parallel, each from their domain
 
 ### Cross-domain findings emerge from merge
 
-The same document gets analyzed by all relevant agents. Legal finds a change-of-control termination right. Finance calculates the revenue at risk. Commercial notes the subject is on an expiring contract. ProductTech flags a missing data processing agreement. After merge and dedup (step 27), these findings are linked to the same subject — and the Executive Synthesis agent connects them into a cross-domain risk assessment.
+The same document gets analyzed by all relevant agents. Legal finds a change-of-control termination right. Finance calculates the revenue at risk. Commercial notes the subject is on an expiring contract. ProductTech flags a missing data processing agreement. After merge and dedup (step 28), these findings are linked to the same subject — and the Executive Synthesis agent connects them into a cross-domain risk assessment.
 
 ### Domain boundaries are explicit
 
@@ -344,7 +344,7 @@ _dd/forensic-dd/knowledge/          [PERMANENT tier]
 
 ### How it works
 
-**After each run** (step 35), the Knowledge Compiler processes merged findings:
+**After each run** (step 36), the Knowledge Compiler processes merged findings:
 
 1. **Entity profiles** created or updated — severity distribution, key clauses, cross-run history
 2. **Clause summaries** aggregated — which entities are affected by each clause type
