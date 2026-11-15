@@ -93,6 +93,18 @@ PermissionError: [Errno 13] Permission denied
 Ensure you have read access to the data room and write access to the output
 directory. The pipeline writes to `{data_room_path}/_dd/`.
 
+### Screening says "Public source research is incomplete"
+
+The research agent could not search. Check `screening/profile_leads.json` in the run folder: each `unavailable` record says why in `summary`.
+
+| Cause | Fix |
+|-------|-----|
+| Search provider keys rejected (auth or invalid token) | Refresh the keys passed through `external_verification.server.env_passthrough` |
+| Provider rate limit | Run again later |
+| `external_verification.enabled` is `false` | Turn it on. See [Public Source Research](screening.md#public-source-research) |
+
+An incomplete run is never clearance. Run again once the cause is fixed.
+
 ## Blocking Gate Recovery
 
 Five pipeline steps are blocking gates that halt on failure. Each has a specific
