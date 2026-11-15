@@ -299,6 +299,27 @@ Controls the optional Judge agent that reviews specialist findings:
 - `cross_agent_contradiction_check`: detect conflicting findings across agents (default: true)
 - `web_research_enabled`: reserved for web research via [web-researcher-mcp](https://github.com/zoharbabin/web-researcher-mcp) claim verification (default: false). **Currently has no effect:** no agent reads it yet, so setting it to `true` changes nothing.
 
+### external_verification (optional)
+
+Opt-in lookups against public sources through an MCP server. **Off by default. Not used by any agent yet:** the block is validated and its settings are part of the run provenance hash, so changing them rejects a resume. The agents that use it arrive in later releases.
+
+```json
+"external_verification": {
+  "enabled": false,
+  "server": {
+    "name": "web-researcher",
+    "command": "uvx",
+    "args": ["web-researcher-mcp"],
+    "env_passthrough": ["EDGAR_CONTACT_EMAIL"]
+  },
+  "allowed_tools": ["web_search", "news_search", "scrape_page", "filing_search", "legal_search", "verify_citation"]
+}
+```
+
+- `server.env_passthrough`: names of environment variables to forward to the server. Values are never stored in the config.
+- `allowed_tools`: the only server tools an agent may call. Names are listed one by one. Tools that write or keep state (`archive_source`, `site_login`, `site_logout`, `memory_save`, `memory_recall`, `research_export`) are rejected.
+- Any MCP tool outside the internal `dd_tools` server and this allowlist is blocked for every pipeline agent.
+
 ### extraction (optional)
 
 - `ocr_backend`: OCR engine preference for scanned pages — `auto` (default), `pytesseract`, or `glm_ocr`

@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from dd_agents.models.config import DealConfig
+    from dd_agents.tools.external_mcp import ExternalAccess
 
 logger = logging.getLogger(__name__)
 
@@ -344,6 +345,26 @@ class BaseAgentRunner(ABC):
         """
         return "specialist"
 
+    def get_external_access(self) -> ExternalAccess | None:
+        """Return the external MCP access this agent gets, or ``None`` (the default).
+
+        Only agents that opt in override this (Issue #274). Without access, the
+        pre-tool guard blocks every MCP tool outside the internal server.
+        """
+        return None
+
+    def _mcp_servers_and_tools(self, *, internal_server: Any | None) -> tuple[dict[str, Any] | None, list[str]]:
+        """Return the ``mcp_servers`` map and the allowed tool list for this run."""
+        servers: dict[str, Any] = {}
+        if internal_server is not None:
+            servers["dd_tools"] = internal_server
+        tools = list(self.get_tools())
+        access = self.get_external_access()
+        if access is not None:
+            servers.update(access.servers)
+            tools.extend(access.tool_names)
+        return (servers or None), tools
+
     async def _spawn_agent(
         self,
         prompt: str,
@@ -397,6 +418,7 @@ class BaseAgentRunner(ABC):
         system_prompt = f"{base_system}\n\n{assemble_safety_floor(self.get_agent_type())}"
 
         # Build hooks and MCP server for the agent
+        external = self.get_external_access()
         from dd_agents.hooks.factory import build_hooks_for_agent
         from dd_agents.tools.mcp_server import _build_runtime_context, build_mcp_server
 
@@ -405,6 +427,7 @@ class BaseAgentRunner(ABC):
             run_dir=self.run_dir,
             project_dir=self.project_dir,
             expected_subjects=expected_subjects,
+            external=external,
         )
 
         runtime_ctx = _build_runtime_context(
@@ -424,13 +447,14 @@ class BaseAgentRunner(ABC):
             "max_budget_usd": self.max_budget_usd,
             "permission_mode": "bypassPermissions",
             "cwd": str(self.project_dir),
-            "allowed_tools": self.get_tools(),
             "max_buffer_size": self._compute_buffer_size(),
         }
+        mcp_servers, allowed_tools = self._mcp_servers_and_tools(internal_server=mcp_server)
+        options_kwargs["allowed_tools"] = allowed_tools
         if hooks is not None:
             options_kwargs["hooks"] = hooks
-        if mcp_server is not None:
-            options_kwargs["mcp_servers"] = {"dd_tools": mcp_server}
+        if mcp_servers:
+            options_kwargs["mcp_servers"] = mcp_servers
 
         # Per-agent provider routing (Issue #233): when configured, route this
         # agent to its own gateway via extra_env (applied to its CLI call only;

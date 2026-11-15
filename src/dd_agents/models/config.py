@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from dd_agents.models.enums import DealType, ExecutionMode
@@ -175,6 +177,98 @@ class JudgeConfig(BaseModel):
             "Reserved for web research via web-researcher-mcp (Issue #139). Currently has no effect: no agent reads it."
         ),
     )
+
+
+# ---------------------------------------------------------------------------
+# External verification (Issue #274)
+# ---------------------------------------------------------------------------
+
+# Tools that write, hold credentials or keep state. Never exposed to an agent,
+# even if a deal config lists them.
+EXTERNAL_DENIED_TOOLS: frozenset[str] = frozenset(
+    {
+        "archive_source",
+        "site_login",
+        "site_logout",
+        "memory_save",
+        "memory_recall",
+        "research_export",
+    }
+)
+
+# Read-only tools of web-researcher-mcp used by default. See its docs/TOOLS.md.
+DEFAULT_EXTERNAL_TOOLS: tuple[str, ...] = (
+    "web_search",
+    "news_search",
+    "scrape_page",
+    "filing_search",
+    "legal_search",
+    "verify_citation",
+)
+
+_SERVER_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+_ENV_NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
+_TOOL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+# Reserved: the internal in-process server.
+_RESERVED_SERVER_NAMES = frozenset({"dd_tools"})
+
+
+class ExternalServerConfig(BaseModel):
+    """How to start the external MCP server (stdio). Secrets are never stored here."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(default="web-researcher", description="Server key. Tool names become mcp__<name>__<tool>")
+    command: str = Field(default="uvx", min_length=1, description="Executable that starts the server")
+    args: list[str] = Field(default_factory=lambda: ["web-researcher-mcp"], description="Arguments for the command")
+    env_passthrough: list[str] = Field(
+        default_factory=list,
+        description="Names of environment variables to forward to the server. Values are read from the process "
+        "environment at run time, never stored in the config",
+    )
+
+    @field_validator("name")
+    @classmethod
+    def _check_name(cls, v: str) -> str:
+        if not _SERVER_NAME.fullmatch(v) or "__" in v or v in _RESERVED_SERVER_NAMES:
+            raise ValueError(f"invalid server name {v!r}: use letters, digits, '-' and '_' (no '__'), not 'dd_tools'")
+        return v
+
+    @field_validator("env_passthrough")
+    @classmethod
+    def _check_env(cls, v: list[str]) -> list[str]:
+        for name in v:
+            if not _ENV_NAME.fullmatch(name):
+                raise ValueError(f"env_passthrough takes variable names like EDGAR_CONTACT_EMAIL, got {name!r}")
+        return v
+
+
+class ExternalVerificationConfig(BaseModel):
+    """Opt-in verification against public sources through an external MCP server (Issue #274).
+
+    Off by default. When on, entity names and search queries go to the services behind the server.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = Field(default=False, description="Allow agents to query the external MCP server")
+    server: ExternalServerConfig = Field(default_factory=ExternalServerConfig, description="Server launch spec")
+    allowed_tools: list[str] = Field(
+        default_factory=lambda: list(DEFAULT_EXTERNAL_TOOLS),
+        description="Read-only tools agents may call. Anything else on the server is blocked",
+    )
+
+    @field_validator("allowed_tools")
+    @classmethod
+    def _check_tools(cls, v: list[str]) -> list[str]:
+        if not v:
+            raise ValueError("allowed_tools must list at least one tool")
+        for tool in v:
+            if not _TOOL_NAME.fullmatch(tool):
+                raise ValueError(f"invalid tool name {tool!r}: list tool names one by one, no wildcards")
+            if tool in EXTERNAL_DENIED_TOOLS:
+                raise ValueError(f"tool {tool!r} writes or holds state and cannot be allowed")
+        return v
 
 
 class ExtractionConfig(BaseModel):
@@ -587,6 +681,10 @@ class DealConfig(BaseModel):
     deal: DealInfo = Field(description="Deal parameters and focus areas")
     judge: JudgeConfig = Field(default_factory=JudgeConfig, description="Judge agent configuration")
     extraction: ExtractionConfig = Field(default_factory=ExtractionConfig, description="Extraction pipeline config")
+    external_verification: ExternalVerificationConfig = Field(
+        default_factory=ExternalVerificationConfig,
+        description="Opt-in lookups against public sources through an external MCP server (Issue #274)",
+    )
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig, description="Pipeline execution config")
     reporting: ReportingConfig = Field(default_factory=ReportingConfig, description="Report generation config")
     forensic_dd: ForensicDDConfig = Field(default_factory=ForensicDDConfig, description="Forensic DD skill config")

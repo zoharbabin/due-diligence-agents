@@ -12,6 +12,33 @@ from pathlib import Path
 from typing import Any
 
 # ---------------------------------------------------------------------------
+# External MCP guard (Issue #274)
+# ---------------------------------------------------------------------------
+
+_INTERNAL_MCP_SERVER = "dd_tools"
+
+
+def external_tool_guard(tool_name: str, access: Any | None) -> dict[str, str]:
+    """Block MCP tools that are not the internal server or on the agent's allowlist.
+
+    *access* is an :class:`~dd_agents.tools.external_mcp.ExternalAccess` or ``None``.
+    Non-MCP tools pass through. Defense in depth: a user-level MCP server in the
+    CLI environment can never receive data from a pipeline agent.
+    """
+    if not tool_name.startswith("mcp__"):
+        return {"decision": "allow", "reason": ""}
+    server = tool_name.split("__")[1] if tool_name.count("__") >= 2 else ""
+    if server == _INTERNAL_MCP_SERVER:
+        return {"decision": "allow", "reason": ""}
+    if access is not None and server == access.server_name:
+        if tool_name in access.tool_names:
+            return {"decision": "allow", "reason": ""}
+        short = tool_name.split("__", 2)[2]
+        return {"decision": "block", "reason": f"Tool '{short}' is not on the external_verification allowlist."}
+    return {"decision": "block", "reason": f"MCP server '{server}' is not enabled for this agent."}
+
+
+# ---------------------------------------------------------------------------
 # Bash guard
 # ---------------------------------------------------------------------------
 
