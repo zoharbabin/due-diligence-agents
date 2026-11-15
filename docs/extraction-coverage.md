@@ -8,7 +8,7 @@ What the extraction pipeline can read, and how to check your own documents.
 |------|------|
 | PDF with a text layer | PDFium, then `pdftotext`, then markitdown |
 | Scanned PDF, images | OCR (GLM-OCR if available, else Tesseract) |
-| Office files | markitdown |
+| Office files | markitdown, or anydoc first if `extraction.office_backend` is `anydoc` (see below) |
 | Plain text, CSV | Read directly |
 
 Source of truth: `src/dd_agents/extraction/pipeline.py`.
@@ -28,6 +28,30 @@ Small OCR models can get stuck and repeat the same lines. When a page repeats a 
 Scanned pages are never dropped silently. Treat an "incomplete" entry as a coverage gap.
 
 Page detection uses `pdf-inspector` when installed (`pip install "dd-agents[pdf-fast]"`). Otherwise a page with fewer than 20 characters counts as scanned. At most 50 pages per file go to OCR.
+
+## Faster Office conversion (optional)
+
+`anydoc` is a Rust converter. In the benchmark it kept every key phrase in the Office test files and ran much faster than markitdown (see [the benchmark](research/firecrawl-extraction-benchmark.md)). It is off by default.
+
+```bash
+pip install "dd-agents[office-fast]"
+```
+
+```json
+{ "extraction": { "office_backend": "anydoc" } }
+```
+
+| File type | Result |
+|-----------|--------|
+| .docx, .pptx | anydoc first, then markitdown if anydoc fails or its text fails the quality checks |
+| .xlsx | openpyxl stays first. anydoc replaces markitdown as the next step |
+| HTML, .doc, .xls, .ppt, .rtf, images, everything else | markitdown, as before. anydoc has no HTML reader |
+
+A successful anydoc read shows `anydoc` in the extraction chain. If the package is missing, the log shows one warning and markitdown is used. Extraction does not stop.
+
+The PyPI package is `firecrawl-anydoc`. The package named `anydoc` is a different project. dd-agents never turns on anydoc's hosted OCR, so no file leaves your machine.
+
+Use it when a data room has many large Office files and conversion time matters. Otherwise leave the default.
 
 ## OCR and languages
 

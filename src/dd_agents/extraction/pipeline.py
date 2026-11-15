@@ -13,6 +13,7 @@ markdown representation.  Routing is by file type:
     PDF (scanned):  GLM-OCR → pytesseract → Claude vision → direct read
     Images:         markitdown → GLM-OCR → pytesseract → Claude vision → diagram placeholder
     Spreadsheets:   openpyxl (.xlsx) / xlrd (.xls) / csv module (.csv/.tsv) → markitdown → direct read
+    Office:         [anydoc: .docx/.pptx/.xlsx, opt-in via extraction.office_backend] → markitdown → direct read
     Plain text:     direct read
 
 A magic-byte detector corrects misnamed files (e.g. JPEG with .pdf
@@ -36,7 +37,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from dd_agents.extraction import pdf_engine, pdf_pages
+from dd_agents.extraction import anydoc_backend, pdf_engine, pdf_pages
 from dd_agents.extraction._constants import (
     CONFIDENCE_CLAUDE_VISION as _CONFIDENCE_CLAUDE_VISION,
 )
@@ -58,6 +59,8 @@ if TYPE_CHECKING:
     from dd_agents.extraction.glm_ocr import GlmOcrExtractor
 
 logger = logging.getLogger(__name__)
+
+_OFFICE_BACKENDS = frozenset({"markitdown", "anydoc"})
 
 # Minimum characters for an extraction to be considered "successful".
 _MIN_TEXT_LEN = 20
@@ -150,6 +153,10 @@ class ExtractionPipeline:
         Injected :class:`OCRExtractor` (defaults to a new instance).
     glm_ocr:
         Optional :class:`GlmOcrExtractor` for high-quality OCR.
+    office_backend:
+        ``"markitdown"`` (default) or ``"anydoc"``. With ``"anydoc"``, .docx,
+        .pptx and .xlsx try anydoc first and fall back to markitdown. Other
+        formats always use markitdown.
     """
 
     def __init__(
@@ -157,7 +164,11 @@ class ExtractionPipeline:
         markitdown: MarkitdownExtractor | None = None,
         ocr: OCRExtractor | None = None,
         glm_ocr: GlmOcrExtractor | None = None,
+        office_backend: str = "markitdown",
     ) -> None:
+        if office_backend not in _OFFICE_BACKENDS:
+            raise ValueError(f"office_backend must be one of {sorted(_OFFICE_BACKENDS)}, got {office_backend!r}")
+        self._office_backend = office_backend
         self._markitdown = markitdown or MarkitdownExtractor()
         self._ocr = ocr or OCRExtractor()
         self._glm_ocr = glm_ocr
@@ -480,7 +491,7 @@ class ExtractionPipeline:
             return self._extract_media(filepath, out_file)
 
         # Office / other formats -- markitdown then direct read.
-        return self._extract_generic(filepath, out_file)
+        return self._extract_generic(filepath, out_file, suffix=suffix)
 
     # ------------------------------------------------------------------
     # PDF pre-inspection (Issue #27 Phase 1)
@@ -779,7 +790,22 @@ class ExtractionPipeline:
                 if entry is not None:
                     return entry
 
-        # Fallback: markitdown then direct read.
+        # Fallback: [anydoc for .xlsx, if selected], markitdown, then direct read.
+        if self._use_anydoc(suffix):
+            any_text, any_conf = anydoc_backend.extract(filepath)
+            entry = self._try_method(
+                "anydoc",
+                any_text,
+                any_conf,
+                out_file,
+                filepath,
+                chain,
+                failure_reasons,
+                method_label="fallback_anydoc" if chain else "primary",
+            )
+            if entry is not None:
+                return entry
+
         md_text, md_conf = self._markitdown.extract(filepath)
         entry = self._try_method(
             "markitdown",
@@ -1246,10 +1272,34 @@ class ExtractionPipeline:
             failure_reasons=failure_reasons,
         )
 
-    def _extract_generic(self, filepath: Path, out_file: Path) -> ExtractionQualityEntry:
-        """Generic (Office/other) fallback chain: markitdown -> direct read."""
+    def _use_anydoc(self, suffix: str) -> bool:
+        """True when the anydoc backend is selected and reads *suffix*."""
+        return self._office_backend == "anydoc" and suffix in anydoc_backend.ANYDOC_EXTENSIONS
+
+    def _extract_generic(self, filepath: Path, out_file: Path, *, suffix: str | None = None) -> ExtractionQualityEntry:
+        """Generic (Office/other) fallback chain: [anydoc ->] markitdown -> direct read."""
         chain: list[str] = []
         failure_reasons: list[str] = []
+        if suffix is None:
+            suffix = filepath.suffix.lower()
+
+        # 0. anydoc (optional, .docx/.pptx/.xlsx only).
+        if self._use_anydoc(suffix):
+            text, conf = anydoc_backend.extract(filepath)
+            entry = self._try_method(
+                "anydoc",
+                text,
+                conf,
+                out_file,
+                filepath,
+                chain,
+                failure_reasons,
+                method_label="primary",
+                check_readability=True,
+                check_control_chars=True,
+            )
+            if entry is not None:
+                return entry
 
         # 1. markitdown.
         text, conf = self._markitdown.extract(filepath)
@@ -1261,7 +1311,7 @@ class ExtractionPipeline:
             filepath,
             chain,
             failure_reasons,
-            method_label="primary",
+            method_label="fallback_markitdown" if chain else "primary",
             check_readability=True,
             check_control_chars=True,
         )

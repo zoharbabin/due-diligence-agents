@@ -51,6 +51,20 @@ def _ocr_languages_from_config(deal_config: Any) -> list[str]:
     return validate_language_codes(value or ["eng"])
 
 
+def _office_backend_from_config(deal_config: Any) -> str:
+    """Extract ``extraction.office_backend`` (default ``"markitdown"``). Raises ``ValueError`` on unknown values."""
+    from dd_agents.models.config import ExtractionConfig
+
+    if isinstance(deal_config, dict):
+        extraction_cfg = deal_config.get("extraction", {})
+        value = extraction_cfg.get("office_backend") if isinstance(extraction_cfg, dict) else None
+    else:
+        value = getattr(getattr(deal_config, "extraction", None), "office_backend", None)
+    if not value:
+        return "markitdown"
+    return str(ExtractionConfig(office_backend=value).office_backend)
+
+
 def build_extraction_pipeline(deal_config: Any = None) -> ExtractionPipeline:
     """Build an ``ExtractionPipeline`` with the config-selected OCR backend.
 
@@ -70,6 +84,7 @@ def build_extraction_pipeline(deal_config: Any = None) -> ExtractionPipeline:
     return ExtractionPipeline(
         ocr=OCRExtractor(languages=_ocr_languages_from_config(deal_config)),
         glm_ocr=backend if isinstance(backend, GlmOcrExtractor) else None,
+        office_backend=_office_backend_from_config(deal_config),
     )
 
 

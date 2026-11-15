@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from dd_agents.models.enums import DealType, ExecutionMode
@@ -191,6 +193,15 @@ class ExtractionConfig(BaseModel):
         description=(
             "Tesseract language codes for the pytesseract path, e.g. ['deu', 'eng'] or ['script/Cyrillic']. "
             "Each needs its language pack installed. GLM-OCR ignores this. Check with `dd-agents extraction check`."
+        ),
+    )
+
+    office_backend: Literal["markitdown", "anydoc"] = Field(
+        default="markitdown",
+        description=(
+            'Office converter for .docx/.pptx/.xlsx: "markitdown" (default) or "anydoc" (faster, optional '
+            'install: pip install "dd-agents[office-fast]"). HTML and other formats always use markitdown, '
+            "and markitdown is the fallback when anydoc fails."
         ),
     )
 
