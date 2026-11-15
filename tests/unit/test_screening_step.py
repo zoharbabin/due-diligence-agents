@@ -507,6 +507,17 @@ class TestProvenance:
         assert prov({"enabled": True}) != prov({"enabled": True, "people": False})
         assert prov({"enabled": True}) != compute_provenance_hash("cfg", "1", {})
 
+    def test_research_settings_change_hash(self) -> None:
+        def prov(cfg: dict[str, Any]) -> str:
+            return compute_provenance_hash("cfg", "1", compute_persona_hashes(screening_persona_texts(cfg, "u")))
+
+        base = {"enabled": True}
+        assert prov(base) != prov({**base, "profile_research": True})
+        assert prov(base) != prov({**base, "discover_officers": True})
+        assert prov({**base, "profile_research": True}) != prov(
+            {**base, "profile_research": True, "research_max_targets": 5}
+        )
+
     def test_user_list_change_changes_hash(self) -> None:
         cfg = {"enabled": True}
         a = compute_provenance_hash("cfg", "1", compute_persona_hashes(screening_persona_texts(cfg, "hash-a")))

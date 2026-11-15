@@ -216,7 +216,7 @@ Run `dd-agents agents preview --agent legal` against a project whose
 
 The Regulatory specialist (AML, BSA, OFAC and sanctions are in its keyword and focus list) and the `regulated-fintech` profile (AML/KYC adequacy) review **what the data room contains**: the target's own AML program documents, licenses, examinations, consent orders and sanctions-related contract terms.
 
-Screening parties against sanctions lists is a separate, opt-in pipeline step. It is off by default. Without it, a clean AML/sanctions section in a report means the data room showed no issue. It does not mean the target, its owners or its counterparties were checked against any list. With it on, the report shows which lists were used and which were missing or stale, and what is not covered (for example SAM.gov and HHS-OIG, unless you add them). A match is a possible match that needs human review, and no match is not clearance. See [Sanctions and Watchlist Screening](user-guide/screening.md).
+Screening parties against sanctions lists is a separate, opt-in pipeline step. It is off by default. Without it, a clean AML/sanctions section in a report means the data room showed no issue. It does not mean the target, its owners or its counterparties were checked against any list. With it on, the report shows which lists were used and which were missing or stale, and what is not covered (for example SAM.gov and HHS-OIG, unless you add them). Optional officer discovery and public source research can add names and web leads. A match or lead needs human review, and no match is not clearance. See [Sanctions and Watchlist Screening](user-guide/screening.md).
 
 ---
 

@@ -293,6 +293,26 @@ class ScreeningConfig(BaseModel):
         default=None,
         description="Official list ids to screen against. None means every built-in source",
     )
+    discover_officers: bool = Field(
+        default=False,
+        description=(
+            "Let an agent read the extracted data room text and propose officers, directors and owners to screen. "
+            "Each name must come with a quote that is found in the cited document. No web access is used."
+        ),
+    )
+    profile_research: bool = Field(
+        default=False,
+        description=(
+            "Search public sources for the target, its executives and the discovered officers. "
+            "Needs external_verification.enabled. Sends names to the configured server."
+        ),
+    )
+    research_max_targets: int = Field(
+        default=25,
+        ge=1,
+        le=200,
+        description="Most names sent to profile research. The target and its executives come first",
+    )
 
     @field_validator("sources")
     @classmethod

@@ -97,12 +97,18 @@ def _dedupe_key(name: str, kind: str) -> tuple[str, str]:
     return kind, normalize_name(name, "person" if kind == "person" else "organization")
 
 
-def build_targets(config: DealConfig, subjects: Sequence[tuple[str, str]]) -> list[OwnedTarget]:
+def build_targets(
+    config: DealConfig,
+    subjects: Sequence[tuple[str, str]],
+    extra_people: Sequence[tuple[str, str]] = (),
+) -> list[OwnedTarget]:
     """Return the names to screen, de-duplicated by normalized name.
 
     *subjects* is ``[(name, safe_name), ...]`` from the subject registry. Subjects
     come first, so a name that is both a subject and the target is reported
-    under the subject. Roles of duplicates are merged.
+    under the subject. Roles of duplicates are merged. *extra_people* is
+    ``[(name, role), ...]`` for officers found by discovery (screened as people
+    of the target when ``screening.people`` is on).
     """
     screening = config.screening
     found: dict[tuple[str, str], OwnedTarget] = {}
@@ -142,6 +148,8 @@ def build_targets(config: DealConfig, subjects: Sequence[tuple[str, str]]) -> li
         for person in config.key_executives:
             role = f"key executive of the target ({person.title})" if person.title else "key executive of the target"
             add(person.name, "person", role, TARGET_STEM, TARGET_LABEL)
+        for name, role in extra_people:
+            add(name, "person", role, TARGET_STEM, TARGET_LABEL)
     return list(found.values())
 
 
@@ -338,10 +346,11 @@ def run_screening(
     run_id: str = "",
     service: ScreeningService | None = None,
     now: datetime | None = None,
+    extra_people: Sequence[tuple[str, str]] = (),
 ) -> ScreeningOutcome:
     """Screen, write findings and coverage, return counts. Never raises on a list problem."""
     moment = now or datetime.now(UTC)
-    owned = build_targets(config, subjects)
+    owned = build_targets(config, subjects, extra_people)
     svc = service or ScreeningService.load(project_dir, source_ids=config.screening.sources, now=moment)
     report = svc.screen([o.target for o in owned])
 

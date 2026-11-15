@@ -1066,10 +1066,10 @@ class FindingMerger:
             c["source_type"] = "file"
 
         # Resolve source_path against the file inventory.
-        # Database citations (e.g. sanctions lists, Issue #274) point at a public
-        # URL or a config file, never at a data-room file, so skip the lookup.
+        # Database and web citations (sanctions lists and public sources, Issue #274)
+        # point at a public URL or a config file, never at a data-room file.
         sp = c.get("source_path", "")
-        if sp and not sp.startswith("[") and str(c["source_type"]) != "database":
+        if sp and not sp.startswith("[") and str(c["source_type"]) not in ("database", "web_research"):
             c["source_path"] = self._resolve_citation_path(sp)
 
         # Build location from page / section_ref when location is absent.

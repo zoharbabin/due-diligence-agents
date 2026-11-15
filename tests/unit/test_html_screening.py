@@ -168,3 +168,113 @@ def test_names_and_list_text_are_escaped(tmp_path: Path) -> None:
     html = _render(_write(tmp_path, cov), [finding])
     assert "<script>" not in html
     assert "&lt;script&gt;" in html
+
+
+# -- Officer discovery and public source research (Issue #274 8b) ------------------
+
+
+def _lead_finding(name: str = "Rowan Pellegrino Madeup") -> dict[str, Any]:
+    return {
+        "id": "F2",
+        "agent": "external_screening",
+        "severity": "P2",
+        "title": f"Public source lead, needs review: {name}",
+        "citations": [
+            {
+                "source_type": "web_research",
+                "source_path": "https://example.invalid/case/1",
+                "exact_quote": "Madeup, defendant",
+                "access_date": "2026-11-14",
+            }
+        ],
+        "metadata": {
+            "profile_research": {
+                "researched_name": name,
+                "researched_kind": "person",
+                "roles": ["officer named in the data room (Managing Director)"],
+                "category": "litigation",
+                "source_url": "https://example.invalid/case/1",
+                "access_date": "2026-11-14",
+            }
+        },
+    }
+
+
+_RESEARCH_OK = {
+    "ran": True,
+    "complete": True,
+    "names_sent": 4,
+    "found": 1,
+    "unavailable": 0,
+    "invalid": 0,
+    "not_researched": [],
+    "detail": "",
+}
+
+
+def test_no_research_blocks_means_no_research_text(tmp_path: Path) -> None:
+    html = _render(_write(tmp_path, _coverage()))
+    assert "Public source" not in html
+    assert "Officers found" not in html
+    assert "sent names" not in html
+
+
+def test_leads_are_listed_with_source_and_date(tmp_path: Path) -> None:
+    html = _render(_write(tmp_path, _coverage(profile_research=_RESEARCH_OK)), [_lead_finding()])
+    assert "Public Source Leads (Need Human Review)" in html
+    assert "Rowan Pellegrino Madeup" in html
+    assert "https://example.invalid/case/1" in html
+    assert "2026-11-14" in html
+    assert "litigation" in html
+    # A lead is not a sanctions hit.
+    assert "Possible Matches (Need Human Review)" not in html
+    assert "No possible matches were found" in html
+
+
+def test_research_statement_says_names_left_the_machine(tmp_path: Path) -> None:
+    html = _render(_write(tmp_path, _coverage(profile_research=_RESEARCH_OK)))
+    assert "sent names and roles, and no document text" in html
+    assert "not clearance" in html.lower()
+
+
+def test_incomplete_research_is_a_gap_with_names(tmp_path: Path) -> None:
+    block = {**_RESEARCH_OK, "complete": False, "unavailable": 2, "not_researched": ["Name One Made", "Name Two Made"]}
+    html = _render(_write(tmp_path, _coverage(profile_research=block)))
+    assert "Public source research is incomplete" in html
+    assert "Name One Made, Name Two Made" in html
+
+
+def test_research_that_did_not_run_is_shown(tmp_path: Path) -> None:
+    block = {"ran": False, "complete": False, "names_sent": 0, "detail": "external_verification.enabled is false"}
+    html = _render(_write(tmp_path, _coverage(profile_research=block)))
+    assert "Public source research did not run" in html
+    assert "external_verification.enabled is false" in html
+    assert "sent names and roles" not in html
+
+
+def test_officer_discovery_counts_are_shown(tmp_path: Path) -> None:
+    block = {"ran": True, "accepted": 3, "rejected": 1, "invalid": 1, "detail": ""}
+    html = _render(_write(tmp_path, _coverage(officer_discovery=block)))
+    assert "Officers found in the data room" in html
+    assert "3 name(s)" in html
+    assert "2 proposal(s) were dropped" in html
+
+
+def test_failed_discovery_is_a_gap(tmp_path: Path) -> None:
+    block = {"ran": False, "accepted": 0, "rejected": 0, "invalid": 0, "detail": "agent failed"}
+    html = _render(_write(tmp_path, _coverage(officer_discovery=block)))
+    assert "Officer discovery is incomplete" in html
+    assert "agent failed" in html
+
+
+def test_research_text_is_escaped(tmp_path: Path) -> None:
+    evil = "<script>alert(1)</script>"
+    finding = _lead_finding(evil)
+    finding["metadata"]["profile_research"]["source_url"] = evil
+    cov = _coverage(
+        profile_research={**_RESEARCH_OK, "complete": False, "not_researched": [evil], "detail": evil},
+        officer_discovery={"ran": False, "detail": evil},
+    )
+    html = _render(_write(tmp_path, cov), [finding])
+    assert "<script>" not in html
+    assert "&lt;script&gt;" in html

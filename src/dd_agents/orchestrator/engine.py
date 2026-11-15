@@ -3104,23 +3104,46 @@ class PipelineEngine:
         return state
 
     async def _step_26_external_screening(self, state: PipelineState) -> PipelineState:
-        """Local sanctions and watchlist screening.  CONDITIONAL on ``screening.enabled``.
+        """Sanctions and watchlist screening plus optional research.  CONDITIONAL on ``screening.enabled``.
 
-        Deterministic: no LLM call, no network call. Writes per-subject findings
-        to ``findings/external_screening/`` and ``screening/coverage.json``
-        (always, even with zero hits, so list gaps are visible). Issue #274.
+        List matching is deterministic: no LLM call, no network call. Writes per-subject findings
+        to ``findings/external_screening/`` and ``screening/coverage.json`` (always, even with
+        zero hits, so list gaps are visible). Two further parts are off by default:
+        ``screening.discover_officers`` (an agent reads the data room, no web) and
+        ``screening.profile_research`` (an agent searches public sources with names only). Issue #274.
         """
         deal_cfg = self._typed_deal_config(state)
         if deal_cfg is None or not deal_cfg.screening.enabled:
             logger.info("Skipping step 26 -- screening not enabled")
             return state
 
-        from dd_agents.screening.step import run_screening
+        from dd_agents.screening.step import build_targets, run_screening
 
         entries = self._ensure_subject_entries(state)
         subjects = [(str(e.name), str(e.safe_name)) for e in entries]
         if not subjects:
             subjects = [(name, name) for name in state.subject_safe_names]
+
+        scfg = deal_cfg.screening
+        discovery = None
+        extra_people: list[tuple[str, str]] = []
+        if scfg.discover_officers and scfg.people:
+            from dd_agents.agents.screening_research import OfficerDiscoveryRunner
+            from dd_agents.screening.research import run_officer_discovery
+
+            discovery = await run_officer_discovery(
+                runner=OfficerDiscoveryRunner(self.project_dir, state.run_dir, state.run_id, deal_cfg),
+                text_dir=self._text_dir(state),
+                run_dir=state.run_dir,
+                target_name=deal_cfg.target.name,
+                subsidiaries=list(deal_cfg.target.subsidiaries),
+            )
+            # Roles are sent to the research server. Keep file names out; the quote and
+            # source file stay in screening/officer_candidates.json.
+            extra_people = [
+                (c.name, "officer named in the data room" + (f" ({c.title})" if c.title else ""))
+                for c in discovery.accepted
+            ]
 
         outcome = run_screening(
             config=deal_cfg,
@@ -3128,13 +3151,46 @@ class PipelineEngine:
             project_dir=self.project_dir,
             run_dir=state.run_dir,
             run_id=state.run_id,
+            extra_people=extra_people,
         )
+        if discovery is not None:
+            discovery.write_coverage(state.run_dir)
         if not outcome.complete:
             logger.warning(
                 "Screening used incomplete lists (%d gap(s)). No match is not clearance. See screening/coverage.json",
                 outcome.gaps,
             )
+
+        if scfg.profile_research:
+            await self._run_profile_research(state, deal_cfg, build_targets(deal_cfg, subjects, extra_people))
         return state
+
+    async def _run_profile_research(self, state: PipelineState, deal_cfg: Any, owned: list[Any]) -> None:
+        """Public-source research for the screened names. Off unless both opt-ins are set."""
+        from datetime import UTC, datetime
+
+        from dd_agents.screening.research import record_research_skipped, run_profile_research, select_research_targets
+        from dd_agents.tools.external_mcp import resolve_external_access
+
+        access = resolve_external_access(deal_cfg)
+        if access is None:
+            logger.warning(
+                "screening.profile_research is true but external_verification.enabled is false. "
+                "No public-source research was done."
+            )
+            record_research_skipped(state.run_dir, "external_verification.enabled is false")
+            return
+
+        from dd_agents.agents.screening_research import ProfileResearchRunner
+
+        runner = ProfileResearchRunner(self.project_dir, state.run_dir, state.run_id, deal_cfg, access=access)
+        await run_profile_research(
+            runner=runner,
+            owned=select_research_targets(owned, deal_cfg.screening.research_max_targets),
+            run_dir=state.run_dir,
+            today=datetime.now(UTC).date().isoformat(),
+            tool_names=access.tool_names,
+        )
 
     # Phase 6: Reporting ----------------------------------------------------
 

@@ -322,14 +322,17 @@ Opt-in lookups against public sources through an MCP server. **Off by default.**
 
 ### screening (optional)
 
-Local sanctions and watchlist screening (pipeline step 26). **Off by default.** The step makes no network call and no LLM call. Download the lists first with `dd-agents screening update`.
+Local sanctions and watchlist screening (pipeline step 26). **Off by default.** List matching makes no network call and no LLM call. Download the lists first with `dd-agents screening update`. `discover_officers` and `profile_research` add agent work and are off by default.
 
 ```json
 "screening": {
   "enabled": true,
   "people": true,
   "companies": true,
-  "sources": ["ofac_sdn", "uk", "eu"]
+  "sources": ["ofac_sdn", "uk", "eu"],
+  "discover_officers": false,
+  "profile_research": false,
+  "research_max_targets": 25
 }
 ```
 
@@ -337,6 +340,9 @@ Local sanctions and watchlist screening (pipeline step 26). **Off by default.** 
 - `people`: screen `key_executives` (default: true)
 - `companies`: screen the target, its subsidiaries, previous names and the data room entities (default: true)
 - `sources`: official list ids. Omit it to use every built-in source. An unknown id fails validation.
+- `discover_officers`: an agent proposes officers, directors and owners from the data room text. Each needs a quote that is found in the cited file (default: false). No web access.
+- `profile_research`: search public sources for the screened names (default: false). Needs `external_verification.enabled`, otherwise nothing is searched and the report shows a gap. Sends names, kind and role to the configured server, never document text.
+- `research_max_targets`: most names sent to research, 1 to 200 (default: 25). The target and its executives come first.
 - The block and the files in `dd-config/screening/` are part of the run provenance hash. Changing either rejects a resume.
 
 See [Sanctions and Watchlist Screening](screening.md).

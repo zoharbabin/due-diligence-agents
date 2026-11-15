@@ -81,6 +81,10 @@ class BaseAgentRunner(ABC):
     # Batch sizing -- subclasses may override for agents that need
     # smaller batches (e.g., FinanceAgent processes dense spreadsheets).
     max_subjects_per_batch: int = 20
+
+    # False for agents that do not write per-subject findings: the Stop hook
+    # would otherwise wait for subject JSONs that never come.
+    coverage_stop_guard: bool = True
     max_tokens_per_batch: int = 40_000
 
     # SDK message buffer bounds (bytes).  The actual value is computed
@@ -428,6 +432,7 @@ class BaseAgentRunner(ABC):
             project_dir=self.project_dir,
             expected_subjects=expected_subjects,
             external=external,
+            coverage_stop_guard=self.coverage_stop_guard,
         )
 
         runtime_ctx = _build_runtime_context(

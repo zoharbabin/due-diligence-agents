@@ -150,6 +150,7 @@ def build_hooks_for_agent(
     project_dir: Path,
     expected_subjects: int,
     external: Any | None = None,
+    coverage_stop_guard: bool = True,
 ) -> dict[str, list[HookMatcher]] | None:
     """Build the complete hook configuration for a specialist agent.
 
@@ -169,6 +170,9 @@ def build_hooks_for_agent(
     external:
         Optional :class:`~dd_agents.tools.external_mcp.ExternalAccess`. Without it,
         every MCP tool outside the internal server is blocked.
+    coverage_stop_guard:
+        When false, no Stop hook is installed. For agents that do not write
+        per-subject findings (the screening research agents, Issue #274).
     """
     try:
         from claude_agent_sdk import HookMatcher as _HookMatcher  # type: ignore[import-not-found]
@@ -176,17 +180,19 @@ def build_hooks_for_agent(
         logger.debug("claude_agent_sdk not installed — hooks unavailable")
         return None
 
-    return {
+    hooks: dict[str, list[HookMatcher]] = {
         "PreToolUse": [
             _HookMatcher(
                 hooks=[_build_pre_tool_hook(agent_name, run_dir, project_dir, external)],
                 timeout=5.0,
             ),
         ],
-        "Stop": [
+    }
+    if coverage_stop_guard:
+        hooks["Stop"] = [
             _HookMatcher(
                 hooks=[_build_stop_hook(agent_name, run_dir, expected_subjects)],
                 timeout=10.0,
             ),
-        ],
-    }
+        ]
+    return hooks
