@@ -16,6 +16,7 @@ from typing import Any
 import click
 from rich.console import Console
 from rich.markdown import Markdown
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 
@@ -3372,3 +3373,124 @@ def _print_dry_run(deal_config: object, resume_from: int) -> None:
         table.add_row(str(num), label, step_type, status)
 
     console.print(table)
+
+
+# ---------------------------------------------------------------------------
+# screening group (Issue #274): sanctions list download and coverage
+# ---------------------------------------------------------------------------
+
+
+@main.group()
+def screening() -> None:
+    """Download official sanctions lists and show screening coverage."""
+
+
+def _screening_source_choice() -> click.Choice[str]:
+    from dd_agents.screening.sources import SOURCES
+
+    return click.Choice(list(SOURCES))
+
+
+@screening.command("update")
+@click.option(
+    "--source",
+    "source_ids",
+    multiple=True,
+    type=_screening_source_choice(),
+    help="Source to download. Repeat for several. Default: all sources.",
+)
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output the results as JSON.")
+def screening_update(source_ids: tuple[str, ...], as_json: bool) -> None:
+    """Download sanctions lists and store them locally (writes to the screening dir).
+
+    Safe to repeat. A failed download never replaces a stored list. Exits 1 if any
+    requested source failed. Prints counts and dates only, never entry names.
+    """
+    from dd_agents.screening import store
+    from dd_agents.screening.sources import SOURCES
+
+    results: list[dict[str, Any]] = []
+    for source_id in source_ids or tuple(SOURCES):
+        try:
+            snapshot = store.update(source_id)
+        except store.StoreError as exc:
+            results.append({"source": source_id, "ok": False, "error": str(exc)})
+        else:
+            results.append(
+                {
+                    "source": source_id,
+                    "ok": True,
+                    "entries": len(snapshot.entries),
+                    "published": snapshot.published,
+                    "fetched_at": snapshot.fetched_at,
+                    "sha256": snapshot.sha256,
+                }
+            )
+    failed = any(not r["ok"] for r in results)
+
+    if as_json:
+        click.echo(json.dumps({"screening_dir": str(store.screening_dir()), "results": results}))
+    else:
+        table = Table(title="Sanctions list update", show_header=True)
+        table.add_column("Source", style="bold")
+        table.add_column("Result")
+        table.add_column("Entries", justify="right")
+        table.add_column("List date")
+        table.add_column("Detail", overflow="fold")
+        for r in results:
+            if r["ok"]:
+                table.add_row(r["source"], "[green]ok[/green]", str(r["entries"]), r["published"] or "-", "")
+            else:
+                table.add_row(r["source"], "[red]failed[/red]", "-", "-", escape(r["error"]))
+        console.print(table)
+        console.print(f"[dim]Stored in {escape(str(store.screening_dir()))}[/dim]")
+
+    if failed:
+        raise SystemExit(1)
+
+
+@screening.command("status")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output the coverage table as JSON.")
+def screening_status(as_json: bool) -> None:
+    """Show which lists are stored and how fresh they are (read-only).
+
+    Status is one of: screened, stale, missing, failed. Writes nothing and uses
+    no network. Prints counts and dates only, never entry names.
+    """
+    from dd_agents.screening import store
+    from dd_agents.screening.sources import SOURCES
+
+    rows = store.coverage(list(SOURCES))
+    if as_json:
+        click.echo(
+            json.dumps(
+                {
+                    "screening_dir": str(store.screening_dir()),
+                    "max_age_days": store.LIST_MAX_AGE_DAYS,
+                    "sources": [r.model_dump() for r in rows],
+                }
+            )
+        )
+        return
+
+    colors = {"screened": "green", "stale": "yellow", "missing": "red", "failed": "red"}
+    table = Table(title="Screening coverage", show_header=True)
+    table.add_column("Source", style="bold")
+    table.add_column("Status")
+    table.add_column("Entries", justify="right")
+    table.add_column("List date")
+    table.add_column("Detail", overflow="fold")
+    for r in rows:
+        color = colors[r.status]
+        table.add_row(
+            r.source,
+            f"[{color}]{r.status}[/{color}]",
+            str(r.entry_count) if r.entry_count else "-",
+            r.list_date or "-",
+            escape(r.detail),
+        )
+    console.print(table)
+    console.print(
+        f"[dim]Stored in {escape(str(store.screening_dir()))}. "
+        f"Lists older than {store.LIST_MAX_AGE_DAYS} days are stale.[/dim]"
+    )
