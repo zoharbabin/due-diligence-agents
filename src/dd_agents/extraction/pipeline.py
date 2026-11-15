@@ -36,7 +36,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from dd_agents.extraction import pdf_engine
+from dd_agents.extraction import pdf_engine, pdf_pages
 from dd_agents.extraction._constants import (
     CONFIDENCE_CLAUDE_VISION as _CONFIDENCE_CLAUDE_VISION,
 )
@@ -964,8 +964,7 @@ class ExtractionPipeline:
 
         # 1. PDFium — per-page extraction with explicit page markers.
         if not skip_text_extractors:
-            pdfium_result = self._run_pdfium(filepath)
-            text = pdfium_result if isinstance(pdfium_result, str) else pdfium_result[0]
+            text = self._pdfium_with_scanned_pages(filepath, chain, failure_reasons)
             entry = self._try_method(
                 "pdfium",
                 text,
@@ -1320,6 +1319,59 @@ class ExtractionPipeline:
         truncated = name.encode("utf-8")[: max_len - len(digest) - 4].decode("utf-8", errors="ignore")
         return f"{truncated}_{digest}.md"
 
+    def _pdfium_with_scanned_pages(
+        self,
+        filepath: Path,
+        chain: list[str],
+        failure_reasons: list[str],
+    ) -> str:
+        """PDFium text, with OCR for pages that have no text layer (mixed PDFs).
+
+        Without this, a PDF that mixes text and scanned pages comes back with
+        the scanned pages silently missing. When OCR cannot read them, the gap
+        is written to *failure_reasons* so the quality record shows it.
+
+        Returns the page-marked text, or ``""`` if PDFium cannot read the file.
+        """
+        text = self._run_pdfium(filepath)
+        assert isinstance(text, str)  # capture_blocks is False
+        if not text:
+            return ""
+        try:
+            pages = pdf_engine.extract_pages(filepath)
+        except Exception as exc:
+            logger.debug("PDFium page split failed for %s: %s", filepath, exc)
+            return text
+
+        gaps = pdf_pages.pages_needing_ocr(filepath, pages)
+        # All pages empty is a scanned document: the full OCR fallbacks handle it.
+        if not gaps or len(gaps) >= len(pages):
+            return text
+
+        found: dict[int, str] = {}
+        for backend in (self._glm_ocr, self._ocr):
+            todo = [n for n in gaps if n not in found]
+            if backend is None or not todo:
+                continue
+            try:
+                found.update(backend.extract_pages(filepath, todo))
+            except Exception as exc:
+                logger.warning("Page OCR failed for %s: %s", filepath.name, exc)
+        merged = [found.get(n, text) for n, text in enumerate(pages, start=1)]
+        missing = [n for n in gaps if n not in found]
+        chain.append(f"ocr_pages({', '.join(str(n) for n in sorted(found))})" if found else "ocr_pages(none)")
+        if missing:
+            failure_reasons.append(
+                f"pages {', '.join(str(n) for n in missing)} have no text layer and OCR could not read them: "
+                "extracted text is incomplete"
+            )
+        return self._join_pages(merged)
+
+    @staticmethod
+    def _join_pages(pages: list[str]) -> str:
+        parts = [f"\n--- Page {n} ---\n\n{text}" for n, text in enumerate(pages, start=1) if text.strip()]
+        return "\n".join(parts)
+
     @staticmethod
     def _run_pdfium(
         filepath: Path,
@@ -1349,8 +1401,7 @@ class ExtractionPipeline:
             logger.debug("PDFium extraction failed for %s: %s", filepath, exc)
             return empty
 
-        parts = [f"\n--- Page {n} ---\n\n{text}" for n, text in enumerate(pages, start=1) if text.strip()]
-        text = "\n".join(parts)
+        text = ExtractionPipeline._join_pages(pages)
         if not capture_blocks:
             return text
         blocks = [

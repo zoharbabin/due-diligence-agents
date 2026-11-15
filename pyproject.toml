@@ -64,6 +64,9 @@ dependencies = [
 # PDF text extraction: pypdfium2 (PDFium; Apache-2.0 or BSD-3, no dependencies, py3-none wheels).
 # pikepdf (qpdf; MPL-2.0) repairs truncated or damaged PDFs before PDFium reads them.
 pdf = ["pypdfium2>=5.0", "pikepdf>=9.0"]
+# Page classifier (Rust, MIT). Finds pages with no text layer so only those go to OCR.
+# Optional: without it, a page-text length rule does the same job.
+pdf-fast = ["pdf-inspector>=1.26,<1.27"]
 vector = ["chromadb>=0.4"]
 ocr = ["pytesseract>=0.3", "Pillow>=13.0", "pdf2image>=1.16"]
 glm-ocr = ["mlx-vlm>=0.1", "pypdfium2>=5.0", "Pillow>=13.0"]

@@ -13,6 +13,20 @@ What the extraction pipeline can read, and how to check your own documents.
 
 Source of truth: `src/dd_agents/extraction/pipeline.py`.
 
+## Mixed PDFs (text pages plus scanned pages)
+
+PDFium reads the pages that have a text layer. Pages without one are rendered and sent to OCR on their own (`extraction/pdf_pages.py`). The page text is joined in page order.
+
+| Situation | Result |
+|-----------|--------|
+| Every page has text | No OCR runs |
+| Some pages scanned, OCR works | Full text, chain shows `ocr_pages(...)` |
+| Some pages scanned, OCR unavailable or empty | Text from the readable pages, and the failure reason `pages N, M have no text layer and OCR could not read them: extracted text is incomplete` |
+
+Scanned pages are never dropped silently. Treat an "incomplete" entry as a coverage gap.
+
+Page detection uses `pdf-inspector` when installed (`pip install "dd-agents[pdf-fast]"`). Otherwise a page with fewer than 20 characters counts as scanned. At most 50 pages per file go to OCR.
+
 ## OCR and languages
 
 | Backend | Languages |

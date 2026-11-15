@@ -91,6 +91,45 @@ class OCRExtractor:
             # Always clean up the temporary working directory.
             shutil.rmtree(work_dir, ignore_errors=True)
 
+    def extract_pages(self, filepath: Path, pages: Sequence[int]) -> dict[int, str]:
+        """OCR only the given 1-based *pages* of a PDF. Returns ``{page: text}`` for pages with text."""
+        try:
+            import pytesseract
+        except ImportError:
+            logger.warning("pytesseract is not installed -- page OCR unavailable")
+            return {}
+
+        work_dir = Path(tempfile.mkdtemp(prefix="dd_ocr_"))
+        out: dict[int, str] = {}
+        try:
+            for number in pages:
+                try:
+                    image = self._page_image(filepath, number, work_dir)
+                    if image is None:
+                        continue
+                    text: str = pytesseract.image_to_string(image, lang=self.lang)
+                except Exception as exc:
+                    logger.warning("OCR failed for page %d of %s: %s", number, filepath.name, exc)
+                    continue
+                if text.strip():
+                    out[number] = text
+        finally:
+            shutil.rmtree(work_dir, ignore_errors=True)
+        return out
+
+    @staticmethod
+    def _page_image(filepath: Path, number: int, work_dir: Path) -> Any:
+        """Render one 1-based PDF page with ``pdf2image``. ``None`` if it cannot be rendered."""
+        try:
+            from pdf2image import convert_from_path
+        except ImportError:
+            logger.warning("pdf2image is not installed -- cannot render PDF pages for OCR")
+            return None
+        images = convert_from_path(
+            str(filepath), output_folder=str(work_dir), fmt="png", dpi=300, first_page=number, last_page=number
+        )
+        return images[0] if images else None
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
