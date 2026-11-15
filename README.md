@@ -424,7 +424,7 @@ docker pull zoharbabin/due-diligence-agents:latest
 pip install dd-agents           # Core only (no PDF extraction)
 pip install 'dd-agents[vector]'   # + semantic search via ChromaDB
 pip install 'dd-agents[ocr]'      # + OCR for scanned documents (English)
-pip install 'dd-agents[glm-ocr]'  # + multilingual OCR (100+ languages, Apple Silicon)
+pip install 'dd-agents[glm-ocr]'  # + GLM-OCR for scanned, non-English pages (Apple Silicon)
 ```
 </details>
 

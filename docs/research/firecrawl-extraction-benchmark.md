@@ -22,6 +22,123 @@ regardless of whether either library is adopted (see
 [Recommendation](#recommendation) for the concrete integration proposal and
 why full adoption isn't recommended yet.
 
+> **Superseded numbers.** The 2026-08-07 numbers in this file (pdf-inspector 0.2.6,
+> anydoc 0.1.6, the 11-file corpus) are superseded by the
+> [2026-11-14 re-run](#2026-11-14-re-run-on-the-shared-corpus) below. The old
+> sections stay as method history. Read the old Recommendation against the new results.
+
+---
+
+## 2026-11-14 re-run on the shared corpus
+
+Result in one line: on clean synthetic files all PDF arms read text equally well. The
+differences are in damaged files, reading order and page classification.
+
+Run it again:
+
+```bash
+PYTHONPATH=src python scripts/bench_extraction.py --out-json bench.json --out-md bench.md
+```
+
+Each arm is optional. A missing library is skipped and named in the output.
+
+### Versions
+
+| Item | Version |
+|---|---|
+| pdf-inspector | 1.26.0 |
+| firecrawl-anydoc | 0.2.4 |
+| pypdfium2 (PDFium, repo engine) | 5.15.2 |
+| pikepdf (qpdf repair step of the repo engine) | 10.18.1 |
+| markitdown | 0.1.9 |
+| mammoth, beautifulsoup4, markdownify, python-pptx, openpyxl (built-in fallback) | 1.13.0, 4.15.0, 1.2.3, 1.0.2, 3.1.5 |
+| pdftotext (poppler) | 26.04.0 |
+| Python, platform | 3.14.10, macOS arm64 |
+
+### Corpus
+
+33 invented files, under 5 MB, in `tests/fixtures/extraction_corpus/`. Every file has ground
+truth in `ground_truth.json`. See `tests/fixtures/extraction_corpus/README.md` for the
+file list and schema.
+
+- 7 languages (en, de, fr, es, ja, zh, ko): one text PDF and one scanned PDF each.
+- English layouts: table-heavy (also scanned), two columns, watermark, signature stamp, mixed text and scanned pages, six-page contract.
+- Damaged PDFs: truncated and repairable, truncated and unreadable, owner password, user password.
+- Office and HTML: DOCX (also Japanese, and with tracked changes), XLSX, PPTX, HTML with script and style noise.
+- Fictional person fixtures for screening tests (PDF and DOCX).
+
+Scores:
+
+- Phrase recall counts only phrases on pages that have a text layer. Scans score nothing here, because no arm runs OCR.
+- Hard failure: an error on a file that should be readable. A `ValueError` from pdf_inspector counts.
+- Expected failures: the two files labeled encrypted or unreadable. The arm should raise.
+- Seconds per file: median of 3 calls per file, after one warm-up call.
+- Files are 1 to 6 pages, so the timings say little about large documents.
+
+### Results: PDF files
+
+26 PDFs: 24 should be readable, 2 should fail (user password, unreadable).
+
+| Arm | Hard failures | Expected failures raised | Phrase recall | Table-cell recall | Reading order | s/file (median) |
+|---|---|---|---|---|---|---|
+| pdfium | 0/24 | 2/2 | 100.0% | 100.0% | 1/1 | 0.0006 |
+| pdf_inspector (extract_text) | 1/24 | 2/2 | 100.0% | 100.0% | 1/1 | 0.0003 |
+| pdf_inspector (markdown) | 1/24 | 2/2 | 97.1% | 100.0% | 0/1 | 0.0006 |
+| pdftotext | 1/24 | 2/2 | 100.0% | 100.0% | 0/1 | 0.0159 |
+
+Phrase recall on the seven text PDFs of the contract set was 100.0% in every language
+(de, en, es, fr, ja, ko, zh) for every arm.
+
+Hard failures:
+
+| Arm | File | Error |
+|---|---|---|
+| pdf_inspector (extract_text) | damaged_truncated_en.pdf | ValueError: Invalid PDF structure |
+| pdf_inspector (markdown) | damaged_truncated_en.pdf | ValueError: Invalid PDF structure |
+| pdftotext | damaged_truncated_en.pdf | RuntimeError: Syntax Error: Invalid XRef entry 0 |
+
+### Results: pdf_inspector page classification
+
+Page labels from `classify_pdf` against the ground truth (`text` or `scanned`).
+
+| Set | Pages | Accuracy |
+|---|---|---|
+| Mixed PDF (text, scan, text, scan) | 4 | 100.0% |
+| Text and scanned pairs, 7 languages | 14 | 100.0% |
+| All readable PDFs | 30 | 100.0% |
+
+Document type (`text_based`, `scanned`, `mixed`) was correct on 22 of 22 files.
+`process_pdf().pages_needing_ocr` scored 100.0% when read as 1-based and 63.3% when read as 0-based.
+`classify_pdf().pages_needing_ocr` is 0-based.
+
+### Results: Office and HTML files
+
+7 files.
+
+| Arm | Hard failures | Phrase recall | Table-cell recall | Numeric-cell recall | Tracked: inserted / deleted kept | HTML script and style leaked | s/file (median) |
+|---|---|---|---|---|---|---|---|
+| markitdown | 0/7 | 100.0% | 100.0% | 100.0% | 2/2 / 0/2 | no | 0.0662 |
+| builtin_fallback | 0/7 | 100.0% | 100.0% | 100.0% | 2/2 / 0/2 | no | 0.0596 |
+| anydoc | 1/7 | 100.0% | 100.0% | 100.0% | 2/2 / 0/2 | n/a | 0.0035 |
+
+The anydoc failure is `office_terms_en.html`: `UnsupportedError: unsupported input: unrecognized file content and extension`.
+anydoc 0.2.4 lists no HTML format.
+
+### What this means
+
+- On clean files, text recall is not a reason to switch PDF engine. All four arms found every phrase in all 7 languages, including ja, zh and ko, and every table cell.
+- The repo engine (pdfium with the qpdf repair retry) was the only PDF arm that read all 24 readable files. The repairable truncated file made pdf_inspector and pdftotext fail.
+- pdf_inspector `extract_text` and pdfium keep column A before column B. pdf_inspector markdown turns the two columns into one two-column table and splits sentences across rows (2 of 7 phrases found on that page). pdftotext in its default mode interleaves the columns.
+- `classify_pdf` labeled every page correctly, including the mixed PDF. `pdf_engine` returns text per page but has no text-or-scanned label. That label is the input a per-page OCR router needs.
+- `process_pdf().pages_needing_ocr` is 1-based but `classify_pdf().pages_needing_ocr` is 0-based. An adopter has to handle both.
+- Speed is not a deciding factor for PDFs. Every arm is under 20 ms per file here. pdf_inspector `extract_text` took about half the time of pdfium. pdftotext includes process start-up.
+- For Office files, all three converters scored the same on phrases, cells and numbers. All keep inserted tracked text and drop deleted text. None of the HTML-capable arms leaks script or style text.
+- anydoc is about 17 to 19 times faster than the built-in fallback and markitdown on these files. It cannot read HTML.
+- The pdf-inspector 1.26.0 wheel is an `abi3` wheel (`cp38-abi3`). It installed and ran `classify_pdf` and `extract_text` on Python 3.15.2 (macOS arm64 only).
+- The 2026-08-07 numbers are not comparable with these. The library versions and the corpus both changed.
+
+Not measured: OCR, files from real data rooms, large documents, other platforms.
+
 ---
 
 ## Methodology

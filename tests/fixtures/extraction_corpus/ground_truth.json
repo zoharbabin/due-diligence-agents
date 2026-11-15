@@ -1,0 +1,1969 @@
+{
+  "files": {
+    "contract_de_scanned.pdf": {
+      "category": "contract_scanned",
+      "damage": null,
+      "expected_failure": null,
+      "has_text_layer": false,
+      "key_phrases": [
+        "RAHMENDIENSTLEISTUNGSVERTRAG",
+        "14. März 2026",
+        "Subject A GmbH",
+        "Subject B Holding",
+        "§ 2.1",
+        "1.250.000,00 EUR",
+        "§ 4.2",
+        "dreißig (30) Tagen",
+        "§ 7.3",
+        "3.500.000,00 EUR",
+        "§ 9.1",
+        "31. März 2029",
+        "§ 11"
+      ],
+      "kind": "pdf",
+      "language": "de",
+      "numeric_cells": [],
+      "page_key_phrases": [
+        [
+          "RAHMENDIENSTLEISTUNGSVERTRAG",
+          "14. März 2026",
+          "Subject A GmbH",
+          "Subject B Holding",
+          "§ 2.1",
+          "1.250.000,00 EUR",
+          "§ 4.2",
+          "dreißig (30) Tagen",
+          "§ 7.3",
+          "3.500.000,00 EUR",
+          "§ 9.1",
+          "31. März 2029",
+          "§ 11"
+        ]
+      ],
+      "page_kinds": [
+        "scanned"
+      ],
+      "pair": "contract_de_text.pdf",
+      "password": null,
+      "persons": [],
+      "purpose": "Same content as contract_de_text.pdf, image only (200 dpi, no text layer). Needs OCR.",
+      "reading_order": [],
+      "table_cells": [],
+      "tracked_changes": null,
+      "watermark_text": null
+    },
+    "contract_de_text.pdf": {
+      "category": "contract_text",
+      "damage": null,
+      "expected_failure": null,
+      "has_text_layer": true,
+      "key_phrases": [
+        "RAHMENDIENSTLEISTUNGSVERTRAG",
+        "14. März 2026",
+        "Subject A GmbH",
+        "Subject B Holding",
+        "§ 2.1",
+        "1.250.000,00 EUR",
+        "§ 4.2",
+        "dreißig (30) Tagen",
+        "§ 7.3",
+        "3.500.000,00 EUR",
+        "§ 9.1",
+        "31. März 2029",
+        "§ 11"
+      ],
+      "kind": "pdf",
+      "language": "de",
+      "numeric_cells": [],
+      "page_key_phrases": [
+        [
+          "RAHMENDIENSTLEISTUNGSVERTRAG",
+          "14. März 2026",
+          "Subject A GmbH",
+          "Subject B Holding",
+          "§ 2.1",
+          "1.250.000,00 EUR",
+          "§ 4.2",
+          "dreißig (30) Tagen",
+          "§ 7.3",
+          "3.500.000,00 EUR",
+          "§ 9.1",
+          "31. März 2029",
+          "§ 11"
+        ]
+      ],
+      "page_kinds": [
+        "text"
+      ],
+      "pair": "contract_de_scanned.pdf",
+      "password": null,
+      "persons": [],
+      "purpose": "Text-layer contract page in de. Baseline for per-language text extraction.",
+      "reading_order": [],
+      "table_cells": [],
+      "tracked_changes": null,
+      "watermark_text": null
+    },
+    "contract_en_scanned.pdf": {
+      "category": "contract_scanned",
+      "damage": null,
+      "expected_failure": null,
+      "has_text_layer": false,
+      "key_phrases": [
+        "MASTER SERVICES AGREEMENT",
+        "14 March 2026",
+        "Subject A Ltd",
+        "Subject B Holdings",
+        "Section 2.1",
+        "USD 1,250,000.00",
+        "Section 4.2",
+        "thirty (30) days",
+        "Section 7.3",
+        "USD 3,500,000.00",
+        "Section 9.1",
+        "31 March 2029",
+        "Section 11"
+      ],
+      "kind": "pdf",
+      "language": "en",
+      "numeric_cells": [],
+      "page_key_phrases": [
+        [
+          "MASTER SERVICES AGREEMENT",
+          "14 March 2026",
+          "Subject A Ltd",
+          "Subject B Holdings",
+          "Section 2.1",
+          "USD 1,250,000.00",
+          "Section 4.2",
+          "thirty (30) days",
+          "Section 7.3",
+          "USD 3,500,000.00",
+          "Section 9.1",
+          "31 March 2029",
+          "Section 11"
+        ]
+      ],
+      "page_kinds": [
+        "scanned"
+      ],
+      "pair": "contract_en_text.pdf",
+      "password": null,
+      "persons": [],
+      "purpose": "Same content as contract_en_text.pdf, image only (200 dpi, no text layer). Needs OCR.",
+      "reading_order": [],
+      "table_cells": [],
+      "tracked_changes": null,
+      "watermark_text": null
+    },
+    "contract_en_text.pdf": {
+      "category": "contract_text",
+      "damage": null,
+      "expected_failure": null,
+      "has_text_layer": true,
+      "key_phrases": [
+        "MASTER SERVICES AGREEMENT",
+        "14 March 2026",
+        "Subject A Ltd",
+        "Subject B Holdings",
+        "Section 2.1",
+        "USD 1,250,000.00",
+        "Section 4.2",
+        "thirty (30) days",
+        "Section 7.3",
+        "USD 3,500,000.00",
+        "Section 9.1",
+        "31 March 2029",
+        "Section 11"
+      ],
+      "kind": "pdf",
+      "language": "en",
+      "numeric_cells": [],
+      "page_key_phrases": [
+        [
+          "MASTER SERVICES AGREEMENT",
+          "14 March 2026",
+          "Subject A Ltd",
+          "Subject B Holdings",
+          "Section 2.1",
+          "USD 1,250,000.00",
+          "Section 4.2",
+          "thirty (30) days",
+          "Section 7.3",
+          "USD 3,500,000.00",
+          "Section 9.1",
+          "31 March 2029",
+          "Section 11"
+        ]
+      ],
+      "page_kinds": [
+        "text"
+      ],
+      "pair": "contract_en_scanned.pdf",
+      "password": null,
+      "persons": [],
+      "purpose": "Text-layer contract page in en. Baseline for per-language text extraction.",
+      "reading_order": [],
+      "table_cells": [],
+      "tracked_changes": null,
+      "watermark_text": null
+    },
+    "contract_es_scanned.pdf": {
+      "category": "contract_scanned",
+      "damage": null,
+      "expected_failure": null,
+      "has_text_layer": false,
+      "key_phrases": [
+        "CONTRATO MARCO DE SERVICIOS",
+        "14 de marzo de 2026",
+        "Subject A S.L.",
+        "Subject B Holding",
+        "Cláusula 2.1",
+        "1.250.000,00 EUR",
+        "Cláusula 4.2",
+        "treinta (30) días",
+        "Cláusula 7.3",
+        "3.500.000,00 EUR",
+        "Cláusula 9.1",
+        "31 de marzo de 2029",
+        "Cláusula 11"
+      ],
+      "kind": "pdf",
+      "language": "es",
+      "numeric_cells": [],
+      "page_key_phrases": [
+        [
+          "CONTRATO MARCO DE SERVICIOS",
+          "14 de marzo de 2026",
+          "Subject A S.L.",
+          "Subject B Holding",
+          "Cláusula 2.1",
+          "1.250.000,00 EUR",
+          "Cláusula 4.2",
+          "treinta (30) días",
+          "Cláusula 7.3",
+          "3.500.000,00 EUR",
+          "Cláusula 9.1",
+          "31 de marzo de 2029",
+          "Cláusula 11"
+        ]
+      ],
+      "page_kinds": [
+        "scanned"
+      ],
+      "pair": "contract_es_text.pdf",
+      "password": null,
+      "persons": [],
+      "purpose": "Same content as contract_es_text.pdf, image only (200 dpi, no text layer). Needs OCR.",
+      "reading_order": [],
+      "table_cells": [],
+      "tracked_changes": null,
+      "watermark_text": null
+    },
+    "contract_es_text.pdf": {
+      "category": "contract_text",
+      "damage": null,
+      "expected_failure": null,
+      "has_text_layer": true,
+      "key_phrases": [
+        "CONTRATO MARCO DE SERVICIOS",
+        "14 de marzo de 2026",
+        "Subject A S.L.",
+        "Subject B Holding",
+        "Cláusula 2.1",
+        "1.250.000,00 EUR",
+        "Cláusula 4.2",
+        "treinta (30) días",
+        "Cláusula 7.3",
+        "3.500.000,00 EUR",
+        "Cláusula 9.1",
+        "31 de marzo de 2029",
+        "Cláusula 11"
+      ],
+      "kind": "pdf",
+      "language": "es",
+      "numeric_cells": [],
+      "page_key_phrases": [
+        [
+          "CONTRATO MARCO DE SERVICIOS",
+          "14 de marzo de 2026",
+          "Subject A S.L.",
+          "Subject B Holding",
+          "Cláusula 2.1",
+          "1.250.000,00 EUR",
+          "Cláusula 4.2",
+          "treinta (30) días",
+          "Cláusula 7.3",
+          "3.500.000,00 EUR",
+          "Cláusula 9.1",
+          "31 de marzo de 2029",
+          "Cláusula 11"
+        ]
+      ],
+      "page_kinds": [
+        "text"
+      ],
+      "pair": "contract_es_scanned.pdf",
+      "password": null,
+      "persons": [],
+      "purpose": "Text-layer contract page in es. Baseline for per-language text extraction.",
+      "reading_order": [],
+      "table_cells": [],
+      "tracked_changes": null,
+      "watermark_text": null
+    },
+    "contract_fr_scanned.pdf": {
+      "category": "contract_scanned",
+      "damage": null,
+      "expected_failure": null,
+      "has_text_layer": false,
+      "key_phrases": [
+        "CONTRAT-CADRE DE SERVICES",
+        "14 mars 2026",
+        "Subject A SAS",
+        "Subject B Holding",
+        "Article 2.1",
+        "1 250 000,00 EUR",
+        "Article 4.2",
+        "trente (30) jours",
+        "Article 7.3",
+        "3 500 000,00 EUR",
+        "Article 9.1",
+        "31 mars 2029",
+        "Article 11"
+      ],
+      "kind": "pdf",
+      "language": "fr",
+      "numeric_cells": [],
+      "page_key_phrases": [
+        [
+          "CONTRAT-CADRE DE SERVICES",
+          "14 mars 2026",
+          "Subject A SAS",
+          "Subject B Holding",
+          "Article 2.1",
+          "1 250 000,00 EUR",
+          "Article 4.2",
+          "trente (30) jours",
+          "Article 7.3",
+          "3 500 000,00 EUR",
+          "Article 9.1",
+          "31 mars 2029",
+          "Article 11"
+        ]
+      ],
+      "page_kinds": [
+        "scanned"
+      ],
+      "pair": "contract_fr_text.pdf",
+      "password": null,
+      "persons": [],
+      "purpose": "Same content as contract_fr_text.pdf, image only (200 dpi, no text layer). Needs OCR.",
+      "reading_order": [],
+      "table_cells": [],
+      "tracked_changes": null,
+      "watermark_text": null
+    },
+    "contract_fr_text.pdf": {
+      "category": "contract_text",
+      "damage": null,
+      "expected_failure": null,
+      "has_text_layer": true,
+      "key_phrases": [
+        "CONTRAT-CADRE DE SERVICES",
+        "14 mars 2026",
+        "Subject A SAS",
+        "Subject B Holding",
+        "Article 2.1",
+        "1 250 000,00 EUR",
+        "Article 4.2",
+        "trente (30) jours",
+        "Article 7.3",
+        "3 500 000,00 EUR",
+        "Article 9.1",
+        "31 mars 2029",
+        "Article 11"
+      ],
+      "kind": "pdf",
+      "language": "fr",
+      "numeric_cells": [],
+      "page_key_phrases": [
+        [
+          "CONTRAT-CADRE DE SERVICES",
+          "14 mars 2026",
+          "Subject A SAS",
+          "Subject B Holding",
+          "Article 2.1",
+          "1 250 000,00 EUR",
+          "Article 4.2",
+          "trente (30) jours",
+          "Article 7.3",
+          "3 500 000,00 EUR",
+          "Article 9.1",
+          "31 mars 2029",
+          "Article 11"
+        ]
+      ],
+      "page_kinds": [
+        "text"
+      ],
+      "pair": "contract_fr_scanned.pdf",
+      "password": null,
+      "persons": [],
+      "purpose": "Text-layer contract page in fr. Baseline for per-language text extraction.",
+      "reading_order": [],
+      "table_cells": [],
+      "tracked_changes": null,
+      "watermark_text": null
+    },
+    "contract_ja_scanned.pdf": {
+      "category": "contract_scanned",
+      "damage": null,
+      "expected_failure": null,
+      "has_text_layer": false,
+      "key_phrases": [
+        "業務委託基本契約書",
+        "2026年3月14日",
+        "Subject A株式会社",
+        "Subject Bホールディングス",
+        "第2.1条",
+        "125,000,000円",
+        "第4.2条",
+        "30日前の書面通知",
+        "第7.3条",
+        "350,000,000円",
+        "第9.1条",
+        "2029年3月31日",
+        "第11条"
+      ],
+      "kind": "pdf",
+      "language": "ja",
+      "numeric_cells": [],
+      "page_key_phrases": [
+        [
+          "業務委託基本契約書",
+          "2026年3月14日",
+          "Subject A株式会社",
+          "Subject Bホールディングス",
+          "第2.1条",
+          "125,000,000円",
+          "第4.2条",
+          "30日前の書面通知",
+          "第7.3条",
+          "350,000,000円",
+          "第9.1条",
+          "2029年3月31日",
+          "第11条"
+        ]
+      ],
+      "page_kinds": [
+        "scanned"
+      ],
+      "pair": "contract_ja_text.pdf",
+      "password": null,
+      "persons": [],
+      "purpose": "Same content as contract_ja_text.pdf, image only (200 dpi, no text layer). Needs OCR.",
+      "reading_order": [],
+      "table_cells": [],
+      "tracked_changes": null,
+      "watermark_text": null
+    },
+    "contract_ja_text.pdf": {
+      "category": "contract_text",
+      "damage": null,
+      "expected_failure": null,
+      "has_text_layer": true,
+      "key_phrases": [
+        "業務委託基本契約書",
+        "2026年3月14日",
+        "Subject A株式会社",
+        "Subject Bホールディングス",
+        "第2.1条",
+        "125,000,000円",
+        "第4.2条",
+        "30日前の書面通知",
+        "第7.3条",
+        "350,000,000円",
+        "第9.1条",
+        "2029年3月31日",
+        "第11条"
+      ],
+      "kind": "pdf",
+      "language": "ja",
+      "numeric_cells": [],
+      "page_key_phrases": [
+        [
+          "業務委託基本契約書",
+          "2026年3月14日",
+          "Subject A株式会社",
+          "Subject Bホールディングス",
+          "第2.1条",
+          "125,000,000円",
+          "第4.2条",
+          "30日前の書面通知",
+          "第7.3条",
+          "350,000,000円",
+          "第9.1条",
+          "2029年3月31日",
+          "第11条"
+        ]
+      ],
+      "page_kinds": [
+        "text"
+      ],
+      "pair": "contract_ja_scanned.pdf",
+      "password": null,
+      "persons": [],
+      "purpose": "Text-layer contract page in ja. Baseline for per-language text extraction.",
+      "reading_order": [],
+      "table_cells": [],
+      "tracked_changes": null,
+      "watermark_text": null
+    },
+    "contract_ko_scanned.pdf": {
+      "category": "contract_scanned",
+      "damage": null,
+      "expected_failure": null,
+      "has_text_layer": false,
+      "key_phrases": [
+        "서비스 기본 계약서",
+        "2026년 3월 14일",
+        "Subject A 주식회사",
+        "Subject B 홀딩스",
+        "제2.1조",
+        "125,000,000원",
+        "제4.2조",
+        "30일 전 서면 통지",
+        "제7.3조",
+        "350,000,000원",
+        "제9.1조",
+        "2029년 3월 31일",
+        "제11조"
+      ],
+      "kind": "pdf",
+      "language": "ko",
+      "numeric_cells": [],
+      "page_key_phrases": [
+        [
+          "서비스 기본 계약서",
+          "2026년 3월 14일",
+          "Subject A 주식회사",
+          "Subject B 홀딩스",
+          "제2.1조",
+          "125,000,000원",
+          "제4.2조",
+          "30일 전 서면 통지",
+          "제7.3조",
+          "350,000,000원",
+          "제9.1조",
+          "2029년 3월 31일",
+          "제11조"
+        ]
+      ],
+      "page_kinds": [
+        "scanned"
+      ],
+      "pair": "contract_ko_text.pdf",
+      "password": null,
+      "persons": [],
+      "purpose": "Same content as contract_ko_text.pdf, image only (200 dpi, no text layer). Needs OCR.",
+      "reading_order": [],
+      "table_cells": [],
+      "tracked_changes": null,
+      "watermark_text": null
+    },
+    "contract_ko_text.pdf": {
+      "category": "contract_text",
+      "damage": null,
+      "expected_failure": null,
+      "has_text_layer": true,
+      "key_phrases": [
+        "서비스 기본 계약서",
+        "2026년 3월 14일",
+        "Subject A 주식회사",
+        "Subject B 홀딩스",
+        "제2.1조",
+        "125,000,000원",
+        "제4.2조",
+        "30일 전 서면 통지",
+        "제7.3조",
+        "350,000,000원",
+        "제9.1조",
+        "2029년 3월 31일",
+        "제11조"
+      ],
+      "kind": "pdf",
+      "language": "ko",
+      "numeric_cells": [],
+      "page_key_phrases": [
+        [
+          "서비스 기본 계약서",
+          "2026년 3월 14일",
+          "Subject A 주식회사",
+          "Subject B 홀딩스",
+          "제2.1조",
+          "125,000,000원",
+          "제4.2조",
+          "30일 전 서면 통지",
+          "제7.3조",
+          "350,000,000원",
+          "제9.1조",
+          "2029년 3월 31일",
+          "제11조"
+        ]
+      ],
+      "page_kinds": [
+        "text"
+      ],
+      "pair": "contract_ko_scanned.pdf",
+      "password": null,
+      "persons": [],
+      "purpose": "Text-layer contract page in ko. Baseline for per-language text extraction.",
+      "reading_order": [],
+      "table_cells": [],
+      "tracked_changes": null,
+      "watermark_text": null
+    },
+    "contract_zh_scanned.pdf": {
+      "category": "contract_scanned",
+      "damage": null,
+      "expected_failure": null,
+      "has_text_layer": false,
+      "key_phrases": [
+        "服务框架协议",
+        "2026年3月14日",
+        "Subject A有限公司",
+        "Subject B控股公司",
+        "第2.1条",
+        "人民币1,250,000.00元",
+        "第4.2条",
+        "提前30日书面通知",
+        "第7.3条",
+        "人民币3,500,000.00元",
+        "第9.1条",
+        "2029年3月31日",
+        "第11条"
+      ],
+      "kind": "pdf",
+      "language": "zh",
+      "numeric_cells": [],
+      "page_key_phrases": [
+        [
+          "服务框架协议",
+          "2026年3月14日",
+          "Subject A有限公司",
+          "Subject B控股公司",
+          "第2.1条",
+          "人民币1,250,000.00元",
+          "第4.2条",
+          "提前30日书面通知",
+          "第7.3条",
+          "人民币3,500,000.00元",
+          "第9.1条",
+          "2029年3月31日",
+          "第11条"
+        ]
+      ],
+      "page_kinds": [
+        "scanned"
+      ],
+      "pair": "contract_zh_text.pdf",
+      "password": null,
+      "persons": [],
+      "purpose": "Same content as contract_zh_text.pdf, image only (200 dpi, no text layer). Needs OCR.",
+      "reading_order": [],
+      "table_cells": [],
+      "tracked_changes": null,
+      "watermark_text": null
+    },
+    "contract_zh_text.pdf": {
+      "category": "contract_text",
+      "damage": null,
+      "expected_failure": null,
+      "has_text_layer": true,
+      "key_phrases": [
+        "服务框架协议",
+        "2026年3月14日",
+        "Subject A有限公司",
+        "Subject B控股公司",
+        "第2.1条",
+        "人民币1,250,000.00元",
+        "第4.2条",
+        "提前30日书面通知",
+        "第7.3条",
+        "人民币3,500,000.00元",
+        "第9.1条",
+        "2029年3月31日",
+        "第11条"
+      ],
+      "kind": "pdf",
+      "language": "zh",
+      "numeric_cells": [],
+      "page_key_phrases": [
+        [
+          "服务框架协议",
+          "2026年3月14日",
+          "Subject A有限公司",
+          "Subject B控股公司",
+          "第2.1条",
+          "人民币1,250,000.00元",
+          "第4.2条",
+          "提前30日书面通知",
+          "第7.3条",
+          "人民币3,500,000.00元",
+          "第9.1条",
+          "2029年3月31日",
+          "第11条"
+        ]
+      ],
+      "page_kinds": [
+        "text"
+      ],
+      "pair": "contract_zh_scanned.pdf",
+      "password": null,
+      "persons": [],
+      "purpose": "Text-layer contract page in zh. Baseline for per-language text extraction.",
+      "reading_order": [],
+      "table_cells": [],
+      "tracked_changes": null,
+      "watermark_text": null
+    },
+    "damaged_owner_password_en.pdf": {
+      "category": "owner_password",
+      "damage": "owner_password",
+      "expected_failure": null,
+      "has_text_layer": true,
+      "key_phrases": [
+        "MASTER SERVICES AGREEMENT",
+        "14 March 2026",
+        "Subject A Ltd",
+        "Subject B Holdings",
+        "Section 2.1",
+        "USD 1,250,000.00",
+        "Section 4.2",
+        "thirty (30) days",
+        "Section 7.3",
+        "USD 3,500,000.00",
+        "Section 9.1",
+        "31 March 2029",
+        "Section 11"
+      ],
+      "kind": "pdf",
+      "language": "en",
+      "numeric_cells": [],
+      "page_key_phrases": [
+        [
+          "MASTER SERVICES AGREEMENT",
+          "14 March 2026",
+          "Subject A Ltd",
+          "Subject B Holdings",
+          "Section 2.1",
+          "USD 1,250,000.00",
+          "Section 4.2",
+          "thirty (30) days",
+          "Section 7.3",
+          "USD 3,500,000.00",
+          "Section 9.1",
+          "31 March 2029",
+          "Section 11"
+        ]
+      ],
+      "page_kinds": [
+        "text"
+      ],
+      "pair": "contract_en_text.pdf",
+      "password": null,
+      "persons": [],
+      "purpose": "Empty user password, owner password set, copy and print restricted. Must open and extract.",
+      "reading_order": [],
+      "table_cells": [],
+      "tracked_changes": null,
+      "watermark_text": null
+    },
+    "damaged_truncated_en.pdf": {
+      "category": "truncated",
+      "damage": "truncated",
+      "expected_failure": null,
+      "has_text_layer": true,
+      "key_phrases": [
+        "1.2 Effective Date means 14 March 2026",
+        "hosted analytics services listed in Schedule 1",
+        "annual fee is USD 1,250,000.00",
+        "interest at 1.5% per month",
+        "initial term ends on 31 March 2029",
+        "ninety (90) days notice",
+        "must tell the Supplier about any change of control",
+        "terminate on thirty (30) days notice",
+        "liability cap is USD 3,500,000.00",
+        "capped at USD 7,000,000.00"
+      ],
+      "kind": "pdf",
+      "language": "en",
+      "numeric_cells": [],
+      "page_key_phrases": [
+        [
+          "1.2 Effective Date means 14 March 2026",
+          "hosted analytics services listed in Schedule 1"
+        ],
+        [
+          "annual fee is USD 1,250,000.00",
+          "interest at 1.5% per month"
+        ],
+        [
+          "initial term ends on 31 March 2029",
+          "ninety (90) days notice"
+        ],
+        [
+          "must tell the Supplier about any change of control",
+          "terminate on thirty (30) days notice"
+        ],
+        [
+          "liability cap is USD 3,500,000.00",
+          "capped at USD 7,000,000.00"
+        ],
+        []
+      ],
+      "page_kinds": [
+        "text",
+        "text",
+        "text",
+        "text",
+        "text",
+        "text"
+      ],
+      "pair": "layout_long_en.pdf",
+      "password": null,
+      "persons": [],
+      "purpose": "layout_long_en.pdf with the tail cut off. PDFium cannot open it; qpdf repair can. Key phrases are for the pages that survive repair.",
+      "reading_order": [],
+      "table_cells": [],
+      "tracked_changes": null,
+      "watermark_text": null
+    },
+    "damaged_truncated_unrecoverable_en.pdf": {
+      "category": "truncated_unrecoverable",
+      "damage": "truncated",
+      "expected_failure": "unreadable",
+      "has_text_layer": true,
+      "key_phrases": [
+        "1.2 Effective Date means 14 March 2026",
+        "hosted analytics services listed in Schedule 1",
+        "annual fee is USD 1,250,000.00",
+        "interest at 1.5% per month",
+        "initial term ends on 31 March 2029",
+        "ninety (90) days notice",
+        "must tell the Supplier about any change of control",
+        "terminate on thirty (30) days notice",
+        "liability cap is USD 3,500,000.00",
+        "capped at USD 7,000,000.00",
+        "governed by the laws of Subject Land",
+        "legal@subject-a.example"
+      ],
+      "kind": "pdf",
+      "language": "en",
+      "numeric_cells": [],
+      "page_key_phrases": [
+        [
+          "1.2 Effective Date means 14 March 2026",
+          "hosted analytics services listed in Schedule 1"
+        ],
+        [
+          "annual fee is USD 1,250,000.00",
+          "interest at 1.5% per month"
+        ],
+        [
+          "initial term ends on 31 March 2029",
+          "ninety (90) days notice"
+        ],
+        [
+          "must tell the Supplier about any change of control",
+          "terminate on thirty (30) days notice"
+        ],
+        [
+          "liability cap is USD 3,500,000.00",
+          "capped at USD 7,000,000.00"
+        ],
+        [
+          "governed by the laws of Subject Land",
+          "legal@subject-a.example"
+        ]
+      ],
+      "page_kinds": [
+        "text",
+        "text",
+        "text",
+        "text",
+        "text",
+        "text"
+      ],
+      "pair": "layout_long_en.pdf",
+      "password": null,
+      "persons": [],
+      "purpose": "First 60% of layout_long_en.pdf. Trailer and page tree are lost. No extractor can read it.",
+      "reading_order": [],
+      "table_cells": [],
+      "tracked_changes": null,
+      "watermark_text": null
+    },
+    "damaged_user_password_en.pdf": {
+      "category": "user_password",
+      "damage": "user_password",
+      "expected_failure": "encrypted",
+      "has_text_layer": true,
+      "key_phrases": [
+        "MASTER SERVICES AGREEMENT",
+        "14 March 2026",
+        "Subject A Ltd",
+        "Subject B Holdings",
+        "Section 2.1",
+        "USD 1,250,000.00",
+        "Section 4.2",
+        "thirty (30) days",
+        "Section 7.3",
+        "USD 3,500,000.00",
+        "Section 9.1",
+        "31 March 2029",
+        "Section 11"
+      ],
+      "kind": "pdf",
+      "language": "en",
+      "numeric_cells": [],
+      "page_key_phrases": [
+        [
+          "MASTER SERVICES AGREEMENT",
+          "14 March 2026",
+          "Subject A Ltd",
+          "Subject B Holdings",
+          "Section 2.1",
+          "USD 1,250,000.00",
+          "Section 4.2",
+          "thirty (30) days",
+          "Section 7.3",
+          "USD 3,500,000.00",
+          "Section 9.1",
+          "31 March 2029",
+          "Section 11"
+        ]
+      ],
+      "page_kinds": [
+        "text"
+      ],
+      "pair": "contract_en_text.pdf",
+      "password": "dd-corpus-user-pw",
+      "persons": [],
+      "purpose": "Needs the password in the password field. Without it the extractor must report encrypted.",
+      "reading_order": [],
+      "table_cells": [],
+      "tracked_changes": null,
+      "watermark_text": null
+    },
+    "layout_long_en.pdf": {
+      "category": "long",
+      "damage": null,
+      "expected_failure": null,
+      "has_text_layer": true,
+      "key_phrases": [
+        "1.2 Effective Date means 14 March 2026",
+        "hosted analytics services listed in Schedule 1",
+        "annual fee is USD 1,250,000.00",
+        "interest at 1.5% per month",
+        "initial term ends on 31 March 2029",
+        "ninety (90) days notice",
+        "must tell the Supplier about any change of control",
+        "terminate on thirty (30) days notice",
+        "liability cap is USD 3,500,000.00",
+        "capped at USD 7,000,000.00",
+        "governed by the laws of Subject Land",
+        "legal@subject-a.example"
+      ],
+      "kind": "pdf",
+      "language": "en",
+      "numeric_cells": [],
+      "page_key_phrases": [
+        [
+          "1.2 Effective Date means 14 March 2026",
+          "hosted analytics services listed in Schedule 1"
+        ],
+        [
+          "annual fee is USD 1,250,000.00",
+          "interest at 1.5% per month"
+        ],
+        [
+          "initial term ends on 31 March 2029",
+          "ninety (90) days notice"
+        ],
+        [
+          "must tell the Supplier about any change of control",
+          "terminate on thirty (30) days notice"
+        ],
+        [
+          "liability cap is USD 3,500,000.00",
+          "capped at USD 7,000,000.00"
+        ],
+        [
+          "governed by the laws of Subject Land",
+          "legal@subject-a.example"
+        ]
+      ],
+      "page_kinds": [
+        "text",
+        "text",
+        "text",
+        "text",
+        "text",
+        "text"
+      ],
+      "pair": null,
+      "password": null,
+      "persons": [],
+      "purpose": "Six text pages with numbered clauses. Page order and clause numbers must survive.",
+      "reading_order": [],
+      "table_cells": [],
+      "tracked_changes": null,
+      "watermark_text": null
+    },
+    "layout_mixed_en.pdf": {
+      "category": "mixed",
+      "damage": null,
+      "expected_failure": null,
+      "has_text_layer": true,
+      "key_phrases": [
+        "SERVICES AGREEMENT PART A",
+        "14 March 2026",
+        "Subject A Ltd",
+        "Section 1.1",
+        "PART B COMMERCIAL TERMS",
+        "USD 1,250,000.00",
+        "forty-five (45) days",
+        "PART C RISK",
+        "USD 3,500,000.00",
+        "thirty (30) days notice",
+        "PART D SIGNATURES",
+        "Alexandra Testwell",
+        "Farid Mockingbird"
+      ],
+      "kind": "pdf",
+      "language": "en",
+      "numeric_cells": [],
+      "page_key_phrases": [
+        [
+          "SERVICES AGREEMENT PART A",
+          "14 March 2026",
+          "Subject A Ltd",
+          "Section 1.1"
+        ],
+        [
+          "PART B COMMERCIAL TERMS",
+          "USD 1,250,000.00",
+          "forty-five (45) days"
+        ],
+        [
+          "PART C RISK",
+          "USD 3,500,000.00",
+          "thirty (30) days notice"
+        ],
+        [
+          "PART D SIGNATURES",
+          "Alexandra Testwell",
+          "Farid Mockingbird"
+        ]
+      ],
+      "page_kinds": [
+        "text",
+        "scanned",
+        "text",
+        "scanned"
+      ],
+      "pair": null,
+      "password": null,
+      "persons": [],
+      "purpose": "Four pages: text, scanned, text, scanned. Per-page classification and OCR routing.",
+      "reading_order": [],
+      "table_cells": [],
+      "tracked_changes": null,
+      "watermark_text": null
+    },
+    "layout_signature_stamp_en.pdf": {
+      "category": "signature_stamp",
+      "damage": null,
+      "expected_failure": null,
+      "has_text_layer": true,
+      "key_phrases": [
+        "SIGNATURE PAGE",
+        "IN WITNESS WHEREOF the parties have signed this Agreement on 14 March 2026.",
+        "For Subject A Ltd",
+        "Envelope ID: 7F3A0000-FAKE-4000-8000-000000000001",
+        "Alexandra Testwell",
+        "Signed on 2026-03-14 10:22:05 UTC",
+        "Name: Alexandra Testwell, Chief Executive Officer"
+      ],
+      "kind": "pdf",
+      "language": "en",
+      "numeric_cells": [],
+      "page_key_phrases": [
+        [
+          "SIGNATURE PAGE",
+          "IN WITNESS WHEREOF the parties have signed this Agreement on 14 March 2026.",
+          "For Subject A Ltd",
+          "Envelope ID: 7F3A0000-FAKE-4000-8000-000000000001",
+          "Alexandra Testwell",
+          "Signed on 2026-03-14 10:22:05 UTC",
+          "Name: Alexandra Testwell, Chief Executive Officer"
+        ]
+      ],
+      "page_kinds": [
+        "text"
+      ],
+      "pair": null,
+      "password": null,
+      "persons": [],
+      "purpose": "DocuSign-style stamp box with envelope ID, signer name and timestamp, plus a blank signature line.",
+      "reading_order": [],
+      "table_cells": [],
+      "tracked_changes": null,
+      "watermark_text": null
+    },
+    "layout_table_heavy_en.pdf": {
+      "category": "table_heavy",
+      "damage": null,
+      "expected_failure": null,
+      "has_text_layer": true,
+      "key_phrases": [
+        "Schedule 1 Customer Contract Register",
+        "Prepared for Subject A Ltd on 14 March 2026",
+        "CoC clause means the contract has a change of control right"
+      ],
+      "kind": "pdf",
+      "language": "en",
+      "numeric_cells": [],
+      "page_key_phrases": [
+        [
+          "Schedule 1 Customer Contract Register",
+          "Prepared for Subject A Ltd on 14 March 2026",
+          "CoC clause means the contract has a change of control right"
+        ]
+      ],
+      "page_kinds": [
+        "text"
+      ],
+      "pair": "layout_table_heavy_en_scanned.pdf",
+      "password": null,
+      "persons": [],
+      "purpose": "Ruled financial table. Exact amounts and dates must survive extraction.",
+      "reading_order": [],
+      "table_cells": [
+        [
+          "Customer",
+          "Contract",
+          "ARR (USD)",
+          "Renewal",
+          "CoC clause"
+        ],
+        [
+          "Subject C Ltd",
+          "C-0001",
+          "1,240,500.00",
+          "2027-01-14",
+          "Yes"
+        ],
+        [
+          "Subject D GmbH",
+          "C-0002",
+          "486,200.75",
+          "2026-09-30",
+          "No"
+        ],
+        [
+          "Subject E SAS",
+          "C-0003",
+          "902,340.10",
+          "2028-06-30",
+          "Yes"
+        ],
+        [
+          "Subject F S.L.",
+          "C-0004",
+          "317,890.00",
+          "2026-12-31",
+          "No"
+        ],
+        [
+          "Subject G Corp",
+          "C-0005",
+          "58,120.40",
+          "2027-03-31",
+          "No"
+        ],
+        [
+          "Subject H KK",
+          "C-0006",
+          "214,075.25",
+          "2029-02-28",
+          "Yes"
+        ],
+        [
+          "Total",
+          "",
+          "3,219,126.50",
+          "",
+          ""
+        ]
+      ],
+      "tracked_changes": null,
+      "watermark_text": null
+    },
+    "layout_table_heavy_en_scanned.pdf": {
+      "category": "table_heavy_scanned",
+      "damage": null,
+      "expected_failure": null,
+      "has_text_layer": false,
+      "key_phrases": [
+        "Schedule 1 Customer Contract Register",
+        "Prepared for Subject A Ltd on 14 March 2026",
+        "CoC clause means the contract has a change of control right"
+      ],
+      "kind": "pdf",
+      "language": "en",
+      "numeric_cells": [],
+      "page_key_phrases": [
+        [
+          "Schedule 1 Customer Contract Register",
+          "Prepared for Subject A Ltd on 14 March 2026",
+          "CoC clause means the contract has a change of control right"
+        ]
+      ],
+      "page_kinds": [
+        "scanned"
+      ],
+      "pair": "layout_table_heavy_en.pdf",
+      "password": null,
+      "persons": [],
+      "purpose": "Image-only copy of the table page. OCR must read amounts exactly.",
+      "reading_order": [],
+      "table_cells": [
+        [
+          "Customer",
+          "Contract",
+          "ARR (USD)",
+          "Renewal",
+          "CoC clause"
+        ],
+        [
+          "Subject C Ltd",
+          "C-0001",
+          "1,240,500.00",
+          "2027-01-14",
+          "Yes"
+        ],
+        [
+          "Subject D GmbH",
+          "C-0002",
+          "486,200.75",
+          "2026-09-30",
+          "No"
+        ],
+        [
+          "Subject E SAS",
+          "C-0003",
+          "902,340.10",
+          "2028-06-30",
+          "Yes"
+        ],
+        [
+          "Subject F S.L.",
+          "C-0004",
+          "317,890.00",
+          "2026-12-31",
+          "No"
+        ],
+        [
+          "Subject G Corp",
+          "C-0005",
+          "58,120.40",
+          "2027-03-31",
+          "No"
+        ],
+        [
+          "Subject H KK",
+          "C-0006",
+          "214,075.25",
+          "2029-02-28",
+          "Yes"
+        ],
+        [
+          "Total",
+          "",
+          "3,219,126.50",
+          "",
+          ""
+        ]
+      ],
+      "tracked_changes": null,
+      "watermark_text": null
+    },
+    "layout_two_column_en.pdf": {
+      "category": "two_column",
+      "damage": null,
+      "expected_failure": null,
+      "has_text_layer": true,
+      "key_phrases": [
+        "BOARD SUMMARY",
+        "Revenue grew 18% in the first quarter of 2026.",
+        "Subject C Ltd renewed for USD 1,240,500.00.",
+        "Two customers have change of control rights under Section 4.2.",
+        "The liability cap is USD 3,500,000.00 under Section 7.3.",
+        "No litigation is pending against Subject A Ltd.",
+        "The data processing addendum was signed on 2 February 2026."
+      ],
+      "kind": "pdf",
+      "language": "en",
+      "numeric_cells": [],
+      "page_key_phrases": [
+        [
+          "BOARD SUMMARY",
+          "Revenue grew 18% in the first quarter of 2026.",
+          "Subject C Ltd renewed for USD 1,240,500.00.",
+          "Two customers have change of control rights under Section 4.2.",
+          "The liability cap is USD 3,500,000.00 under Section 7.3.",
+          "No litigation is pending against Subject A Ltd.",
+          "The data processing addendum was signed on 2 February 2026."
+        ]
+      ],
+      "page_kinds": [
+        "text"
+      ],
+      "pair": null,
+      "password": null,
+      "persons": [],
+      "purpose": "Two text columns. Column A must be read fully before column B.",
+      "reading_order": [
+        "Revenue grew 18% in the first quarter of 2026.",
+        "Subject C Ltd renewed for USD 1,240,500.00.",
+        "Two customers have change of control rights under Section 4.2.",
+        "The liability cap is USD 3,500,000.00 under Section 7.3.",
+        "No litigation is pending against Subject A Ltd.",
+        "The data processing addendum was signed on 2 February 2026."
+      ],
+      "table_cells": [],
+      "tracked_changes": null,
+      "watermark_text": null
+    },
+    "layout_watermarked_en.pdf": {
+      "category": "watermarked",
+      "damage": null,
+      "expected_failure": null,
+      "has_text_layer": true,
+      "key_phrases": [
+        "MASTER SERVICES AGREEMENT",
+        "14 March 2026",
+        "Subject A Ltd",
+        "Subject B Holdings",
+        "Section 2.1",
+        "USD 1,250,000.00",
+        "Section 4.2",
+        "thirty (30) days",
+        "Section 7.3",
+        "USD 3,500,000.00",
+        "Section 9.1",
+        "31 March 2029",
+        "Section 11"
+      ],
+      "kind": "pdf",
+      "language": "en",
+      "numeric_cells": [],
+      "page_key_phrases": [
+        [
+          "MASTER SERVICES AGREEMENT",
+          "14 March 2026",
+          "Subject A Ltd",
+          "Subject B Holdings",
+          "Section 2.1",
+          "USD 1,250,000.00",
+          "Section 4.2",
+          "thirty (30) days",
+          "Section 7.3",
+          "USD 3,500,000.00",
+          "Section 9.1",
+          "31 March 2029",
+          "Section 11"
+        ]
+      ],
+      "page_kinds": [
+        "text"
+      ],
+      "pair": null,
+      "password": null,
+      "persons": [],
+      "purpose": "Contract page with a large diagonal text watermark. Body text must not be lost or mixed up.",
+      "reading_order": [],
+      "table_cells": [],
+      "tracked_changes": null,
+      "watermark_text": "CONFIDENTIAL DRAFT"
+    },
+    "office_arr_schedule_en.xlsx": {
+      "category": "office_xlsx",
+      "damage": null,
+      "expected_failure": null,
+      "has_text_layer": true,
+      "key_phrases": [
+        "ARR Schedule for Subject A Ltd (synthetic)",
+        "Notes",
+        "Subject C Ltd has a change of control clause (Section 4.2).",
+        "Subject H KK renews on 2029-02-28."
+      ],
+      "kind": "xlsx",
+      "language": "en",
+      "numeric_cells": [
+        1240500.0,
+        486200.75,
+        902340.1,
+        317890.0,
+        58120.4,
+        214075.25,
+        3219126.5
+      ],
+      "page_key_phrases": null,
+      "page_kinds": [],
+      "pair": null,
+      "password": null,
+      "persons": [],
+      "purpose": "Two sheets, merged title cell, numeric cells with a number format. Numbers are checked by value.",
+      "reading_order": [],
+      "table_cells": [
+        [
+          "Customer",
+          "Contract",
+          "ARR (USD)",
+          "Renewal",
+          "CoC clause"
+        ],
+        [
+          "Subject C Ltd",
+          "C-0001",
+          "2027-01-14",
+          "Yes"
+        ],
+        [
+          "Subject D GmbH",
+          "C-0002",
+          "2026-09-30",
+          "No"
+        ],
+        [
+          "Subject E SAS",
+          "C-0003",
+          "2028-06-30",
+          "Yes"
+        ],
+        [
+          "Subject F S.L.",
+          "C-0004",
+          "2026-12-31",
+          "No"
+        ],
+        [
+          "Subject G Corp",
+          "C-0005",
+          "2027-03-31",
+          "No"
+        ],
+        [
+          "Subject H KK",
+          "C-0006",
+          "2029-02-28",
+          "Yes"
+        ]
+      ],
+      "tracked_changes": null,
+      "watermark_text": null
+    },
+    "office_board_deck_en.pptx": {
+      "category": "office_pptx",
+      "damage": null,
+      "expected_failure": null,
+      "has_text_layer": true,
+      "key_phrases": [
+        "Board Update Q1 2026",
+        "Subject A Ltd, prepared 14 March 2026",
+        "Annual fee USD 1,250,000.00",
+        "Change of control: Section 4.2, thirty (30) days notice",
+        "Liability cap USD 3,500,000.00",
+        "Speaker note: the term ends on 31 March 2029."
+      ],
+      "kind": "pptx",
+      "language": "en",
+      "numeric_cells": [],
+      "page_key_phrases": null,
+      "page_kinds": [],
+      "pair": null,
+      "password": null,
+      "persons": [],
+      "purpose": "Three slides: title, bullets with speaker notes, table.",
+      "reading_order": [],
+      "table_cells": [
+        [
+          "Metric",
+          "Q1 2026",
+          "Q4 2025"
+        ],
+        [
+          "Revenue (USD)",
+          "4,120,000.00",
+          "3,890,000.00"
+        ],
+        [
+          "Churn",
+          "2.1%",
+          "2.4%"
+        ],
+        [
+          "Headcount",
+          "148",
+          "141"
+        ]
+      ],
+      "tracked_changes": null,
+      "watermark_text": null
+    },
+    "office_contract_en.docx": {
+      "category": "office_docx",
+      "damage": null,
+      "expected_failure": null,
+      "has_text_layer": true,
+      "key_phrases": [
+        "MASTER SERVICES AGREEMENT",
+        "14 March 2026",
+        "Subject A Ltd",
+        "Subject B Holdings",
+        "Section 2.1",
+        "USD 1,250,000.00",
+        "Section 4.2",
+        "thirty (30) days",
+        "Section 7.3",
+        "USD 3,500,000.00",
+        "Section 9.1",
+        "31 March 2029",
+        "Section 11"
+      ],
+      "kind": "docx",
+      "language": "en",
+      "numeric_cells": [],
+      "page_key_phrases": null,
+      "page_kinds": [],
+      "pair": null,
+      "password": null,
+      "persons": [],
+      "purpose": "Word contract with headings and a fee table.",
+      "reading_order": [],
+      "table_cells": [
+        [
+          "Service",
+          "Unit",
+          "Fee (USD)"
+        ],
+        [
+          "Platform licence",
+          "per year",
+          "1,250,000.00"
+        ],
+        [
+          "Premium support",
+          "per year",
+          "180,000.00"
+        ],
+        [
+          "Onboarding",
+          "one-off",
+          "45,500.50"
+        ]
+      ],
+      "tracked_changes": null,
+      "watermark_text": null
+    },
+    "office_contract_ja.docx": {
+      "category": "office_docx",
+      "damage": null,
+      "expected_failure": null,
+      "has_text_layer": true,
+      "key_phrases": [
+        "業務委託基本契約書",
+        "2026年3月14日",
+        "Subject A株式会社",
+        "Subject Bホールディングス",
+        "第2.1条",
+        "125,000,000円",
+        "第4.2条",
+        "30日前の書面通知",
+        "第7.3条",
+        "350,000,000円",
+        "第9.1条",
+        "2029年3月31日",
+        "第11条"
+      ],
+      "kind": "docx",
+      "language": "ja",
+      "numeric_cells": [],
+      "page_key_phrases": null,
+      "page_kinds": [],
+      "pair": null,
+      "password": null,
+      "persons": [],
+      "purpose": "Japanese Word contract. CJK in the Office path.",
+      "reading_order": [],
+      "table_cells": [],
+      "tracked_changes": null,
+      "watermark_text": null
+    },
+    "office_terms_en.html": {
+      "category": "office_html",
+      "damage": null,
+      "expected_failure": null,
+      "has_text_layer": true,
+      "key_phrases": [
+        "Terms of Service",
+        "These terms are effective on 14 March 2026 and bind Subject A Ltd and the Customer.",
+        "Section 1.1 The Customer pays the plan fee shown below each month.",
+        "Section 2.1 Either party may terminate on thirty (30) days written notice.",
+        "Section 2.2 Subject A Ltd may suspend the service after a change of control of the Customer."
+      ],
+      "kind": "html",
+      "language": "en",
+      "numeric_cells": [],
+      "page_key_phrases": null,
+      "page_kinds": [],
+      "pair": null,
+      "password": null,
+      "persons": [],
+      "purpose": "HTML page with style and script blocks, navigation, a table and a footer.",
+      "reading_order": [],
+      "table_cells": [
+        [
+          "Plan",
+          "Seats",
+          "Monthly fee (USD)"
+        ],
+        [
+          "Standard",
+          "50",
+          "12,500.00"
+        ],
+        [
+          "Premium",
+          "200",
+          "48,000.00"
+        ],
+        [
+          "Enterprise",
+          "1000",
+          "210,750.25"
+        ]
+      ],
+      "tracked_changes": null,
+      "watermark_text": null
+    },
+    "office_tracked_changes_en.docx": {
+      "category": "office_docx_tracked",
+      "damage": null,
+      "expected_failure": null,
+      "has_text_layer": true,
+      "key_phrases": [
+        "AMENDMENT NO. 1",
+        "This Amendment to the agreement of 14 March 2026 is made between Subject A Ltd and Subject B Holdings.",
+        "Section 4.2 The notice period is",
+        "Section 7.3 The liability cap is",
+        "All other terms remain unchanged."
+      ],
+      "kind": "docx",
+      "language": "en",
+      "numeric_cells": [],
+      "page_key_phrases": null,
+      "page_kinds": [],
+      "pair": null,
+      "password": null,
+      "persons": [],
+      "purpose": "Word amendment with tracked insertions and deletions. Records what a reviewer would see.",
+      "reading_order": [],
+      "table_cells": [],
+      "tracked_changes": {
+        "deleted": [
+          "sixty (60)",
+          "USD 2,000,000.00"
+        ],
+        "inserted": [
+          "thirty (30)",
+          "USD 3,500,000.00"
+        ]
+      },
+      "watermark_text": null
+    },
+    "people_officers_en.docx": {
+      "category": "persons",
+      "damage": null,
+      "expected_failure": null,
+      "has_text_layer": true,
+      "key_phrases": [
+        "REGISTER OF OFFICERS AND DIRECTORS",
+        "Subject A Ltd, as at 14 March 2026",
+        "Alexandra Testwell",
+        "Chief Executive Officer",
+        "11 February 1968",
+        "Benjamin Samplestein",
+        "Chief Financial Officer",
+        "23 September 1974",
+        "Chandra Placeholder",
+        "Non-Executive Director",
+        "5 July 1961",
+        "Dmitri Notareal",
+        "Director",
+        "30 November 1979",
+        "Elena Fictiva-Example",
+        "Company Secretary",
+        "17 April 1985",
+        "Farid Mockingbird",
+        "Chair of the Board",
+        "8 January 1957"
+      ],
+      "kind": "docx",
+      "language": "en",
+      "numeric_cells": [],
+      "page_key_phrases": null,
+      "page_kinds": [],
+      "pair": null,
+      "password": null,
+      "persons": [
+        {
+          "appointed": "1 June 2019",
+          "date_of_birth": "1968-02-11",
+          "name": "Alexandra Testwell",
+          "role": "Chief Executive Officer"
+        },
+        {
+          "appointed": "15 January 2020",
+          "date_of_birth": "1974-09-23",
+          "name": "Benjamin Samplestein",
+          "role": "Chief Financial Officer"
+        },
+        {
+          "appointed": "3 March 2018",
+          "date_of_birth": "1961-07-05",
+          "name": "Chandra Placeholder",
+          "role": "Non-Executive Director"
+        },
+        {
+          "appointed": "12 August 2021",
+          "date_of_birth": "1979-11-30",
+          "name": "Dmitri Notareal",
+          "role": "Director"
+        },
+        {
+          "appointed": "1 October 2022",
+          "date_of_birth": "1985-04-17",
+          "name": "Elena Fictiva-Example",
+          "role": "Company Secretary"
+        },
+        {
+          "appointed": "20 May 2017",
+          "date_of_birth": "1957-01-08",
+          "name": "Farid Mockingbird",
+          "role": "Chair of the Board"
+        }
+      ],
+      "purpose": "Same fictional officers as people_officers_en.pdf, as a Word table.",
+      "reading_order": [],
+      "table_cells": [
+        [
+          "Name",
+          "Role",
+          "Date of birth",
+          "Appointed"
+        ],
+        [
+          "Alexandra Testwell",
+          "Chief Executive Officer",
+          "11 February 1968",
+          "1 June 2019"
+        ],
+        [
+          "Benjamin Samplestein",
+          "Chief Financial Officer",
+          "23 September 1974",
+          "15 January 2020"
+        ],
+        [
+          "Chandra Placeholder",
+          "Non-Executive Director",
+          "5 July 1961",
+          "3 March 2018"
+        ],
+        [
+          "Dmitri Notareal",
+          "Director",
+          "30 November 1979",
+          "12 August 2021"
+        ],
+        [
+          "Elena Fictiva-Example",
+          "Company Secretary",
+          "17 April 1985",
+          "1 October 2022"
+        ],
+        [
+          "Farid Mockingbird",
+          "Chair of the Board",
+          "8 January 1957",
+          "20 May 2017"
+        ]
+      ],
+      "tracked_changes": null,
+      "watermark_text": null
+    },
+    "people_officers_en.pdf": {
+      "category": "persons",
+      "damage": null,
+      "expected_failure": null,
+      "has_text_layer": true,
+      "key_phrases": [
+        "REGISTER OF OFFICERS AND DIRECTORS",
+        "Subject A Ltd, as at 14 March 2026",
+        "Alexandra Testwell",
+        "Chief Executive Officer",
+        "11 February 1968",
+        "Benjamin Samplestein",
+        "Chief Financial Officer",
+        "23 September 1974",
+        "Chandra Placeholder",
+        "Non-Executive Director",
+        "5 July 1961",
+        "Dmitri Notareal",
+        "Director",
+        "30 November 1979",
+        "Elena Fictiva-Example",
+        "Company Secretary",
+        "17 April 1985",
+        "Farid Mockingbird",
+        "Chair of the Board",
+        "8 January 1957"
+      ],
+      "kind": "pdf",
+      "language": "en",
+      "numeric_cells": [],
+      "page_key_phrases": [
+        [
+          "REGISTER OF OFFICERS AND DIRECTORS",
+          "Subject A Ltd, as at 14 March 2026",
+          "Alexandra Testwell",
+          "Chief Executive Officer",
+          "11 February 1968",
+          "Benjamin Samplestein",
+          "Chief Financial Officer",
+          "23 September 1974",
+          "Chandra Placeholder",
+          "Non-Executive Director",
+          "5 July 1961",
+          "Dmitri Notareal",
+          "Director",
+          "30 November 1979",
+          "Elena Fictiva-Example",
+          "Company Secretary",
+          "17 April 1985",
+          "Farid Mockingbird",
+          "Chair of the Board",
+          "8 January 1957"
+        ]
+      ],
+      "page_kinds": [
+        "text"
+      ],
+      "pair": null,
+      "password": null,
+      "persons": [
+        {
+          "appointed": "1 June 2019",
+          "date_of_birth": "1968-02-11",
+          "name": "Alexandra Testwell",
+          "role": "Chief Executive Officer"
+        },
+        {
+          "appointed": "15 January 2020",
+          "date_of_birth": "1974-09-23",
+          "name": "Benjamin Samplestein",
+          "role": "Chief Financial Officer"
+        },
+        {
+          "appointed": "3 March 2018",
+          "date_of_birth": "1961-07-05",
+          "name": "Chandra Placeholder",
+          "role": "Non-Executive Director"
+        },
+        {
+          "appointed": "12 August 2021",
+          "date_of_birth": "1979-11-30",
+          "name": "Dmitri Notareal",
+          "role": "Director"
+        },
+        {
+          "appointed": "1 October 2022",
+          "date_of_birth": "1985-04-17",
+          "name": "Elena Fictiva-Example",
+          "role": "Company Secretary"
+        },
+        {
+          "appointed": "20 May 2017",
+          "date_of_birth": "1957-01-08",
+          "name": "Farid Mockingbird",
+          "role": "Chair of the Board"
+        }
+      ],
+      "purpose": "Fictional officers and directors with roles and dates of birth. For screening tests.",
+      "reading_order": [],
+      "table_cells": [
+        [
+          "Name",
+          "Role",
+          "Date of birth",
+          "Appointed"
+        ],
+        [
+          "Alexandra Testwell",
+          "Chief Executive Officer",
+          "11 February 1968",
+          "1 June 2019"
+        ],
+        [
+          "Benjamin Samplestein",
+          "Chief Financial Officer",
+          "23 September 1974",
+          "15 January 2020"
+        ],
+        [
+          "Chandra Placeholder",
+          "Non-Executive Director",
+          "5 July 1961",
+          "3 March 2018"
+        ],
+        [
+          "Dmitri Notareal",
+          "Director",
+          "30 November 1979",
+          "12 August 2021"
+        ],
+        [
+          "Elena Fictiva-Example",
+          "Company Secretary",
+          "17 April 1985",
+          "1 October 2022"
+        ],
+        [
+          "Farid Mockingbird",
+          "Chair of the Board",
+          "8 January 1957",
+          "20 May 2017"
+        ]
+      ],
+      "tracked_changes": null,
+      "watermark_text": null
+    }
+  },
+  "note": "All content is invented. Names, companies, amounts and dates are placeholders.",
+  "schema_version": 1
+}

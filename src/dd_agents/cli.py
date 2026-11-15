@@ -3605,3 +3605,8 @@ def screening_validate(project_dir: Path, as_json: bool) -> None:
             console.print("No files in dd-config/screening/.")
     if cfg.errors:
         raise SystemExit(1)
+
+
+from dd_agents.cli_extraction import extraction as _extraction_group  # noqa: E402
+
+main.add_command(_extraction_group)

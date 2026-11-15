@@ -17,6 +17,7 @@ CONFIDENCE_CLAUDE_VISION: float = 0.65
 CONFIDENCE_GLM_OCR: float = 0.8
 CONFIDENCE_LAYOUT_PDF: float = 0.85
 CONFIDENCE_MARKITDOWN: float = 0.9
+CONFIDENCE_ANYDOC: float = 0.9
 
 IMAGE_EXTENSIONS: frozenset[str] = frozenset({".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".gif", ".webp"})
 

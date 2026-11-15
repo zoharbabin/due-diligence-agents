@@ -43,7 +43,7 @@ Install these for additional capabilities:
 ```bash
 pip install dd-agents[vector]     # Semantic search across documents (ChromaDB)
 pip install dd-agents[ocr]        # OCR for scanned PDFs (English)
-pip install dd-agents[glm-ocr]    # Multilingual OCR (100+ languages, Apple Silicon)
+pip install dd-agents[glm-ocr]    # GLM-OCR for scanned, non-English pages (Apple Silicon)
 ```
 
 See [When to Enable Vector Search](#when-to-enable-vector-search) below for guidance on `dd-agents[vector]`.

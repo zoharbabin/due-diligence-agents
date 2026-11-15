@@ -39,6 +39,32 @@ def _ocr_preference_from_config(deal_config: Any) -> str:
     return str(getattr(extraction, "ocr_backend", "auto") or "auto")
 
 
+def _ocr_languages_from_config(deal_config: Any) -> list[str]:
+    """Extract ``extraction.ocr_languages`` (default ``["eng"]``). Raises ``ValueError`` on bad codes."""
+    from dd_agents.extraction.languages import validate_language_codes
+
+    if isinstance(deal_config, dict):
+        extraction_cfg = deal_config.get("extraction", {})
+        value = extraction_cfg.get("ocr_languages") if isinstance(extraction_cfg, dict) else None
+    else:
+        value = getattr(getattr(deal_config, "extraction", None), "ocr_languages", None)
+    return validate_language_codes(value or ["eng"])
+
+
+def _office_backend_from_config(deal_config: Any) -> str:
+    """Extract ``extraction.office_backend`` (default ``"markitdown"``). Raises ``ValueError`` on unknown values."""
+    from dd_agents.models.config import ExtractionConfig
+
+    if isinstance(deal_config, dict):
+        extraction_cfg = deal_config.get("extraction", {})
+        value = extraction_cfg.get("office_backend") if isinstance(extraction_cfg, dict) else None
+    else:
+        value = getattr(getattr(deal_config, "extraction", None), "office_backend", None)
+    if not value:
+        return "markitdown"
+    return str(ExtractionConfig(office_backend=value).office_backend)
+
+
 def build_extraction_pipeline(deal_config: Any = None) -> ExtractionPipeline:
     """Build an ``ExtractionPipeline`` with the config-selected OCR backend.
 
@@ -46,15 +72,20 @@ def build_extraction_pipeline(deal_config: Any = None) -> ExtractionPipeline:
     from the deal config (raw dict or typed), resolves it through
     :meth:`OCRBackendRegistry.get_backend`, and wires a GLM-OCR backend into the
     pipeline only when one is actually available — otherwise the pipeline relies
-    on its built-in pytesseract path. Both the orchestrator and the standalone
+    on its pytesseract path, which uses ``extraction.ocr_languages``. Both the orchestrator and the standalone
     search command call this so OCR selection can never drift between them.
     """
     from dd_agents.extraction.glm_ocr import GlmOcrExtractor
+    from dd_agents.extraction.ocr import OCRExtractor
     from dd_agents.extraction.pipeline import ExtractionPipeline
 
     preference = _ocr_preference_from_config(deal_config)
     backend = OCRBackendRegistry.get_backend(preference)
-    return ExtractionPipeline(glm_ocr=backend if isinstance(backend, GlmOcrExtractor) else None)
+    return ExtractionPipeline(
+        ocr=OCRExtractor(languages=_ocr_languages_from_config(deal_config)),
+        glm_ocr=backend if isinstance(backend, GlmOcrExtractor) else None,
+        office_backend=_office_backend_from_config(deal_config),
+    )
 
 
 class OCRBackendRegistry:

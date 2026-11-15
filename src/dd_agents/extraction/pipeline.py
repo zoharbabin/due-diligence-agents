@@ -13,6 +13,7 @@ markdown representation.  Routing is by file type:
     PDF (scanned):  GLM-OCR → pytesseract → Claude vision → direct read
     Images:         markitdown → GLM-OCR → pytesseract → Claude vision → diagram placeholder
     Spreadsheets:   openpyxl (.xlsx) / xlrd (.xls) / csv module (.csv/.tsv) → markitdown → direct read
+    Office:         [anydoc: .docx/.pptx/.xlsx, opt-in via extraction.office_backend] → markitdown → direct read
     Plain text:     direct read
 
 A magic-byte detector corrects misnamed files (e.g. JPEG with .pdf
@@ -36,7 +37,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from dd_agents.extraction import pdf_engine
+from dd_agents.extraction import anydoc_backend, pdf_engine, pdf_pages
 from dd_agents.extraction._constants import (
     CONFIDENCE_CLAUDE_VISION as _CONFIDENCE_CLAUDE_VISION,
 )
@@ -58,6 +59,8 @@ if TYPE_CHECKING:
     from dd_agents.extraction.glm_ocr import GlmOcrExtractor
 
 logger = logging.getLogger(__name__)
+
+_OFFICE_BACKENDS = frozenset({"markitdown", "anydoc"})
 
 # Minimum characters for an extraction to be considered "successful".
 _MIN_TEXT_LEN = 20
@@ -150,6 +153,10 @@ class ExtractionPipeline:
         Injected :class:`OCRExtractor` (defaults to a new instance).
     glm_ocr:
         Optional :class:`GlmOcrExtractor` for high-quality OCR.
+    office_backend:
+        ``"markitdown"`` (default) or ``"anydoc"``. With ``"anydoc"``, .docx,
+        .pptx and .xlsx try anydoc first and fall back to markitdown. Other
+        formats always use markitdown.
     """
 
     def __init__(
@@ -157,7 +164,11 @@ class ExtractionPipeline:
         markitdown: MarkitdownExtractor | None = None,
         ocr: OCRExtractor | None = None,
         glm_ocr: GlmOcrExtractor | None = None,
+        office_backend: str = "markitdown",
     ) -> None:
+        if office_backend not in _OFFICE_BACKENDS:
+            raise ValueError(f"office_backend must be one of {sorted(_OFFICE_BACKENDS)}, got {office_backend!r}")
+        self._office_backend = office_backend
         self._markitdown = markitdown or MarkitdownExtractor()
         self._ocr = ocr or OCRExtractor()
         self._glm_ocr = glm_ocr
@@ -480,7 +491,7 @@ class ExtractionPipeline:
             return self._extract_media(filepath, out_file)
 
         # Office / other formats -- markitdown then direct read.
-        return self._extract_generic(filepath, out_file)
+        return self._extract_generic(filepath, out_file, suffix=suffix)
 
     # ------------------------------------------------------------------
     # PDF pre-inspection (Issue #27 Phase 1)
@@ -779,7 +790,22 @@ class ExtractionPipeline:
                 if entry is not None:
                     return entry
 
-        # Fallback: markitdown then direct read.
+        # Fallback: [anydoc for .xlsx, if selected], markitdown, then direct read.
+        if self._use_anydoc(suffix):
+            any_text, any_conf = anydoc_backend.extract(filepath)
+            entry = self._try_method(
+                "anydoc",
+                any_text,
+                any_conf,
+                out_file,
+                filepath,
+                chain,
+                failure_reasons,
+                method_label="fallback_anydoc" if chain else "primary",
+            )
+            if entry is not None:
+                return entry
+
         md_text, md_conf = self._markitdown.extract(filepath)
         entry = self._try_method(
             "markitdown",
@@ -964,8 +990,7 @@ class ExtractionPipeline:
 
         # 1. PDFium — per-page extraction with explicit page markers.
         if not skip_text_extractors:
-            pdfium_result = self._run_pdfium(filepath)
-            text = pdfium_result if isinstance(pdfium_result, str) else pdfium_result[0]
+            text = self._pdfium_with_scanned_pages(filepath, chain, failure_reasons)
             entry = self._try_method(
                 "pdfium",
                 text,
@@ -1247,10 +1272,34 @@ class ExtractionPipeline:
             failure_reasons=failure_reasons,
         )
 
-    def _extract_generic(self, filepath: Path, out_file: Path) -> ExtractionQualityEntry:
-        """Generic (Office/other) fallback chain: markitdown -> direct read."""
+    def _use_anydoc(self, suffix: str) -> bool:
+        """True when the anydoc backend is selected and reads *suffix*."""
+        return self._office_backend == "anydoc" and suffix in anydoc_backend.ANYDOC_EXTENSIONS
+
+    def _extract_generic(self, filepath: Path, out_file: Path, *, suffix: str | None = None) -> ExtractionQualityEntry:
+        """Generic (Office/other) fallback chain: [anydoc ->] markitdown -> direct read."""
         chain: list[str] = []
         failure_reasons: list[str] = []
+        if suffix is None:
+            suffix = filepath.suffix.lower()
+
+        # 0. anydoc (optional, .docx/.pptx/.xlsx only).
+        if self._use_anydoc(suffix):
+            text, conf = anydoc_backend.extract(filepath)
+            entry = self._try_method(
+                "anydoc",
+                text,
+                conf,
+                out_file,
+                filepath,
+                chain,
+                failure_reasons,
+                method_label="primary",
+                check_readability=True,
+                check_control_chars=True,
+            )
+            if entry is not None:
+                return entry
 
         # 1. markitdown.
         text, conf = self._markitdown.extract(filepath)
@@ -1262,7 +1311,7 @@ class ExtractionPipeline:
             filepath,
             chain,
             failure_reasons,
-            method_label="primary",
+            method_label="fallback_markitdown" if chain else "primary",
             check_readability=True,
             check_control_chars=True,
         )
@@ -1320,6 +1369,68 @@ class ExtractionPipeline:
         truncated = name.encode("utf-8")[: max_len - len(digest) - 4].decode("utf-8", errors="ignore")
         return f"{truncated}_{digest}.md"
 
+    def _pdfium_with_scanned_pages(
+        self,
+        filepath: Path,
+        chain: list[str],
+        failure_reasons: list[str],
+    ) -> str:
+        """PDFium text, with OCR for pages that have no text layer (mixed PDFs).
+
+        Without this, a PDF that mixes text and scanned pages comes back with
+        the scanned pages silently missing. When OCR cannot read them, the gap
+        is written to *failure_reasons* so the quality record shows it.
+
+        Returns the page-marked text, or ``""`` if PDFium cannot read the file.
+        """
+        text = self._run_pdfium(filepath)
+        assert isinstance(text, str)  # capture_blocks is False
+        if not text:
+            return ""
+        try:
+            pages = pdf_engine.extract_pages(filepath)
+        except Exception as exc:
+            logger.debug("PDFium page split failed for %s: %s", filepath, exc)
+            return text
+
+        gaps = pdf_pages.pages_needing_ocr(filepath, pages)
+        # All pages empty is a scanned document: the full OCR fallbacks handle it.
+        if not gaps or len(gaps) >= len(pages):
+            return text
+
+        found: dict[int, str] = {}
+        for backend in (self._glm_ocr, self._ocr):
+            todo = [n for n in gaps if n not in found]
+            if backend is None or not todo:
+                continue
+            try:
+                found.update(backend.extract_pages(filepath, todo))
+            except Exception as exc:
+                logger.warning("Page OCR failed for %s: %s", filepath.name, exc)
+        looped: list[int] = []
+        for n in sorted(found):
+            found[n], did_loop = pdf_pages.collapse_repeats(found[n])
+            if did_loop:
+                looped.append(n)
+        merged = [found.get(n, text) for n, text in enumerate(pages, start=1)]
+        missing = [n for n in gaps if n not in found]
+        chain.append(f"ocr_pages({', '.join(str(n) for n in sorted(found))})" if found else "ocr_pages(none)")
+        if missing:
+            failure_reasons.append(
+                f"pages {', '.join(str(n) for n in missing)} have no text layer and OCR could not read them: "
+                "extracted text is incomplete"
+            )
+        for n in looped:
+            failure_reasons.append(
+                f"page {n} OCR output repeated itself and was trimmed: text after the repeat may be missing"
+            )
+        return self._join_pages(merged)
+
+    @staticmethod
+    def _join_pages(pages: list[str]) -> str:
+        parts = [f"\n--- Page {n} ---\n\n{text}" for n, text in enumerate(pages, start=1) if text.strip()]
+        return "\n".join(parts)
+
     @staticmethod
     def _run_pdfium(
         filepath: Path,
@@ -1349,8 +1460,7 @@ class ExtractionPipeline:
             logger.debug("PDFium extraction failed for %s: %s", filepath, exc)
             return empty
 
-        parts = [f"\n--- Page {n} ---\n\n{text}" for n, text in enumerate(pages, start=1) if text.strip()]
-        text = "\n".join(parts)
+        text = ExtractionPipeline._join_pages(pages)
         if not capture_blocks:
             return text
         blocks = [
