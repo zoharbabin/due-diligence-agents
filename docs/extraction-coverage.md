@@ -31,7 +31,7 @@ Page detection uses `pdf-inspector` when installed (`pip install "dd-agents[pdf-
 
 ## Faster Office conversion (optional)
 
-`anydoc` is a Rust converter. In the benchmark it kept every key phrase in the Office test files and ran much faster than markitdown (see [the benchmark](research/firecrawl-extraction-benchmark.md)). It is off by default.
+`anydoc` is a Rust converter. In the benchmark it kept every key phrase in the Office test files and ran much faster than markitdown (see `docs/research/firecrawl-extraction-benchmark.md` in the repository). It is off by default.
 
 ```bash
 pip install "dd-agents[office-fast]"

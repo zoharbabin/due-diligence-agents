@@ -63,6 +63,10 @@ Notes:
   provider routing is identical. Drive them with `dd-agents doctor` first if you
   are bringing up a new provider.
 
+## Opt-in external lookups
+
+The Judge web check and screening profile research (see [Screening](screening.md)) run through the same seam and `BaseAgentRunner` as the flows above, plus one external MCP server you configure. Unit tests use stubs, so no search provider is called in CI. They are ⚙️ on every provider. A live run needs your own server and credentials, and the opt-in `screening_live` marker only covers list downloads.
+
 ## Model capability tiers
 
 Which *backing model* you put behind the seam matters: the pipeline leans on

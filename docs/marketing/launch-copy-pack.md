@@ -189,7 +189,7 @@ Every finding is traced to an exact page and a verbatim quote. If a claim can't 
 It doesn't replace your lawyers or bankers — it accelerates them, and hands them analysis they can actually stand behind.
 
 **5/ (Open-source + local + no lock-in)**
-Apache-2.0, runs locally. Your data room never leaves your machine — only API calls to YOUR LLM provider go out. And no vendor lock-in: Anthropic API, your own AWS Bedrock / Google Vertex, or any model (GPT, Gemini, local) via a gateway — env config, zero code change.
+Apache-2.0, runs locally. Your data room never leaves your machine — only API calls to YOUR LLM provider go out. (Opt-in public-source lookups send entity names, never documents, to a server you configure.) And no vendor lock-in: Anthropic API, your own AWS Bedrock / Google Vertex, or any model (GPT, Gemini, local) via a gateway — env config, zero code change.
 
 pip install dd-agents (or Docker). Read the prompts, edit the agents, fork the whole thing. #buildinpublic
 
