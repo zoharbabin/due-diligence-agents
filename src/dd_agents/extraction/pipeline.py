@@ -9,7 +9,7 @@ verification.
 The pipeline converts every data-room file to a single canonical
 markdown representation.  Routing is by file type:
 
-    PDF (normal):   pymupdf → pdftotext → markitdown → GLM-OCR → pytesseract → Claude vision → direct read
+    PDF (normal):   pdfium → pdftotext → markitdown → GLM-OCR → pytesseract → Claude vision → direct read
     PDF (scanned):  GLM-OCR → pytesseract → Claude vision → direct read
     Images:         markitdown → GLM-OCR → pytesseract → Claude vision → diagram placeholder
     Spreadsheets:   openpyxl (.xlsx) / xlrd (.xls) / csv module (.csv/.tsv) → markitdown → direct read
@@ -36,6 +36,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
+from dd_agents.extraction import pdf_engine
 from dd_agents.extraction._constants import (
     CONFIDENCE_CLAUDE_VISION as _CONFIDENCE_CLAUDE_VISION,
 )
@@ -47,6 +48,7 @@ from dd_agents.extraction._constants import (
 )
 from dd_agents.extraction._helpers import read_text
 from dd_agents.extraction.cache import ExtractionCache
+from dd_agents.extraction.file_type import detect_actual_type
 from dd_agents.extraction.markitdown import MarkitdownExtractor
 from dd_agents.extraction.ocr import OCRExtractor
 from dd_agents.extraction.quality import ExtractionQualityTracker
@@ -56,11 +58,6 @@ if TYPE_CHECKING:
     from dd_agents.extraction.glm_ocr import GlmOcrExtractor
 
 logger = logging.getLogger(__name__)
-
-# MuPDF (pymupdf) is NOT thread-safe.  Concurrent fitz.open() calls from
-# the ThreadPoolExecutor can race on internal C state and cause segfaults.
-# This lock serialises all pymupdf operations across worker threads.
-_FITZ_LOCK = threading.Lock()
 
 # Minimum characters for an extraction to be considered "successful".
 _MIN_TEXT_LEN = 20
@@ -77,7 +74,7 @@ _SCANNED_PDF_THRESHOLD = 100
 _MIN_CHARS_PER_PAGE = 50
 
 # Minimum characters for a "meaningful" extraction from primary methods
-# (pymupdf, pdftotext).  Below this threshold the extraction falls through
+# (PDFium, pdftotext).  Below this threshold the extraction falls through
 # to the next method in the chain.  Addresses Bug H: near-empty PDFs
 # that pass the per-page density check but contain too little text.
 _MIN_EXTRACTION_CHARS = 500
@@ -106,7 +103,7 @@ _CONTROL_CHAR_THRESHOLD = 0.01
 # extractions that technically pass quality gates but contain far less
 # text than expected for the file size.
 _EXPECTED_TEXT_RATIOS: dict[str, float] = {
-    ".pdf": 0.09,  # pymupdf median from production audit (was 0.5)
+    ".pdf": 0.09,  # median from production audit (was 0.5); PDFium text yield is close to the old MuPDF numbers
     ".docx": 0.15,  # was 0.3
     ".doc": 0.15,  # was 0.3
     ".xlsx": 0.05,  # was 0.2
@@ -210,19 +207,6 @@ class ExtractionPipeline:
             If more than 50 % of non-plaintext files fail.
         """
         output_dir.mkdir(parents=True, exist_ok=True)
-
-        # Suppress MuPDF C-level stderr globally for the entire extraction
-        # run.  Without this, the per-method toggle (False/True) races across
-        # threads: Thread A restores True in its finally block while Thread B
-        # is still mid-extraction, causing MuPDF to dump raw warnings to stderr.
-        # Warnings are still captured via fitz.TOOLS.mupdf_warnings() in each
-        # method and logged at debug level.
-        try:
-            import fitz
-
-            fitz.TOOLS.mupdf_display_errors(False)
-        except ImportError:
-            pass
 
         # --- cache ---
         # Thread-safety note: cache.is_cached() (read) is called from
@@ -509,63 +493,30 @@ class ExtractionPipeline:
         Returns one of:
         - ``"encrypted"`` — document is password-protected.
         - ``"scanned"`` — first page has < 100 text characters.
-        - ``"missing_tounicode"`` — fonts use Identity-H encoding without
-          a /ToUnicode CMap, producing garbled control bytes.
-        - ``"normal"`` — text-based PDF suitable for pymupdf/pdftotext.
+        - ``"missing_tounicode"`` — the first page's text has control-character
+          corruption, the symptom of Identity-H fonts without a /ToUnicode CMap.
+        - ``"normal"`` — text-based PDF suitable for the PDFium engine/pdftotext.
 
-        All pymupdf calls are wrapped in try/except; returns ``"normal"``
-        on any error (graceful degradation).
+        Returns ``"normal"`` if the file cannot be read (graceful degradation).
         """
         try:
-            import fitz  # pymupdf
-        except ImportError:
+            probe = pdf_engine.probe(filepath)
+        except pdf_engine.PdfError:
+            return "normal"
+        except Exception:
             return "normal"
 
-        with _FITZ_LOCK:
-            try:
-                doc = fitz.open(str(filepath))
-            except Exception:
-                return "normal"
+        if probe.encrypted:
+            return "encrypted"
+        if probe.page_count == 0:
+            return "scanned"
 
-            try:
-                if doc.is_encrypted:
-                    return "encrypted"
-
-                if len(doc) == 0:
-                    return "scanned"
-
-                page = doc[0]
-                page_text = page.get_text()
-                text_len = len(page_text.strip()) if page_text else 0
-
-                if text_len < _SCANNED_PDF_THRESHOLD:
-                    return "scanned"
-
-                # Check for Identity-H fonts — only flag as missing_tounicode
-                # if the extracted text also has control-char corruption.
-                # 25/26 Identity-H PDFs in production data rooms extract cleanly.
-                has_identity_h = False
-                fonts = page.get_fonts(full=True)
-                for font in fonts:
-                    # font tuple: (xref, ext, type, basefont, name, encoding, ...)
-                    encoding = font[5] if len(font) > 5 else ""
-                    if isinstance(encoding, str) and "Identity-H" in encoding:
-                        has_identity_h = True
-                        break
-
-                if has_identity_h and ExtractionPipeline._has_control_char_corruption(page_text):
-                    return "missing_tounicode"
-
-                return "normal"
-            except Exception:
-                return "normal"
-            finally:
-                # Drain MuPDF C-level warnings buffer (stderr is already
-                # suppressed globally).  These are internal PDF library
-                # diagnostics (e.g. "repaired broken tree structure",
-                # "bogus font ascent") that don't affect extraction.
-                fitz.TOOLS.mupdf_warnings()
-                doc.close()
+        page_text = probe.first_page_text
+        if len(page_text.strip()) < _SCANNED_PDF_THRESHOLD:
+            return "scanned"
+        if ExtractionPipeline._has_control_char_corruption(page_text):
+            return "missing_tounicode"
+        return "normal"
 
     @staticmethod
     def _has_control_char_corruption(text: str, threshold: float = _CONTROL_CHAR_THRESHOLD) -> bool:
@@ -994,7 +945,7 @@ class ExtractionPipeline:
         """PDF fallback chain with pre-inspection routing.
 
         Pre-inspection classifies the PDF; scanned/missing_tounicode PDFs
-        skip pymupdf+pdftotext to avoid garbled output.
+        skip PDFium+pdftotext to avoid garbled output.
         """
         chain: list[str] = []
         failure_reasons: list[str] = []
@@ -1011,12 +962,12 @@ class ExtractionPipeline:
         # Skip text extractors for PDFs that would produce garbage.
         skip_text_extractors = pdf_type in ("scanned", "missing_tounicode")
 
-        # 1. pymupdf — per-page extraction with explicit page markers.
+        # 1. PDFium — per-page extraction with explicit page markers.
         if not skip_text_extractors:
-            pymupdf_result = self._run_pymupdf(filepath)
-            text = pymupdf_result if isinstance(pymupdf_result, str) else pymupdf_result[0]
+            pdfium_result = self._run_pdfium(filepath)
+            text = pdfium_result if isinstance(pdfium_result, str) else pdfium_result[0]
             entry = self._try_method(
-                "pymupdf",
+                "pdfium",
                 text,
                 0.9,
                 out_file,
@@ -1051,9 +1002,9 @@ class ExtractionPipeline:
             if entry is not None:
                 return entry
 
-            # 3. markitdown — only for "normal" PDFs where pymupdf/pdftotext
+            # 3. markitdown — only for "normal" PDFs where PDFium/pdftotext
             #    failed.  markitdown uses pdfminer internally and cannot
-            #    extract text from images any better than pymupdf.
+            #    extract text from images any better than PDFium.
             text, conf = self._markitdown.extract(filepath)
             entry = self._try_method(
                 "markitdown",
@@ -1343,68 +1294,8 @@ class ExtractionPipeline:
 
     @staticmethod
     def _detect_actual_type(filepath: Path, extension: str) -> str:
-        """Sniff magic bytes to detect files with wrong extensions.
-
-        Returns the corrected extension if a mismatch is found, otherwise
-        returns the original extension unchanged.  Only checks formats
-        where mismatches are common in data rooms (e.g. JPEG saved as .pdf).
-        """
-        # Map of magic byte signatures → canonical extension.
-        magic_map: list[tuple[bytes, int, str]] = [
-            (b"%PDF-", 0, ".pdf"),
-            (b"\x89PNG\r\n\x1a\n", 0, ".png"),
-            (b"\xff\xd8\xff", 0, ".jpg"),  # JPEG (covers JFIF and Exif)
-            (b"GIF87a", 0, ".gif"),
-            (b"GIF89a", 0, ".gif"),
-            (b"BM", 0, ".bmp"),
-            (b"II\x2a\x00", 0, ".tiff"),  # TIFF little-endian
-            (b"MM\x00\x2a", 0, ".tiff"),  # TIFF big-endian
-            (b"RIFF", 0, ".webp"),  # WebP (RIFF container) — refine below
-            (b"PK\x03\x04", 0, ".docx"),  # ZIP-based (docx/xlsx/pptx) — refine below
-            (b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1", 0, ".xls"),  # OLE2 (xls/doc/ppt)
-        ]
-        try:
-            with open(filepath, "rb") as fh:
-                header = fh.read(16)
-        except OSError:
-            return extension
-
-        if len(header) < 4:
-            return extension
-
-        matched_ext: str | None = None
-        for magic, offset, detected_ext in magic_map:
-            if header[offset : offset + len(magic)] == magic:
-                matched_ext = detected_ext
-                if detected_ext == extension:
-                    return extension  # No mismatch
-
-                # ZIP-based: don't override .docx/.xlsx/.pptx with each other
-                # since they all share PK magic. Only override non-ZIP extensions.
-                if detected_ext == ".docx" and extension in (".xlsx", ".pptx", ".docx", ".zip"):
-                    return extension
-
-                # OLE2: don't override .doc/.xls/.ppt with each other.
-                if detected_ext == ".xls" and extension in (".doc", ".ppt", ".xls", ".msg"):
-                    return extension
-
-                # RIFF is a container — only treat as .webp if header confirms it.
-                if detected_ext == ".webp":
-                    if len(header) >= 12 and header[8:12] == b"WEBP":
-                        return detected_ext
-                    return extension  # Non-WebP RIFF (e.g. AVI, WAV)
-
-                return detected_ext
-
-        # If extension claims PDF but magic bytes don't match %PDF-, it's not
-        # a real PDF.  In data rooms these are almost always scanned images
-        # (JPEG/TIFF) saved with .pdf extension — route to image extraction
-        # which can OCR them, rather than the PDF chain which will fail.
-        if extension == ".pdf" and matched_ext is None:
-            logger.info("File %s has .pdf extension but no PDF magic bytes — routing as image", filepath.name)
-            return ".jpg"
-
-        return extension
+        """Return the corrected extension when content and extension disagree."""
+        return detect_actual_type(filepath, extension)
 
     @staticmethod
     def _safe_text_name(source_path: str) -> str:
@@ -1430,12 +1321,12 @@ class ExtractionPipeline:
         return f"{truncated}_{digest}.md"
 
     @staticmethod
-    def _run_pymupdf(
+    def _run_pdfium(
         filepath: Path,
         *,
         capture_blocks: bool = False,
     ) -> str | tuple[str, list[dict[str, Any]]]:
-        """Extract text page-by-page using ``pymupdf`` with explicit page markers.
+        """Extract text page-by-page with PDFium and explicit page markers.
 
         Injects ``--- Page N ---`` headers so that downstream LLM analysis
         can cite page numbers accurately.
@@ -1447,58 +1338,27 @@ class ExtractionPipeline:
             visual grounding (Issue #7).  Returns ``(text, blocks)``
             instead of just ``text``.
 
-        Returns empty string (or ``("", [])``) if pymupdf is not installed
+        Returns empty string (or ``("", [])``) if pypdfium2 is not installed
         or extraction fails.
         """
+        empty: str | tuple[str, list[dict[str, Any]]] = ("", []) if capture_blocks else ""
         try:
-            import fitz  # pymupdf
-        except ImportError:
-            return ("", []) if capture_blocks else ""
+            pages = pdf_engine.extract_pages(filepath)
+            pdf_blocks = pdf_engine.extract_blocks(filepath) if capture_blocks else []
+        except Exception as exc:
+            logger.debug("PDFium extraction failed for %s: %s", filepath, exc)
+            return empty
 
-        parts: list[str] = []
-        blocks: list[dict[str, Any]] = []
-        with _FITZ_LOCK:
-            try:
-                doc = fitz.open(str(filepath))
-            except Exception as exc:
-                logger.debug("pymupdf failed to open %s: %s", filepath, exc)
-                return ("", []) if capture_blocks else ""
-
-            try:
-                for page_num, page in enumerate(doc, start=1):
-                    page_text = page.get_text()
-                    if page_text and page_text.strip():
-                        parts.append(f"\n--- Page {page_num} ---\n\n{page_text}")
-                    if capture_blocks:
-                        for block in page.get_text("blocks"):
-                            # block: (x0, y0, x1, y1, text, block_no, type)
-                            if len(block) >= 7 and block[6] == 0:  # type 0 = text
-                                text_content = str(block[4]).strip()
-                                if text_content:
-                                    blocks.append(
-                                        {
-                                            "page": page_num,
-                                            "x0": float(block[0]),
-                                            "y0": float(block[1]),
-                                            "x1": float(block[2]),
-                                            "y1": float(block[3]),
-                                            "text": text_content,
-                                        }
-                                    )
-            except Exception as exc:
-                logger.debug("pymupdf extraction error for %s: %s", filepath, exc)
-            finally:
-                # Drain MuPDF C-level warnings buffer (stderr is already
-                # suppressed globally).  These are internal PDF library
-                # diagnostics (e.g. "repaired broken tree structure",
-                # "bogus font ascent") that don't affect extraction.
-                fitz.TOOLS.mupdf_warnings()
-                doc.close()
-
+        parts = [f"\n--- Page {n} ---\n\n{text}" for n, text in enumerate(pages, start=1) if text.strip()]
         text = "\n".join(parts)
-        if capture_blocks:
-            return text, blocks
-        return text
+        if not capture_blocks:
+            return text
+        blocks = [
+            {"page": b.page, "x0": b.x0, "y0": b.y0, "x1": b.x1, "y1": b.y1, "text": b.text.strip()}
+            for b in pdf_blocks
+            if b.text.strip()
+        ]
+        return text, blocks
 
     @staticmethod
     def _run_pdftotext(filepath: Path) -> str:
@@ -1572,7 +1432,7 @@ class ExtractionPipeline:
     def _is_watermark_only(text: str) -> bool:
         """Return *True* if extracted PDF text is dominated by repeated watermarks.
 
-        Detects scanned PDFs where pymupdf/pdftotext can only read a
+        Detects scanned PDFs where PDFium/pdftotext can only read a
         transparent overlay (e.g. DocuSign envelope IDs) but not the
         actual page content underneath.  Heuristic: if >50 % of
         non-blank, non-marker lines are identical repeated strings the

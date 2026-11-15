@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dd-agents"
-version = "1.19.0"
+version = "1.20.0"
 description = "Open-source forensic M&A due diligence — 13 AI agents read your data room across 9 domains, cross-reference findings no single reviewer connects, and cite every one to an exact quote"
 readme = "README.md"
 license = "Apache-2.0"
@@ -29,7 +29,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 # All core dependencies are permissively licensed (Apache 2.0, MIT, BSD).
-# pymupdf (AGPL-3.0) is optional — see [project.optional-dependencies].
+# The optional [pdf] extra is pypdfium2 (Apache-2.0/BSD-3) plus pikepdf (MPL-2.0, used unmodified).
 dependencies = [
     "claude-agent-sdk>=0.2.121,<0.3",
     "pydantic>=2.4",
@@ -38,8 +38,16 @@ dependencies = [
     "numpy>=1.24",
     "rapidfuzz>=3.0",
     # markitdown needs onnxruntime (via magika), which has no wheels for Python 3.15 yet.
-    # Without it, extraction/office_convert.py converts with the libraries below.
+    # On 3.15 install it without dependencies (`pip install --no-deps markitdown`);
+    # extraction/office_convert.py then loads it with a magika stand-in. The lines
+    # marked 3.15 are markitdown's own dependencies. Drop all 3.15 lines and the
+    # `< '3.15'` marker once onnxruntime ships cp315 wheels.
     "markitdown[docx,xlsx,pptx]>=0.1; python_version < '3.15'",
+    "pandas>=2.0; python_version >= '3.15'",
+    "lxml>=5.0; python_version >= '3.15'",
+    "charset-normalizer>=3.0; python_version >= '3.15'",
+    "defusedxml>=0.7; python_version >= '3.15'",
+    "requests>=2.28; python_version >= '3.15'",
     "mammoth>=1.8",
     "markdownify>=0.13",
     "python-pptx>=1.0",
@@ -53,14 +61,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# pymupdf is AGPL-3.0 licensed (or Artifex commercial). Install separately.
-pdf = ["pymupdf>=1.23"]
+# PDF text extraction: pypdfium2 (PDFium; Apache-2.0 or BSD-3, no dependencies, py3-none wheels).
+# pikepdf (qpdf; MPL-2.0) repairs truncated or damaged PDFs before PDFium reads them.
+pdf = ["pypdfium2>=5.0", "pikepdf>=9.0"]
 vector = ["chromadb>=0.4"]
 ocr = ["pytesseract>=0.3", "Pillow>=13.0", "pdf2image>=1.16"]
-glm-ocr = ["mlx-vlm>=0.1", "pypdfium2>=4.0", "Pillow>=13.0"]
+glm-ocr = ["mlx-vlm>=0.1", "pypdfium2>=5.0", "Pillow>=13.0"]
 # Cross-platform GLM-OCR via Ollama (needs a running ollama daemon + a pulled
 # glm-ocr model). The mlx-vlm path above is Apple-Silicon only.
-glm-ocr-ollama = ["ollama>=0.3", "pypdfium2>=4.0", "Pillow>=13.0"]
+glm-ocr-ollama = ["ollama>=0.3", "pypdfium2>=5.0", "Pillow>=13.0"]
 dev = [
     "pytest>=9.0.3",
     "pytest-asyncio>=0.23",
@@ -134,7 +143,6 @@ disable_error_code = ["import-untyped", "unused-ignore"]
 [[tool.mypy.overrides]]
 module = [
     "chromadb.*",
-    "fitz.*",
     "markitdown.*",
     "rapidfuzz.*",
     "sklearn.*",

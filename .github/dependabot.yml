@@ -16,7 +16,7 @@ updates:
     schedule:
       interval: weekly
     ignore:
-      # Supported Python is 3.12 to 3.14 (CI matrix). 3.15 waits for onnxruntime wheels (markitdown dependency).
+      # The image stays on 3.14: 3.15 has no onnxruntime wheels yet (markitdown dependency). CI tests 3.12 to 3.15.
       - dependency-name: python
         versions: [">=3.15"]
   - package-ecosystem: pre-commit

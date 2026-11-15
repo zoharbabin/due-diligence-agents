@@ -2,7 +2,7 @@
 
 # Install all development dependencies (including type stubs for mypy)
 install-dev:
-	pip install -e ".[dev,vector,ocr]" types-openpyxl types-networkx
+	pip install -e ".[dev,pdf,vector,ocr]" types-openpyxl types-networkx
 	pre-commit install
 
 # Run all tests (unit + integration, excludes e2e)

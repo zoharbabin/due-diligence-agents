@@ -113,7 +113,7 @@ class FindingProvenance(BaseModel):
     """Per-finding audit trail for chain of custody (#145)."""
 
     extraction_method: str = Field(
-        default="unknown", description="Extraction method: pymupdf, glm_ocr, markitdown, etc."
+        default="unknown", description="Extraction method: pdfium, glm_ocr, markitdown, etc."
     )
     extraction_confidence: float = Field(default=0.0, description="Extraction confidence 0.0-1.0")
     agent_name: str = Field(default="", description="Agent that produced the finding")

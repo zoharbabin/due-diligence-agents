@@ -28,7 +28,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install dependencies
-        run: pip install -e ".[dev]" types-openpyxl types-networkx
+        run: pip install -e ".[dev,pdf]" types-openpyxl types-networkx
       - name: Lint
         run: ruff check src/ tests/ && ruff format --check src/ tests/
       - name: Type check

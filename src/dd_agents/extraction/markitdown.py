@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 from dd_agents.extraction._constants import CONFIDENCE_FAILURE, CONFIDENCE_FALLBACK_READ, PLAINTEXT_EXTENSIONS
 from dd_agents.extraction._constants import CONFIDENCE_MARKITDOWN as _CONFIDENCE_SUCCESS
 from dd_agents.extraction._helpers import read_text
+from dd_agents.extraction.file_type import detect_actual_type
 from dd_agents.extraction.office_convert import convert_to_markdown
 
 if TYPE_CHECKING:
@@ -105,8 +106,10 @@ class MarkitdownExtractor:
         Raises ``ImportError`` if markitdown is not installed, which the
         caller catches and falls through to the text-read fallback.
         """
+        suffix = filepath.suffix.lower()
+        actual = detect_actual_type(filepath, suffix)
         try:
-            text = convert_to_markdown(filepath)
+            text = convert_to_markdown(filepath, extension=actual if actual != suffix else None)
         except ImportError:
             logger.warning(
                 "markitdown is not installed -- falling back to direct read.  Install with: pip install markitdown"

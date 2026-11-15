@@ -407,7 +407,7 @@ _dd/forensic-dd/
 ## Installation
 
 ```bash
-pip install 'dd-agents[pdf]'      # Recommended (includes PDF extraction via pymupdf)
+pip install 'dd-agents[pdf]'      # Recommended (includes PDF extraction via pypdfium2, plus pikepdf to repair damaged PDFs)
 ```
 
 <details>
@@ -461,7 +461,7 @@ docker run -e ANTHROPIC_API_KEY="sk-ant-..." \
 
 ### Licensing
 
-All core dependencies use permissive open-source licenses (Apache 2.0, MIT, BSD). The optional `[pdf]` extra installs pymupdf, which is AGPL-3.0 licensed — if you redistribute software that bundles pymupdf, AGPL copyleft terms apply to your distribution. Using it internally or as a tool does not trigger copyleft.
+All core dependencies use permissive open-source licenses (Apache 2.0, MIT, BSD). The optional `[pdf]` extra installs pypdfium2 (Apache-2.0 or BSD-3-Clause) and pikepdf (MPL-2.0, used unmodified). No AGPL dependency remains.
 
 ## Documentation
 

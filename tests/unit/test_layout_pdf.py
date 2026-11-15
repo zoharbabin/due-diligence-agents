@@ -5,17 +5,18 @@ Covers:
     - Table detection with aligned blocks (3+ rows, same column count)
     - No alignment case -- blocks that do not form tables
     - Markdown rendering of detected tables
-    - Graceful degradation when pymupdf is not available
+    - Graceful degradation when the PDF engine fails
     - ``name`` and ``supported_extensions`` properties
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from dd_agents.extraction.backend import ExtractionBackend
 from dd_agents.extraction.layout_pdf import LayoutPDFBackend
+from dd_agents.extraction.pdf_engine import PdfBlock, PdfError
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -34,7 +35,7 @@ def _make_block(
     block_no: int = 0,
     block_type: int = 0,
 ) -> tuple[float, float, float, float, str, int, int]:
-    """Build a pymupdf-style text block tuple."""
+    """Build a text block tuple: (x0, y0, x1, y1, text, block_no, type)."""
     return (x0, y0, x1, y1, text, block_no, block_type)
 
 
@@ -156,58 +157,71 @@ class TestBlocksToMarkdown:
 
 
 class TestGracefulDegradation:
-    """Graceful degradation when pymupdf (fitz) is not available."""
+    """extract() degrades to ('', 0.0) when the PDF engine fails."""
 
-    def test_returns_failure_when_fitz_missing(self, tmp_path: Path) -> None:
-        """extract() returns ('', 0.0) when pymupdf cannot be imported."""
-        backend = LayoutPDFBackend()
-        pdf_file = tmp_path / "document.pdf"
-        pdf_file.write_bytes(b"%PDF-1.4 fake")
-
-        with patch.dict("sys.modules", {"fitz": None}):
-            text, confidence = backend.extract(pdf_file)
-
-        assert text == ""
-        assert confidence == 0.0
-
-    def test_returns_failure_when_fitz_open_raises(self, tmp_path: Path) -> None:
-        """extract() returns ('', 0.0) when fitz.open() raises an exception."""
+    def test_returns_failure_when_engine_raises(self, tmp_path: Path) -> None:
+        """extract() returns ('', 0.0) when the PDF cannot be opened."""
         backend = LayoutPDFBackend()
         pdf_file = tmp_path / "corrupt.pdf"
         pdf_file.write_bytes(b"not a real pdf")
 
-        mock_fitz = MagicMock()
-        mock_fitz.open.side_effect = RuntimeError("corrupt file")
-
-        with patch.dict("sys.modules", {"fitz": mock_fitz}):
+        with patch("dd_agents.extraction.pdf_engine.extract_blocks", side_effect=PdfError("corrupt file")):
             text, confidence = backend.extract(pdf_file)
 
         assert text == ""
         assert confidence == 0.0
 
-    def test_successful_extraction_with_mock_fitz(self, tmp_path: Path) -> None:
-        """extract() returns text and confidence when fitz works normally."""
+    def test_returns_failure_for_real_corrupt_file(self, tmp_path: Path) -> None:
+        """A real unreadable file takes the same path, with no mocks."""
+        backend = LayoutPDFBackend()
+        pdf_file = tmp_path / "corrupt.pdf"
+        pdf_file.write_bytes(b"not a real pdf")
+
+        text, confidence = backend.extract(pdf_file)
+
+        assert text == ""
+        assert confidence == 0.0
+
+    def test_returns_failure_when_no_blocks(self, tmp_path: Path) -> None:
+        """A PDF with no text blocks yields ('', 0.0)."""
+        backend = LayoutPDFBackend()
+        pdf_file = tmp_path / "blank.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4 fake")
+
+        with patch("dd_agents.extraction.pdf_engine.extract_blocks", return_value=[]):
+            text, confidence = backend.extract(pdf_file)
+
+        assert text == ""
+        assert confidence == 0.0
+
+    def test_successful_extraction_with_engine_blocks(self, tmp_path: Path) -> None:
+        """extract() returns text and confidence for single-column blocks."""
         backend = LayoutPDFBackend()
         pdf_file = tmp_path / "sample.pdf"
         pdf_file.write_bytes(b"%PDF-1.4 fake")
 
-        # Build a mock page with single-column text blocks (no table)
-        mock_page = MagicMock()
-        mock_page.get_text.return_value = [
-            _make_block(10, 10, 300, 22, "Document title", 0),
-            _make_block(10, 40, 300, 52, "Body text here", 1),
+        blocks = [
+            PdfBlock(1, 10, 10, 300, 22, "Document title"),
+            PdfBlock(1, 10, 40, 300, 52, "Body text here"),
         ]
 
-        mock_doc = MagicMock()
-        mock_doc.__len__ = MagicMock(return_value=1)
-        mock_doc.__getitem__ = MagicMock(return_value=mock_page)
-
-        mock_fitz = MagicMock()
-        mock_fitz.open.return_value = mock_doc
-
-        with patch.dict("sys.modules", {"fitz": mock_fitz}):
+        with patch("dd_agents.extraction.pdf_engine.extract_blocks", return_value=blocks):
             text, confidence = backend.extract(pdf_file)
 
         assert "Document title" in text
         assert "Body text here" in text
         assert confidence == 0.85
+
+    def test_pages_are_rendered_separately(self, tmp_path: Path) -> None:
+        """Blocks are grouped per page with a page marker each."""
+        backend = LayoutPDFBackend()
+        pdf_file = tmp_path / "sample.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4 fake")
+
+        blocks = [PdfBlock(1, 10, 10, 300, 22, "On page one"), PdfBlock(2, 10, 10, 300, 22, "On page two")]
+
+        with patch("dd_agents.extraction.pdf_engine.extract_blocks", return_value=blocks):
+            text, _ = backend.extract(pdf_file)
+
+        assert "--- Page 1 ---" in text
+        assert "--- Page 2 ---" in text

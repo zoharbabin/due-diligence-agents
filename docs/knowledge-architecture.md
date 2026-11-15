@@ -122,9 +122,9 @@ This means extracted text (expensive to produce) survives across runs, while fin
 Each file is routed through a fallback chain based on pre-inspection (~8ms per file):
 
 ```
-Normal PDF:   pymupdf → pdftotext → markitdown → GLM-OCR → Tesseract → Claude vision
+Normal PDF:   pdfium → pdftotext → markitdown → GLM-OCR → Tesseract → Claude vision
 Scanned PDF:  GLM-OCR → Tesseract → Claude vision (skips text extractors)
-Office docs:  markitdown (handles DOCX, PPTX, XLSX natively). Python 3.15 has no markitdown, so `extraction/office_convert.py` converts DOCX, PPTX, XLSX and HTML directly; legacy .doc/.xls/.ppt/.rtf and images are not converted there
+Office docs:  markitdown (handles DOCX, PPTX, XLSX natively). On Python 3.15 `onnxruntime` (needed by `magika`) has no wheels, so install markitdown with `pip install --no-deps markitdown`: `extraction/office_convert.py` loads it with a `magika` stand-in, and file types come from `extraction/file_type.py` (magic bytes plus ZIP contents) instead. Without markitdown on 3.15, DOCX, PPTX, XLSX and HTML are converted directly; legacy .doc/.xls/.ppt/.rtf and images are not
 Images:       markitdown → GLM-OCR → Tesseract → Claude vision → placeholder
 ```
 
@@ -141,7 +141,7 @@ Every extraction method passes through 6 quality gates before its output is acce
 
 ### Confidence scaling
 
-Extraction confidence is not binary. Each method gets a base confidence score (pymupdf: 0.9, pdftotext: 0.7, OCR: 0.65, Claude vision: 0.65), then scaled further by text-to-file-size ratio. A 5MB PDF that yields only 200 characters of text gets a low confidence score regardless of method.
+Extraction confidence is not binary. Each method gets a base confidence score (pdfium: 0.9, pdftotext: 0.7, OCR: 0.65, Claude vision: 0.65), then scaled further by text-to-file-size ratio. A 5MB PDF that yields only 200 characters of text gets a low confidence score regardless of method.
 
 ### Structure preservation
 
