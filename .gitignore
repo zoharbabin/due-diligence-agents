@@ -65,6 +65,9 @@ node_modules/
 
 # Generated reports
 *.xlsx
+# Synthetic extraction corpus (invented files, see tests/fixtures/extraction_corpus/README.md)
+!tests/fixtures/extraction_corpus/*.pdf
+!tests/fixtures/extraction_corpus/*.xlsx
 
 # Development artifacts
 cache/
