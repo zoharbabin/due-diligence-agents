@@ -2633,7 +2633,9 @@ class PipelineEngine:
             pass2_dir = findings_dir / f"{agent_name}_pass2"
             pass2_dir.mkdir(parents=True, exist_ok=True)
 
-            prompt = self._build_targeted_prompt(agent_name, agent_triggers, source_findings_by_id)
+            prompt = self._build_targeted_prompt(
+                agent_name, agent_triggers, source_findings_by_id, output_dir=pass2_dir
+            )
             prompt_path = audit_prompts_dir / f"{agent_name}_pass2_prompt.txt"
             prompt_path.write_text(prompt, encoding="utf-8")
 
@@ -2697,6 +2699,7 @@ class PipelineEngine:
         agent_name: str,
         triggers: list[Any],
         source_findings_by_id: dict[str, dict[str, Any]] | None = None,
+        output_dir: Path | None = None,
     ) -> str:
         """Build a targeted pass-2 prompt from cross-domain triggers.
 
@@ -2759,7 +2762,9 @@ class PipelineEngine:
             parts.append("")
 
         parts.append("## Output Requirements")
-        parts.append(f"- Write findings to: findings/{agent_name}_pass2/")
+        # Absolute when known: agents run with the data room as their working directory.
+        target = f"{output_dir}/" if output_dir is not None else f"findings/{agent_name}_pass2/"
+        parts.append(f"- Write findings to: {target}")
         parts.append('- Tag all findings with metadata: {"cross_domain": true}')
         parts.append("- Reference the source finding in your analysis")
         parts.append("- Use the same finding/gap JSON schema as your primary analysis")

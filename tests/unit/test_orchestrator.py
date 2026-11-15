@@ -4510,6 +4510,14 @@ class TestBuildTargetedPrompt:
         prompt = engine._build_targeted_prompt("legal", [trigger])
         assert "findings/legal_pass2/" in prompt
 
+    def test_prompt_uses_absolute_output_directory(self, tmp_path: Path) -> None:
+        """A relative path made the agent write into the data room (its working directory)."""
+        engine = self._make_engine(tmp_path)
+        out = tmp_path / "run" / "findings" / "legal_pass2"
+        prompt = engine._build_targeted_prompt("legal", [], output_dir=out)
+        assert f"Write findings to: {out}/" in prompt
+        assert "Write findings to: findings/" not in prompt
+
     def test_prompt_includes_source_finding_detail(self, tmp_path: Path) -> None:
         engine = self._make_engine(tmp_path)
         trigger = {
