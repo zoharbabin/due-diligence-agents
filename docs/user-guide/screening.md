@@ -29,7 +29,7 @@ Then run the pipeline as usual. The step is pipeline step 26. Full option list: 
 |-------|---------|---------|
 | `enabled` | `false` | Run the screening step |
 | `people` | `true` | Screen `key_executives` |
-| `companies` | `true` | Screen the target, its subsidiaries, its previous names and every data room entity |
+| `companies` | `true` | Screen the target, its subsidiaries, its previous names, its name variants (`entity_name_variants_for_contract_matching`) and every data room entity |
 | `sources` | all | Official list ids to use, for example `["ofac_sdn", "uk"]`. Unknown ids fail config validation |
 | `discover_officers` | `false` | An agent reads the extracted data room text and proposes officers, directors and owners to screen. Needs `people`. No web access |
 | `profile_research` | `false` | An agent searches public sources for the screened names. Needs `external_verification.enabled`. Sends names to the configured server |

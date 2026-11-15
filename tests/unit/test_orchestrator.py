@@ -4518,6 +4518,13 @@ class TestBuildTargetedPrompt:
         assert f"Write findings to: {out}/" in prompt
         assert "Write findings to: findings/" not in prompt
 
+    def test_prompt_names_the_subject_file(self, tmp_path: Path) -> None:
+        """Without a file name the agent named files after the PDF and the merge lost the subject."""
+        engine = self._make_engine(tmp_path)
+        prompt = engine._build_targeted_prompt("legal", [], subjects=["acme", "beta_co"])
+        assert "`acme.json`" in prompt and "`beta_co.json`" in prompt
+        assert "one file per subject" in prompt
+
     def test_prompt_includes_source_finding_detail(self, tmp_path: Path) -> None:
         engine = self._make_engine(tmp_path)
         trigger = {

@@ -177,6 +177,16 @@ class TestBuildTargets:
         assert names[COMPANY].stem == TARGET_STEM
         assert names[PERSON].stem == TARGET_STEM
 
+    def test_name_variants_are_screened_as_target_names(self) -> None:
+        """A rebrand often lives only in the variants list (found in a live run)."""
+        cfg = _config()
+        cfg.target.entity_name_variants_for_contract_matching = ["New Brand Placeholder", COMPANY]
+        owned = {o.target.name: o for o in build_targets(cfg, [])}
+        assert owned["New Brand Placeholder"].roles == ["name variant of the target"]
+        assert owned["New Brand Placeholder"].stem == TARGET_STEM
+        assert COMPANY in owned  # the duplicate merged, no second entry
+        assert sum(1 for o in owned.values() if o.target.name == COMPANY) == 1
+
     def test_duplicates_are_merged_by_normalized_name(self) -> None:
         subjects = [
             (COMPANY, "fabricated_holdings"),

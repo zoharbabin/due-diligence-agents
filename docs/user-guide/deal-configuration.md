@@ -338,7 +338,7 @@ Local sanctions and watchlist screening (pipeline step 26). **Off by default.** 
 
 - `enabled`: run the step (default: false)
 - `people`: screen `key_executives` (default: true)
-- `companies`: screen the target, its subsidiaries, previous names and the data room entities (default: true)
+- `companies`: screen the target, its subsidiaries, previous names, name variants and the data room entities (default: true)
 - `sources`: official list ids. Omit it to use every built-in source. An unknown id fails validation.
 - `discover_officers`: an agent proposes officers, directors and owners from the data room text. Each needs a quote that is found in the cited file (default: false). No web access.
 - `profile_research`: search public sources for the screened names (default: false). Needs `external_verification.enabled`, otherwise nothing is searched and the report shows a gap. Sends names, kind and role to the configured server, never document text.

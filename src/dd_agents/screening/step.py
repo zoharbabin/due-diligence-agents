@@ -144,6 +144,8 @@ def build_targets(
             add(sub, "organization", "subsidiary of the target", TARGET_STEM, TARGET_LABEL)
         for prev in config.target.previous_names:
             add(prev.name, "organization", "previous name of the target", TARGET_STEM, TARGET_LABEL)
+        for variant in config.target.entity_name_variants_for_contract_matching:
+            add(variant, "organization", "name variant of the target", TARGET_STEM, TARGET_LABEL)
     if screening.people:
         for person in config.key_executives:
             role = f"key executive of the target ({person.title})" if person.title else "key executive of the target"
