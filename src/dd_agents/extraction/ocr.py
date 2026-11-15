@@ -11,10 +11,14 @@ import logging
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dd_agents.extraction._constants import CONFIDENCE_FAILURE, IMAGE_EXTENSIONS
 from dd_agents.extraction._constants import CONFIDENCE_OCR as _CONFIDENCE_OCR
+from dd_agents.extraction.languages import validate_language_codes
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +43,14 @@ class OCRExtractor:
         extractor = OCRExtractor()
         text, confidence = extractor.extract(Path("scanned_doc.pdf"))
     """
+
+    def __init__(self, languages: Sequence[str] = ("eng",)) -> None:
+        self._languages = validate_language_codes(languages)
+
+    @property
+    def lang(self) -> str:
+        """Tesseract ``lang`` argument, e.g. ``deu+eng``."""
+        return "+".join(self._languages)
 
     @property
     def name(self) -> str:
@@ -67,7 +79,7 @@ class OCRExtractor:
 
         work_dir = Path(tempfile.mkdtemp(prefix="dd_ocr_"))
         try:
-            return self._do_extract(filepath, work_dir, pytesseract)
+            return self._do_extract(filepath, work_dir, pytesseract, self.lang)
         except Exception as exc:
             exc_msg = str(exc).lower()
             if "password" in exc_msg or "encrypted" in exc_msg:
@@ -88,6 +100,7 @@ class OCRExtractor:
         filepath: Path,
         work_dir: Path,
         pytesseract: object,
+        lang: str = "eng",
     ) -> tuple[str, float]:
         """Core extraction logic (separated for testability)."""
         suffix = filepath.suffix.lower()
@@ -106,7 +119,7 @@ class OCRExtractor:
         texts: list[str] = []
         for idx, img in enumerate(images):
             try:
-                page_text: str = pytesseract.image_to_string(img, lang="eng")  # type: ignore[attr-defined]
+                page_text: str = pytesseract.image_to_string(img, lang=lang)  # type: ignore[attr-defined]
                 if page_text.strip():
                     texts.append(f"--- Page {idx + 1} ---\n{page_text}")
             except Exception:

@@ -846,6 +846,25 @@ nothing unless `--output` is given. Exits non-zero on an unknown agent name.
 See [Agent Customization](../agent-customization.md) for the full customization
 workflow.
 
+## extraction
+
+### extraction check
+
+Read-only. Checks that the Tesseract language packs you need are installed. With a sample file, extracts it and warns when the text has a script that no configured language can read.
+
+```bash
+dd-agents extraction check --languages deu,eng
+dd-agents extraction check --config deal-config.json scan.pdf
+```
+
+| Option | Description |
+|--------|-------------|
+| `--config PATH` | Read `extraction.ocr_languages` and `ocr_backend` from a deal config |
+| `--languages CODES` | Comma-separated Tesseract codes. Overrides the config |
+| `SAMPLE` | Optional PDF, image or text file to extract and check |
+
+Exit code `1`: a pack is missing, nothing was extracted, or the sample has an unreadable script.
+
 ## Global Options
 
 The `--version` flag is available on the top-level group:

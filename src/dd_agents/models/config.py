@@ -186,6 +186,20 @@ class ExtractionConfig(BaseModel):
         default="auto",
         description='OCR backend selection: "auto", "glm_ocr", or "pytesseract"',
     )
+    ocr_languages: list[str] = Field(
+        default_factory=lambda: ["eng"],
+        description=(
+            "Tesseract language codes for the pytesseract path, e.g. ['deu', 'eng'] or ['script/Cyrillic']. "
+            "Each needs its language pack installed. GLM-OCR ignores this. Check with `dd-agents extraction check`."
+        ),
+    )
+
+    @field_validator("ocr_languages")
+    @classmethod
+    def _check_ocr_languages(cls, value: list[str]) -> list[str]:
+        from dd_agents.extraction.languages import validate_language_codes
+
+        return validate_language_codes(value)
 
 
 class ExecutionConfig(BaseModel):

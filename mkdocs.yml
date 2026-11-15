@@ -70,6 +70,7 @@ nav:
     - How the Agents Work: agent-anatomy.md
     - Agent Customization: agent-customization.md
     - Contract Search: search-guide.md
+    - Extraction Coverage: extraction-coverage.md
     - Knowledge Architecture: knowledge-architecture.md
   - Trust & Safety:
     - System Card: system-card.md

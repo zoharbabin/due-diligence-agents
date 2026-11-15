@@ -1,0 +1,53 @@
+# Extraction coverage
+
+What the extraction pipeline can read, and how to check your own documents.
+
+## Text by file type
+
+| Type | Path |
+|------|------|
+| PDF with a text layer | PDFium, then `pdftotext`, then markitdown |
+| Scanned PDF, images | OCR (GLM-OCR if available, else Tesseract) |
+| Office files | markitdown |
+| Plain text, CSV | Read directly |
+
+Source of truth: `src/dd_agents/extraction/pipeline.py`.
+
+## OCR and languages
+
+| Backend | Languages |
+|---------|-----------|
+| Tesseract (`pytesseract`) | The packs listed in `extraction.ocr_languages`. Default `["eng"]` |
+| GLM-OCR | Not configured. Accuracy per language is not measured here |
+
+Text-layer PDFs and Office files are not affected by `ocr_languages`. They carry Unicode text.
+
+## Set up a language
+
+```bash
+brew install tesseract-lang                       # or your package manager's language packs
+dd-agents extraction check --languages deu,eng    # confirm the packs exist
+```
+
+Then set it in the deal config:
+
+```json
+{ "extraction": { "ocr_backend": "pytesseract", "ocr_languages": ["deu", "eng"] } }
+```
+
+Codes are Tesseract codes (`deu`, `fra`, `chi_sim`, `jpn`, `script/Cyrillic`). List them separately. Do not write `deu+eng`.
+
+## Test your own documents
+
+```bash
+dd-agents extraction check --config deal-config.json path/to/scan.pdf
+```
+
+The command extracts the file and prints how many letters it found per script. It warns when a script is present that no configured language reads. For example, Cyrillic text with `ocr_languages: ["eng"]` gives a warning that lists `rus`, `ukr` and others.
+
+What the check does not do: it does not guess the document's language or score accuracy. A clean result means the right packs are configured, not that the text is correct. Read the extracted text for a few pages.
+
+## Known limits
+
+- Right-to-left and vertical scripts depend on the OCR backend. Check a real page before relying on it.
+- Handwriting and low-quality scans lower accuracy in any language.

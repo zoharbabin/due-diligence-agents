@@ -3372,3 +3372,8 @@ def _print_dry_run(deal_config: object, resume_from: int) -> None:
         table.add_row(str(num), label, step_type, status)
 
     console.print(table)
+
+
+from dd_agents.cli_extraction import extraction as _extraction_group  # noqa: E402
+
+main.add_command(_extraction_group)

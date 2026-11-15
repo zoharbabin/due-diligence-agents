@@ -303,8 +303,9 @@ Controls the optional Judge agent that reviews specialist findings:
 
 - `ocr_backend`: OCR engine preference for scanned pages — `auto` (default), `pytesseract`, or `glm_ocr`
   - `auto`: detects best available OCR backend, preferring `glm_ocr` over `pytesseract`
-  - `pytesseract`: English-only OCR (hardcoded `lang="eng"`)
-  - `glm_ocr`: multilingual OCR via GLM vision-language model (100+ languages, recommended for non-English data rooms)
+  - `pytesseract`: Tesseract OCR. Reads the languages in `ocr_languages` (default `["eng"]`)
+  - `glm_ocr`: OCR via a vision-language model. It ignores `ocr_languages`. Per-language accuracy is not measured by this project: test your languages (see [Extraction coverage](../extraction-coverage.md))
+- `ocr_languages`: Tesseract language codes for the `pytesseract` path, e.g. `["deu", "eng"]` or `["script/Cyrillic"]`. Each needs its Tesseract language pack installed. Check with `dd-agents extraction check`
 
 Text extraction (non-scanned PDFs) uses a separate chain: pdfium → pdftotext → markitdown → OCR fallback.
 
