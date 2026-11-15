@@ -203,6 +203,7 @@ SYNTHETIC_SUBJECT_KEYS: frozenset[str] = frozenset(
     {
         "_request_list",
         "_model_integrity",
+        "_target_screening",  # screening hits on the target company and its executives (Issue #274)
     }
 )
 

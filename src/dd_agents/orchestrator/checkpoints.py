@@ -33,7 +33,9 @@ import os
 import shutil
 from typing import TYPE_CHECKING, Any
 
+from dd_agents.errors import BlockingGateError
 from dd_agents.orchestrator.state import PipelineState
+from dd_agents.orchestrator.steps import PipelineStep
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -148,13 +150,24 @@ def load_checkpoint_by_step(checkpoint_dir: Path, step_number: int) -> PipelineS
     FileNotFoundError
         If no checkpoint exists for the given step number.
     """
-    prefix = f"checkpoint_{step_number:02d}_"
-    matches = sorted(checkpoint_dir.glob(f"{prefix}*.json"))
-    if not matches:
-        raise FileNotFoundError(f"No checkpoint for step {step_number} in {checkpoint_dir}")
-    data: dict[str, Any] = _load_json_with_backup(matches[0])
-    logger.info("Loaded checkpoint for step %d: %s", step_number, matches[0].name)
-    return PipelineState.from_checkpoint_dict(data)
+    step = next((s for s in PipelineStep if s.step_number == step_number), None)
+    exact = checkpoint_dir / f"checkpoint_{step.value}.json" if step is not None else None
+    if exact is not None and (exact.exists() or exact.with_suffix(".bak").exists()):
+        data: dict[str, Any] = _load_json_with_backup(exact)
+        logger.info("Loaded checkpoint for step %d: %s", step_number, exact.name)
+        return PipelineState.from_checkpoint_dict(data)
+
+    # A file with this step number but another step name was written by a
+    # version that numbered the steps differently. Never resume from it.
+    stale = sorted(checkpoint_dir.glob(f"checkpoint_{step_number:02d}_*.json"))
+    if stale:
+        raise BlockingGateError(
+            f"Resume blocked: {stale[0].name} was written by an older version that numbered "
+            f"the pipeline steps differently (step {step_number} is now "
+            f"'{step.value if step else 'unknown'}'). Resuming would run the wrong steps. "
+            "Delete the checkpoint directory or re-run without --resume-from to start fresh."
+        )
+    raise FileNotFoundError(f"No checkpoint for step {step_number} in {checkpoint_dir}")
 
 
 def list_checkpoints(checkpoint_dir: Path) -> list[str]:

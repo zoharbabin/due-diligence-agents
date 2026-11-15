@@ -18,7 +18,7 @@ All source lives under `src/dd_agents/`. Each package has one job:
 
 | Package | Purpose | Entry point |
 |---------|---------|-------------|
-| `orchestrator/` | 38-step async pipeline with checkpoint/resume | `engine.py` → `PipelineEngine.run()` |
+| `orchestrator/` | 39-step async pipeline with checkpoint/resume | `engine.py` → `PipelineEngine.run()` |
 | `agents/` | Specialist agent runners + extensible registry | `base.py` → `BaseAgentRunner` (abstract) |
 | `agents/prompts/` | Built-in prompt prose as editable markdown (specialists, synthesis, search, auto-config) | `loader.py` → `load_builtin_specialist()` |
 | `models/` | Pydantic v2 schemas for all data | `__init__.py` re-exports ~100 classes |
@@ -31,7 +31,7 @@ All source lives under `src/dd_agents/`. Each package has one job:
 | `entity_resolution/` | Cross-document name deduplication | `matcher.py` → `EntityResolver` |
 | `inventory/` | Data room scanning and classification | `discovery.py`, `subjects.py` |
 | `validation/` | QA audit + DoD checks (fail-closed) | `dod.py`, `numerical_audit.py` |
-| `screening/` | Local sanctions/watchlist screening, user lists in `dd-config/screening/` | `service.py` → `ScreeningService` |
+| `screening/` | Local sanctions/watchlist screening (pipeline step 26, opt-in via `screening.enabled`), user lists in `dd-config/screening/` | `step.py` → `run_screening()`, `service.py` → `ScreeningService` |
 | `search/` | Contract search with citation verification | `runner.py` → `SearchRunner` |
 | `tools/` | MCP server + custom tool implementations | `mcp_server.py` |
 | `chat/` | Interactive chat mode | `engine.py` |
@@ -145,6 +145,7 @@ Instead, reference **stable contracts**: interface/class names, file paths, enum
 | `docs/user-guide/deal-configuration.md` | Changing config schema or adding config options |
 | `docs/search-guide.md` | Working on search module — chunking, citation, precedence |
 | `docs/knowledge-architecture.md` | Working on knowledge base — research foundations |
+| `docs/user-guide/screening.md` | Working on sanctions/watchlist screening, its step, or user watchlists |
 | `docs/user-guide/model-providers.md` | Configuring provider/model (native + gateway); the LLM seam |
 | `docs/user-guide/provider-coverage.md` | Which flows are verified live on which providers |
 | `RELEASE.md` | Cutting a release — version bump, tag, verifying published artifacts, closing issues |

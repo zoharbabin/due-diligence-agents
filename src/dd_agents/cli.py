@@ -124,7 +124,7 @@ def main() -> None:
     "resume_from",
     type=int,
     default=0,
-    help="Resume pipeline from a specific step number (0-38).",
+    help="Resume pipeline from a specific step number (0-39).",
 )
 @click.option(
     "--dry-run",
@@ -220,7 +220,8 @@ def run(
     if model_overrides:
         from dd_agents.models.enums import AgentName
 
-        valid_agents = tuple(e.value for e in AgentName)
+        # The screening step is deterministic and has no model to override.
+        valid_agents = tuple(e.value for e in AgentName if e is not AgentName.EXTERNAL_SCREENING)
         for override in model_overrides:
             if "=" not in override:
                 _print_error(
@@ -246,11 +247,12 @@ def run(
     _print_config_summary(deal_config)
 
     # --- Validate resume-from ---
-    if resume_from < 0 or resume_from > 38:
+    if resume_from < 0 or resume_from > 39:
         _print_error(
             "Invalid Option",
-            f"--resume-from must be 0-38, got {resume_from}\n"
-            "  Key steps: 0=start, 6=inventory, 14=prompts, 16=agents, 24=merge, 31=QA, 33=reports, 38=end",
+            f"--resume-from must be 0-39, got {resume_from}\n"
+            "  Key steps: 0=start, 6=inventory, 14=prompts, 16=agents, 26=screening, 28=merge, 32=QA, "
+            "34=reports, 39=end",
         )
         raise SystemExit(1)
 
@@ -3366,6 +3368,9 @@ def _print_dry_run(deal_config: object, resume_from: int) -> None:
                     PipelineStep.JUDGE_ROUND2,
                 }
                 if step in judge_steps and not deal_config.judge.enabled:
+                    will_skip = True
+
+                if step == PipelineStep.EXTERNAL_SCREENING and not deal_config.screening.enabled:
                     will_skip = True
 
             status = "[yellow]skip[/yellow]" if will_skip else "[green]run[/green]"

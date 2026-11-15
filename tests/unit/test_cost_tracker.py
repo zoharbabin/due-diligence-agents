@@ -219,7 +219,7 @@ class TestCostTracker:
         tracker = CostTracker()
         tracker.record("legal", "16_spawn_specialists", 5000, 2000, "claude-sonnet-4-6")
         tracker.record("judge", "19_spawn_judge", 3000, 1500, "claude-haiku-4-5-20251001")
-        tracker.record("executive_synthesis", "30_generate_reports", 4000, 1000, "claude-sonnet-4-6")
+        tracker.record("executive_synthesis", "31_generate_reports", 4000, 1000, "claude-sonnet-4-6")
 
         cost_path = pathlib.Path(tmp_path) / "cost_summary.json"
         cost_path.write_text(json.dumps(tracker.to_dict(), indent=2), encoding="utf-8")
@@ -237,13 +237,13 @@ class TestCostTracker:
         tracker = CostTracker()
         tracker.record("legal", "16_spawn_specialists", 1000, 500, "claude-sonnet-4-6")
         tracker.record("judge", "19_spawn_judge", 2000, 800, "claude-sonnet-4-6")
-        tracker.record("executive_synthesis", "30_generate_reports", 1500, 600, "claude-sonnet-4-6")
+        tracker.record("executive_synthesis", "31_generate_reports", 1500, 600, "claude-sonnet-4-6")
 
         by_step = tracker.cost_by_step()
         assert len(by_step) == 3
         assert "16_spawn_specialists" in by_step
         assert "19_spawn_judge" in by_step
-        assert "30_generate_reports" in by_step
+        assert "31_generate_reports" in by_step
 
 
 class TestPricingAgnostic:
@@ -354,7 +354,7 @@ class TestCostByProvider:
         t.record("judge", "19_spawn_judge", 1_000_000, 0, "claude-sonnet-4-6")  # default route
         t.record(
             "red_flag_scanner",
-            "33_generate_reports",
+            "34_generate_reports",
             1_000_000,
             0,
             "deepseek-v3",

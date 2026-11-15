@@ -10,7 +10,7 @@ The pipeline accelerates what traditionally takes teams of lawyers and analysts 
 dd-agents run deal-config.json
 ```
 
-This runs the full 38-step pipeline: config validation, document extraction, entity
+This runs the full 39-step pipeline: config validation, document extraction, entity
 resolution, specialist agent analysis, quality audits, and report generation.
 
 **Where does output go?** Results are written to `_dd/forensic-dd/` inside your data room directory. The final report is at `{data_room_path}/_dd/forensic-dd/runs/latest/report/dd_report.html`. See [Output Directory Structure](#output-directory-structure) for the full layout.
@@ -40,7 +40,7 @@ dd-agents run deal-config.json --mode incremental
 | Option | Description |
 |--------|-------------|
 | `--mode full\|incremental` | Override execution mode from config |
-| `--resume-from N` | Resume from step N (0-38; 0 means start fresh) |
+| `--resume-from N` | Resume from step N (0-39; 0 means start fresh) |
 | `--dry-run` | Validate config and print step plan without executing |
 | `--quick-scan` | Add a Red Flag Scanner stoplight-triage pass to the run (full pipeline still runs; the scanner reads merged findings) |
 | `--model-profile PROFILE` | Override model tier: `economy`, `standard`, `premium` |
@@ -75,7 +75,7 @@ Use Opus for the legal agent, standard for everything else:
 dd-agents run deal-config.json --model-override legal=claude-opus-5-5
 ```
 
-## The 38-Step Pipeline
+## The 39-Step Pipeline
 
 The pipeline is organized into 8 phases:
 
@@ -114,17 +114,19 @@ Step 21 merges incremental results (if applicable). Steps 22-25 optionally spawn
 Judge agent for adversarial review of specialist findings (runs only when
 `judge.enabled` is true in the deal config).
 
-**Phase 7: Validation & Reporting (Steps 26-34)**
-Step 26 runs pre-merge validation (cross-agent anomaly detection, citation verification).
-Steps 27-28 merge and deduplicate findings across agents and identify coverage gaps.
-Step 29 builds the numerical manifest. Step 30 runs the numerical audit
-(**blocking gate**). Step 31 runs the full QA audit (**blocking gate**). Step 32 builds
-the incremental diff. Step 33 generates both Excel and HTML reports, and also runs the
+**Phase 7: Screening, Validation & Reporting (Steps 26-35)**
+Step 26 screens names against local sanctions and watchlists (runs only when
+`screening.enabled` is true; see [Sanctions and Watchlist Screening](screening.md)).
+Step 27 runs pre-merge validation (cross-agent anomaly detection, citation verification).
+Steps 28-29 merge and deduplicate findings across agents and identify coverage gaps.
+Step 30 builds the numerical manifest. Step 31 runs the numerical audit
+(**blocking gate**). Step 32 runs the full QA audit (**blocking gate**). Step 33 builds
+the incremental diff. Step 34 generates both Excel and HTML reports, and also runs the
 Executive Synthesis agent (Go/No-Go calibration), the Acquirer Intelligence agent
 (when `buyer_strategy` is configured), and the Red Flag Scanner (when `--quick-scan`
-is used). Step 34 is the post-generation validation **blocking gate**.
+is used). Step 35 is the post-generation validation **blocking gate**.
 
-**Phase 8: Finalization (Steps 35-38)**
+**Phase 8: Finalization (Steps 36-39)**
 Write run metadata, update run history, save entity resolution cache, shut down.
 
 ## Blocking Gates
@@ -147,9 +149,9 @@ When a gate fails, the pipeline stops with exit code 2 and prints the reason for
 |------|-------------|------------|
 | Bulk Extraction (step 5) | Corrupted or password-protected files | Remove or replace problem files, then `--resume-from 4` |
 | Coverage Gate (step 17) | Too few documents per subject | Add missing documents to the data room, then `--resume-from 6` |
-| Numerical Audit (step 30) | Contradictory financial figures | Review `audit.json` in the run directory, then `--resume-from 30` |
-| Full QA Audit (step 31) | Quality checks failed (missing citations) | Review `dod_results.json` for specifics, then `--resume-from 31` |
-| Post-Generation (step 34) | Incomplete report output | Check disk space, then `--resume-from 33` |
+| Numerical Audit (step 31) | Contradictory financial figures | Review `audit.json` in the run directory, then `--resume-from 31` |
+| Full QA Audit (step 32) | Quality checks failed (missing citations) | Review `dod_results.json` for specifics, then `--resume-from 32` |
+| Post-Generation (step 35) | Incomplete report output | Check disk space, then `--resume-from 34` |
 
 ## Agents
 
