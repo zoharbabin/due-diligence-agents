@@ -31,6 +31,7 @@ All source lives under `src/dd_agents/`. Each package has one job:
 | `entity_resolution/` | Cross-document name deduplication | `matcher.py` → `EntityResolver` |
 | `inventory/` | Data room scanning and classification | `discovery.py`, `subjects.py` |
 | `validation/` | QA audit + DoD checks (fail-closed) | `dod.py`, `numerical_audit.py` |
+| `screening/` | Local sanctions/watchlist screening, user lists in `dd-config/screening/` | `service.py` → `ScreeningService` |
 | `search/` | Contract search with citation verification | `runner.py` → `SearchRunner` |
 | `tools/` | MCP server + custom tool implementations | `mcp_server.py` |
 | `chat/` | Interactive chat mode | `engine.py` |

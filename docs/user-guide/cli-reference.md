@@ -848,8 +848,10 @@ workflow.
 
 ## screening
 
-Download the official sanctions lists and check how fresh they are. Lists are
-stored on your machine. No entry names are ever printed.
+Download the official sanctions lists, check how fresh they are, and screen
+names against them and your own lists. Lists are stored on your machine and
+matching runs locally. `update` and `status` never print entry names. `check`
+prints the possible matches for the name you typed.
 
 ```
 dd-agents screening COMMAND [OPTIONS]
@@ -901,6 +903,38 @@ dd-agents screening status [--json]
 
 The age limit is `LIST_MAX_AGE_DAYS` in `src/dd_agents/screening/store.py`. The
 JSON output also carries it as `max_age_days`. Always exits 0.
+
+### screening check
+
+Screen one name against the stored lists and the lists in `dd-config/screening/`. **Read-only.** No network.
+
+```
+dd-agents screening check NAME [--type person|organization] [--birth-year N] [--country C] [--project-dir DIR] [--json]
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--type` | `organization` | People and companies are matched differently |
+| `--birth-year` | none | Agreeing year is noted. A different year lowers the band |
+| `--country` | none | Agreeing country is noted |
+| `--project-dir` | `.` | Folder that holds `dd-config/screening/` |
+| `--json` | off | Full report: `complete`, `coverage`, `results`, `gaps`, `references`, `user_errors` |
+
+| Exit | Meaning |
+|------|---------|
+| 0 | No possible match, and every list was fresh and readable |
+| 1 | At least one possible match. Needs human review |
+| 2 | No possible match, but a list was missing, stale or unreadable |
+
+Bands: `exact`, `strong`, `possible`. A hit is never a conclusion. No hit is never a clearance: the output lists every list searched and every gap.
+
+### screening validate
+
+Check your own files in `dd-config/screening/`. **Read-only.** Prints each file with its kind and entry count, then every error. Exits 1 if any file has an error.
+
+```
+dd-agents screening validate [--project-dir DIR] [--json]
+```
 
 ## Global Options
 

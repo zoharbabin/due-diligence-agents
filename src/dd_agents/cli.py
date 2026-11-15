@@ -11,7 +11,7 @@ import json
 import logging
 import traceback
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import click
 from rich.console import Console
@@ -3494,3 +3494,114 @@ def screening_status(as_json: bool) -> None:
         f"[dim]Stored in {escape(str(store.screening_dir()))}. "
         f"Lists older than {store.LIST_MAX_AGE_DAYS} days are stale.[/dim]"
     )
+
+
+@screening.command("check")
+@click.argument("name")
+@click.option(
+    "--type",
+    "kind",
+    type=click.Choice(["person", "organization"]),
+    default="organization",
+    show_default=True,
+    help="Kind of party. People and companies are matched differently.",
+)
+@click.option("--birth-year", type=int, default=None, help="Birth year, to corroborate or weaken a person match.")
+@click.option("--country", default=None, help="Country, to corroborate a match.")
+@click.option(
+    "--project-dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=Path("."),
+    show_default=True,
+    help="Project folder that holds dd-config/screening/ (your own lists).",
+)
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output the full report as JSON.")
+def screening_check(
+    name: str, kind: str, birth_year: int | None, country: str | None, project_dir: Path, as_json: bool
+) -> None:
+    """Screen one name against the stored lists and your own lists (read-only, no network).
+
+    Hits are possible matches that need human review. Exit codes: 0 = no hit and
+    every list was fresh, 1 = at least one possible match, 2 = no hit but some
+    lists were missing, stale or unreadable (not a clearance).
+    """
+    from dd_agents.screening.service import ScreeningService, ScreenTarget
+
+    party: Literal["person", "organization"] = "person" if kind == "person" else "organization"
+    target = ScreenTarget(name=name, kind=party, birth_year=birth_year, country=country)
+    report = ScreeningService.load(project_dir).screen([target])
+    hits = report.results[0].hits
+    code = 1 if hits else (0 if report.complete else 2)
+
+    if as_json:
+        click.echo(json.dumps({"complete": report.complete, **report.model_dump(mode="json")}))
+        raise SystemExit(code)
+
+    colors = {"screened": "green", "stale": "yellow", "missing": "red", "failed": "red"}
+    cov = Table(title="Lists searched", show_header=True)
+    cov.add_column("Source", style="bold")
+    cov.add_column("Status")
+    cov.add_column("Entries", justify="right")
+    cov.add_column("List date")
+    for r in report.coverage:
+        cov.add_row(
+            r.source,
+            f"[{colors[r.status]}]{r.status}[/{colors[r.status]}]",
+            str(r.entry_count) if r.entry_count else "-",
+            r.list_date or "-",
+        )
+    console.print(cov)
+
+    if hits:
+        table = Table(title=f"Possible matches for {escape(name)} (needs review)", show_header=True)
+        table.add_column("Band", style="bold")
+        table.add_column("Score", justify="right")
+        table.add_column("List")
+        table.add_column("Listed name")
+        table.add_column("Programs", overflow="fold")
+        table.add_column("Notes", overflow="fold")
+        for h in hits:
+            table.add_row(
+                h.band,
+                f"{h.score:.0f}",
+                h.entry.source,
+                escape(h.matched_name),
+                escape(", ".join(h.entry.programs) or "-"),
+                escape(", ".join(h.corroboration) or "-"),
+            )
+        console.print(table)
+    else:
+        console.print("No possible match found in the lists above. This is not a clearance.")
+    for gap in report.gaps:
+        console.print(f"[yellow]Coverage gap:[/yellow] {escape(gap)}")
+    raise SystemExit(code)
+
+
+@screening.command("validate")
+@click.option(
+    "--project-dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=Path("."),
+    show_default=True,
+    help="Project folder that holds dd-config/screening/.",
+)
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output the result as JSON.")
+def screening_validate(project_dir: Path, as_json: bool) -> None:
+    """Check your own lists in dd-config/screening/ (read-only). Exits 1 on any error."""
+    from dd_agents.screening.user_lists import load_user_screening
+
+    cfg = load_user_screening(project_dir)
+    lists = [
+        {"name": item.name, "kind": item.kind, "file": item.file, "entries": len(item.entries)} for item in cfg.lists
+    ]
+    if as_json:
+        click.echo(json.dumps({"lists": lists, "errors": cfg.errors}))
+    else:
+        for item in lists:
+            console.print(f"[green]ok[/green] {escape(str(item['file']))} ({item['kind']}, {item['entries']} entries)")
+        for error in cfg.errors:
+            console.print(f"[red]error[/red] {escape(error)}")
+        if not lists and not cfg.errors:
+            console.print("No files in dd-config/screening/.")
+    if cfg.errors:
+        raise SystemExit(1)

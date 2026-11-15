@@ -191,3 +191,83 @@ class TestStatus:
         assert result.exit_code == 0
         assert "update" in result.output
         assert "status" in result.output
+
+
+# ---------------------------------------------------------------------------
+# check / validate (PR 6)
+# ---------------------------------------------------------------------------
+
+
+def _save_snapshot(source: str, entries: list[ListEntry]) -> None:
+    now = datetime.now(UTC).isoformat()
+    store.save_snapshot(
+        ListSnapshot(
+            source=source,
+            source_url="https://example.invalid/x",
+            fetched_at=now,
+            published=now[:10],
+            sha256="0" * 64,
+            entries=entries,
+        )
+    )
+
+
+def _fill_all_lists(extra: list[ListEntry] | None = None) -> None:
+    _save_snapshot("ofac_sdn", extra or [])
+    _save_snapshot("uk", [])
+    _save_snapshot("eu", [])
+
+
+class TestCheck:
+    def test_hit_exits_1_and_names_the_list(self, tmp_path: Path) -> None:
+        _fill_all_lists([ListEntry(source="ofac_sdn", uid="9", name="Zelda Quintero Fakename", kind="person")])
+        result = _invoke(
+            "check", "Zelda Quintero Fakename", "--type", "person", "--project-dir", str(tmp_path), "--json"
+        )
+        assert result.exit_code == 1, result.output
+        data = json.loads(result.output)
+        assert data["complete"] is True
+        assert data["results"][0]["hits"][0]["entry"]["source"] == "ofac_sdn"
+
+    def test_no_hit_full_coverage_exits_0_without_saying_clear(self, tmp_path: Path) -> None:
+        _fill_all_lists()
+        result = _invoke("check", "Jane Doe Testington", "--type", "person", "--project-dir", str(tmp_path))
+        assert result.exit_code == 0, result.output
+        assert "not a clearance" in result.output.lower()
+
+    def test_no_hit_with_missing_lists_exits_2(self, tmp_path: Path) -> None:
+        result = _invoke("check", "Jane Doe Testington", "--project-dir", str(tmp_path), "--json")
+        assert result.exit_code == 2, result.output
+        data = json.loads(result.output)
+        assert data["complete"] is False
+        assert len(data["gaps"]) == 3
+
+    def test_type_is_required_choice(self, tmp_path: Path) -> None:
+        result = _invoke("check", "X Y", "--type", "bogus", "--project-dir", str(tmp_path))
+        assert result.exit_code == 2
+
+
+class TestValidate:
+    def test_ok(self, tmp_path: Path) -> None:
+        folder = tmp_path / "dd-config" / "screening"
+        folder.mkdir(parents=True)
+        (folder / "watch.md").write_text(
+            "---\nname: watch\nkind: watchlist\nentries:\n  - name: Imaginary Ventures Group\n---\n"
+        )
+        result = _invoke("validate", "--project-dir", str(tmp_path), "--json")
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert data["errors"] == []
+        assert data["lists"][0]["entries"] == 1
+
+    def test_errors_exit_1(self, tmp_path: Path) -> None:
+        folder = tmp_path / "dd-config" / "screening"
+        folder.mkdir(parents=True)
+        (folder / "bad.md").write_text("---\nname: bad\nkind: nonsense\n---\n")
+        result = _invoke("validate", "--project-dir", str(tmp_path), "--json")
+        assert result.exit_code == 1
+        assert json.loads(result.output)["errors"][0].startswith("bad.md")
+
+    def test_no_folder_is_ok(self, tmp_path: Path) -> None:
+        result = _invoke("validate", "--project-dir", str(tmp_path))
+        assert result.exit_code == 0
