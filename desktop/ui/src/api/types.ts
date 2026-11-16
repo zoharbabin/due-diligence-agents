@@ -242,3 +242,9 @@ export interface ScreeningReport {
   user_errors: string[]
   gaps: string[]
 }
+
+export type SuggestState =
+  | { state: 'idle' }
+  | { state: 'running' }
+  | { state: 'done'; config: DealConfig }
+  | { state: 'error'; error: string }

@@ -168,3 +168,27 @@ test('screening: update the lists, then check a name', async ({ page }) => {
   await page.getByRole('button', { name: 'Check' }).click()
   await expect(page.getByText('This is not a clearance.')).toBeVisible()
 })
+
+test('suggest setup: the draft is only loaded into the editor until it is saved', async ({ page }) => {
+  await createProject(page, room('suggest-deal'))
+  await page.getByRole('tab', { name: 'Settings' }).click()
+  await page.getByRole('button', { name: 'Suggest a setup' }).click()
+  await expect(page.getByText(/Reading your data room/)).toBeVisible()
+  await page.getByRole('button', { name: 'Review the draft' }).click()
+  const editor = page.getByLabel('Deal configuration')
+  await expect(editor).toHaveValue(/Suggested focus area/)
+  await expect(page.getByText(/This is a draft from the model/)).toBeVisible()
+
+  await page.reload()
+  await page.getByRole('tab', { name: 'Settings' }).click()
+  await expect(page.getByLabel('Deal configuration')).not.toHaveValue(/Suggested focus area/)
+
+  // The server keeps the draft, so it is still there after a reload. Saving is a separate step.
+  await expect(page.getByText('A draft is ready. It is not saved.')).toBeVisible()
+  await page.getByRole('button', { name: 'Review the draft' }).click()
+  await page.getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
+  await page.reload()
+  await page.getByRole('tab', { name: 'Settings' }).click()
+  await expect(page.getByLabel('Deal configuration')).toHaveValue(/Suggested focus area/)
+})

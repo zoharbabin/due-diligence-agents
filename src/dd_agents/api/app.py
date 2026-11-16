@@ -25,9 +25,11 @@ from dd_agents.api.routers import (
     runs,
     screening,
     settings,
+    suggest,
 )
 from dd_agents.api.runs import RunManager
 from dd_agents.api.security import MIN_TOKEN_LENGTH, SecurityMiddleware
+from dd_agents.api.suggest import Suggester, SuggestJobs
 from dd_agents.llm.cli_provision import CliInstaller
 from dd_agents.persistence.project_registry import ProjectRegistryManager
 
@@ -40,6 +42,7 @@ def create_app(
     run_manager: RunManager | None = None,
     cli_installer: CliInstaller | None = None,
     chat_factory: ChatFactory | None = None,
+    suggester: Suggester | None = None,
 ) -> FastAPI:
     """Build the API app.
 
@@ -51,11 +54,13 @@ def create_app(
     registry = ProjectRegistryManager(registry_dir)
     manager = run_manager or RunManager(registry)
     sessions = ChatSessions(chat_factory)
+    drafts = SuggestJobs(suggester)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         yield
         await sessions.close_all()
+        await drafts.close_all()
         manager.shutdown()
 
     app = FastAPI(
@@ -66,7 +71,7 @@ def create_app(
         redoc_url=None,
     )
     app.state.ctx = AppContext(
-        registry=registry, runs=manager, cli_installer=cli_installer or CliInstaller(), chat=sessions
+        registry=registry, runs=manager, cli_installer=cli_installer or CliInstaller(), chat=sessions, suggest=drafts
     )
     app.add_middleware(SecurityMiddleware, token=token)
     for module in (
@@ -82,6 +87,7 @@ def create_app(
         chat,
         history,
         screening,
+        suggest,
     ):
         app.include_router(module.router, prefix="/api")
     if ui_dir is not None and ui_dir.is_dir():
