@@ -118,6 +118,16 @@ jobs:
           xcrun stapler staple "$dmg"
           xcrun stapler validate "$dmg"
           spctl --assess --type open --context context:primary-signature --verbose=4 "$dmg"
+      - name: Install the disk image and smoke test the installed app
+        run: |
+          dmg="$(ls desktop/src-tauri/target/release/bundle/dmg/*.dmg)"
+          mnt="$RUNNER_TEMP/dmg"
+          hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mnt"
+          mkdir "$RUNNER_TEMP/Applications"
+          cp -R "$mnt/Due Diligence Agents.app" "$RUNNER_TEMP/Applications/"
+          hdiutil detach "$mnt"
+          app="$RUNNER_TEMP/Applications/Due Diligence Agents.app"
+          python desktop/scripts/smoke_installed.py "$app/Contents/Resources" "$app" "$HOME/Library/Logs/com.zoharbabin.due-diligence-agents/service.log"
       - name: Run the shell tests against the built runtime
         working-directory: desktop/src-tauri
         env:
@@ -233,6 +243,13 @@ jobs:
             if ($s.Status -ne 'Valid') { $bad += $f }
           }
           if ($bad.Count -gt 0) { throw "Unsigned or invalid files above" }
+      - name: Install the setup file and smoke test the installed app
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
+          $dir = Join-Path $env:RUNNER_TEMP 'app'
+          Start-Process $setup.FullName -ArgumentList '/S', "/D=$dir" -Wait
+          python desktop/scripts/smoke_installed.py $dir "$dir\due-diligence-agents.exe" "$env:LOCALAPPDATA\com.zoharbabin.due-diligence-agents\logs\service.log"
       - name: Run the shell tests against the built runtime
         working-directory: desktop/src-tauri
         env:
