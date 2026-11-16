@@ -43,4 +43,4 @@ CI does this in [`.github/workflows/desktop.yml`](../.github/workflows/desktop.y
 | `src-tauri/src/sidecar.rs` | Starts `dd-agents serve`, reads the port, stops the process tree |
 | `src-tauri/src/secrets.rs` | Provider keys in the OS keychain, passed to the server as env |
 | `scripts/` | Runtime build, signing helpers, version override |
-| `e2e/` | Test harness only: serves the real API with a fake pipeline. Not shipped |
+| `e2e/` | Test harness only: serves the real API with a fake pipeline. Not shipped. `ui/e2e/screens.a11y.spec.ts` fails the build on serious accessibility problems (axe, WCAG 2.1 A and AA) on every tab |
