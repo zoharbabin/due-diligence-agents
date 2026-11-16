@@ -31,10 +31,11 @@ class OverrideBody(BaseModel):
 
 
 def _agent_name(name: str) -> str:
-    """Only registered agent names reach the file system, so a name can never be a path."""
-    if name not in AgentRegistry.all_specialist_names():
-        raise HTTPException(status_code=404, detail=f"No agent '{name}'")
-    return name
+    """Return the registry's own copy of the name, so a request value never reaches the file system."""
+    for known in AgentRegistry.all_specialist_names():
+        if known == name:
+            return known
+    raise HTTPException(status_code=404, detail=f"No agent '{name}'")
 
 
 def _override_path(room: Path, name: str) -> Path:
@@ -97,8 +98,12 @@ def validate_project_agents(project: Project) -> dict[str, list[dict[str, str]]]
 
 @router.get("/projects/{slug}/agents/{name}", summary="Read-only. The built-in description and the saved override.")
 def get_agent(project: Project, name: str) -> dict[str, Any]:
-    _agent_name(name)
-    return {"name": name, "description": describe_agent(name), "override": _read_override(room_of(project), name)}
+    known = _agent_name(name)
+    return {
+        "name": known,
+        "description": describe_agent(known),
+        "override": _read_override(room_of(project), known),
+    }
 
 
 @router.get(
@@ -106,8 +111,8 @@ def get_agent(project: Project, name: str) -> dict[str, Any]:
     summary="Read-only. The full prompt the agent would get, with the saved override applied.",
 )
 def preview(project: Project, name: str) -> dict[str, str]:
-    _agent_name(name)
-    return {"prompt": preview_prompt(name, project_dir=room_of(project))}
+    known = _agent_name(name)
+    return {"prompt": preview_prompt(known, project_dir=room_of(project))}
 
 
 @router.put(
@@ -115,13 +120,13 @@ def preview(project: Project, name: str) -> dict[str, str]:
     summary="Writes dd-config/agents/{name}.md in the data room. Rejects an invalid override and keeps the old file.",
 )
 def put_agent(project: Project, name: str, body: OverrideBody) -> dict[str, str]:
-    _agent_name(name)
-    problems = _errors_in(name, body.content)
+    known = _agent_name(name)
+    problems = _errors_in(known, body.content)
     if problems:
         raise HTTPException(
             status_code=422, detail={"message": "The override is not valid", "issues": _issues(problems)}
         )
-    path = _override_path(room_of(project), name)
+    path = _override_path(room_of(project), known)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     tmp.write_text(body.content, encoding="utf-8")
@@ -135,6 +140,6 @@ def put_agent(project: Project, name: str, body: OverrideBody) -> dict[str, str]
     summary="Deletes dd-config/agents/{name}.md so the agent uses its built-in persona. Idempotent.",
 )
 def delete_agent(project: Project, name: str) -> Response:
-    _agent_name(name)
-    _override_path(room_of(project), name).unlink(missing_ok=True)
+    known = _agent_name(name)
+    _override_path(room_of(project), known).unlink(missing_ok=True)
     return Response(status_code=204)
