@@ -106,6 +106,18 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "$app"
           spctl --assess --type execute --verbose=4 "$app"
           xcrun stapler validate "$app"
+      - name: Notarize and staple the disk image
+        if: env.SIGN == 'true'
+        env:
+          APPLE_API_ISSUER: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+          APPLE_API_KEY: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+        run: |
+          # Tauri notarizes the app only. A downloaded disk image is checked by Gatekeeper too.
+          dmg="$(ls desktop/src-tauri/target/release/bundle/dmg/*.dmg)"
+          xcrun notarytool submit "$dmg" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" --wait --timeout 30m
+          xcrun stapler staple "$dmg"
+          xcrun stapler validate "$dmg"
+          spctl --assess --type open --context context:primary-signature --verbose=4 "$dmg"
       - name: Run the shell tests against the built runtime
         working-directory: desktop/src-tauri
         env:
