@@ -10,8 +10,10 @@ from __future__ import annotations
 import json
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 
+from dd_agents.knowledge.chronicle import AnalysisChronicle, AnalysisLogEntry, FindingsSummary, InteractionType
 from dd_agents.orchestrator.events import RunEventLog
 
 STEPS = ["05_bulk_extraction", "12_specialist_agents", "28_merge", "35_report"]
@@ -90,6 +92,18 @@ def main() -> int:
     latest = base / "runs" / "latest"
     latest.unlink(missing_ok=True)
     latest.symlink_to(rid)
+    AnalysisChronicle(base / "knowledge" / "chronicle.jsonl").append(
+        AnalysisLogEntry(
+            id=f"e2e-{time.time_ns()}",
+            timestamp=datetime.now(tz=UTC).isoformat(),
+            interaction_type=InteractionType.PIPELINE_RUN,
+            title="Pipeline run: Buyer \u2192 Target",
+            findings_summary=FindingsSummary(total=len(items), p0=1, p1=1, p2=1, p3=1),
+            entities_affected=["subject_a"],
+            cost_usd=1.6,
+            user_initiated=True,
+        )
+    )
     log.emit("run_completed", run_id=rid, exit_code=0, dod_passed=True)
     return 0
 

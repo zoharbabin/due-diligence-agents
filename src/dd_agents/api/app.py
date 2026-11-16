@@ -12,7 +12,19 @@ from fastapi.staticfiles import StaticFiles
 import dd_agents
 from dd_agents.api.chat import ChatFactory, ChatSessions
 from dd_agents.api.context import AppContext
-from dd_agents.api.routers import agents, chat, compare, config, doctor, findings, health, projects, runs, settings
+from dd_agents.api.routers import (
+    agents,
+    chat,
+    compare,
+    config,
+    doctor,
+    findings,
+    health,
+    history,
+    projects,
+    runs,
+    settings,
+)
 from dd_agents.api.runs import RunManager
 from dd_agents.api.security import MIN_TOKEN_LENGTH, SecurityMiddleware
 from dd_agents.llm.cli_provision import CliInstaller
@@ -56,7 +68,7 @@ def create_app(
         registry=registry, runs=manager, cli_installer=cli_installer or CliInstaller(), chat=sessions
     )
     app.add_middleware(SecurityMiddleware, token=token)
-    for module in (health, doctor, settings, projects, config, agents, compare, runs, findings, chat):
+    for module in (health, doctor, settings, projects, config, agents, compare, runs, findings, chat, history):
         app.include_router(module.router, prefix="/api")
     if ui_dir is not None and ui_dir.is_dir():
         app.mount("/", StaticFiles(directory=ui_dir, html=True), name="ui")

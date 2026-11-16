@@ -154,3 +154,21 @@ test('ask: needs a review first, then answers and counts the cost', async ({ pag
   await page.getByRole('button', { name: 'New conversation' }).click()
   await expect(page.getByText('Answer to: Which contracts need consent?')).toHaveCount(0)
 })
+
+test('history: a finished review is listed with its findings and cost', async ({ page }) => {
+  await createProject(page, room('history-deal'))
+  await page.getByRole('tab', { name: 'History' }).click()
+  await expect(page.getByText('Nothing has happened in this project yet.')).toBeVisible()
+
+  await page.getByRole('tab', { name: 'Overview' }).click()
+  await page.getByRole('button', { name: 'Run full review' }).click()
+  await expect(page.getByRole('progressbar')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Run full review' })).toBeVisible({ timeout: 30_000 })
+
+  await page.getByRole('tab', { name: 'History' }).click()
+  const entry = page.getByRole('list', { name: 'History' }).getByRole('listitem')
+  await expect(entry).toHaveCount(1)
+  await expect(entry).toContainText('Pipeline run: Buyer')
+  await expect(entry).toContainText('4 findings')
+  await expect(entry).toContainText('$1.60')
+})
