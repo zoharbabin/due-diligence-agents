@@ -84,3 +84,14 @@ test('the API rejects a request without the token', async ({ request }) => {
   const res = await request.get('/api/projects')
   expect(res.status()).toBe(401)
 })
+
+test('settings: shows the connection, tests it, and removes the key', async ({ page }) => {
+  await open(page, '#/settings')
+  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
+  await expect(page.getByText('Downloaded by this app')).toBeVisible()
+  await page.getByRole('button', { name: 'Test connection' }).click()
+  await expect(page.getByText('Connected.')).toBeVisible()
+  await page.getByRole('button', { name: 'Remove key' }).click()
+  await expect(page.getByText('Missing')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Add an API key' })).toBeVisible()
+})
