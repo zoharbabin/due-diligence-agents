@@ -88,6 +88,8 @@ jobs:
           APPLE_API_ISSUER: ${{ env.SIGN == 'true' && secrets.MACOS_NOTARY_ISSUER_ID || '' }}
           APPLE_API_KEY: ${{ env.SIGN == 'true' && secrets.MACOS_NOTARY_KEY_ID || '' }}
         run: |
+          # Tauri treats an empty variable as set and then tries to sign with "".
+          [ "$SIGN" = "true" ] || unset APPLE_SIGNING_IDENTITY APPLE_API_ISSUER APPLE_API_KEY
           python ../scripts/tauri_override.py "${{ steps.version.outputs.value }}" > "$RUNNER_TEMP/override.json"
           ../ui/node_modules/.bin/tauri build --ci --bundles app,dmg --config "$RUNNER_TEMP/override.json"
       - name: Verify the signature and notarization
