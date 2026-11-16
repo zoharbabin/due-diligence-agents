@@ -1,0 +1,14 @@
+{
+  "release": "20261110",
+  "python": "3.13.18",
+  "targets": {
+    "aarch64-apple-darwin": {
+      "asset": "cpython-3.13.18+20261110-aarch64-apple-darwin-install_only_stripped.tar.gz",
+      "sha256": "7a2384641584ab9984221fcb0fc9265df465922af71be71410529e2a9c3f0540"
+    },
+    "x86_64-pc-windows-msvc": {
+      "asset": "cpython-3.13.18+20261110-x86_64-pc-windows-msvc-install_only_stripped.tar.gz",
+      "sha256": "2e0fed09d48989f64c9305da9ff2d37a41c0d13ab2aa6283405b2b620dfbf805"
+    }
+  }
+}

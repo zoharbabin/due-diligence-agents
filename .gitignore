@@ -83,3 +83,5 @@ desktop/ui/playwright-report/
 # Desktop shell
 desktop/src-tauri/target/
 desktop/src-tauri/gen/
+desktop/src-tauri/resources/
+desktop/.cache/
