@@ -98,8 +98,13 @@ fn start_backend(app: AppHandle) {
     let Some(window) = app.get_webview_window("main") else {
         return;
     };
-    let started =
-        locations(&app).and_then(|(python, ui)| Sidecar::start(&python, &ui, &secrets::load()));
+    let log = app
+        .path()
+        .app_log_dir()
+        .ok()
+        .map(|dir| dir.join("service.log"));
+    let started = locations(&app)
+        .and_then(|(python, ui)| Sidecar::start(&python, &ui, &secrets::load(), log.as_deref()));
     match started {
         Ok(sidecar) => {
             let url = sidecar.url();
@@ -117,6 +122,13 @@ fn start_backend(app: AppHandle) {
 
 pub fn run() {
     let app = tauri::Builder::default()
+        // Registered first. A second launch shows the open window instead of starting a second service.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::default())
