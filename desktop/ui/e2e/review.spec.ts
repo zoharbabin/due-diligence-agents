@@ -32,6 +32,17 @@ test('first launch shows the empty state, and the token leaves the address bar',
   expect(page.url()).not.toContain('token=')
 })
 
+test('setup: a missing key is requested, tested and accepted', async ({ page }) => {
+  await open(page)
+  await page.getByLabel('API key').fill('sk-ant-e2e-key-1234')
+  await page.getByRole('button', { name: 'Save and test' }).click()
+  await expect(page.getByText('Connected.')).toBeVisible()
+  await page.getByRole('button', { name: 'Continue' }).click()
+  await expect(page.getByLabel('API key')).toHaveCount(0)
+  await page.reload()
+  await expect(page.getByLabel('API key')).toHaveCount(0)
+})
+
 test('wrong folder shows a clear error', async ({ page }) => {
   await open(page, '#/new')
   await page.getByLabel('Data room folder').fill('/definitely/not/here')

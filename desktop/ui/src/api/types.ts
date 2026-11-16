@@ -109,3 +109,12 @@ export interface ConfigValidation {
 }
 
 export type DealConfig = Record<string, unknown>
+
+export interface Doctor {
+  provider: 'anthropic' | 'bedrock' | 'vertex' | 'gateway'
+  base_url: string | null
+  credential_present: boolean
+  credential_env: string[]
+  cli: { found: boolean; source: 'env' | 'system' | 'sdk' | null }
+  ready: boolean
+}

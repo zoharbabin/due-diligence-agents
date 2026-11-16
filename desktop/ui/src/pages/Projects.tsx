@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
-import { SEVERITIES, type Project } from '../api/types'
+import { SEVERITIES, type Doctor, type Project } from '../api/types'
+import { SetupCard } from '../components/SetupCard'
 import { Banner, Button, Card, EmptyState, SeverityBadge, Spinner } from '../components/ui'
 import { formatDate } from '../lib/format'
 import { useLoad } from '../lib/useApi'
@@ -16,6 +17,7 @@ const STATUS_TEXT: Record<Project['status'], string> = {
 
 export function ProjectsPage() {
   const { data, error, loading } = useLoad(() => api<Project[]>('/projects'), 'projects')
+  const doctor = useLoad(() => api<Doctor>('/doctor'), 'doctor')
   if (loading) return <Spinner />
   if (error) return <Banner tone="error">{error}</Banner>
   const projects = data ?? []
@@ -29,6 +31,7 @@ export function ProjectsPage() {
           </Link>
         )}
       </header>
+      {doctor.data && !doctor.data.ready && <SetupCard doctor={doctor.data} onChange={doctor.reload} />}
       {projects.length === 0 ? (
         <EmptyState
           title="Start your first review"

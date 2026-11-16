@@ -59,3 +59,30 @@ describe('NewProjectPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('existing absolute folder')
   })
 })
+
+describe('setup card', () => {
+  const doctor = { provider: 'anthropic', credential_present: false, credential_env: ['ANTHROPIC_API_KEY'], cli: { found: true, source: 'system' }, ready: false, base_url: null }
+  it('asks for a key when none is set, and tests it after saving', async () => {
+    const calls: string[] = []
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      const u = String(url)
+      calls.push(u)
+      if (u.endsWith('/projects')) return json([])
+      if (u.endsWith('/doctor')) return json(doctor)
+      if (u.endsWith('/doctor/probe')) return json({ ok: true, detail: '' })
+      return json({ set: ['ANTHROPIC_API_KEY'] })
+    })
+    render(<MemoryRouter><ProjectsPage /></MemoryRouter>)
+    await userEvent.type(await screen.findByLabelText('API key'), 'sk-ant-12345678')
+    await userEvent.click(screen.getByRole('button', { name: 'Save and test' }))
+    expect(await screen.findByText('Connected.')).toBeInTheDocument()
+    expect(calls).toContain('/api/settings/env')
+  })
+  it('says so when the CLI is missing', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) =>
+      String(url).endsWith('/doctor') ? json({ ...doctor, cli: { found: false, source: null } }) : json([]),
+    )
+    render(<MemoryRouter><ProjectsPage /></MemoryRouter>)
+    expect(await screen.findByText(/command line tool was not found/)).toBeInTheDocument()
+  })
+})
