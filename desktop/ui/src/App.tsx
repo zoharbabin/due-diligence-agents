@@ -6,6 +6,7 @@ import { Banner, Spinner } from './components/ui'
 import { NewProjectPage } from './pages/NewProject'
 import { ProjectPage } from './pages/ProjectPage'
 import { ProjectsPage } from './pages/Projects'
+import { SettingsPage } from './pages/Settings'
 
 type Gate = 'checking' | 'ready' | 'offline'
 
@@ -39,6 +40,7 @@ export default function App() {
           <Route path="/" element={<ProjectsPage />} />
           <Route path="/new" element={<NewProjectPage />} />
           <Route path="/p/:slug" element={<ProjectPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Banner tone="info">Page not found.</Banner>} />
         </Routes>
       </Layout>

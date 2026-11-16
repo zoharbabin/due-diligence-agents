@@ -11,6 +11,9 @@ export function Layout({ children }: { children: ReactNode }) {
         <NavLink to="/" end className={link}>
           Projects
         </NavLink>
+        <NavLink to="/settings" className={link}>
+          Settings
+        </NavLink>
       </nav>
       <main className="flex-1 overflow-y-auto p-8">
         <div className="mx-auto max-w-5xl">{children}</div>
