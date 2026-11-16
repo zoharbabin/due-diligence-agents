@@ -1,0 +1,31 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Due Diligence Agents",
+  "version": "0.0.0",
+  "identifier": "com.zoharbabin.due-diligence-agents",
+  "build": { "frontendDist": "./splash" },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Due Diligence Agents",
+        "width": 1180,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 600,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "nsis"],
+    "category": "Business",
+    "shortDescription": "Forensic M&A due diligence on your own machine",
+    "icon": ["icons/icon.png"]
+  }
+}

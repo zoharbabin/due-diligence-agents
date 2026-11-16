@@ -79,3 +79,7 @@ report-*.png
 # Desktop UI
 desktop/ui/test-results/
 desktop/ui/playwright-report/
+
+# Desktop shell
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
