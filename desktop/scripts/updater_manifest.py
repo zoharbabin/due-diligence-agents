@@ -31,6 +31,11 @@ def prepare(directory: Path, tag: str, repo: str) -> dict[str, object]:
     if not match:
         sys.exit(f"Not a release tag: {tag!r}")
     version = match.group(1)
+    # Downloaded artifacts keep their folders (`dmg/`, `macos/`). Release assets sit in one folder.
+    for path in sorted(p for p in directory.rglob("*") if p.is_file() and p.parent != directory):
+        path.rename(directory / path.name)
+    for folder in sorted((p for p in directory.rglob("*") if p.is_dir()), reverse=True):
+        folder.rmdir()
     for path in sorted(directory.iterdir()):
         if " " in path.name:
             path.rename(directory / _slug(path.name))
