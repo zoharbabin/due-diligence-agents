@@ -11,6 +11,14 @@ CI builds the installers (`.github/workflows/desktop.yml`) and attaches them to 
 | macOS (Apple Silicon) | `.dmg`. Drag the app to Applications |
 | Windows (x64) | `-setup.exe`. Installs for your user, no admin rights |
 
+On macOS you can also use Homebrew:
+
+```bash
+brew install --cask zoharbabin/due-diligence-agents/due-diligence-agents
+```
+
+Homebrew 7 asks you to trust a third-party tap first. Run the `brew trust` command it prints.
+
 Release builds are signed. The macOS app is also notarized. The app checks for a newer signed version when it opens and offers to install it.
 
 ## First run
