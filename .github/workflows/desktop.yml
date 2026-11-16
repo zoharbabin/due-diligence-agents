@@ -248,6 +248,8 @@ jobs:
           merge-multiple: true
       - name: Name the assets and write the updater manifest
         run: python desktop/scripts/updater_manifest.py "${GITHUB_REF_NAME}" "${GITHUB_REPOSITORY}" installers
+      - name: Write the Homebrew cask and winget manifests
+        run: python desktop/scripts/package_manifests.py "${GITHUB_REF_NAME}" "${GITHUB_REPOSITORY}" installers
       - name: Checksums
         working-directory: installers
         run: sha256sum * > SHA256SUMS-desktop.txt

@@ -12,6 +12,9 @@ from dd_agents.llm.provider import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
+# A draft normally takes seconds. A model call that hangs must not block the project forever.
+DEFAULT_TIMEOUT_SECONDS = 600.0
+
 Suggester = Callable[[Path, str, str], Awaitable[dict[str, Any]]]
 
 
@@ -45,8 +48,9 @@ async def default_suggester(room: Path, buyer: str, target: str) -> dict[str, An
 class SuggestJobs:
     """One draft per project, kept in memory. All methods run on the server's event loop."""
 
-    def __init__(self, suggester: Suggester | None = None) -> None:
+    def __init__(self, suggester: Suggester | None = None, timeout: float = DEFAULT_TIMEOUT_SECONDS) -> None:
         self._suggester = suggester or default_suggester
+        self._timeout = timeout
         self._state: dict[str, dict[str, Any]] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
 
@@ -62,10 +66,14 @@ class SuggestJobs:
 
     async def _run(self, slug: str, room: Path, buyer: str, target: str) -> None:
         try:
-            config = await self._suggester(room, buyer, target)
+            async with asyncio.timeout(self._timeout):
+                config = await self._suggester(room, buyer, target)
             self._state[slug] = {"state": "done", "config": config}
         except asyncio.CancelledError:
             raise
+        except TimeoutError:
+            logger.warning("config suggestion timed out after %.0f s", self._timeout)
+            self._state[slug] = {"state": "error", "error": "The model took too long to answer. Try again."}
         except Exception as exc:  # noqa: BLE001 - the user must see why it failed
             logger.exception("config suggestion failed")
             self._state[slug] = {"state": "error", "error": scrub_secrets(f"{type(exc).__name__}: {exc}")}

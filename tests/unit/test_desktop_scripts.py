@@ -134,3 +134,50 @@ def test_runtime_drops_only_packages_that_no_code_imports() -> None:
         if re.search(rf"^\s*(from|import)\s+{name}\b", p.read_text(encoding="utf-8"), re.MULTILINE)
     }
     assert importers <= {"extraction/office_convert.py"}
+
+
+def _assets(tmp_path: Path, version: str = "1.2.3") -> None:
+    (tmp_path / f"due-diligence-agents_{version}_aarch64.dmg").write_bytes(b"dmg bytes")
+    (tmp_path / f"due-diligence-agents_{version}_x64-setup.exe").write_bytes(b"exe bytes")
+
+
+def test_package_manifests_name_the_release_files_and_their_hashes(tmp_path: Path) -> None:
+    import hashlib
+
+    mod: Any = _load("package_manifests")
+    _assets(tmp_path)
+    mod.write(tmp_path, "v1.2.3", "someone/repo")
+    cask = (tmp_path / "due-diligence-agents.rb").read_text(encoding="utf-8")
+    assert 'version "1.2.3"' in cask
+    assert hashlib.sha256(b"dmg bytes").hexdigest() in cask
+    assert (
+        "https://github.com/someone/repo/releases/download/v#{version}/due-diligence-agents_#{version}_aarch64.dmg"
+        in cask
+    )
+    assert "depends_on arch: :arm64" in cask and 'app "Due Diligence Agents.app"' in cask
+    installer = (tmp_path / "zoharbabin.DueDiligenceAgents.installer.yaml").read_text(encoding="utf-8")
+    assert hashlib.sha256(b"exe bytes").hexdigest().upper() in installer
+    assert "releases/download/v1.2.3/due-diligence-agents_1.2.3_x64-setup.exe" in installer
+    assert "InstallerType: nullsoft" in installer and "Scope: user" in installer
+    version = (tmp_path / "zoharbabin.DueDiligenceAgents.yaml").read_text(encoding="utf-8")
+    assert "PackageVersion: 1.2.3" in version
+    locale = (tmp_path / "zoharbabin.DueDiligenceAgents.locale.en-US.yaml").read_text(encoding="utf-8")
+    assert "License: Apache-2.0" in locale
+
+
+def test_package_manifests_need_both_installers(tmp_path: Path) -> None:
+    import pytest
+
+    mod: Any = _load("package_manifests")
+    (tmp_path / "due-diligence-agents_1.2.3_aarch64.dmg").write_bytes(b"x")
+    with pytest.raises(SystemExit):
+        mod.write(tmp_path, "v1.2.3", "someone/repo")
+
+
+def test_package_manifests_reject_a_bad_tag(tmp_path: Path) -> None:
+    import pytest
+
+    mod: Any = _load("package_manifests")
+    _assets(tmp_path)
+    with pytest.raises(SystemExit):
+        mod.write(tmp_path, "main", "someone/repo")

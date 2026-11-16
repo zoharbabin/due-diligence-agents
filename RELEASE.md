@@ -68,7 +68,9 @@ After step 5, also watch `desktop.yml` to green:
 gh run watch $(gh run list --workflow=desktop.yml --limit 1 --json databaseId --jq '.[0].databaseId') --exit-status
 ```
 
-Then check the Release has these assets: the DMG, the Windows setup `.exe`, a `.sig` next to each update file, `latest.json` and `SHA256SUMS-desktop.txt`.
+Then check the Release has these assets: the DMG, the Windows setup `.exe`, a `.sig` next to each update file, `latest.json`, `SHA256SUMS-desktop.txt`, the cask `due-diligence-agents.rb` and the three `zoharbabin.DueDiligenceAgents*.yaml` winget files.
+
+Package managers are a manual step after the Release is verified. Copy `due-diligence-agents.rb` into the `Casks/` folder of your Homebrew tap. For winget, put the three `.yaml` files in `manifests/z/zoharbabin/DueDiligenceAgents/<version>/` of your `winget-pkgs` fork and open a PR. Both manifests point at the signed files of the Release.
 
 Installed apps read `releases/latest/download/latest.json`, and the tag release becomes "Latest" at once. So a tag ships to every installed app. Test before you tag: run `desktop.yml` by hand with **sign** on (`gh workflow run desktop.yml -f sign=true`), install the signed artifacts from that run on a clean macOS and a clean Windows machine, and run one review. Tag only after that.
 

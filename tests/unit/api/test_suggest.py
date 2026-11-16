@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -15,7 +16,6 @@ from .conftest import AUTH, BASE, TOKEN
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from pathlib import Path
 
 DRAFT = {"buyer": {"name": "Buyer Co"}, "target": {"name": "Target Co"}}
 
@@ -153,3 +153,23 @@ def test_default_suggester_runs_the_auto_config_steps(data_room: Path, monkeypat
     assert config["buyer"]["name"] == "Buyer Co"
     assert config["config_version"] == "1.0.0"
     assert "contract.txt" in seen["tree_output"]
+
+
+def test_a_draft_that_hangs_ends_with_an_error_and_can_be_retried(fake: FakeSuggester) -> None:
+    from dd_agents.api.suggest import SuggestJobs
+
+    async def scenario() -> tuple[dict[str, Any], dict[str, Any]]:
+        fake.gate = asyncio.Event()  # never released
+        jobs = SuggestJobs(fake, timeout=0.05)
+        jobs.start("deal", Path("/room"), "B", "T")
+        await asyncio.sleep(0.3)
+        stuck = jobs.status("deal")
+        fake.gate = None
+        jobs.start("deal", Path("/room"), "B", "T")
+        await asyncio.sleep(0.1)
+        return stuck, jobs.status("deal")
+
+    stuck, retried = asyncio.run(scenario())
+    assert stuck["state"] == "error"
+    assert "too long" in stuck["error"]
+    assert retried["state"] == "done"
