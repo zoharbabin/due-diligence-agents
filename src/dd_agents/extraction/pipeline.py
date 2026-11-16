@@ -1694,7 +1694,7 @@ class ExtractionPipeline:
         from concurrent.futures import ThreadPoolExecutor as _ThreadPoolExecutor
 
         def _run() -> str:
-            return _asyncio.run(self._describe_image_async(filepath))
+            return _asyncio.run(_asyncio.wait_for(self._describe_image_async(filepath), _CLAUDE_VISION_TIMEOUT))
 
         try:
             with _ThreadPoolExecutor(max_workers=1) as pool:
