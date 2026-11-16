@@ -48,3 +48,12 @@ export function baseName(path: string): string {
   const parts = path.replace(/[\\/]+$/, '').split(/[\\/]/)
   return parts[parts.length - 1] ?? ''
 }
+
+/** "20260201_093000" -> "Feb 1, 2026, 9:30 AM". Other ids are shown as they are. */
+export function runLabel(id: string): string {
+  const m = /^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})$/.exec(id)
+  if (!m) return id
+  const [y, mo, day, h, mi, sec] = m.slice(1).map(Number) as [number, number, number, number, number, number]
+  const d = new Date(y, mo - 1, day, h, mi, sec)
+  return Number.isNaN(d.getTime()) ? id : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+}

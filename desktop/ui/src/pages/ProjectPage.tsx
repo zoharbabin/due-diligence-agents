@@ -4,6 +4,7 @@ import { api, ApiError } from '../api/client'
 import { streamEvents } from '../api/sse'
 import { SEVERITIES, type DealConfig, type Project, type RunState, type RunSummary } from '../api/types'
 import { AgentsPanel } from '../components/AgentsPanel'
+import { ComparePanel } from '../components/ComparePanel'
 import { ConfigEditor } from '../components/ConfigEditor'
 import { FindingsTable } from '../components/FindingsTable'
 import { ReportFrame } from '../components/ReportFrame'
@@ -22,7 +23,7 @@ async function settled(slug: string, signal: AbortSignal): Promise<void> {
   }
 }
 
-type Tab = 'overview' | 'findings' | 'report' | 'agents' | 'settings'
+type Tab = 'overview' | 'findings' | 'report' | 'agents' | 'compare' | 'settings'
 
 export function ProjectPage() {
   const { slug = '' } = useParams()
@@ -120,6 +121,7 @@ export function ProjectPage() {
           { id: 'findings', label: 'Findings' },
           { id: 'report', label: 'Report' },
           { id: 'agents', label: 'Agents' },
+          { id: 'compare', label: 'Compare' },
           { id: 'settings', label: 'Settings' },
         ]}
       />
@@ -183,6 +185,7 @@ export function ProjectPage() {
         ))}
 
       {tab === 'agents' && <AgentsPanel slug={slug} />}
+      {tab === 'compare' && (runs.data ? <ComparePanel slug={slug} runs={runs.data} /> : <Spinner />)}
 
       {tab === 'settings' &&
         (config.loading ? (

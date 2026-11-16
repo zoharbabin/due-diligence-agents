@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 import dd_agents
 from dd_agents.api.context import AppContext
-from dd_agents.api.routers import agents, config, doctor, findings, health, projects, runs, settings
+from dd_agents.api.routers import agents, compare, config, doctor, findings, health, projects, runs, settings
 from dd_agents.api.runs import RunManager
 from dd_agents.api.security import MIN_TOKEN_LENGTH, SecurityMiddleware
 from dd_agents.llm.cli_provision import CliInstaller
@@ -50,7 +50,7 @@ def create_app(
     )
     app.state.ctx = AppContext(registry=registry, runs=manager, cli_installer=cli_installer or CliInstaller())
     app.add_middleware(SecurityMiddleware, token=token)
-    for module in (health, doctor, settings, projects, config, agents, runs, findings):
+    for module in (health, doctor, settings, projects, config, agents, compare, runs, findings):
         app.include_router(module.router, prefix="/api")
     if ui_dir is not None and ui_dir.is_dir():
         app.mount("/", StaticFiles(directory=ui_dir, html=True), name="ui")

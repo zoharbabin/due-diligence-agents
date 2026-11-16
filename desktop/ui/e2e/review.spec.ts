@@ -114,3 +114,23 @@ test('agents: customize an agent, see it in the prompt, and go back to built-in'
   await expect(page.getByText('Back to the built-in agent.')).toBeVisible()
   await expect(page.getByText('Customized')).toHaveCount(0)
 })
+
+test('compare: a second review shows what is new, resolved and escalated', async ({ page }) => {
+  await createProject(page, room('compare-deal'))
+  await page.getByRole('tab', { name: 'Compare' }).click()
+  await expect(page.getByText(/Run a second review/)).toBeVisible()
+  for (const total of ['4 findings', '4 findings']) {
+    await page.getByRole('tab', { name: 'Overview' }).click()
+    await page.getByRole('button', { name: 'Run full review' }).click()
+    await expect(page.getByRole('progressbar')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Run full review' })).toBeVisible({ timeout: 30_000 })
+    await page.getByRole('tab', { name: 'Findings' }).click()
+    await expect(page.getByText(total)).toBeVisible()
+  }
+  await page.getByRole('tab', { name: 'Compare' }).click()
+  await expect(page.getByRole('heading', { name: /New findings \(1\)/ })).toBeVisible()
+  await expect(page.getByText('Missing data processing terms')).toBeVisible()
+  await expect(page.getByRole('heading', { name: /Resolved findings \(1\)/ })).toBeVisible()
+  await expect(page.getByText('Price increase clause')).toBeVisible()
+  await expect(page.getByRole('heading', { name: /Severity changed \(1\)/ })).toBeVisible()
+})
