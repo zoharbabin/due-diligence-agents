@@ -10,7 +10,7 @@ Passes
 1. Exact match after preprocessing
 2. Alias lookup  (``entity_aliases.canonical_to_variants``)
 3. Fuzzy matching  (``rapidfuzz.fuzz.token_sort_ratio``)
-4. TF-IDF cosine similarity  (``sklearn`` character n-grams)
+4. TF-IDF cosine similarity  (character n-grams, pure Python)
 5. Parent-child corporate hierarchy lookup
 6. Manual review queue  (unmatched gap logged)
 """
@@ -19,12 +19,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
+from collections import Counter
 from typing import TYPE_CHECKING, Any
 
-import numpy as np
 from rapidfuzz import fuzz
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 
 from dd_agents.entity_resolution.cache import EntityResolutionCache
 from dd_agents.entity_resolution.logging import MatchLogger
@@ -119,6 +118,52 @@ def _pass_3_fuzzy_match(
     return (best_match, best_score)
 
 
+def _char_wb_ngrams(text: str) -> list[str]:
+    """Character 3- and 4-grams inside word boundaries (padded with one space)."""
+    grams: list[str] = []
+    for word in text.lower().split():
+        padded = f" {word} "
+        for n in (3, 4):
+            offset = 0
+            grams.append(padded[offset : offset + n])
+            while offset + n < len(padded):
+                offset += 1
+                grams.append(padded[offset : offset + n])
+            if offset == 0:  # word shorter than n: count it once
+                break
+    return grams
+
+
+def _tfidf_similarities(source: str, targets: list[str]) -> list[float]:
+    """Cosine similarity of *source* to each target over char 3-4-gram TF-IDF.
+
+    Same math as scikit-learn's ``TfidfVectorizer(analyzer="char_wb",
+    ngram_range=(3, 4))`` (smooth idf, L2 norm), fitted on source plus targets.
+    Raises ``ValueError`` when no document yields an n-gram.
+    """
+    counts = [Counter(_char_wb_ngrams(doc)) for doc in [source, *targets]]
+    doc_freq: Counter[str] = Counter()
+    for c in counts:
+        doc_freq.update(c.keys())
+    if not doc_freq:
+        raise ValueError("empty vocabulary")
+    n_docs = len(counts)
+    idf = {g: math.log((1 + n_docs) / (1 + df)) + 1.0 for g, df in doc_freq.items()}
+
+    def vector(c: Counter[str]) -> dict[str, float]:
+        raw = {g: tf * idf[g] for g, tf in c.items()}
+        norm = math.sqrt(sum(v * v for v in raw.values()))
+        return {g: v / norm for g, v in raw.items()} if norm else {}
+
+    src = vector(counts[0])
+    result: list[float] = []
+    for c in counts[1:]:
+        tgt = vector(c)
+        small, large = (src, tgt) if len(src) <= len(tgt) else (tgt, src)
+        result.append(sum(v * large.get(g, 0.0) for g, v in small.items()))
+    return result
+
+
 def _pass_4_tfidf_match(
     preprocessed_source: str,
     target_names: dict[str, str],
@@ -142,24 +187,17 @@ def _pass_4_tfidf_match(
     if not target_list:
         return (None, 0.0)
 
-    all_names = [preprocessed_source] + target_list
-
-    vectorizer = TfidfVectorizer(
-        analyzer="char_wb",
-        ngram_range=(3, 4),
-    )
-
     try:
-        tfidf_matrix = vectorizer.fit_transform(all_names)
+        similarities = _tfidf_similarities(preprocessed_source, target_list)
     except ValueError:
         # Too few characters for n-grams
         return (None, 0.0)
 
-    # Compute cosine similarity between source (index 0) and all targets
-    similarities = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:])[0]
-
-    best_idx = int(np.argmax(similarities))
-    best_score = float(similarities[best_idx])
+    best_idx = 0
+    for i, sim in enumerate(similarities):
+        if sim > similarities[best_idx]:
+            best_idx = i
+    best_score = similarities[best_idx]
 
     if best_score >= TFIDF_THRESHOLD:
         best_preprocessed = target_list[best_idx]
