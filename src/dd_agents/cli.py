@@ -3381,6 +3381,57 @@ def _print_dry_run(deal_config: object, resume_from: int) -> None:
 
 
 # ---------------------------------------------------------------------------
+# serve command: local API for the desktop app
+# ---------------------------------------------------------------------------
+
+
+@main.command()
+@click.option("--port", type=click.IntRange(0, 65535), default=0, help="Port to listen on. 0 picks a free one.")
+@click.option(
+    "--ui-dir",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=None,
+    help="Built web UI to serve from the same origin.",
+)
+@click.option(
+    "--exit-on-stdin-close",
+    "exit_on_stdin_close",
+    is_flag=True,
+    default=False,
+    help="Exit when stdin closes. The desktop app sets this so no server is left behind.",
+)
+def serve(port: int, ui_dir: Path | None, exit_on_stdin_close: bool) -> None:
+    """Start the local API (127.0.0.1 only) used by the desktop app.
+
+    The bearer token comes from DD_API_TOKEN. Without it, a token is generated and
+    printed (browser dev mode). Needs: pip install "dd-agents[app]".
+    """
+    import os
+    import sys
+
+    token = os.environ.get("DD_API_TOKEN", "")
+    show_token = not token
+    try:
+        from dd_agents.api.security import MIN_TOKEN_LENGTH, new_token
+        from dd_agents.api.server import prepare, ready_line, watch_stdin
+    except ImportError as exc:
+        _print_error("Missing dependency", f"{exc}\n  Install the app extra: pip install 'dd-agents[app]'")
+        raise SystemExit(1) from exc
+    if token and len(token) < MIN_TOKEN_LENGTH:
+        _print_error("Invalid token", f"DD_API_TOKEN must be at least {MIN_TOKEN_LENGTH} characters")
+        raise SystemExit(1)
+    handle = prepare(token=token or new_token(), port=port, ui_dir=ui_dir)
+    try:
+        click.echo(ready_line(handle, show_token=show_token))
+        sys.stdout.flush()
+        if exit_on_stdin_close:
+            watch_stdin(sys.stdin.buffer, handle.server)
+        handle.server.run(sockets=[handle.sock])
+    finally:
+        handle.sock.close()
+
+
+# ---------------------------------------------------------------------------
 # screening group (Issue #274): sanctions list download and coverage
 # ---------------------------------------------------------------------------
 

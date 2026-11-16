@@ -35,6 +35,7 @@ All source lives under `src/dd_agents/`. Each package has one job:
 | `search/` | Contract search with citation verification | `runner.py` → `SearchRunner` |
 | `tools/` | MCP server + custom tool implementations | `mcp_server.py` |
 | `chat/` | Interactive chat mode | `engine.py` |
+| `api/` | Local HTTP API for the desktop app (127.0.0.1, bearer token, SSE run events). Needs the `[app]` extra | `app.py` → `create_app()`, `server.py` → `prepare()` |
 | `cli.py` | Click CLI command groups | `dd-agents` entry point |
 
 ## Design Rules

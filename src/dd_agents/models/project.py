@@ -15,7 +15,7 @@ class ProjectEntry(BaseModel):
     created_at: str = Field(description="ISO-8601 creation timestamp")
     last_run_at: str | None = Field(default=None, description="ISO-8601 of most recent run")
     last_run_id: str | None = Field(default=None, description="Most recent run ID")
-    status: str = Field(default="created", description="created | running | completed | failed | archived")
+    status: str = Field(default="created", description="created | running | completed | failed | cancelled | archived")
     total_runs: int = Field(default=0, ge=0, description="Total pipeline runs completed")
     total_subjects: int = Field(default=0, ge=0, description="Total subjects in the data room")
     total_findings: int = Field(default=0, ge=0, description="Total findings across all runs")
