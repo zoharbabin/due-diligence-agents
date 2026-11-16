@@ -36,6 +36,8 @@ All source lives under `src/dd_agents/`. Each package has one job:
 | `tools/` | MCP server + custom tool implementations | `mcp_server.py` |
 | `chat/` | Interactive chat mode | `engine.py` |
 | `api/` | Local HTTP API for the desktop app (127.0.0.1, bearer token, SSE run events). Needs the `[app]` extra | `app.py` → `create_app()`, `server.py` → `prepare()` |
+| `llm/cli_provision.py` | Pinned download of the `claude` CLI at first run (`cli_pins.json`, digest-checked) | `CliInstaller`, `managed_cli_path()` |
+| `desktop/` (repo root) | Tauri shell, React UI, runtime build and signing scripts for the desktop app. See `desktop/README.md` | `src-tauri/src/lib.rs`, `ui/src/` |
 | `cli.py` | Click CLI command groups | `dd-agents` entry point |
 
 ## Design Rules

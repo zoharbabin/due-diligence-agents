@@ -517,15 +517,6 @@ def version(as_json: bool) -> None:
 # doctor command — verify the LLM provider/model routing before a full run
 # ---------------------------------------------------------------------------
 
-# Which credential env var(s) each provider needs present. Bedrock/Vertex
-# accept either a profile or explicit keys; we check the common ones.
-_PROVIDER_CREDENTIAL_HINTS: dict[str, tuple[str, ...]] = {
-    "anthropic": ("ANTHROPIC_API_KEY",),
-    "bedrock": ("AWS_PROFILE", "AWS_ACCESS_KEY_ID", "AWS_BEARER_TOKEN_BEDROCK"),
-    "vertex": ("ANTHROPIC_VERTEX_PROJECT_ID", "GOOGLE_APPLICATION_CREDENTIALS"),
-    "gateway": ("ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY"),
-}
-
 
 @main.command()
 @click.option(
@@ -553,32 +544,30 @@ def doctor(probe: bool, config_path: Path | None, as_json: bool) -> None:
     availability. Exits non-zero on a missing credential/backend so config errors
     surface before a multi-hour run.
     """
-    import os
-
-    from dd_agents.llm import resolve_provider
+    from dd_agents.llm import PROVIDER_CREDENTIAL_HINTS, credential_present, probe_provider, resolve_provider
 
     info = resolve_provider()
     receipt = info.as_receipt()
-    hints = _PROVIDER_CREDENTIAL_HINTS.get(info.provider, ())
-    credential_present = any(os.getenv(name) for name in hints)
+    hints = PROVIDER_CREDENTIAL_HINTS.get(info.provider, ())
+    has_credential = credential_present(info)
 
     probe_ok: bool | None = None
     probe_detail = ""
     if probe:
-        probe_ok, probe_detail = _probe_provider()
+        probe_ok, probe_detail = probe_provider()
 
     config_validation = _validate_config_preflight(config_path) if config_path is not None else None
     config_ok = config_validation is None or config_validation["ok"]
 
     if as_json:
-        out: dict[str, Any] = {**receipt, "credential_present": credential_present}
+        out: dict[str, Any] = {**receipt, "credential_present": has_credential}
         if probe:
             out["probe_ok"] = probe_ok
             out["probe_detail"] = probe_detail
         if config_validation is not None:
             out["config_validation"] = config_validation
         click.echo(json.dumps(out))
-        if (probe and not probe_ok) or not credential_present or not config_ok:
+        if (probe and not probe_ok) or not has_credential or not config_ok:
             raise SystemExit(1)
         return
 
@@ -590,8 +579,8 @@ def doctor(probe: bool, config_path: Path | None, as_json: bool) -> None:
         lines.append(f"[bold]Gateway:[/bold] {receipt['base_url']}")
     if info.max_output_tokens is not None:
         lines.append(f"[bold]Output-token clamp:[/bold] {info.max_output_tokens}")
-    cred_color = "green" if credential_present else "yellow"
-    cred_text = "present" if credential_present else f"NOT found (looked for: {', '.join(hints) or 'n/a'})"
+    cred_color = "green" if has_credential else "yellow"
+    cred_text = "present" if has_credential else f"NOT found (looked for: {', '.join(hints) or 'n/a'})"
     lines.append(f"[bold]Credential:[/bold] [{cred_color}]{cred_text}[/{cred_color}]")
     if probe:
         probe_color = "green" if probe_ok else "red"
@@ -599,9 +588,9 @@ def doctor(probe: bool, config_path: Path | None, as_json: bool) -> None:
         if probe_detail:
             lines.append(f"  {probe_detail}")
 
-    border = "green" if credential_present and (probe_ok is not False) else "yellow"
+    border = "green" if has_credential and (probe_ok is not False) else "yellow"
     console.print(Panel("\n".join(lines), title="LLM Provider Routing", border_style=border))
-    if not credential_present:
+    if not has_credential:
         console.print(
             "[yellow]No credential detected for this provider. "
             "Set the appropriate env var — see docs/user-guide/model-providers.md.[/yellow]"
@@ -610,7 +599,7 @@ def doctor(probe: bool, config_path: Path | None, as_json: bool) -> None:
     if config_validation is not None:
         _print_config_validation(config_validation)
 
-    if (probe and not probe_ok) or not credential_present or not config_ok:
+    if (probe and not probe_ok) or not has_credential or not config_ok:
         raise SystemExit(1)
 
 
@@ -754,30 +743,6 @@ def _print_config_validation(result: dict[str, Any]) -> None:
         color = {"pass": "green", "warn": "yellow", "error": "red"}.get(status, "white")
         table.add_row(str(check.get("name", "")), f"[{color}]{status}[/{color}]", str(check.get("detail", "")))
     err_console.print(table) if not result.get("ok") else console.print(table)
-
-
-def _probe_provider() -> tuple[bool, str]:
-    """Issue one minimal query through the seam. Returns (ok, detail)."""
-    import asyncio
-
-    async def _run() -> tuple[bool, str]:
-        try:
-            from claude_agent_sdk import query
-
-            from dd_agents.llm import build_agent_options
-
-            options = build_agent_options(max_turns=1, tools=[], allowed_tools=[])
-            text = ""
-            async for message in query(prompt="Reply with the single word: OK", options=options):
-                for attr in ("content", "result", "text"):
-                    val = getattr(message, attr, None)
-                    if isinstance(val, str):
-                        text += val
-            return (bool(text.strip()), f"response chars: {len(text.strip())}")
-        except Exception as exc:  # noqa: BLE001 — diagnostic surface, report any failure
-            return (False, f"{type(exc).__name__}: {exc}")
-
-    return asyncio.run(_run())
 
 
 # ---------------------------------------------------------------------------

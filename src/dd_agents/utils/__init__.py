@@ -24,7 +24,8 @@ def resolve_sdk_cli_path() -> str | None:
 
     1. ``DD_AGENTS_CLI_PATH`` environment variable (explicit override).
     2. System-installed ``claude`` binary on ``$PATH``.
-    3. ``None`` — let the SDK use its bundled binary.
+    3. The pinned CLI the desktop app downloaded (``llm.cli_provision``).
+    4. ``None`` — let the SDK use its bundled binary.
 
     Using the system-installed CLI avoids version mismatches between the
     SDK's bundled binary and the latest release (e.g. Bedrock auth fixes
@@ -40,4 +41,7 @@ def resolve_sdk_cli_path() -> str | None:
     if system_cli:
         return system_cli
 
-    return None
+    from dd_agents.llm.cli_provision import managed_cli_path
+
+    managed = managed_cli_path()
+    return str(managed) if managed else None

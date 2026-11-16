@@ -1,0 +1,241 @@
+name: Desktop app
+
+# Builds the installers. Pull requests build unsigned. A version tag (or a manual
+# run with "sign" on) signs, notarizes (macOS) and, for a tag, attaches the files
+# to the GitHub Release. See RELEASE.md.
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+    paths:
+      - "desktop/**"
+      - ".github/workflows/desktop.yml"
+  workflow_dispatch:
+    inputs:
+      sign:
+        description: "Sign and notarize (uses repo secrets)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  SIGN: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.sign)) && 'true' || 'false' }}
+
+jobs:
+  mac:
+    name: "macOS (Apple Silicon)"
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: desktop/ui/package-lock.json
+      - name: Version
+        id: version
+        run: echo "value=$(python .github/scripts/app_version.py "${GITHUB_REF_NAME}")" >> "$GITHUB_OUTPUT"
+      - name: Build the Python runtime
+        run: python desktop/scripts/build_runtime.py
+      - name: Build the UI
+        working-directory: desktop/ui
+        run: |
+          npm ci
+          npm run build
+      - name: Import the Developer ID certificate
+        if: env.SIGN == 'true'
+        env:
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+        run: |
+          keychain="$RUNNER_TEMP/build.keychain-db"
+          pass="$(uuidgen)"
+          security create-keychain -p "$pass" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$pass" "$keychain"
+          echo "$MACOS_SIGN_P12" | base64 -d > "$RUNNER_TEMP/devid.p12"
+          security import "$RUNNER_TEMP/devid.p12" -k "$keychain" -P "$MACOS_SIGN_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/devid.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$pass" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          # A p12 without the full chain makes AMFI kill signed binaries at launch (web-researcher-mcp #204).
+          security find-identity -v -p codesigning "$keychain" | tee "$RUNNER_TEMP/identities.txt"
+          grep -q "Developer ID Application" "$RUNNER_TEMP/identities.txt" || { echo "::error::No valid Developer ID Application identity. Re-export the p12 with the full chain."; exit 1; }
+          echo "$MACOS_NOTARY_KEY" | base64 -d > "$RUNNER_TEMP/notary.p8"
+          echo "APPLE_API_KEY_PATH=$RUNNER_TEMP/notary.p8" >> "$GITHUB_ENV"
+      - name: Sign the Python runtime
+        if: env.SIGN == 'true'
+        env:
+          IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+        run: python desktop/scripts/sign_macos.py desktop/src-tauri/resources/python "$IDENTITY"
+      - name: Build, sign and notarize the app
+        working-directory: desktop/src-tauri
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ env.SIGN == 'true' && secrets.MACOS_SIGN_IDENTITY || '' }}
+          APPLE_API_ISSUER: ${{ env.SIGN == 'true' && secrets.MACOS_NOTARY_ISSUER_ID || '' }}
+          APPLE_API_KEY: ${{ env.SIGN == 'true' && secrets.MACOS_NOTARY_KEY_ID || '' }}
+        run: |
+          # Tauri treats an empty variable as set and then tries to sign with "".
+          [ "$SIGN" = "true" ] || unset APPLE_SIGNING_IDENTITY APPLE_API_ISSUER APPLE_API_KEY
+          python ../scripts/tauri_override.py "${{ steps.version.outputs.value }}" > "$RUNNER_TEMP/override.json"
+          ../ui/node_modules/.bin/tauri build --ci --bundles app,dmg --config "$RUNNER_TEMP/override.json"
+      - name: Verify the signature and notarization
+        if: env.SIGN == 'true'
+        run: |
+          app="desktop/src-tauri/target/release/bundle/macos/Due Diligence Agents.app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          spctl --assess --type execute --verbose=4 "$app"
+          xcrun stapler validate "$app"
+      - name: Run the shell tests against the built runtime
+        working-directory: desktop/src-tauri
+        env:
+          DD_DESKTOP_PYTHON: ${{ github.workspace }}/desktop/src-tauri/resources/python/bin/python3
+        run: cargo test --locked
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-macos
+          path: desktop/src-tauri/target/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove the keychain
+        if: always() && env.SIGN == 'true'
+        run: |
+          security delete-keychain "$RUNNER_TEMP/build.keychain-db" || true
+          rm -f "$RUNNER_TEMP/notary.p8"
+
+  windows:
+    name: "Windows (x64)"
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: desktop/ui/package-lock.json
+      - name: Version
+        id: version
+        run: echo "value=$(python .github/scripts/app_version.py "${GITHUB_REF_NAME}")" >> "$GITHUB_OUTPUT"
+      - name: Build the Python runtime
+        run: python desktop/scripts/build_runtime.py
+      - name: Build the UI
+        working-directory: desktop/ui
+        run: |
+          npm ci
+          npm run build
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        if: env.SIGN == 'true'
+        with:
+          dotnet-version: "10.0.x"
+      - name: Install the Artifact Signing client
+        if: env.SIGN == 'true'
+        env:
+          AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+          CLIENT_VERSION: "1.0.151"
+          CLIENT_SHA256: "35375a4bc4e1102da729fc3d8d9925f774c3baae6b8b7ff6398d948ca9ab0d8a"
+        run: |
+          dir="$RUNNER_TEMP/acs"
+          mkdir -p "$dir"
+          curl -fsSL -o "$dir/client.nupkg" "https://api.nuget.org/v3-flatcontainer/microsoft.artifactsigning.client/${CLIENT_VERSION}/microsoft.artifactsigning.client.${CLIENT_VERSION}.nupkg"
+          echo "${CLIENT_SHA256}  $dir/client.nupkg" | sha256sum -c -
+          unzip -q "$dir/client.nupkg" -d "$dir/pkg"
+          cat > "$dir/metadata.json" <<JSON
+          {"Endpoint": "${AZURE_SIGNING_ENDPOINT}", "CodeSigningAccountName": "${AZURE_SIGNING_ACCOUNT}", "CertificateProfileName": "${AZURE_SIGNING_PROFILE}"}
+          JSON
+          signtool="$(ls "/c/Program Files (x86)/Windows Kits/10/bin/"*/x64/signtool.exe | sort -V | tail -1)"
+          echo "Using $signtool"
+          {
+            echo "SIGNTOOL=$(cygpath -w "$signtool")"
+            echo "ACS_DLIB=$(cygpath -w "$dir/pkg/bin/x64/Azure.CodeSigning.Dlib.dll")"
+            echo "ACS_METADATA=$(cygpath -w "$dir/metadata.json")"
+          } >> "$GITHUB_ENV"
+      - name: Sign the Python runtime
+        if: env.SIGN == 'true'
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        run: python desktop/scripts/sign_windows.py desktop/src-tauri/resources/python
+      - name: Build the installer
+        working-directory: desktop/src-tauri
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        run: |
+          args=()
+          if [ "$SIGN" = "true" ]; then
+            args=(--windows-sign-script "$GITHUB_WORKSPACE/desktop/scripts/sign_windows.py")
+          fi
+          python ../scripts/tauri_override.py "${{ steps.version.outputs.value }}" "${args[@]}" > "$RUNNER_TEMP/override.json"
+          ../ui/node_modules/.bin/tauri build --ci --bundles nsis --config "$(cygpath -w "$RUNNER_TEMP/override.json")"
+      - name: Verify the signature
+        if: env.SIGN == 'true'
+        shell: pwsh
+        run: |
+          # Check the installer and the app exe inside it, not the build output.
+          $setup = Get-ChildItem desktop/src-tauri/target/release/bundle/nsis/*.exe
+          $out = Join-Path $env:RUNNER_TEMP 'installed'
+          7z x $setup.FullName "-o$out" -y | Out-Null
+          $files = @($setup) + (Get-ChildItem $out -Recurse -Filter 'due-diligence-agents.exe')
+          if ($files.Count -lt 2) { throw "The app exe was not found in the installer" }
+          $bad = @()
+          foreach ($f in $files) {
+            $s = Get-AuthenticodeSignature $f
+            Write-Host "$($f.Name): $($s.Status) $($s.SignerCertificate.Subject)"
+            if ($s.Status -ne 'Valid') { $bad += $f }
+          }
+          if ($bad.Count -gt 0) { throw "Unsigned or invalid files above" }
+      - name: Run the shell tests against the built runtime
+        working-directory: desktop/src-tauri
+        env:
+          DD_DESKTOP_PYTHON: ${{ github.workspace }}\desktop\src-tauri\resources\python\python.exe
+        run: cargo test --locked
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-windows
+          path: desktop/src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: "Attach to the GitHub Release"
+    needs: [mac, windows]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: installers
+          merge-multiple: true
+      - name: Checksums
+        working-directory: installers
+        run: sha256sum * > SHA256SUMS-desktop.txt
+      - uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: installers/*

@@ -959,7 +959,7 @@ Exit code `1`: a pack is missing, nothing was extracted, or the sample has an un
 
 ## serve
 
-Starts the local API that the desktop app talks to. Needs `pip install "dd-agents[app]"`. It listens on `127.0.0.1` only. There is no `--host` option.
+Starts the local API that the [desktop app](desktop-app.md) talks to. Needs `pip install "dd-agents[app]"`. It listens on `127.0.0.1` only. There is no `--host` option.
 
 ```bash
 dd-agents serve [--port N] [--ui-dir DIR] [--exit-on-stdin-close]

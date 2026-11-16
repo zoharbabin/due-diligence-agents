@@ -11,9 +11,10 @@ from fastapi.staticfiles import StaticFiles
 
 import dd_agents
 from dd_agents.api.context import AppContext
-from dd_agents.api.routers import config, findings, health, projects, runs
+from dd_agents.api.routers import config, doctor, findings, health, projects, runs, settings
 from dd_agents.api.runs import RunManager
 from dd_agents.api.security import MIN_TOKEN_LENGTH, SecurityMiddleware
+from dd_agents.llm.cli_provision import CliInstaller
 from dd_agents.persistence.project_registry import ProjectRegistryManager
 
 
@@ -23,6 +24,7 @@ def create_app(
     registry_dir: Path | None = None,
     ui_dir: Path | None = None,
     run_manager: RunManager | None = None,
+    cli_installer: CliInstaller | None = None,
 ) -> FastAPI:
     """Build the API app.
 
@@ -46,9 +48,9 @@ def create_app(
         docs_url=None,
         redoc_url=None,
     )
-    app.state.ctx = AppContext(registry=registry, runs=manager)
+    app.state.ctx = AppContext(registry=registry, runs=manager, cli_installer=cli_installer or CliInstaller())
     app.add_middleware(SecurityMiddleware, token=token)
-    for module in (health, projects, config, runs, findings):
+    for module in (health, doctor, settings, projects, config, runs, findings):
         app.include_router(module.router, prefix="/api")
     if ui_dir is not None and ui_dir.is_dir():
         app.mount("/", StaticFiles(directory=ui_dir, html=True), name="ui")

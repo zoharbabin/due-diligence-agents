@@ -207,3 +207,58 @@ def build_agent_options(
         kwargs["env"] = env
 
     return ClaudeAgentOptions(**kwargs)
+
+
+# Credential env vars each provider needs. Bedrock/Vertex accept a profile or explicit keys,
+# so the common ones are listed. Names only: values are never read into a response.
+PROVIDER_CREDENTIAL_HINTS: dict[str, tuple[str, ...]] = {
+    "anthropic": ("ANTHROPIC_API_KEY",),
+    "bedrock": ("AWS_PROFILE", "AWS_ACCESS_KEY_ID", "AWS_BEARER_TOKEN_BEDROCK"),
+    "vertex": ("ANTHROPIC_VERTEX_PROJECT_ID", "GOOGLE_APPLICATION_CREDENTIALS"),
+    "gateway": ("ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY"),
+}
+
+_SECRET_ENV = (
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_SESSION_TOKEN",
+    "AWS_BEARER_TOKEN_BEDROCK",
+    "ANTHROPIC_BASE_URL",
+)
+
+
+def credential_present(info: ProviderInfo) -> bool:
+    """True when at least one credential env var for the active provider is set."""
+    return any(os.getenv(name) for name in PROVIDER_CREDENTIAL_HINTS.get(info.provider, ()))
+
+
+def scrub_secrets(text: str) -> str:
+    """Replace any configured secret value found in ``text`` with ``***``."""
+    for name in _SECRET_ENV:
+        value = os.getenv(name, "").strip()
+        if len(value) >= 6:
+            text = text.replace(value, "***")
+    return text
+
+
+def probe_provider() -> tuple[bool, str]:
+    """Issue one minimal query through the seam. Returns ``(ok, detail)``. Calls the provider."""
+    import asyncio
+
+    async def _run() -> tuple[bool, str]:
+        try:
+            from claude_agent_sdk import query
+
+            options = build_agent_options(max_turns=1, tools=[], allowed_tools=[])
+            text = ""
+            async for message in query(prompt="Reply with the single word: OK", options=options):
+                for attr in ("content", "result", "text"):
+                    val = getattr(message, attr, None)
+                    if isinstance(val, str):
+                        text += val
+            return (bool(text.strip()), f"response chars: {len(text.strip())}")
+        except Exception as exc:  # noqa: BLE001 - diagnostic surface, report any failure
+            return (False, scrub_secrets(f"{type(exc).__name__}: {exc}"))
+
+    return asyncio.run(_run())

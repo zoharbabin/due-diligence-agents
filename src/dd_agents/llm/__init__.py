@@ -15,13 +15,21 @@ This package centralizes that contract so no call site hand-builds
 from __future__ import annotations
 
 from dd_agents.llm.provider import (
+    PROVIDER_CREDENTIAL_HINTS,
     ProviderInfo,
     build_agent_options,
+    credential_present,
+    probe_provider,
     resolve_provider,
+    scrub_secrets,
 )
 
 __all__ = [
+    "PROVIDER_CREDENTIAL_HINTS",
     "ProviderInfo",
     "build_agent_options",
+    "credential_present",
+    "probe_provider",
     "resolve_provider",
+    "scrub_secrets",
 ]

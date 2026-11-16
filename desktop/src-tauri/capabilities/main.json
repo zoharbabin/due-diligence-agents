@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main",
+  "description": "The window loads the local API origin. Only these calls are allowed.",
+  "windows": ["main"],
+  "remote": { "urls": ["http://127.0.0.1:*/*"] },
+  "permissions": ["allow-get-api-token", "allow-save-provider-env", "dialog:allow-open"]
+}

@@ -75,3 +75,13 @@ report-*.png
 
 # Discoverability & DX harness run logs (scripts/discoverability-dx-harness.sh)
 .dx-harness-out/
+
+# Desktop UI
+desktop/ui/test-results/
+desktop/ui/playwright-report/
+
+# Desktop shell
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+desktop/src-tauri/resources/
+desktop/.cache/
