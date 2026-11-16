@@ -195,9 +195,14 @@ jobs:
         if: env.SIGN == 'true'
         shell: pwsh
         run: |
-          $bad = Get-ChildItem desktop/src-tauri/target/release/bundle/nsis/*.exe, desktop/src-tauri/target/release/due-diligence-agents.exe |
-            ForEach-Object { $s = Get-AuthenticodeSignature $_; "$($_.Name): $($s.Status)"; if ($s.Status -ne 'Valid') { $_ } }
-          if ($bad) { throw "Unsigned or invalid files above" }
+          $files = Get-ChildItem desktop/src-tauri/target/release/bundle/nsis/*.exe, desktop/src-tauri/target/release/due-diligence-agents.exe
+          $bad = @()
+          foreach ($f in $files) {
+            $s = Get-AuthenticodeSignature $f
+            Write-Host "$($f.Name): $($s.Status)"
+            if ($s.Status -ne 'Valid') { $bad += $f }
+          }
+          if ($bad.Count -gt 0) { throw "Unsigned or invalid files above" }
       - name: Run the shell tests against the built runtime
         working-directory: desktop/src-tauri
         env:
