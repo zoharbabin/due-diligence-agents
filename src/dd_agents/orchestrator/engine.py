@@ -22,11 +22,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from dd_agents.models.events import RunEventType
 from dd_agents.orchestrator.checkpoints import (
     clean_checkpoints,
     load_checkpoint_by_step,
     save_checkpoint,
 )
+from dd_agents.orchestrator.events import RunEventLog
+from dd_agents.orchestrator.progress import PipelineProgressTracker
 from dd_agents.orchestrator.state import PipelineError, PipelineState, StepResult
 from dd_agents.orchestrator.steps import PipelineStep
 from dd_agents.orchestrator.team import AgentTeam
@@ -104,6 +107,8 @@ class PipelineEngine:
         from dd_agents.agents.registry import AgentRegistry
 
         self.cost_tracker = CostTracker()
+        self.events = RunEventLog(self.project_dir / "_dd" / "forensic-dd" / "events.jsonl")
+        self.progress = PipelineProgressTracker(total_steps=self.TOTAL_STEPS)
 
         AgentRegistry.discover_entry_points()
         self._active_agents: list[str] = AgentRegistry.resolve_active()
@@ -281,6 +286,16 @@ class PipelineEngine:
 
         ordered_steps = list(PipelineStep)
 
+        if resume_from_step == 0:
+            self.events.reset()
+        self.events.emit(
+            RunEventType.RUN_STARTED,
+            run_id=self.state.run_id,
+            resume_from_step=resume_from_step,
+            total_steps=self.TOTAL_STEPS,
+            active_agents=list(self._active_agents),
+        )
+
         for step_enum in ordered_steps:
             step_num = step_enum.step_number
             if step_num < resume_from_step:
@@ -300,6 +315,15 @@ class PipelineEngine:
                 cond_label,
             )
 
+            self.progress.start_step(step_num, step_enum.value)
+            self.events.emit(
+                RunEventType.STEP_STARTED,
+                run_id=self.state.run_id,
+                step=step_enum.value,
+                step_number=step_num,
+                blocking_gate=step_enum.is_blocking_gate,
+                conditional=step_enum.is_conditional,
+            )
             t0 = time.monotonic()
             try:
                 self.state = await self._execute_with_retry(step_enum, step_fn, self.state)
@@ -314,6 +338,21 @@ class PipelineEngine:
                 self.state.completed_steps.append(step_enum)
                 save_checkpoint(self.state, self.checkpoint_dir)
                 logger.info("  Completed in %dms", duration_ms)
+                self.progress.complete_step()
+                snap = self.progress.snapshot
+                self.events.emit(
+                    RunEventType.STEP_COMPLETED,
+                    run_id=self.state.run_id,
+                    step=step_enum.value,
+                    step_number=step_num,
+                    duration_ms=duration_ms,
+                    completed_steps=snap["completed_steps"],
+                    total_steps=snap["total_steps"],
+                    elapsed_ms=int(snap["elapsed_ms"]),
+                    eta_ms=int(snap["estimated_remaining_ms"]),
+                    total_cost_usd=round(self.cost_tracker.total_cost(), 6),
+                    total_tokens=self.cost_tracker.total_tokens(),
+                )
 
             except BlockingGateError as exc:
                 duration_ms = int((time.monotonic() - t0) * 1000)
@@ -335,6 +374,11 @@ class PipelineEngine:
                 )
                 save_checkpoint(self.state, self.checkpoint_dir)
                 logger.error("  BLOCKING GATE FAILED at step %d: %s", step_num, exc)
+                self._emit_failure(step_enum, step_num, exc, blocking_gate=True)
+                raise
+
+            except Exception as exc:
+                self._emit_failure(step_enum, step_num, exc, blocking_gate=False)
                 raise
 
         # Issue #56: include DoD summary in completion message and set exit status
@@ -351,7 +395,34 @@ class PipelineEngine:
             self.state.exit_code = 1
 
         clean_checkpoints(self.checkpoint_dir)
+        self.events.emit(
+            RunEventType.RUN_COMPLETED,
+            run_id=self.state.run_id,
+            exit_code=self.state.exit_code,
+            dod_passed=bool(dod_passed),
+            total_cost_usd=round(self.cost_tracker.total_cost(), 6),
+            total_tokens=self.cost_tracker.total_tokens(),
+        )
         return self.state
+
+    def _emit_failure(self, step: PipelineStep, step_number: int, exc: BaseException, *, blocking_gate: bool) -> None:
+        """Report a failed step and the run failure that follows it."""
+        self.events.emit(
+            RunEventType.STEP_FAILED,
+            run_id=self.state.run_id,
+            step=step.value,
+            step_number=step_number,
+            blocking_gate=blocking_gate,
+            error=str(exc),
+        )
+        self.events.emit(
+            RunEventType.RUN_FAILED,
+            run_id=self.state.run_id,
+            step=step.value,
+            error_type=type(exc).__name__,
+            error=str(exc),
+            blocking_gate=blocking_gate,
+        )
 
     # ------------------------------------------------------------------
     # Step registry
@@ -1787,12 +1858,38 @@ class PipelineEngine:
 
         team = self._ensure_team(state)
 
-        results = await team.spawn_specialists(
-            num_subjects=len(state.subject_safe_names),
-            agents=agents_to_run,
-        )
+        total_subjects = len(state.subject_safe_names)
+        for agent_name in agents_to_run:
+            self.events.emit(
+                RunEventType.AGENT_STARTED,
+                run_id=state.run_id,
+                step="16_spawn_specialists",
+                agent=agent_name,
+                total_subjects=total_subjects,
+            )
+        watcher = asyncio.create_task(self._watch_agent_progress(state, findings_dir, agents_to_run, total_subjects))
+        try:
+            results = await team.spawn_specialists(
+                num_subjects=total_subjects,
+                agents=agents_to_run,
+            )
+        finally:
+            watcher.cancel()
+            await asyncio.gather(watcher, return_exceptions=True)
         for name, result in results.items():
             state.agent_results[name] = result
+            self.events.emit(
+                RunEventType.AGENT_COMPLETED,
+                run_id=state.run_id,
+                step="16_spawn_specialists",
+                agent=name,
+                ok=not result.get("is_error"),
+                turns=result.get("num_turns", 0),
+                cost_usd=round(float(result.get("cost_usd", 0.0)), 6),
+                duration_ms=result.get("duration_ms", 0),
+                subjects_done=self._count_agent_outputs(findings_dir, name),
+                total_subjects=total_subjects,
+            )
             state.agent_sessions[name] = result.get("session_id", "")
             state.agent_costs[name] = result.get("cost_usd", 0.0)
 
@@ -1833,6 +1930,41 @@ class PipelineEngine:
         self._backfill_coverage_manifests(state.run_dir, state.subject_safe_names)
 
         return state
+
+    @staticmethod
+    def _count_agent_outputs(findings_dir: Path, agent: str) -> int:
+        """Per-subject finding files written so far by *agent* (rule 2: one file per subject)."""
+        agent_dir = findings_dir / agent
+        try:
+            return sum(1 for f in agent_dir.glob("*.json") if f.is_file())
+        except OSError:
+            return 0
+
+    async def _watch_agent_progress(
+        self,
+        state: PipelineState,
+        findings_dir: Path,
+        agents: list[str],
+        total_subjects: int,
+        interval_s: float = 2.0,
+    ) -> None:
+        """Emit ``agent_progress`` whenever an agent's finished-subject count changes."""
+        last: dict[str, int] = {}
+        while True:
+            for agent in agents:
+                done = self._count_agent_outputs(findings_dir, agent)
+                if done != last.get(agent):
+                    last[agent] = done
+                    self.progress.update_agent_progress(agent, done, total_subjects)
+                    self.events.emit(
+                        RunEventType.AGENT_PROGRESS,
+                        run_id=state.run_id,
+                        step="16_spawn_specialists",
+                        agent=agent,
+                        subjects_done=done,
+                        total_subjects=total_subjects,
+                    )
+            await asyncio.sleep(interval_s)
 
     async def _step_17_coverage_gate(self, state: PipelineState) -> PipelineState:
         """Validate specialist output coverage.  BLOCKING GATE.
