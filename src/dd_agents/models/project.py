@@ -28,10 +28,14 @@ class ProjectEntry(BaseModel):
     locked_by: int | None = Field(default=None, description="PID if currently running")
 
 
+REGISTRY_VERSION = 1
+"""Current on-disk registry format. Bump on any breaking change to the file."""
+
+
 class ProjectRegistry(BaseModel):
     """Global registry of all deal projects."""
 
-    version: int = Field(default=1, description="Registry format version")
+    version: int = Field(default=REGISTRY_VERSION, description="Registry format version")
     base_dir: str = Field(description="Base directory for the registry file")
     projects: list[ProjectEntry] = Field(default_factory=list, description="All registered deal projects")
     last_updated: str = Field(default="", description="ISO-8601 timestamp of last registry update")
