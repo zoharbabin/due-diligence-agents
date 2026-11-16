@@ -125,3 +125,21 @@ export interface CliInstall {
   total: number | null
   error: string | null
 }
+
+export interface AgentRow {
+  name: string
+  display_name: string
+  status: 'enabled' | 'disabled'
+  has_override: boolean
+}
+
+export interface AgentDetail {
+  name: string
+  description: string
+  override: string | null
+}
+
+export interface Profile {
+  name: string
+  content: string
+}

@@ -19,6 +19,7 @@ Release builds are signed. The macOS app is also notarized. The app checks for a
 2. **Download the Claude engine.** One click. The app downloads Anthropic's `claude` command line tool and checks it against a fixed digest before use. It is stored under `~/.dd-projects/.cli/` (or `$DD_BASE_DIR/.cli/`). A `claude` already on your `PATH` is used instead.
 3. **Paste your Anthropic API key.** The app tests it and stores it in your system keychain. For Bedrock, Vertex or a gateway, set the provider variables before you start the app. See [Model Providers](model-providers.md). To test, replace or remove the key later, open **Settings**.
 4. **New project.** Pick the folder with your contracts and run the review.
+5. **Optional: tune an agent.** In a project, open **Agents**. Pick one, start from a profile and save. The change applies to that project only and is checked before it is saved. Use **Preview prompt** to see exactly what the agent receives. The safety rules cannot be changed.
 
 ## Where things are
 

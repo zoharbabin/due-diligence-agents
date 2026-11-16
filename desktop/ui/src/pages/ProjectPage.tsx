@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { api, ApiError } from '../api/client'
 import { streamEvents } from '../api/sse'
 import { SEVERITIES, type DealConfig, type Project, type RunState, type RunSummary } from '../api/types'
+import { AgentsPanel } from '../components/AgentsPanel'
 import { ConfigEditor } from '../components/ConfigEditor'
 import { FindingsTable } from '../components/FindingsTable'
 import { ReportFrame } from '../components/ReportFrame'
@@ -21,7 +22,7 @@ async function settled(slug: string, signal: AbortSignal): Promise<void> {
   }
 }
 
-type Tab = 'overview' | 'findings' | 'report' | 'settings'
+type Tab = 'overview' | 'findings' | 'report' | 'agents' | 'settings'
 
 export function ProjectPage() {
   const { slug = '' } = useParams()
@@ -118,6 +119,7 @@ export function ProjectPage() {
           { id: 'overview', label: 'Overview' },
           { id: 'findings', label: 'Findings' },
           { id: 'report', label: 'Report' },
+          { id: 'agents', label: 'Agents' },
           { id: 'settings', label: 'Settings' },
         ]}
       />
@@ -179,6 +181,8 @@ export function ProjectPage() {
         ) : (
           <p className="text-sm text-slate-500">The report appears here after a run finishes.</p>
         ))}
+
+      {tab === 'agents' && <AgentsPanel slug={slug} />}
 
       {tab === 'settings' &&
         (config.loading ? (
