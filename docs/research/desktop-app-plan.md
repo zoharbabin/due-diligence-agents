@@ -1,6 +1,8 @@
-# Desktop App Plan (Proposal)
+# Desktop App Plan
 
-Status: **proposal, nothing here ships yet.** Two research rounds on 2026-11-15, against the code in `src/dd_agents/`, local measurements on an Apple Silicon Mac, and the public sources linked inline. Each claim is marked **verified** (checked here), **sourced** (from a doc, not re-tested), or **unverified** (needs a Phase 0 spike).
+Status: **in progress.** The views in the table below are built: Projects, Run, Report, Findings, Ask, Compare, Agents, Screening, History and Settings, plus in-app updates. For what ships today, read [the desktop app guide](../user-guide/desktop-app.md) and `desktop/README.md`, not this plan. The sections below are the original proposal and still describe the design intent. Not done yet: the first signed release (see `RELEASE.md`), Homebrew cask and winget, the clean-VM spikes (S1, S3, S6) and the items under Open items that need the owner.
+
+Original research: two rounds on 2026-11-15, against the code in `src/dd_agents/`, local measurements on an Apple Silicon Mac, and the public sources linked inline. Each claim is marked **verified** (checked here), **sourced** (from a doc, not re-tested), or **unverified** (needs a Phase 0 spike).
 
 Goal: a signed, installable Mac and Windows app. Deal teams manage projects, run analyses, read reports, compare targets, and edit agents and prompts. No terminal, no Python install.
 
