@@ -41,7 +41,10 @@ pub fn validate(values: &HashMap<String, String>) -> Result<(), String> {
 }
 
 /// Apply an update to a map: empty values remove the key.
-pub fn merge(mut current: HashMap<String, String>, update: HashMap<String, String>) -> HashMap<String, String> {
+pub fn merge(
+    mut current: HashMap<String, String>,
+    update: HashMap<String, String>,
+) -> HashMap<String, String> {
     for (name, value) in update {
         if value.is_empty() {
             current.remove(&name);
@@ -58,10 +61,16 @@ fn entry() -> Result<keyring::Entry, String> {
 
 /// Saved settings. A missing entry or an unreadable keychain gives an empty map, so the app still starts.
 pub fn load() -> HashMap<String, String> {
-    let Ok(entry) = entry() else { return HashMap::new() };
-    let Ok(text) = entry.get_password() else { return HashMap::new() };
+    let Ok(entry) = entry() else {
+        return HashMap::new();
+    };
+    let Ok(text) = entry.get_password() else {
+        return HashMap::new();
+    };
     let map: HashMap<String, String> = serde_json::from_str(&text).unwrap_or_default();
-    map.into_iter().filter(|(k, _)| SETTABLE_ENV.contains(&k.as_str())).collect()
+    map.into_iter()
+        .filter(|(k, _)| SETTABLE_ENV.contains(&k.as_str()))
+        .collect()
 }
 
 pub fn save(update: HashMap<String, String>) -> Result<(), String> {
@@ -76,7 +85,10 @@ mod tests {
     use super::*;
 
     fn map(pairs: &[(&str, &str)]) -> HashMap<String, String> {
-        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
     }
 
     #[test]
@@ -98,7 +110,10 @@ mod tests {
 
     #[test]
     fn empty_value_removes() {
-        let out = merge(map(&[("AWS_PROFILE", "p"), ("AWS_REGION", "r")]), map(&[("AWS_PROFILE", "")]));
+        let out = merge(
+            map(&[("AWS_PROFILE", "p"), ("AWS_REGION", "r")]),
+            map(&[("AWS_PROFILE", "")]),
+        );
         assert_eq!(out, map(&[("AWS_REGION", "r")]));
     }
 }

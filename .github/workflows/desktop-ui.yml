@@ -47,3 +47,29 @@ jobs:
           name: playwright-traces
           path: desktop/ui/test-results
           retention-days: 7
+
+  shell:
+    name: "Shell tests (${{ matrix.os }})"
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -e ".[app]"
+      - name: Test the shell against the real server
+        working-directory: desktop/src-tauri
+        run: |
+          export DD_DESKTOP_PYTHON="$(python -c 'import sys; print(sys.executable)')"
+          cargo test --locked
+      - name: Lint
+        working-directory: desktop/src-tauri
+        run: cargo clippy --locked --all-targets -- -D warnings

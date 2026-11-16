@@ -18,7 +18,9 @@ const STOP_GRACE: Duration = Duration::from_secs(8);
 pub fn parse_ready_line(line: &str) -> Option<u16> {
     let json = line.trim().strip_prefix(READY_PREFIX)?;
     let value: serde_json::Value = serde_json::from_str(json).ok()?;
-    u16::try_from(value.get("port")?.as_u64()?).ok().filter(|p| *p != 0)
+    u16::try_from(value.get("port")?.as_u64()?)
+        .ok()
+        .filter(|p| *p != 0)
 }
 
 /// 32 random bytes as hex. A new one for every launch.
@@ -36,17 +38,29 @@ pub struct Sidecar {
 }
 
 impl Sidecar {
-    pub fn start(python: &Path, ui_dir: &Path, extra_env: &HashMap<String, String>) -> Result<Sidecar, String> {
+    pub fn start(
+        python: &Path,
+        ui_dir: &Path,
+        extra_env: &HashMap<String, String>,
+    ) -> Result<Sidecar, String> {
         let token = new_token();
         let mut cmd = Command::new(python);
-        cmd.args(["-m", "dd_agents", "serve", "--port", "0", "--exit-on-stdin-close", "--ui-dir"])
-            .arg(ui_dir)
-            .envs(extra_env)
-            .env("DD_API_TOKEN", &token)
-            .env("PYTHONUNBUFFERED", "1")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null());
+        cmd.args([
+            "-m",
+            "dd_agents",
+            "serve",
+            "--port",
+            "0",
+            "--exit-on-stdin-close",
+            "--ui-dir",
+        ])
+        .arg(ui_dir)
+        .envs(extra_env)
+        .env("DD_API_TOKEN", &token)
+        .env("PYTHONUNBUFFERED", "1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
         #[cfg(unix)]
         {
             use std::os::unix::process::CommandExt;
@@ -59,9 +73,14 @@ impl Sidecar {
             const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
             cmd.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
         }
-        let mut child = cmd.spawn().map_err(|e| format!("Cannot start the local service ({}): {e}", python.display()))?;
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| format!("Cannot start the local service ({}): {e}", python.display()))?;
         let stdin = child.stdin.take();
-        let stdout = child.stdout.take().ok_or("no stdout from the local service")?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or("no stdout from the local service")?;
 
         let (tx, rx) = mpsc::channel();
         std::thread::spawn(move || {
@@ -74,7 +93,12 @@ impl Sidecar {
             // Keep draining so the server never blocks on a full pipe.
         });
 
-        let mut sidecar = Sidecar { child, stdin, port: 0, token };
+        let mut sidecar = Sidecar {
+            child,
+            stdin,
+            port: 0,
+            token,
+        };
         match rx.recv_timeout(START_TIMEOUT) {
             Ok(port) => {
                 sidecar.port = port;
@@ -116,7 +140,9 @@ fn kill_tree(child: &mut Child) {
 
 #[cfg(windows)]
 fn kill_tree(child: &mut Child) {
-    let _ = Command::new("taskkill").args(["/F", "/T", "/PID", &child.id().to_string()]).output();
+    let _ = Command::new("taskkill")
+        .args(["/F", "/T", "/PID", &child.id().to_string()])
+        .output();
 }
 
 #[cfg(test)]
@@ -125,7 +151,10 @@ mod tests {
 
     #[test]
     fn parses_the_ready_line() {
-        assert_eq!(parse_ready_line("DD_AGENTS_LISTENING {\"port\": 51234, \"host\": \"127.0.0.1\"}\n"), Some(51234));
+        assert_eq!(
+            parse_ready_line("DD_AGENTS_LISTENING {\"port\": 51234, \"host\": \"127.0.0.1\"}\n"),
+            Some(51234)
+        );
     }
 
     #[test]
@@ -133,7 +162,10 @@ mod tests {
         assert_eq!(parse_ready_line("INFO started"), None);
         assert_eq!(parse_ready_line("DD_AGENTS_LISTENING not-json"), None);
         assert_eq!(parse_ready_line("DD_AGENTS_LISTENING {\"port\": 0}"), None);
-        assert_eq!(parse_ready_line("DD_AGENTS_LISTENING {\"port\": 70000}"), None);
+        assert_eq!(
+            parse_ready_line("DD_AGENTS_LISTENING {\"port\": 70000}"),
+            None
+        );
     }
 
     #[test]
@@ -145,7 +177,13 @@ mod tests {
 
     #[test]
     fn missing_python_is_a_clear_error() {
-        let err = Sidecar::start(Path::new("/definitely/not/python"), Path::new("."), &HashMap::new()).err().unwrap();
+        let err = Sidecar::start(
+            Path::new("/definitely/not/python"),
+            Path::new("."),
+            &HashMap::new(),
+        )
+        .err()
+        .unwrap();
         assert!(err.contains("Cannot start the local service"));
     }
 
@@ -159,10 +197,14 @@ mod tests {
             eprintln!("skipped: DD_DESKTOP_PYTHON is not set");
             return;
         };
-        let mut sidecar = Sidecar::start(Path::new(&python), Path::new("."), &HashMap::new()).expect("start");
+        let mut sidecar =
+            Sidecar::start(Path::new(&python), Path::new("."), &HashMap::new()).expect("start");
         let get = |auth: &str| {
             let mut s = TcpStream::connect(("127.0.0.1", sidecar.port)).unwrap();
-            let req = format!("GET /api/health HTTP/1.1\r\nHost: 127.0.0.1:{}\r\n{auth}Connection: close\r\n\r\n", sidecar.port);
+            let req = format!(
+                "GET /api/health HTTP/1.1\r\nHost: 127.0.0.1:{}\r\n{auth}Connection: close\r\n\r\n",
+                sidecar.port
+            );
             s.write_all(req.as_bytes()).unwrap();
             let mut out = String::new();
             s.read_to_string(&mut out).unwrap();
@@ -170,10 +212,16 @@ mod tests {
         };
         assert!(get("").starts_with("HTTP/1.1 401"));
         let ok = get(&format!("Authorization: Bearer {}\r\n", sidecar.token));
-        assert!(ok.starts_with("HTTP/1.1 200") && ok.contains("\"status\":\"ok\""), "{ok}");
+        assert!(
+            ok.starts_with("HTTP/1.1 200") && ok.contains("\"status\":\"ok\""),
+            "{ok}"
+        );
 
         let port = sidecar.port;
         sidecar.stop();
-        assert!(TcpStream::connect(("127.0.0.1", port)).is_err(), "server still listening after stop");
+        assert!(
+            TcpStream::connect(("127.0.0.1", port)).is_err(),
+            "server still listening after stop"
+        );
     }
 }
