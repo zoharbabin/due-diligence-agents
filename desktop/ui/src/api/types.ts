@@ -205,3 +205,40 @@ export interface HistoryPage {
   total: number
   by_type: Partial<Record<InteractionType, number>>
 }
+
+export interface ListCoverage {
+  source: string
+  status: 'screened' | 'stale' | 'missing' | 'failed'
+  list_date: string
+  entry_count: number
+  detail: string
+}
+
+export interface ScreeningLists {
+  max_age_days: number
+  sources: ListCoverage[]
+}
+
+export interface ListUpdateResult {
+  source: string
+  ok: boolean
+  entries?: number
+  published?: string
+  error?: string
+}
+
+export interface ScreenHit {
+  matched_name: string
+  score: number
+  band: string
+  entry: { source: string; programs: string[] }
+  corroboration: string[]
+}
+
+export interface ScreeningReport {
+  complete: boolean
+  coverage: ListCoverage[]
+  results: { hits: ScreenHit[] }[]
+  user_errors: string[]
+  gaps: string[]
+}

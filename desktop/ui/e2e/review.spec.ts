@@ -172,3 +172,23 @@ test('history: a finished review is listed with its findings and cost', async ({
   await expect(entry).toContainText('4 findings')
   await expect(entry).toContainText('$1.60')
 })
+
+test('screening: update the lists, then check a name', async ({ page }) => {
+  await createProject(page, room('screening-deal'))
+  await page.getByRole('tab', { name: 'Screening' }).click()
+  const lists = page.getByRole('table', { name: 'Sanctions list coverage' })
+  await expect(lists.getByText('missing')).toHaveCount(3)
+
+  await page.getByRole('button', { name: 'Update lists' }).click()
+  await expect(lists.getByText('screened')).toHaveCount(3)
+
+  await page.getByLabel('Name').fill('Example Trading')
+  await page.getByRole('button', { name: 'Check' }).click()
+  const hits = page.getByRole('table', { name: 'Possible matches' })
+  await expect(hits.getByText('EXAMPLE TRADING').first()).toBeVisible()
+  await expect(page.getByText('A person must review each one.')).toBeVisible()
+
+  await page.getByLabel('Name').fill('Jane Doe Testington')
+  await page.getByRole('button', { name: 'Check' }).click()
+  await expect(page.getByText('This is not a clearance.')).toBeVisible()
+})

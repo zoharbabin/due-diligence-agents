@@ -21,12 +21,16 @@ from dd_agents.api.runs import RunManager, RunOptions
 from dd_agents.chat.engine import ChatResponse
 from dd_agents.llm.cli_provision import CliInstaller
 from dd_agents.persistence.project_registry import ProjectRegistryManager
+from dd_agents.screening import store
+from dd_agents.screening.sources import SOURCES
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
 TOKEN = "e2e-token-0123456789"
 FAKE = Path(__file__).with_name("fake_pipeline.py")
+LISTS = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "screening"
+SAMPLES = {"ofac_sdn": "ofac_sdn_sample.xml", "uk": "uk_sample.xml", "eu": "eu_sample.xml"}
 
 
 def fake_command(config_path: Path, options: RunOptions) -> tuple[list[str], dict[str, str]]:
@@ -81,6 +85,14 @@ class FakeChat:
         return None
 
 
+def fake_download(url: str, **_: object) -> bytes:
+    """Serve the synthetic sanctions lists instead of the network."""
+    for source_id, source in SOURCES.items():
+        if source.url == url:
+            return (LISTS / SAMPLES[source_id]).read_bytes()
+    raise store.StoreError("unknown list")
+
+
 def main() -> None:
     for name in settings.SETTABLE_ENV:  # start from a known state, whatever the developer's shell has
         os.environ.pop(name, None)
@@ -92,6 +104,8 @@ def main() -> None:
     doctor._sdk_bundles_cli = lambda: False  # type: ignore[assignment]
     doctor.managed_cli_path = lambda: installed if installed.is_file() else None  # type: ignore[assignment]
     doctor.shutil = SimpleNamespace(which=lambda *_a, **_k: None)  # type: ignore[assignment]
+    os.environ["DD_SCREENING_DIR"] = str(registry_dir / "screening")
+    store._download = fake_download  # type: ignore[assignment]
     registry = ProjectRegistryManager(registry_dir)
     app = create_app(
         token=TOKEN,

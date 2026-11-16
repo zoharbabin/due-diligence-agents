@@ -9,6 +9,7 @@ import { ComparePanel } from '../components/ComparePanel'
 import { ConfigEditor } from '../components/ConfigEditor'
 import { FindingsTable } from '../components/FindingsTable'
 import { HistoryPanel } from '../components/HistoryPanel'
+import { ScreeningPanel } from '../components/ScreeningPanel'
 import { ReportFrame } from '../components/ReportFrame'
 import { RunPanel } from '../components/RunPanel'
 import { Banner, Button, Card, SeverityBadge, Spinner, Tabs } from '../components/ui'
@@ -25,7 +26,7 @@ async function settled(slug: string, signal: AbortSignal): Promise<void> {
   }
 }
 
-type Tab = 'overview' | 'findings' | 'report' | 'ask' | 'agents' | 'compare' | 'history' | 'settings'
+type Tab = 'overview' | 'findings' | 'report' | 'ask' | 'agents' | 'compare' | 'history' | 'screening' | 'settings'
 
 export function ProjectPage() {
   const { slug = '' } = useParams()
@@ -126,6 +127,7 @@ export function ProjectPage() {
           { id: 'agents', label: 'Agents' },
           { id: 'compare', label: 'Compare' },
           { id: 'history', label: 'History' },
+          { id: 'screening', label: 'Screening' },
           { id: 'settings', label: 'Settings' },
         ]}
       />
@@ -194,6 +196,8 @@ export function ProjectPage() {
       {tab === 'compare' && (runs.data ? <ComparePanel slug={slug} runs={runs.data} /> : <Spinner />)}
 
       {tab === 'history' && <HistoryPanel slug={slug} />}
+
+      {tab === 'screening' && <ScreeningPanel slug={slug} />}
 
       {tab === 'settings' &&
         (config.loading ? (
