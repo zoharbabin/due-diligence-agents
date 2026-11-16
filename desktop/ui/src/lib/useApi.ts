@@ -29,5 +29,6 @@ export function useLoad<T>(load: () => Promise<T>, key: string): Loaded<T> {
       live = false
     }
   }, [run, tick])
-  return { ...state, reload: () => setTick((t) => t + 1) }
+  const reload = useCallback(() => setTick((t) => t + 1), [])
+  return { ...state, reload }
 }

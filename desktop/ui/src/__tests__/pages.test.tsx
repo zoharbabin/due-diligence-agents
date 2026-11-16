@@ -108,6 +108,31 @@ describe('setup card', () => {
     await waitFor(() => expect(onDone).toHaveBeenCalled(), { timeout: 3000 })
   })
 
+  it('moves on to the key form after the download, without refetching in a loop', async () => {
+    let cliFound = false
+    let doctorCalls = 0
+    const doctor = { provider: 'anthropic', base_url: null, credential_present: false, credential_env: ['ANTHROPIC_API_KEY'], ready: false }
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+      const u = String(url)
+      if (u.endsWith('/doctor')) {
+        doctorCalls += 1
+        await new Promise((r) => setTimeout(r, 30))
+        return json({ ...doctor, cli: { found: cliFound, source: cliFound ? 'managed' : null } })
+      }
+      if (u.endsWith('/cli/install') && init?.method === 'POST') return json({ state: 'downloading', done: 1, total: 4 }, 202)
+      if (u.endsWith('/cli/install')) {
+        cliFound = true
+        return json({ state: 'done', done: 4, total: 4, error: null })
+      }
+      return json([])
+    })
+    render(<MemoryRouter><ProjectsPage /></MemoryRouter>)
+    await userEvent.click(await screen.findByRole('button', { name: 'Download' }))
+    expect(await screen.findByLabelText('API key', {}, { timeout: 3000 })).toBeInTheDocument()
+    await new Promise((r) => setTimeout(r, 300))
+    expect(doctorCalls).toBeLessThanOrEqual(3)
+  })
+
   it('shows the failure and offers a retry', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       json({ state: 'error', done: 0, total: null, error: 'The download failed the integrity check.' }, 202),
