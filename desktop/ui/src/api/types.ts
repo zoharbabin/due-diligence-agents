@@ -185,3 +185,23 @@ export interface ChatDone {
   session_cost: number
   estimated_cost: number
 }
+
+export type InteractionType = 'pipeline_run' | 'search' | 'query' | 'annotation' | 'knowledge_compilation' | 'chat'
+
+export interface HistoryEntry {
+  id: string
+  timestamp: string
+  interaction_type: InteractionType
+  title: string
+  findings_summary: { total: number; p0: number; p1: number; p2: number; p3: number; new_since_last: number } | null
+  entities_affected: string[]
+  duration_seconds: number | null
+  cost_usd: number | null
+  user_initiated: boolean
+}
+
+export interface HistoryPage {
+  entries: HistoryEntry[]
+  total: number
+  by_type: Partial<Record<InteractionType, number>>
+}

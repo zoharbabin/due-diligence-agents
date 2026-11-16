@@ -22,6 +22,7 @@ Release builds are signed. The macOS app is also notarized. The app checks for a
 5. **Ask questions.** Open **Ask** after a review. Answers come from the findings of the latest review and its documents. Each question calls the model and costs money. The page shows the session cost against its limit. **New conversation** ends the session. A newer review starts a new session.
 6. **Optional: tune an agent.** In a project, open **Agents**. Pick one, start from a profile and save. The change applies to that project only and is checked before it is saved. Use **Preview prompt** to see exactly what the agent receives. The safety rules cannot be changed.
 7. **Compare reviews.** After a second review, open **Compare** to see new, resolved and escalated findings. It uses the same engine as `dd-agents diff`.
+8. **See what happened.** Open **History** for a list of reviews and questions, newest first, with findings, cost and entities. You can filter by type.
 
 ## Where things are
 
