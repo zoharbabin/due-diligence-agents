@@ -504,7 +504,11 @@ class TestExtractionPipeline:
         cache_path = tmp_path / "checksums.sha256"
 
         pipeline = ExtractionPipeline()
-        with pytest.raises(ExtractionPipelineError, match="Systemic"):
+        # Never reach a real model, even when the machine has provider credentials.
+        with (
+            patch.object(ExtractionPipeline, "_try_claude_vision", return_value=("", 0.0)),
+            pytest.raises(ExtractionPipelineError, match="Systemic"),
+        ):
             pipeline.extract_all(
                 [str(src / f"bad_{i}.pdf") for i in range(4)],
                 output_dir,
@@ -1687,6 +1691,25 @@ class TestClaudeVision:
         assert entry.confidence == 0.65
         assert "claude_vision" in entry.fallback_chain
 
+    def test_a_vision_call_that_hangs_is_cut_off(self, tmp_path: Path) -> None:
+        """The timeout ends the call. It does not wait for the model."""
+        import asyncio
+        import time
+
+        async def hang(self: ExtractionPipeline, filepath: Path) -> str:
+            await asyncio.sleep(30)
+            return "never"
+
+        started = time.monotonic()
+        with (
+            patch("dd_agents.extraction.pipeline._CLAUDE_VISION_TIMEOUT", 0.2),
+            patch.object(ExtractionPipeline, "_describe_image_async", hang),
+        ):
+            result = ExtractionPipeline()._try_claude_vision(tmp_path / "x.png")
+
+        assert result == ("", 0.0)
+        assert time.monotonic() - started < 5
+
     def test_claude_vision_in_image_chain(self, tmp_path: Path) -> None:
         """Claude vision is tried after OCR fails in image chain."""
         output_dir = tmp_path / "output"
@@ -2027,7 +2050,11 @@ class TestExtractionSummary:
         cache_path = tmp_path / "checksums.sha256"
 
         pipeline = ExtractionPipeline()
-        with pytest.raises(ExtractionPipelineError, match="Systemic"):
+        # Never reach a real model, even when the machine has provider credentials.
+        with (
+            patch.object(ExtractionPipeline, "_try_claude_vision", return_value=("", 0.0)),
+            pytest.raises(ExtractionPipelineError, match="Systemic"),
+        ):
             pipeline.extract_all(
                 [str(src / f"bad_{i}.pdf") for i in range(4)],
                 output_dir,
