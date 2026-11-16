@@ -23,6 +23,7 @@ Release builds are signed. The macOS app is also notarized. The app checks for a
 6. **Optional: tune an agent.** In a project, open **Agents**. Pick one, start from a profile and save. The change applies to that project only and is checked before it is saved. Use **Preview prompt** to see exactly what the agent receives. The safety rules cannot be changed.
 7. **Compare reviews.** After a second review, open **Compare** to see new, resolved and escalated findings. It uses the same engine as `dd-agents diff`.
 8. **See what happened.** Open **History** for a list of reviews and questions, newest first, with findings, cost and entities. You can filter by type.
+9. **Screen a name.** Open **Screening** and press **Update lists** to download the official US, UK and EU sanctions lists (needs the internet, stored on your computer). Then check one company or person. Results are possible matches for a person to review. No match is not a clearance. It uses the same engine as `dd-agents screening`. See [screening](screening.md).
 
 ## Where things are
 

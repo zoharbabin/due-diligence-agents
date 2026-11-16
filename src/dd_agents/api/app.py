@@ -23,6 +23,7 @@ from dd_agents.api.routers import (
     history,
     projects,
     runs,
+    screening,
     settings,
 )
 from dd_agents.api.runs import RunManager
@@ -68,7 +69,20 @@ def create_app(
         registry=registry, runs=manager, cli_installer=cli_installer or CliInstaller(), chat=sessions
     )
     app.add_middleware(SecurityMiddleware, token=token)
-    for module in (health, doctor, settings, projects, config, agents, compare, runs, findings, chat, history):
+    for module in (
+        health,
+        doctor,
+        settings,
+        projects,
+        config,
+        agents,
+        compare,
+        runs,
+        findings,
+        chat,
+        history,
+        screening,
+    ):
         app.include_router(module.router, prefix="/api")
     if ui_dir is not None and ui_dir.is_dir():
         app.mount("/", StaticFiles(directory=ui_dir, html=True), name="ui")
