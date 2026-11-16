@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from fastapi import Request
 
 if TYPE_CHECKING:
+    from dd_agents.api.chat import ChatSessions
     from dd_agents.api.runs import RunManager
     from dd_agents.llm.cli_provision import CliInstaller
     from dd_agents.persistence.project_registry import ProjectRegistryManager
@@ -18,6 +19,7 @@ class AppContext:
     registry: ProjectRegistryManager
     runs: RunManager
     cli_installer: CliInstaller
+    chat: ChatSessions
 
 
 def get_ctx(request: Request) -> AppContext:

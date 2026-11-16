@@ -168,3 +168,20 @@ export interface RunDiff {
   summary: Record<string, number>
   changes: RunChange[]
 }
+
+export interface ChatStatus {
+  ready: boolean
+  active: boolean
+  busy: boolean
+  turn_count: number
+  session_cost: number
+  finding_count: number
+  max_session_cost: number
+}
+
+export interface ChatDone {
+  text: string
+  tools_used: string[]
+  session_cost: number
+  estimated_cost: number
+}
