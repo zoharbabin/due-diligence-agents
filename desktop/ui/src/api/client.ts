@@ -45,8 +45,9 @@ export class ApiError extends Error {
 function describe(detail: unknown): { message: string; issues: ConfigIssue[] } {
   if (typeof detail === 'string') return { message: detail, issues: [] }
   if (detail && typeof detail === 'object') {
-    const d = detail as { message?: string; errors?: ConfigIssue[] }
-    return { message: d.message ?? 'Request failed', issues: d.errors ?? [] }
+    const d = detail as { message?: string; errors?: ConfigIssue[]; issues?: { level: string; message: string }[] }
+    const fromIssues = (d.issues ?? []).map((i) => ({ loc: '', msg: i.message, type: i.level }))
+    return { message: d.message ?? 'Request failed', issues: d.errors ?? fromIssues }
   }
   return { message: 'Request failed', issues: [] }
 }
