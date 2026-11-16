@@ -9,7 +9,8 @@
     "lint": "oxlint src",
     "preview": "vite preview",
     "test": "vitest run",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "tauri": "tauri"
   },
   "dependencies": {
     "react": "^19.3.1",
@@ -21,6 +22,7 @@
     "@emnapi/runtime": "^2.0.0-beta.2",
     "@playwright/test": "^1.65.1",
     "@tailwindcss/vite": "^4.3.5",
+    "@tauri-apps/cli": "2.12.4",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.12",
