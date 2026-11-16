@@ -957,6 +957,24 @@ dd-agents extraction check --config deal-config.json scan.pdf
 
 Exit code `1`: a pack is missing, nothing was extracted, or the sample has an unreadable script.
 
+## serve
+
+Starts the local API that the desktop app talks to. Needs `pip install "dd-agents[app]"`. It listens on `127.0.0.1` only. There is no `--host` option.
+
+```bash
+dd-agents serve [--port N] [--ui-dir DIR] [--exit-on-stdin-close]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--port N` | Port to listen on. `0` (default) picks a free one |
+| `--ui-dir DIR` | Built web UI to serve from the same origin |
+| `--exit-on-stdin-close` | Exit when stdin closes. The desktop app sets this so no server is left behind |
+
+The first stdout line is `DD_AGENTS_LISTENING {"port": N, "host": "127.0.0.1"}`. Every `/api/` request needs `Authorization: Bearer <token>`, plus a loopback `Host` header and, if sent, an `Origin` equal to the server's own. The token comes from `DD_API_TOKEN` (at least 16 characters). Without it, the server makes one and adds it to the first line. That is for browser dev mode only.
+
+The route list is the OpenAPI document at `/openapi.json` (needs the token). Routes live in `src/dd_agents/api/routers/`.
+
 ## Global Options
 
 The `--version` flag is available on the top-level group:

@@ -17,3 +17,7 @@ Third-party notices:
 Optional dependencies (`pip install dd-agents[pdf]`):
 - pypdfium2: Apache-2.0 or BSD-3-Clause (wraps PDFium, BSD-3-Clause / Apache-2.0).
 - pikepdf: MPL-2.0 (wraps qpdf, Apache-2.0). Used unmodified.
+
+Optional dependencies (`pip install dd-agents[app]`, local API for the desktop app):
+- fastapi: MIT License, Copyright Sebastian Ramirez
+- uvicorn: BSD 3-Clause License, Copyright Encode OSS Ltd
