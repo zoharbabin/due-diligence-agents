@@ -102,6 +102,31 @@ def test_updater_manifest_names_files_without_spaces_and_signs_urls(tmp_path: Pa
     assert win["url"].endswith("/v1.2.3/due-diligence-agents_1.2.3_x64-setup.exe")
 
 
+def test_updater_manifest_takes_files_from_the_artifact_folders(tmp_path: Path) -> None:
+    """The macOS artifact keeps its `dmg/` and `macos/` folders when downloaded."""
+    mod: Any = _load("updater_manifest")
+    flat = tmp_path / "flat"
+    flat.mkdir()
+    _updater_inputs(flat)
+    nested = tmp_path / "nested"
+    for name in flat.iterdir():
+        folder = nested / ("dmg" if name.suffix == ".dmg" else "macos" if "app.tar" in name.name else "")
+        folder.mkdir(parents=True, exist_ok=True)
+        name.rename(folder / name.name)
+    manifest = mod.prepare(nested, "v1.2.3", "owner/repo")
+    assert sorted(p.name for p in nested.iterdir() if p.is_file()) == sorted(
+        [
+            "due-diligence-agents_1.2.3_aarch64.dmg",
+            "due-diligence-agents_1.2.3_aarch64.app.tar.gz",
+            "due-diligence-agents_1.2.3_aarch64.app.tar.gz.sig",
+            "due-diligence-agents_1.2.3_x64-setup.exe",
+            "due-diligence-agents_1.2.3_x64-setup.exe.sig",
+        ]
+    )
+    assert not [p for p in nested.iterdir() if p.is_dir()]
+    assert manifest["platforms"]["darwin-aarch64"]["signature"] == "MAC-SIG"
+
+
 def test_updater_manifest_refuses_a_missing_signature(tmp_path: Path) -> None:
     import pytest
 
