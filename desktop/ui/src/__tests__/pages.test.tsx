@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { baseName } from '../lib/format'
+import { CliDownload } from '../components/CliDownload'
 import { NewProjectPage } from '../pages/NewProject'
 import { ProjectsPage } from '../pages/Projects'
 
@@ -83,6 +84,37 @@ describe('setup card', () => {
       String(url).endsWith('/doctor') ? json({ ...doctor, cli: { found: false, source: null } }) : json([]),
     )
     render(<MemoryRouter><ProjectsPage /></MemoryRouter>)
-    expect(await screen.findByText(/command line tool was not found/)).toBeInTheDocument()
+    expect(await screen.findByText('Download the Claude engine')).toBeInTheDocument()
+  })
+
+  it('downloads the CLI, shows progress, and reports completion', async () => {
+    let state: Record<string, unknown> = { state: 'idle', done: 0, total: null, error: null }
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+      const u = String(url)
+      if (u.endsWith('/cli/install') && init?.method === 'POST') {
+        state = { state: 'downloading', done: 1_048_576, total: 4_194_304, error: null }
+        return json(state, 202)
+      }
+      if (u.endsWith('/cli/install')) {
+        state = { state: 'done', done: 4_194_304, total: 4_194_304, error: null }
+        return json(state)
+      }
+      return json({})
+    })
+    const onDone = vi.fn()
+    render(<CliDownload onDone={onDone} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Download' }))
+    expect(await screen.findByRole('progressbar', { name: 'Download progress' })).toHaveAttribute('aria-valuenow', '25')
+    await waitFor(() => expect(onDone).toHaveBeenCalled(), { timeout: 3000 })
+  })
+
+  it('shows the failure and offers a retry', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
+      json({ state: 'error', done: 0, total: null, error: 'The download failed the integrity check.' }, 202),
+    )
+    render(<CliDownload onDone={() => {}} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Download' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('integrity check')
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
   })
 })

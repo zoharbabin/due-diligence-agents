@@ -32,8 +32,12 @@ test('first launch shows the empty state, and the token leaves the address bar',
   expect(page.url()).not.toContain('token=')
 })
 
-test('setup: a missing key is requested, tested and accepted', async ({ page }) => {
+test('setup: the Claude engine is downloaded, then a key is requested, tested and accepted', async ({ page }) => {
   await open(page)
+  await expect(page.getByText('Download the Claude engine')).toBeVisible()
+  await page.getByRole('button', { name: 'Download' }).click()
+  await expect(page.getByRole('progressbar', { name: 'Download progress' })).toBeVisible()
+  await expect(page.getByText(/of 3\.8 MB/)).toBeVisible()
   await page.getByLabel('API key').fill('sk-ant-e2e-key-1234')
   await page.getByRole('button', { name: 'Save and test' }).click()
   await expect(page.getByText('Connected.')).toBeVisible()

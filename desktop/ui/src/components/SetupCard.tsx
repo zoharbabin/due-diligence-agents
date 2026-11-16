@@ -3,6 +3,7 @@ import { api, ApiError } from '../api/client'
 import type { Doctor } from '../api/types'
 import { isDesktop, saveProviderEnv } from '../lib/native'
 import { Banner, Button, Card, Field } from './ui'
+import { CliDownload } from './CliDownload'
 
 /** Shown until the app can reach a model. Lets the user paste an API key and test it. */
 export function SetupCard({ doctor, onChange }: { doctor: Doctor; onChange: () => void }) {
@@ -28,12 +29,7 @@ export function SetupCard({ doctor, onChange }: { doctor: Doctor; onChange: () =
     }
   }
 
-  if (!doctor.cli.found)
-    return (
-      <Banner tone="error">
-        The Claude command line tool was not found. Reopen the app to download it, or install it and restart.
-      </Banner>
-    )
+  if (!doctor.cli.found) return <CliDownload onDone={onChange} />
 
   return (
     <Card className="space-y-3">

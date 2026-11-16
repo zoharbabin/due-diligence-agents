@@ -1,0 +1,17 @@
+{
+  "version": "2.1.325",
+  "platforms": {
+    "darwin-arm64": {
+      "package": "@anthropic-ai/claude-code-darwin-arm64",
+      "integrity": "sha512-Ds1f1B+qy2BWDI+VnmDHwkNyTbXCwFrBtrinPD95RBmUubFJu9nCzMgn+wrg5VwwF6vtkkzGexogneZIYZKb6A=="
+    },
+    "win32-x64": {
+      "package": "@anthropic-ai/claude-code-win32-x64",
+      "integrity": "sha512-AGuh2ImOYbdsKCq8J0jaamvquCddB9HC70u+Ik8OYQ28xkGPH+xF4oEAr8GKZCgT1mbuoDl1qinI/AXErwLyuw=="
+    },
+    "linux-x64": {
+      "package": "@anthropic-ai/claude-code-linux-x64",
+      "integrity": "sha512-BqZzMvP/zgLLL34S+7OzbG+cyoFp7gwWHU5koVwsyMlTAz+0zZAmbY+UkzvtN2RXxp6AcMenbYIjQJxoXfUY3w=="
+    }
+  }
+}

@@ -38,23 +38,42 @@ def main() -> int:
             time.sleep(pause)
             log.emit("agent_progress", run_id=rid, agent="legal", subjects_done=1, total_subjects=2)
             time.sleep(pause)
-            log.emit("agent_completed", run_id=rid, agent="legal", ok=True, subjects_done=2, total_subjects=2, cost_usd=0.4)
+            log.emit(
+                "agent_completed", run_id=rid, agent="legal", ok=True, subjects_done=2, total_subjects=2, cost_usd=0.4
+            )
         else:
             time.sleep(pause)
-        log.emit("step_completed", run_id=rid, step=step, step_number=n, completed_steps=n, total_steps=len(STEPS), total_cost_usd=0.4 * n)
+        log.emit(
+            "step_completed",
+            run_id=rid,
+            step=step,
+            step_number=n,
+            completed_steps=n,
+            total_steps=len(STEPS),
+            total_cost_usd=0.4 * n,
+        )
     run_dir = base / "runs" / rid
     merged = run_dir / "findings" / "merged"
     merged.mkdir(parents=True)
     items = [
         {
-            "id": i, "severity": sev, "category": cat, "title": title,
+            "id": i,
+            "severity": sev,
+            "category": cat,
+            "title": title,
             "description": f"{title}. See the cited clause.",
-            "citations": [{"source_path": "contracts/msa.pdf", "exact_quote": "Either party may terminate.", "page": "3"}],
-            "confidence": "high", "agent": agent, "analysis_unit": "Subject A",
+            "citations": [
+                {"source_path": "contracts/msa.pdf", "exact_quote": "Either party may terminate.", "page": "3"}
+            ],
+            "confidence": "high",
+            "agent": agent,
+            "analysis_unit": "Subject A",
         }
         for i, sev, cat, title, agent in FINDINGS
     ]
-    (merged / "subject_a.json").write_text(json.dumps({"subject": "Subject A", "subject_safe_name": "subject_a", "findings": items}))
+    (merged / "subject_a.json").write_text(
+        json.dumps({"subject": "Subject A", "subject_safe_name": "subject_a", "findings": items})
+    )
     (run_dir / "report").mkdir()
     (run_dir / "report" / "dd_report.html").write_text("<html><body><h1 id='r'>Fake report</h1></body></html>")
     (base / "runs" / "latest").symlink_to(rid)

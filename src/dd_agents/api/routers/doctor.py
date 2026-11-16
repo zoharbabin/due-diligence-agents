@@ -7,8 +7,9 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from dd_agents.api.context import AppContext, get_ctx
 from dd_agents.llm import (
     PROVIDER_CREDENTIAL_HINTS,
     credential_present,
@@ -16,8 +17,17 @@ from dd_agents.llm import (
     resolve_provider,
     scrub_secrets,
 )
+from dd_agents.llm.cli_provision import managed_cli_path
 
 router = APIRouter(tags=["doctor"])
+
+
+def _sdk_bundles_cli() -> bool:
+    try:
+        import claude_agent_sdk
+    except ImportError:
+        return False
+    return (Path(claude_agent_sdk.__file__).parent / "_bundled").is_dir()
 
 
 def _cli_source() -> str | None:
@@ -27,14 +37,9 @@ def _cli_source() -> str | None:
         return "env"
     if shutil.which("claude"):
         return "system"
-    try:
-        import claude_agent_sdk
-
-        if (Path(claude_agent_sdk.__file__).parent / "_bundled").is_dir():
-            return "sdk"
-    except ImportError:
-        return None
-    return None
+    if managed_cli_path():
+        return "managed"
+    return "sdk" if _sdk_bundles_cli() else None
 
 
 @router.get(
@@ -62,3 +67,20 @@ def doctor() -> dict[str, Any]:
 def probe() -> dict[str, Any]:
     ok, detail = probe_provider()
     return {"ok": ok, "detail": scrub_secrets(detail)}
+
+
+@router.get(
+    "/cli/install",
+    summary="Read-only. State of the Claude CLI download: idle, downloading, done or error.",
+)
+def cli_install_status(ctx: AppContext = Depends(get_ctx)) -> dict[str, Any]:  # noqa: B008
+    return ctx.cli_installer.status()
+
+
+@router.post(
+    "/cli/install",
+    status_code=202,
+    summary="Downloads the pinned Claude CLI from the npm registry into the user data folder. Idempotent.",
+)
+def cli_install_start(ctx: AppContext = Depends(get_ctx)) -> dict[str, Any]:  # noqa: B008
+    return ctx.cli_installer.start()

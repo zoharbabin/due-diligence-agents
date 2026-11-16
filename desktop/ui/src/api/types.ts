@@ -115,6 +115,13 @@ export interface Doctor {
   base_url: string | null
   credential_present: boolean
   credential_env: string[]
-  cli: { found: boolean; source: 'env' | 'system' | 'sdk' | null }
+  cli: { found: boolean; source: 'env' | 'system' | 'managed' | 'sdk' | null }
   ready: boolean
+}
+
+export interface CliInstall {
+  state: 'idle' | 'downloading' | 'done' | 'error'
+  done: number
+  total: number | null
+  error: string | null
 }
