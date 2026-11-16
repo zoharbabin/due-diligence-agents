@@ -43,5 +43,5 @@ CI does this in [`.github/workflows/desktop.yml`](../.github/workflows/desktop.y
 | `ui/src/pages/`, `ui/src/components/` | Screens and shared parts |
 | `src-tauri/src/sidecar.rs` | Starts `dd-agents serve`, reads the port, stops the process tree |
 | `src-tauri/src/secrets.rs` | Provider keys in the OS keychain, passed to the server as env |
-| `scripts/` | Runtime build, signing helpers, version override |
+| `scripts/` | Runtime build, signing helpers, version override. `smoke_installed.py` is the install-and-launch check CI runs on the built macOS and Windows installers |
 | `e2e/` | Test harness only: serves the real API with a fake pipeline. Not shipped. `ui/e2e/screens.a11y.spec.ts` fails the build on serious accessibility problems (axe, WCAG 2.1 A and AA) on every tab |

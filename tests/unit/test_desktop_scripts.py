@@ -181,3 +181,24 @@ def test_package_manifests_reject_a_bad_tag(tmp_path: Path) -> None:
     _assets(tmp_path)
     with pytest.raises(SystemExit):
         mod.write(tmp_path, "main", "someone/repo")
+
+
+def test_installed_app_smoke_reads_the_ready_line_and_the_bundle_layout(tmp_path: Path) -> None:
+    mod: Any = _load("smoke_installed")
+    assert mod.ready_port('DD_AGENTS_LISTENING {"port": 51234, "host": "127.0.0.1"}\n') == 51234
+    assert mod.ready_port("something else") is None
+    assert mod.ready_port("DD_AGENTS_LISTENING not-json") is None
+
+    for rel in ("python/bin/python3", "python/python.exe", "ui/index.html"):
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_text("x")
+    python, ui = mod.bundle_paths(tmp_path)
+    assert python.name in {"python3", "python.exe"} and ui == tmp_path / "ui"
+
+
+def test_installed_app_smoke_names_what_is_missing(tmp_path: Path) -> None:
+    import pytest
+
+    mod: Any = _load("smoke_installed")
+    with pytest.raises(SystemExit, match="python"):
+        mod.bundle_paths(tmp_path)
