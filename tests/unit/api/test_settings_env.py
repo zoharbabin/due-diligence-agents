@@ -19,8 +19,11 @@ SECRET = "sk-ant-pushed-secret-123"
 
 @pytest.fixture(autouse=True)
 def _restore_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    # setenv then delenv records the original (absent) state, so the router's
+    # direct os.environ writes are undone at teardown.
     for name in SETTABLE_ENV:
-        monkeypatch.delenv(name, raising=False)
+        monkeypatch.setenv(name, "")
+        monkeypatch.delenv(name)
 
 
 def test_set_and_clear_credentials(client: TestClient) -> None:
