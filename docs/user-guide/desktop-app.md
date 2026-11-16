@@ -24,6 +24,7 @@ Release builds are signed. The macOS app is also notarized. The app checks for a
 7. **Compare reviews.** After a second review, open **Compare** to see new, resolved and escalated findings. It uses the same engine as `dd-agents diff`.
 8. **See what happened.** Open **History** for a list of reviews and questions, newest first, with findings, cost and entities. You can filter by type.
 9. **Screen a name.** Open **Screening** and press **Update lists** to download the official US, UK and EU sanctions lists (needs the internet, stored on your computer). Then check one company or person. Results are possible matches for a person to review. No match is not a clearance. It uses the same engine as `dd-agents screening`. See [screening](screening.md).
+10. **Let the model draft the setup.** In **Settings**, save the buyer and target names, then press **Suggest a setup**. The model reads your folder and file names and drafts the configuration. This costs money. The draft opens in the editor and is not saved until you press **Save**. It uses the same steps as `dd-agents auto-config`.
 
 ## Where things are
 

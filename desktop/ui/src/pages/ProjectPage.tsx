@@ -7,6 +7,7 @@ import { AgentsPanel } from '../components/AgentsPanel'
 import { AskPanel } from '../components/AskPanel'
 import { ComparePanel } from '../components/ComparePanel'
 import { ConfigEditor } from '../components/ConfigEditor'
+import { SuggestCard } from '../components/SuggestCard'
 import { FindingsTable } from '../components/FindingsTable'
 import { HistoryPanel } from '../components/HistoryPanel'
 import { ScreeningPanel } from '../components/ScreeningPanel'
@@ -43,6 +44,13 @@ export function ProjectPage() {
   const [cancelling, setCancelling] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
+  const [draft, setDraft] = useState<{ config: DealConfig; n: number } | null>(null)
+  const [draftOpen, setDraftOpen] = useState(false)
+  // Show the spinner for the first load only, so a reload after Save does not rebuild the editor.
+  const [configSeen, setConfigSeen] = useState(false)
+  useEffect(() => {
+    if (!config.loading) setConfigSeen(true)
+  }, [config.loading])
 
   const refresh = useCallback(() => {
     project.reload()
@@ -200,17 +208,27 @@ export function ProjectPage() {
       {tab === 'screening' && <ScreeningPanel slug={slug} />}
 
       {tab === 'settings' &&
-        (config.loading ? (
+        (!configSeen ? (
           <Spinner />
         ) : (
-          <ConfigEditor
-            slug={slug}
-            initial={config.data ?? { config_version: '1.0.0', buyer: { name: '' }, target: { name: '' }, deal: { type: 'acquisition', focus_areas: [] } }}
-            onSaved={() => {
-              config.reload()
-              project.reload()
-            }}
-          />
+          <div className="space-y-4">
+            <SuggestCard slug={slug} ready={Boolean(project.data?.buyer && project.data.target)} onDraft={(c) => {
+                setDraft((d) => ({ config: c, n: (d?.n ?? 0) + 1 }))
+                setDraftOpen(true)
+              }}
+            />
+            {draftOpen && <Banner tone="info">This is a draft from the model. Check it, then press Save to keep it.</Banner>}
+            <ConfigEditor
+              key={draft?.n ?? 0}
+              slug={slug}
+              initial={draft?.config ?? config.data ?? { config_version: '1.0.0', buyer: { name: '' }, target: { name: '' }, deal: { type: 'acquisition', focus_areas: [] } }}
+              onSaved={() => {
+                setDraftOpen(false)
+                config.reload()
+                project.reload()
+              }}
+            />
+          </div>
         ))}
     </div>
   )

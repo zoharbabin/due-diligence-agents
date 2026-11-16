@@ -6,6 +6,8 @@ The token is "e2e-token-0123456789". Nothing here is shipped.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import os
 import sys
 import time
@@ -29,6 +31,7 @@ if TYPE_CHECKING:
 
 TOKEN = "e2e-token-0123456789"
 FAKE = Path(__file__).with_name("fake_pipeline.py")
+FIXTURES = Path(__file__).resolve().parents[2] / "tests" / "fixtures"
 LISTS = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "screening"
 SAMPLES = {"ofac_sdn": "ofac_sdn_sample.xml", "uk": "uk_sample.xml", "eu": "eu_sample.xml"}
 
@@ -93,6 +96,16 @@ def fake_download(url: str, **_: object) -> bytes:
     raise store.StoreError("unknown list")
 
 
+async def fake_suggest(room: Path, buyer: str, target: str) -> dict[str, object]:
+    """Take a moment, like the model, then return a valid config with a visible marker."""
+    await asyncio.sleep(1.5)
+    config: dict[str, object] = json.loads((FIXTURES / "deal_config_valid.json").read_text(encoding="utf-8"))
+    config["buyer"] = {"name": buyer}
+    config["target"] = {"name": target}
+    config["deal"] = {"type": "acquisition", "focus_areas": ["Suggested focus area"]}
+    return config
+
+
 def main() -> None:
     for name in settings.SETTABLE_ENV:  # start from a known state, whatever the developer's shell has
         os.environ.pop(name, None)
@@ -114,6 +127,7 @@ def main() -> None:
         run_manager=RunManager(registry, command_factory=fake_command),
         cli_installer=CliInstaller(registry_dir / "cli", fake_install),
         chat_factory=FakeChat,
+        suggester=fake_suggest,
     )
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
 
