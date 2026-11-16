@@ -29,7 +29,9 @@ def main() -> int:
     base = room / "_dd" / "forensic-dd"
     log = RunEventLog(base / "events.jsonl")
     log.reset()
-    rid = "20260101_000000"
+    runs_dir = base / "runs"
+    second = runs_dir.is_dir() and any(p.is_dir() and not p.is_symlink() for p in runs_dir.iterdir())
+    rid = "20260102_000000" if second else "20260101_000000"
     log.emit("run_started", run_id=rid, total_steps=len(STEPS))
     for n, step in enumerate(STEPS, 1):
         log.emit("step_started", run_id=rid, step=step, step_number=n)
@@ -55,6 +57,15 @@ def main() -> int:
     run_dir = base / "runs" / rid
     merged = run_dir / "findings" / "merged"
     merged.mkdir(parents=True)
+    findings = FINDINGS
+    if second:
+        # A later review: one finding resolved, one escalated, one new.
+        findings = [
+            ("f1", "P0", "change_of_control", "Change of control needs consent", "legal"),
+            ("f2", "P0", "termination", "Termination for convenience", "legal"),
+            ("f4", "P3", "other", "Minor notice period", "commercial"),
+            ("f5", "P1", "data_privacy", "Missing data processing terms", "legal"),
+        ]
     items = [
         {
             "id": i,
@@ -69,14 +80,16 @@ def main() -> int:
             "agent": agent,
             "analysis_unit": "Subject A",
         }
-        for i, sev, cat, title, agent in FINDINGS
+        for i, sev, cat, title, agent in findings
     ]
     (merged / "subject_a.json").write_text(
         json.dumps({"subject": "Subject A", "subject_safe_name": "subject_a", "findings": items})
     )
     (run_dir / "report").mkdir()
     (run_dir / "report" / "dd_report.html").write_text("<html><body><h1 id='r'>Fake report</h1></body></html>")
-    (base / "runs" / "latest").symlink_to(rid)
+    latest = base / "runs" / "latest"
+    latest.unlink(missing_ok=True)
+    latest.symlink_to(rid)
     log.emit("run_completed", run_id=rid, exit_code=0, dod_passed=True)
     return 0
 

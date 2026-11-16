@@ -143,3 +143,28 @@ export interface Profile {
   name: string
   content: string
 }
+
+export type ChangeType =
+  | 'new_finding'
+  | 'resolved_finding'
+  | 'changed_severity'
+  | 'new_gap'
+  | 'resolved_gap'
+  | 'new_subject'
+  | 'removed_subject'
+
+export interface RunChange {
+  change_type: ChangeType
+  subject: string
+  finding_summary: string
+  prior_severity: Severity | null
+  current_severity: Severity | null
+  details: string
+}
+
+export interface RunDiff {
+  current_run_id: string
+  prior_run_id: string
+  summary: Record<string, number>
+  changes: RunChange[]
+}
