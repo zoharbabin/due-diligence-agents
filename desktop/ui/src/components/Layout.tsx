@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
+import { UpdateBanner } from './UpdateBanner'
 
 export function Layout({ children }: { children: ReactNode }) {
   const link = ({ isActive }: { isActive: boolean }) =>
@@ -13,7 +14,10 @@ export function Layout({ children }: { children: ReactNode }) {
         </NavLink>
       </nav>
       <main className="flex-1 overflow-y-auto p-8">
-        <div className="mx-auto max-w-5xl">{children}</div>
+        <div className="mx-auto max-w-5xl">
+          <UpdateBanner />
+          {children}
+        </div>
       </main>
     </div>
   )

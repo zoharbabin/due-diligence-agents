@@ -5,7 +5,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+use serde::Serialize;
 use tauri::{AppHandle, Manager, RunEvent, State, WebviewWindow};
+use tauri_plugin_updater::UpdaterExt;
 
 use sidecar::Sidecar;
 
@@ -26,6 +28,49 @@ fn get_api_token(state: State<AppState>) -> Result<String, String> {
 #[tauri::command]
 fn save_provider_env(values: HashMap<String, String>) -> Result<(), String> {
     secrets::save(values)
+}
+
+#[derive(Serialize)]
+struct UpdateInfo {
+    version: String,
+    notes: Option<String>,
+}
+
+/// Ask the update endpoint for a newer signed build. Read-only: nothing is downloaded.
+#[tauri::command]
+async fn check_for_update(app: AppHandle) -> Result<Option<UpdateInfo>, String> {
+    let update = app
+        .updater()
+        .map_err(|e| e.to_string())?
+        .check()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(update.map(|u| UpdateInfo {
+        version: u.version,
+        notes: u.body,
+    }))
+}
+
+/// Download the update, stop the local service so no file in the app is in use, install, and restart.
+/// The signature is checked against the public key in `tauri.conf.json` before anything is installed.
+#[tauri::command]
+async fn install_update(app: AppHandle) -> Result<(), String> {
+    let update = app
+        .updater()
+        .map_err(|e| e.to_string())?
+        .check()
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or("You already have the latest version.")?;
+    let bytes = update
+        .download(|_, _| {}, || {})
+        .await
+        .map_err(|e| e.to_string())?;
+    if let Some(mut sidecar) = app.state::<AppState>().sidecar.lock().unwrap().take() {
+        sidecar.stop();
+    }
+    update.install(bytes).map_err(|e| e.to_string())?;
+    app.restart()
 }
 
 /// Where the Python runtime and the built UI are. Development uses env overrides.
@@ -73,8 +118,14 @@ fn start_backend(app: AppHandle) {
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::default())
-        .invoke_handler(tauri::generate_handler![get_api_token, save_provider_env])
+        .invoke_handler(tauri::generate_handler![
+            get_api_token,
+            save_provider_env,
+            check_for_update,
+            install_update
+        ])
         .setup(|app| {
             let handle = app.handle().clone();
             std::thread::spawn(move || start_backend(handle));
