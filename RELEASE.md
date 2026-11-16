@@ -58,6 +58,20 @@ quality gate → PyPI (OIDC) → Docker (GHCR + Docker Hub) → Homebrew formula
    docker manifest inspect zoharbabin/due-diligence-agents:X.Y.Z >/dev/null && echo OK
    ```
 
+## Desktop app
+
+The same `v*` tag also starts [`desktop.yml`](.github/workflows/desktop.yml). It builds the macOS (Apple Silicon) and Windows x64 installers, signs them (Apple Developer ID and notarization, Azure Artifact Signing), signs the update files with the minisign key, and attaches everything to the GitHub Release. Signing secrets are repo secrets. See [`desktop/README.md`](desktop/README.md).
+
+After step 5, also watch `desktop.yml` to green:
+
+```bash
+gh run watch $(gh run list --workflow=desktop.yml --limit 1 --json databaseId --jq '.[0].databaseId') --exit-status
+```
+
+Then check the Release has these assets: the DMG, the Windows setup `.exe`, a `.sig` next to each update file, `latest.json` and `SHA256SUMS-desktop.txt`.
+
+Installed apps read `releases/latest/download/latest.json`, and the tag release becomes "Latest" at once. So a tag ships to every installed app. Test before you tag: run `desktop.yml` by hand with **sign** on (`gh workflow run desktop.yml -f sign=true`), install the signed artifacts from that run on a clean macOS and a clean Windows machine, and run one review. Tag only after that.
+
 ## Closing issues
 
 **Don't rely on a squash-merge PR body's `Closes #A, #B, #C` to auto-close every listed issue.**
