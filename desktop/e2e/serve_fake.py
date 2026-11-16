@@ -18,6 +18,7 @@ import uvicorn
 from dd_agents.api.app import create_app
 from dd_agents.api.routers import doctor, settings
 from dd_agents.api.runs import RunManager, RunOptions
+from dd_agents.chat.engine import ChatResponse
 from dd_agents.llm.cli_provision import CliInstaller
 from dd_agents.persistence.project_registry import ProjectRegistryManager
 
@@ -48,6 +49,38 @@ def fake_install(root: Path, *, on_progress: Callable[[int, int | None], None]) 
     return binary
 
 
+class FakeChat:
+    """Answers without an LLM: streams two text chunks after one tool call."""
+
+    finding_count = 4
+
+    def __init__(self, run_dir: Path, project_dir: Path) -> None:
+        self.session_cost = 0.0
+        self.turn_count = 0
+
+    async def ask(
+        self,
+        question: str,
+        on_text: Callable[[str], None] | None = None,
+        on_tool_status: Callable[[str], None] | None = None,
+    ) -> ChatResponse:
+        if on_tool_status:
+            on_tool_status("search_in_file")
+        time.sleep(0.2)
+        answer = f"Answer to: {question}"
+        if on_text:
+            on_text(answer[:8])
+            on_text(answer[8:])
+        self.turn_count += 1
+        self.session_cost += 0.25
+        return ChatResponse(
+            text=answer, tools_used=["search_in_file"], turn_number=self.turn_count, session_cost=self.session_cost
+        )
+
+    async def close(self) -> None:
+        return None
+
+
 def main() -> None:
     for name in settings.SETTABLE_ENV:  # start from a known state, whatever the developer's shell has
         os.environ.pop(name, None)
@@ -66,6 +99,7 @@ def main() -> None:
         ui_dir=ui_dir,
         run_manager=RunManager(registry, command_factory=fake_command),
         cli_installer=CliInstaller(registry_dir / "cli", fake_install),
+        chat_factory=FakeChat,
     )
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
 

@@ -134,3 +134,23 @@ test('compare: a second review shows what is new, resolved and escalated', async
   await expect(page.getByText('Price increase clause')).toBeVisible()
   await expect(page.getByRole('heading', { name: /Severity changed \(1\)/ })).toBeVisible()
 })
+
+test('ask: needs a review first, then answers and counts the cost', async ({ page }) => {
+  await createProject(page, room('ask-deal'))
+  await page.getByRole('tab', { name: 'Ask' }).click()
+  await expect(page.getByText('Nothing to ask yet')).toBeVisible()
+
+  await page.getByRole('tab', { name: 'Overview' }).click()
+  await page.getByRole('button', { name: 'Run full review' }).click()
+  await expect(page.getByRole('progressbar')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Run full review' })).toBeVisible({ timeout: 30_000 })
+
+  await page.getByRole('tab', { name: 'Ask' }).click()
+  await page.getByLabel('Your question').fill('Which contracts need consent?')
+  await page.getByLabel('Your question').press('Enter')
+  await expect(page.getByText('Answer to: Which contracts need consent?')).toBeVisible()
+  await expect(page.getByLabel('Session cost')).toContainText('$0.25')
+
+  await page.getByRole('button', { name: 'New conversation' }).click()
+  await expect(page.getByText('Answer to: Which contracts need consent?')).toHaveCount(0)
+})
