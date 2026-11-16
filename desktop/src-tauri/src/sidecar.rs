@@ -4,6 +4,7 @@
 //! process group after a grace period, in case a run is still winding down.
 
 use std::collections::HashMap;
+use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::{Child, ChildStdin, Command, Stdio};
@@ -21,6 +22,14 @@ pub fn parse_ready_line(line: &str) -> Option<u16> {
     u16::try_from(value.get("port")?.as_u64()?)
         .ok()
         .filter(|p| *p != 0)
+}
+
+/// Open the service log for this launch. Replaces the last launch's log, so it never grows.
+pub fn open_log(path: &Path) -> std::io::Result<File> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    File::create(path)
 }
 
 /// 32 random bytes as hex. A new one for every launch.
@@ -42,8 +51,13 @@ impl Sidecar {
         python: &Path,
         ui_dir: &Path,
         extra_env: &HashMap<String, String>,
+        log: Option<&Path>,
     ) -> Result<Sidecar, String> {
         let token = new_token();
+        // Server errors go to a file, so a failed start can be diagnosed. No log means no output.
+        let stderr = log
+            .and_then(|path| open_log(path).ok())
+            .map_or_else(Stdio::null, Stdio::from);
         let mut cmd = Command::new(python);
         cmd.args([
             "-m",
@@ -60,7 +74,7 @@ impl Sidecar {
         .env("PYTHONUNBUFFERED", "1")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null());
+        .stderr(stderr);
         #[cfg(unix)]
         {
             use std::os::unix::process::CommandExt;
@@ -176,11 +190,24 @@ mod tests {
     }
 
     #[test]
+    fn the_log_is_replaced_on_each_launch() {
+        use std::io::Write;
+        let dir = std::env::temp_dir().join(format!("dd-log-test-{}", new_token()));
+        let path = dir.join("logs").join("service.log");
+        writeln!(open_log(&path).unwrap(), "first launch").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "first launch\n");
+        drop(open_log(&path).unwrap());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn missing_python_is_a_clear_error() {
         let err = Sidecar::start(
             Path::new("/definitely/not/python"),
             Path::new("."),
             &HashMap::new(),
+            None,
         )
         .err()
         .unwrap();
@@ -197,8 +224,8 @@ mod tests {
             eprintln!("skipped: DD_DESKTOP_PYTHON is not set");
             return;
         };
-        let mut sidecar =
-            Sidecar::start(Path::new(&python), Path::new("."), &HashMap::new()).expect("start");
+        let mut sidecar = Sidecar::start(Path::new(&python), Path::new("."), &HashMap::new(), None)
+            .expect("start");
         let get = |auth: &str| {
             let mut s = TcpStream::connect(("127.0.0.1", sidecar.port)).unwrap();
             let req = format!(

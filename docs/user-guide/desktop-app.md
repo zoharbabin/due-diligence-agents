@@ -32,10 +32,12 @@ Release builds are signed. The macOS app is also notarized. The app checks for a
 | Projects, findings, reports | `~/.dd-projects/` (or `$DD_BASE_DIR`). Same as the CLI |
 | API key | OS keychain, service `com.zoharbabin.due-diligence-agents` |
 | Claude engine | `~/.dd-projects/.cli/<version>/` |
+| Service log (errors from the last launch, replaced at each launch) | macOS: `~/Library/Logs/com.zoharbabin.due-diligence-agents/service.log`. Windows: `%LOCALAPPDATA%\com.zoharbabin.due-diligence-agents\logs\service.log` |
 
 ## Security
 
 - The service listens on `127.0.0.1` only. Every request needs a token that is made at each launch and never written to disk.
+- Opening the app a second time shows the open window. It does not start a second service.
 - The service stops when the app closes, with all of its child processes.
 - Your documents stay on your machine. Only the text sent to the model provider you chose leaves it.
 
