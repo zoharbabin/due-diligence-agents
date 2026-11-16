@@ -8,6 +8,7 @@ Tauri shell + React UI over the local API (`dd-agents serve`). User guide: [`doc
 cd desktop/ui && npm ci
 npm test            # unit tests
 npm run e2e         # real API + fake pipeline + Chromium (needs: pip install -e ".[dev]", npx playwright install chromium; run `npm run build` first, E2E serves dist/)
+python ../e2e/live_model.py   # manual, costs money: the real server and your real model provider (probe, suggest setup, small review, one question)
 npm run build       # -> dist/, served by `dd-agents serve --ui-dir desktop/ui/dist`
 ```
 
