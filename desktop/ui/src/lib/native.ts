@@ -21,3 +21,25 @@ export async function saveProviderEnv(values: Record<string, string>): Promise<b
   await t.invoke('save_provider_env', { values })
   return true
 }
+
+export interface UpdateInfo {
+  version: string
+  notes: string | null
+}
+
+/** Newer signed build, or null (also null in a browser and when the update server is unreachable). */
+export async function checkForUpdate(): Promise<UpdateInfo | null> {
+  const t = (window as unknown as TauriWindow).__TAURI_INTERNALS__
+  if (!t) return null
+  try {
+    return ((await t.invoke('check_for_update')) as UpdateInfo | null) ?? null
+  } catch {
+    return null
+  }
+}
+
+/** Downloads, installs and restarts the app. Resolves only if it fails. */
+export async function installUpdate(): Promise<void> {
+  const t = (window as unknown as TauriWindow).__TAURI_INTERNALS__
+  if (t) await t.invoke('install_update')
+}

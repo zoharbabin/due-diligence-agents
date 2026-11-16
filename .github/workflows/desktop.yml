@@ -87,10 +87,17 @@ jobs:
           APPLE_SIGNING_IDENTITY: ${{ env.SIGN == 'true' && secrets.MACOS_SIGN_IDENTITY || '' }}
           APPLE_API_ISSUER: ${{ env.SIGN == 'true' && secrets.MACOS_NOTARY_ISSUER_ID || '' }}
           APPLE_API_KEY: ${{ env.SIGN == 'true' && secrets.MACOS_NOTARY_KEY_ID || '' }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ env.SIGN == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ env.SIGN == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
         run: |
           # Tauri treats an empty variable as set and then tries to sign with "".
-          [ "$SIGN" = "true" ] || unset APPLE_SIGNING_IDENTITY APPLE_API_ISSUER APPLE_API_KEY
-          python ../scripts/tauri_override.py "${{ steps.version.outputs.value }}" > "$RUNNER_TEMP/override.json"
+          args=()
+          if [ "$SIGN" = "true" ]; then
+            args=(--updater)
+          else
+            unset APPLE_SIGNING_IDENTITY APPLE_API_ISSUER APPLE_API_KEY TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+          fi
+          python ../scripts/tauri_override.py "${{ steps.version.outputs.value }}" "${args[@]}" > "$RUNNER_TEMP/override.json"
           ../ui/node_modules/.bin/tauri build --ci --bundles app,dmg --config "$RUNNER_TEMP/override.json"
       - name: Verify the signature and notarization
         if: env.SIGN == 'true'
@@ -107,7 +114,9 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: desktop-macos
-          path: desktop/src-tauri/target/release/bundle/dmg/*.dmg
+          path: |
+            desktop/src-tauri/target/release/bundle/dmg/*.dmg
+            desktop/src-tauri/target/release/bundle/macos/*.app.tar.gz*
           if-no-files-found: error
           retention-days: 14
       - name: Remove the keychain
@@ -184,10 +193,14 @@ jobs:
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ env.SIGN == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ env.SIGN == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
         run: |
           args=()
           if [ "$SIGN" = "true" ]; then
-            args=(--windows-sign-script "$GITHUB_WORKSPACE/desktop/scripts/sign_windows.py")
+            args=(--windows-sign-script "$GITHUB_WORKSPACE/desktop/scripts/sign_windows.py" --updater)
+          else
+            unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
           fi
           python ../scripts/tauri_override.py "${{ steps.version.outputs.value }}" "${args[@]}" > "$RUNNER_TEMP/override.json"
           ../ui/node_modules/.bin/tauri build --ci --bundles nsis --config "$(cygpath -w "$RUNNER_TEMP/override.json")"
@@ -216,7 +229,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: desktop-windows
-          path: desktop/src-tauri/target/release/bundle/nsis/*.exe
+          path: desktop/src-tauri/target/release/bundle/nsis/*-setup.exe*
           if-no-files-found: error
           retention-days: 14
 
@@ -228,10 +241,13 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: installers
           merge-multiple: true
+      - name: Name the assets and write the updater manifest
+        run: python desktop/scripts/updater_manifest.py "${GITHUB_REF_NAME}" "${GITHUB_REPOSITORY}" installers
       - name: Checksums
         working-directory: installers
         run: sha256sum * > SHA256SUMS-desktop.txt

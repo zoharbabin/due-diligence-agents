@@ -11,7 +11,7 @@ CI builds the installers (`.github/workflows/desktop.yml`) and attaches them to 
 | macOS (Apple Silicon) | `.dmg`. Drag the app to Applications |
 | Windows (x64) | `-setup.exe`. Installs for your user, no admin rights |
 
-Release builds are signed. The macOS app is also notarized. There is no automatic update yet: install the new version over the old one.
+Release builds are signed. The macOS app is also notarized. The app checks for a newer signed version when it opens and offers to install it.
 
 ## First run
 

@@ -21,6 +21,13 @@
       "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'"
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDM0QzhDMTYyRDUzODVFREUKUldUZVhqalZZc0hJTk5jbjdQcFVvMG0yNEkxei9ZbXpFZ09RUjVxY0dwUmFUSHlrWXVrZEV1dVIK",
+      "endpoints": ["https://github.com/zoharbabin/due-diligence-agents/releases/latest/download/latest.json"],
+      "windows": { "installMode": "passive" }
+    }
+  },
   "bundle": {
     "active": true,
     "targets": ["app", "nsis"],

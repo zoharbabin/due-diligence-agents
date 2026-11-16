@@ -28,7 +28,8 @@ def test_every_command_is_declared_registered_and_permitted() -> None:
     match = re.search(r"commands\(&\[(.*?)\]", build, re.S)
     assert match
     declared = set(re.findall(r'"([a-z_]+)"', match.group(1)))
-    registered = set(re.findall(r"generate_handler!\[(.*?)\]", lib, re.S)[0].replace(" ", "").split(","))
+    handlers = re.findall(r"generate_handler!\[(.*?)\]", lib, re.S)[0]
+    registered = {name for name in re.split(r"[,\s]+", handlers) if name}
     assert declared == registered
     caps = json.loads((SHELL / "capabilities" / "main.json").read_text(encoding="utf-8"))
     allowed = {p.removeprefix("allow-").replace("-", "_") for p in caps["permissions"] if p.startswith("allow-")}

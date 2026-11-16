@@ -4,5 +4,5 @@
   "description": "The window loads the local API origin. Only these calls are allowed.",
   "windows": ["main"],
   "remote": { "urls": ["http://127.0.0.1:*/*"] },
-  "permissions": ["allow-get-api-token", "allow-save-provider-env", "dialog:allow-open"]
+  "permissions": ["allow-get-api-token", "allow-save-provider-env", "allow-check-for-update", "allow-install-update", "dialog:allow-open"]
 }

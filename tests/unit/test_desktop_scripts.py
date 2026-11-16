@@ -59,3 +59,62 @@ def test_tauri_override_adds_signing_only_when_asked() -> None:
     signed = mod.build("1.2.3", Path("/ws/desktop/scripts/sign_windows.py"))
     command = signed["bundle"]["windows"]["signCommand"]
     assert command["args"] == ["/ws/desktop/scripts/sign_windows.py", "%1"]
+
+
+def test_tauri_override_enables_updater_artifacts_only_when_asked() -> None:
+    mod: Any = _load("tauri_override")
+    assert "createUpdaterArtifacts" not in str(mod.build("1.2.3", None))
+    config = mod.build("1.2.3", None, updater=True)
+    assert config["bundle"]["createUpdaterArtifacts"] is True
+    both = mod.build("1.2.3", Path("/ws/s.py"), updater=True)
+    assert both["bundle"]["createUpdaterArtifacts"] is True
+    assert "signCommand" in both["bundle"]["windows"]
+
+
+def _updater_inputs(root: Path) -> None:
+    files = {
+        "Due Diligence Agents.app.tar.gz": b"mac-update",
+        "Due Diligence Agents.app.tar.gz.sig": b"MAC-SIG\n",
+        "Due Diligence Agents_1.2.3_aarch64.dmg": b"dmg",
+        "Due Diligence Agents_1.2.3_x64-setup.exe": b"win-update",
+        "Due Diligence Agents_1.2.3_x64-setup.exe.sig": b"WIN-SIG",
+    }
+    for name, data in files.items():
+        (root / name).write_bytes(data)
+
+
+def test_updater_manifest_names_files_without_spaces_and_signs_urls(tmp_path: Path) -> None:
+    mod: Any = _load("updater_manifest")
+    _updater_inputs(tmp_path)
+    manifest = mod.prepare(tmp_path, "v1.2.3", "owner/repo")
+    names = sorted(p.name for p in tmp_path.iterdir())
+    assert all(" " not in n for n in names)
+    assert "due-diligence-agents_1.2.3_aarch64.dmg" in names
+    assert manifest["version"] == "1.2.3"
+    mac = manifest["platforms"]["darwin-aarch64"]
+    assert mac["signature"] == "MAC-SIG"
+    assert (
+        mac["url"]
+        == "https://github.com/owner/repo/releases/download/v1.2.3/due-diligence-agents_1.2.3_aarch64.app.tar.gz"
+    )
+    win = manifest["platforms"]["windows-x86_64"]
+    assert win["signature"] == "WIN-SIG"
+    assert win["url"].endswith("/v1.2.3/due-diligence-agents_1.2.3_x64-setup.exe")
+
+
+def test_updater_manifest_refuses_a_missing_signature(tmp_path: Path) -> None:
+    import pytest
+
+    mod: Any = _load("updater_manifest")
+    _updater_inputs(tmp_path)
+    (tmp_path / "Due Diligence Agents_1.2.3_x64-setup.exe.sig").unlink()
+    with pytest.raises(SystemExit):
+        mod.prepare(tmp_path, "v1.2.3", "owner/repo")
+
+
+def test_updater_manifest_rejects_a_bad_tag(tmp_path: Path) -> None:
+    import pytest
+
+    mod: Any = _load("updater_manifest")
+    with pytest.raises(SystemExit):
+        mod.prepare(tmp_path, "main", "owner/repo")
