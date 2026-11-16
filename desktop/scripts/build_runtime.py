@@ -59,6 +59,12 @@ def fetch(release: str, asset: str, sha256: str, cache: Path) -> Path:
     return archive
 
 
+# Pulled in by markitdown through magika, which only guesses file types. dd-agents does that itself
+# (extraction/file_type.py) and loads markitdown with a stand-in (extraction/office_convert.py).
+# Together about 100 MB. flatbuffers and protobuf are only needed by onnxruntime.
+UNUSED_PACKAGES = ("magika", "onnxruntime", "flatbuffers", "protobuf")
+
+
 def prune(runtime: Path) -> None:
     for site in runtime.rglob("site-packages"):
         shutil.rmtree(site / "claude_agent_sdk" / "_bundled", ignore_errors=True)
@@ -83,10 +89,16 @@ def main() -> None:
         tar.extractall(out, filter="data")
     py = python_exe(runtime)
     subprocess.run([str(py), "-m", "pip", "install", "--no-warn-script-location", f"{ROOT}[app,pdf]"], check=True)
+    subprocess.run([str(py), "-m", "pip", "uninstall", "--yes", *UNUSED_PACKAGES], check=True)
     frozen = subprocess.run([str(py), "-m", "pip", "freeze"], check=True, capture_output=True, text=True).stdout
     (out / "runtime-packages.txt").write_text(frozen, encoding="utf-8")
     smoke = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
-    subprocess.run([str(py), "-I", "-c", "import dd_agents.api.app, dd_agents.cli"], check=True, env=smoke)
+    check = (
+        "import dd_agents.api.app, dd_agents.cli\n"
+        "from dd_agents.extraction.office_convert import _load_markitdown\n"
+        "_load_markitdown()"
+    )
+    subprocess.run([str(py), "-I", "-c", check], check=True, env=smoke)
     prune(runtime)
     size = sum(p.stat().st_size for p in runtime.rglob("*") if p.is_file())
     print(f"runtime ready: {runtime} ({size / 1_048_576:.0f} MB)")
