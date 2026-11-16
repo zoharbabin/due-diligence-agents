@@ -118,3 +118,19 @@ def test_updater_manifest_rejects_a_bad_tag(tmp_path: Path) -> None:
     mod: Any = _load("updater_manifest")
     with pytest.raises(SystemExit):
         mod.prepare(tmp_path, "main", "owner/repo")
+
+
+def test_runtime_drops_only_packages_that_no_code_imports() -> None:
+    """The desktop runtime removes magika and its model runtime. Only office_convert may mention them."""
+    import re
+
+    mod: Any = _load("build_runtime")
+    assert {"magika", "onnxruntime"} <= set(mod.UNUSED_PACKAGES)
+    src = Path(__file__).parents[2] / "src" / "dd_agents"
+    importers = {
+        p.relative_to(src).as_posix()
+        for p in src.rglob("*.py")
+        for name in mod.UNUSED_PACKAGES
+        if re.search(rf"^\s*(from|import)\s+{name}\b", p.read_text(encoding="utf-8"), re.MULTILINE)
+    }
+    assert importers <= {"extraction/office_convert.py"}
