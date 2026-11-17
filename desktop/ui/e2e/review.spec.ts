@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import { createProject, open, room } from './helpers'
 
 test('first launch shows the empty state, and the token leaves the address bar', async ({ page }) => {
