@@ -86,6 +86,13 @@ class TestBuildAgentOptions:
         for tool in ("Bash", "WebFetch", "WebSearch", "Agent", "Task"):
             assert tool in opts.disallowed_tools
 
+    def test_cli_ignores_user_and_project_settings(self) -> None:
+        """The CLI must not load hooks, plugins or CLAUDE.md from the user's home or the data room."""
+        assert build_agent_options(max_turns=1).setting_sources == []
+
+    def test_caller_may_choose_setting_sources(self) -> None:
+        assert build_agent_options(max_turns=1, setting_sources=["user"]).setting_sources == ["user"]
+
     def test_caller_denials_are_kept_and_deduplicated(self) -> None:
         opts = build_agent_options(max_turns=1, disallowed_tools=["Read", "Bash"])
         assert "Read" in opts.disallowed_tools
