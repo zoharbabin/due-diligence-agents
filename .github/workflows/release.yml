@@ -227,13 +227,19 @@ jobs:
       - name: Update Homebrew tap repo
         continue-on-error: true
         env:
-          TAP_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+          TAP_DEPLOY_KEY: ${{ secrets.TAP_DEPLOY_KEY }}
         run: |
-          if [ -z "$TAP_TOKEN" ]; then
-            echo "::warning::TAP_GITHUB_TOKEN not set — skipping tap update"
+          if [ -z "$TAP_DEPLOY_KEY" ]; then
+            echo "::warning::TAP_DEPLOY_KEY not set — skipping tap update"
             exit 0
           fi
-          git clone https://x-access-token:${TAP_TOKEN}@github.com/zoharbabin/homebrew-due-diligence-agents.git /tmp/tap
+          # Deploy key: write access to the tap repo only.
+          KEY_FILE="$(mktemp)"
+          trap 'rm -f "$KEY_FILE"' EXIT
+          printf '%s\n' "$TAP_DEPLOY_KEY" > "$KEY_FILE"
+          chmod 600 "$KEY_FILE"
+          export GIT_SSH_COMMAND="ssh -i $KEY_FILE -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+          git clone git@github.com:zoharbabin/homebrew-due-diligence-agents.git /tmp/tap
           cp Formula/dd-agents.rb /tmp/tap/Formula/dd-agents.rb
           cd /tmp/tap
           git config user.name "github-actions[bot]"
