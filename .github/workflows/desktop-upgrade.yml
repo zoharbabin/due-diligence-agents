@@ -22,6 +22,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The older app is tested with its own release's smoke script. A newer script can hold checks the older app was never built to pass.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.from_tag }}
+          path: old
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
@@ -42,7 +47,7 @@ jobs:
           cp -R "$mnt/Due Diligence Agents.app" "$RUNNER_TEMP/Applications/"
           hdiutil detach "$mnt"
           app="$RUNNER_TEMP/Applications/Due Diligence Agents.app"
-          python desktop/scripts/smoke_installed.py "$app/Contents/Resources" "$app" "$HOME/Library/Logs/com.zoharbabin.due-diligence-agents/service.log"
+          python old/desktop/scripts/smoke_installed.py "$app/Contents/Resources" "$app" "$HOME/Library/Logs/com.zoharbabin.due-diligence-agents/service.log"
       - name: Replace it with the newer app and smoke test again
         run: |
           app="$RUNNER_TEMP/Applications/Due Diligence Agents.app"
@@ -63,6 +68,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The older app is tested with its own release's smoke script. A newer script can hold checks the older app was never built to pass.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.from_tag }}
+          path: old
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
@@ -82,7 +92,7 @@ jobs:
           $setup = Get-ChildItem (Join-Path $env:RUNNER_TEMP "dl\${{ inputs.from_tag }}\*-setup.exe")
           $dir = Join-Path $env:RUNNER_TEMP 'app'
           Start-Process $setup.FullName -ArgumentList '/S', "/D=$dir" -Wait
-          python desktop/scripts/smoke_installed.py $dir "$dir\due-diligence-agents.exe" "$env:LOCALAPPDATA\com.zoharbabin.due-diligence-agents\logs\service.log"
+          python old/desktop/scripts/smoke_installed.py $dir "$dir\due-diligence-agents.exe" "$env:LOCALAPPDATA\com.zoharbabin.due-diligence-agents\logs\service.log"
           # A file the user owns. The upgrade must leave it alone.
           $marker = Join-Path $env:LOCALAPPDATA 'com.zoharbabin.due-diligence-agents\upgrade-marker.txt'
           Set-Content -Path $marker -Value 'kept'
