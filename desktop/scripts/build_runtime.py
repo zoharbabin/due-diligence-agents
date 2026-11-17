@@ -74,6 +74,18 @@ def prune(runtime: Path) -> None:
         shutil.rmtree(cache, ignore_errors=True)
 
 
+def compile_bytecode(runtime: Path, py: Path) -> None:
+    """Make the .pyc files now, before the app is signed.
+
+    A signed app must not change when it runs. Without this, Python writes .pyc files into the bundle on
+    first start and the signature seal breaks. Hash-based and unchecked: valid after any copy or update.
+    """
+    subprocess.run(
+        [str(py), "-m", "compileall", "-q", "-j", "0", "--invalidation-mode", "unchecked-hash", str(runtime)],
+        check=True,
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, default=ROOT / "desktop" / "src-tauri" / "resources")
@@ -100,6 +112,7 @@ def main() -> None:
     )
     subprocess.run([str(py), "-I", "-c", check], check=True, env=smoke)
     prune(runtime)
+    compile_bytecode(runtime, py)
     size = sum(p.stat().st_size for p in runtime.rglob("*") if p.is_file())
     print(f"runtime ready: {runtime} ({size / 1_048_576:.0f} MB)")
 

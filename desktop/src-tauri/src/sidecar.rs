@@ -72,6 +72,8 @@ impl Sidecar {
         .envs(extra_env)
         .env("DD_API_TOKEN", &token)
         .env("PYTHONUNBUFFERED", "1")
+        // The bundle is signed. Python must not write .pyc files into it.
+        .env("PYTHONDONTWRITEBYTECODE", "1")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(stderr);
