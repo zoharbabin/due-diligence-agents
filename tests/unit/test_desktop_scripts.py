@@ -236,6 +236,9 @@ def test_runtime_bytecode_is_built_into_the_bundle_and_never_checks_the_source(t
     mod: Any = _load("build_runtime")
     (tmp_path / "lib").mkdir()
     (tmp_path / "lib" / "tool.py").write_text("VALUE = 1\n")
+    # Tk ships sample scripts that do not compile (a TabError on Windows). They are never run, so skip them.
+    (tmp_path / "tcl" / "tix").mkdir(parents=True)
+    (tmp_path / "tcl" / "tix" / "sample.py").write_text("if 1:\n        a = 1\n\tb = 2\n")
     mod.compile_bytecode(tmp_path, Path(sys.executable))
     pycs = list((tmp_path / "lib" / "__pycache__").glob("tool.*.pyc"))
     assert len(pycs) == 1

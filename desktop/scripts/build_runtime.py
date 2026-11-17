@@ -79,11 +79,11 @@ def compile_bytecode(runtime: Path, py: Path) -> None:
 
     A signed app must not change when it runs. Without this, Python writes .pyc files into the bundle on
     first start and the signature seal breaks. Hash-based and unchecked: valid after any copy or update.
+    The tcl folder holds Tk sample scripts that do not compile and never run, so it is skipped.
     """
-    subprocess.run(
-        [str(py), "-m", "compileall", "-q", "-j", "0", "--invalidation-mode", "unchecked-hash", str(runtime)],
-        check=True,
-    )
+    skip = r"[\\/]tcl[\\/]"
+    cmd = [str(py), "-m", "compileall", "-q", "-j", "0", "-x", skip, "--invalidation-mode", "unchecked-hash"]
+    subprocess.run([*cmd, str(runtime)], check=True)
 
 
 def main() -> None:
