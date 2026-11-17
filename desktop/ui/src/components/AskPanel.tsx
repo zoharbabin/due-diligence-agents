@@ -3,6 +3,7 @@ import { api, ApiError } from '../api/client'
 import { askQuestion } from '../api/ask'
 import type { ChatStatus } from '../api/types'
 import { useLoad } from '../lib/useApi'
+import { Markdown } from './Markdown'
 import { Banner, Button, Card, EmptyState, Spinner } from './ui'
 
 interface Turn {
@@ -112,7 +113,7 @@ export function AskPanel({ slug }: { slug: string }) {
           {turns.map((t, i) => (
             <li key={i} className="space-y-2">
               <p className="rounded-lg bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-900">{t.question}</p>
-              {t.answer && <p className="whitespace-pre-wrap px-1 text-sm leading-relaxed text-slate-800">{t.answer}</p>}
+              {t.answer && <Markdown text={t.answer} />}
               {t.status === 'working' && (
                 <p className="flex items-center gap-2 px-1 text-xs text-slate-500">
                   <Spinner small />
