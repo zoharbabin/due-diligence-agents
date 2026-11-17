@@ -1,0 +1,100 @@
+name: Desktop upgrade check
+
+# Manual. Installs a published release, then installs a newer one over it, and checks the app still starts.
+# Use it after a tag: run with `from_tag` = the previous release and `to_tag` = the new one.
+on:
+  workflow_dispatch:
+    inputs:
+      from_tag:
+        description: Older release tag, for example v1.22.0
+        required: true
+      to_tag:
+        description: Newer release tag, for example v1.22.1
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    name: macOS (Apple Silicon)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Download both releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for tag in "${{ inputs.from_tag }}" "${{ inputs.to_tag }}"; do
+            mkdir -p "$RUNNER_TEMP/dl/$tag"
+            gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern '*.dmg' --dir "$RUNNER_TEMP/dl/$tag"
+          done
+      - name: Install the older app and smoke test it
+        run: |
+          mkdir "$RUNNER_TEMP/Applications"
+          dmg="$(ls "$RUNNER_TEMP/dl/${{ inputs.from_tag }}"/*.dmg)"
+          mnt="$RUNNER_TEMP/dmg"
+          hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mnt"
+          cp -R "$mnt/Due Diligence Agents.app" "$RUNNER_TEMP/Applications/"
+          hdiutil detach "$mnt"
+          app="$RUNNER_TEMP/Applications/Due Diligence Agents.app"
+          python desktop/scripts/smoke_installed.py "$app/Contents/Resources" "$app" "$HOME/Library/Logs/com.zoharbabin.due-diligence-agents/service.log"
+      - name: Replace it with the newer app and smoke test again
+        run: |
+          app="$RUNNER_TEMP/Applications/Due Diligence Agents.app"
+          rm -rf "$app"
+          dmg="$(ls "$RUNNER_TEMP/dl/${{ inputs.to_tag }}"/*.dmg)"
+          mnt="$RUNNER_TEMP/dmg"
+          hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mnt"
+          cp -R "$mnt/Due Diligence Agents.app" "$RUNNER_TEMP/Applications/"
+          hdiutil detach "$mnt"
+          version="$(defaults read "$app/Contents/Info" CFBundleShortVersionString)"
+          echo "installed version: $version"
+          [ "v$version" = "${{ inputs.to_tag }}" ] || { echo "expected ${{ inputs.to_tag }}"; exit 1; }
+          python desktop/scripts/smoke_installed.py "$app/Contents/Resources" "$app" "$HOME/Library/Logs/com.zoharbabin.due-diligence-agents/service.log"
+
+  windows:
+    name: Windows (x64)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Download both releases
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          foreach ($tag in "${{ inputs.from_tag }}", "${{ inputs.to_tag }}") {
+            $dir = Join-Path $env:RUNNER_TEMP "dl\$tag"
+            New-Item -ItemType Directory -Path $dir | Out-Null
+            gh release download $tag --repo $env:GITHUB_REPOSITORY --pattern '*-setup.exe' --dir $dir
+          }
+      - name: Install the older app and smoke test it
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem (Join-Path $env:RUNNER_TEMP "dl\${{ inputs.from_tag }}\*-setup.exe")
+          $dir = Join-Path $env:RUNNER_TEMP 'app'
+          Start-Process $setup.FullName -ArgumentList '/S', "/D=$dir" -Wait
+          python desktop/scripts/smoke_installed.py $dir "$dir\due-diligence-agents.exe" "$env:LOCALAPPDATA\com.zoharbabin.due-diligence-agents\logs\service.log"
+          # A file the user owns. The upgrade must leave it alone.
+          $marker = Join-Path $env:LOCALAPPDATA 'com.zoharbabin.due-diligence-agents\upgrade-marker.txt'
+          Set-Content -Path $marker -Value 'kept'
+      - name: Install the newer app over it and smoke test again
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem (Join-Path $env:RUNNER_TEMP "dl\${{ inputs.to_tag }}\*-setup.exe")
+          $dir = Join-Path $env:RUNNER_TEMP 'app'
+          Start-Process $setup.FullName -ArgumentList '/S', "/D=$dir" -Wait
+          $version = (Get-Item "$dir\due-diligence-agents.exe").VersionInfo.ProductVersion
+          Write-Host "installed version: $version"
+          if ("v$version" -ne "${{ inputs.to_tag }}") { throw "expected ${{ inputs.to_tag }}" }
+          $marker = Join-Path $env:LOCALAPPDATA 'com.zoharbabin.due-diligence-agents\upgrade-marker.txt'
+          if (-not (Test-Path $marker)) { throw "The upgrade removed user data" }
+          python desktop/scripts/smoke_installed.py $dir "$dir\due-diligence-agents.exe" "$env:LOCALAPPDATA\com.zoharbabin.due-diligence-agents\logs\service.log"
