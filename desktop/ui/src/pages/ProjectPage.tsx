@@ -42,6 +42,7 @@ export function ProjectPage() {
   const [progress, dispatch] = useReducer(reduceEvent, initialProgress)
   const [running, setRunning] = useState(false)
   const [cancelling, setCancelling] = useState(false)
+  const [removing, setRemoving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
   const [draft, setDraft] = useState<{ config: DealConfig; n: number } | null>(null)
@@ -101,7 +102,6 @@ export function ProjectPage() {
   }
 
   async function remove() {
-    if (!window.confirm('Remove this project from the list? Your data room files are not touched.')) return
     await api(`/projects/${slug}`, { method: 'DELETE' })
     nav('/')
   }
@@ -119,9 +119,19 @@ export function ProjectPage() {
           <h1 className="text-2xl font-semibold text-slate-900">{p.name}</h1>
           <p className="text-sm text-slate-600">{p.path}</p>
         </div>
-        <Button variant="ghost" onClick={remove}>
-          Remove
-        </Button>
+        {removing ? (
+          <div role="group" aria-label="Confirm remove" className="flex items-center gap-2 text-sm text-slate-700">
+            <span>Remove this project from the list? Your data room files are not touched.</span>
+            <Button variant="secondary" onClick={() => setRemoving(false)}>
+              Keep
+            </Button>
+            <Button onClick={remove}>Remove project</Button>
+          </div>
+        ) : (
+          <Button variant="ghost" onClick={() => setRemoving(true)}>
+            Remove
+          </Button>
+        )}
       </header>
 
       <Tabs<Tab>

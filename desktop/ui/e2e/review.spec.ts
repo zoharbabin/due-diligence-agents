@@ -237,3 +237,16 @@ test('a narrow window does not scroll sideways', async ({ page }) => {
     expect(overflow, name).toBeLessThanOrEqual(0)
   }
 })
+
+test('remove asks first, and keeping the project leaves it in place', async ({ page }) => {
+  await createProject(page, room('remove-deal'))
+  await page.getByRole('button', { name: 'Remove', exact: true }).click()
+  await expect(page.getByText('Remove this project from the list? Your data room files are not touched.')).toBeVisible()
+  await page.getByRole('button', { name: 'Keep' }).click()
+  await expect(page.getByRole('button', { name: 'Run full review' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Remove', exact: true }).click()
+  await page.getByRole('button', { name: 'Remove project' }).click()
+  await expect(page.getByRole('heading', { name: 'Projects' })).toBeVisible()
+  await expect(page.getByText('remove-deal')).toHaveCount(0)
+})
