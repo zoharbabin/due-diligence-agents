@@ -20,6 +20,7 @@ class RunSummaryData:
     total: int = 0
     by_severity: dict[str, int] = field(default_factory=dict)
     risk_score: float = 0.0
+    risk_label: str = ""
 
 
 def resolve_run_dir(skill_dir: Path, run_id: str | None) -> Path | None:
@@ -86,4 +87,5 @@ def summarize_run(run_dir: Path) -> RunSummaryData:
         by_severity=counts,
         # Same formula the report uses, so the registry and the report agree.
         risk_score=ReportDataComputer._compute_risk_score(counts),
+        risk_label=ReportDataComputer._compute_risk_label(counts),
     )

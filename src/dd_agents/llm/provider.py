@@ -162,7 +162,8 @@ def build_agent_options(
 ) -> ClaudeAgentOptions:
     """Build a :class:`ClaudeAgentOptions`, applying dd-agents' shared policy.
 
-    This is the ONE place options are constructed. It always sets ``cli_path``
+    This is the ONE place options are constructed. It sets ``setting_sources=[]``
+    (no hooks, plugins or CLAUDE.md from the user's home or the data room), sets ``cli_path``
     (when resolvable) and applies the output-token clamp; callers pass the same
     keyword arguments they would give ``ClaudeAgentOptions`` directly
     (``system_prompt``, ``max_turns``, ``allowed_tools``, ``permission_mode``,
@@ -190,6 +191,10 @@ def build_agent_options(
 
     denied = list(dict.fromkeys([*(kwargs.get("disallowed_tools") or []), *DENIED_BUILTIN_TOOLS]))
     kwargs["disallowed_tools"] = denied
+
+    # Isolation: load no settings file. Hooks, plugins and CLAUDE.md from the user's home or from
+    # the data room (cwd) would change what the model sees and can run commands.
+    kwargs.setdefault("setting_sources", [])
 
     cli_path = resolve_sdk_cli_path()
     if cli_path is not None:

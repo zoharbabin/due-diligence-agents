@@ -51,6 +51,18 @@ def bundle_paths(resources: Path) -> tuple[Path, Path]:
     return python, ui
 
 
+def snapshot(root: Path) -> set[str]:
+    """Every path under the bundle, relative to it."""
+    return {path.relative_to(root).as_posix() for path in root.rglob("*")}
+
+
+def check_untouched(root: Path, before: set[str]) -> None:
+    """A signed app must not add files to itself while it runs. That breaks the signature."""
+    added = sorted(snapshot(root) - before)
+    if added:
+        raise SystemExit(f"the app changed its own bundle, {len(added)} new files, for example {added[:3]}")
+
+
 def step(message: str) -> None:
     print(f"[smoke] {message}", flush=True)
 
@@ -90,7 +102,13 @@ def wait_until(check: Any, seconds: float, what: str) -> None:
 
 def check_service(python: Path, ui: Path, base_dir: Path) -> None:
     token = "smoke-" + os.urandom(8).hex()
-    env = {**os.environ, "DD_API_TOKEN": token, "DD_BASE_DIR": str(base_dir), "PYTHONUNBUFFERED": "1"}
+    env = {
+        **os.environ,
+        "DD_API_TOKEN": token,
+        "DD_BASE_DIR": str(base_dir),
+        "PYTHONUNBUFFERED": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
     proc = subprocess.Popen(
         [str(python), "-m", "dd_agents", "serve", "--port", "0", "--exit-on-stdin-close", "--ui-dir", str(ui)],
         stdin=subprocess.PIPE,
@@ -180,9 +198,12 @@ def main() -> None:
     python, ui = bundle_paths(resources)
     if not app.exists():
         raise SystemExit(f"app not found at {app}")
+    before = snapshot(resources)
     with tempfile.TemporaryDirectory(prefix="dd-smoke-") as tmp:
         check_service(python, ui, Path(tmp) / "service")
         check_app(app, log, Path(tmp) / "app")
+    check_untouched(resources, before)
+    step("the bundle was not changed while it ran")
     step("OK")
 
 

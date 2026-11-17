@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from dd_agents.api.chat import ChatBusyError
 from dd_agents.api.context import AppContext, get_ctx
-from dd_agents.api.findings_io import resolve_run_dir
+from dd_agents.api.findings_io import load_findings, resolve_run_dir
 from dd_agents.api.projects_util import Project, room_of, skill_dir_of
 from dd_agents.chat.engine import ChatError
 
@@ -43,7 +43,11 @@ def _latest_with_findings(project: Project) -> Any:
 
 @router.get("/projects/{slug}/chat", summary="Read-only. Whether Ask is ready, and the current session's usage.")
 def chat_status(project: Project, ctx: Annotated[AppContext, Depends(get_ctx)]) -> dict[str, Any]:
-    return {"ready": _latest_with_findings(project) is not None, **ctx.chat.status(project.slug)}
+    run_dir = _latest_with_findings(project)
+    status = ctx.chat.status(project.slug)
+    if run_dir is not None and not status["active"]:
+        status["finding_count"] = len(load_findings(run_dir))  # no session yet: count the review's findings
+    return {"ready": run_dir is not None, **status}
 
 
 @router.post(

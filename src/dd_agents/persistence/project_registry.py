@@ -207,6 +207,7 @@ class ProjectRegistryManager:
         finding_counts: dict[str, int],
         risk_score: float,
         status: str = "completed",
+        risk_label: str = "",
     ) -> ProjectEntry | None:
         """Update project metadata after a pipeline run completes."""
         with self._locked():
@@ -220,6 +221,7 @@ class ProjectRegistryManager:
                     p.total_findings = total_findings
                     p.finding_counts = finding_counts
                     p.risk_score = risk_score
+                    p.risk_label = risk_label
                     p.status = status
                     registry.projects[i] = p
                     self._save(registry)

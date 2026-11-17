@@ -13,6 +13,7 @@ from dd_agents.api.context import AppContext, get_ctx
 from dd_agents.api.projects_util import SKILL_DIR, Project, room_of
 from dd_agents.api.schemas import ProjectCreate, ScanSummary
 from dd_agents.models.project import ProjectEntry
+from dd_agents.reporting.computed_metrics import ReportDataComputer
 
 router = APIRouter(tags=["projects"])
 
@@ -20,9 +21,16 @@ router = APIRouter(tags=["projects"])
 MAX_SCAN_FILES = 200_000
 
 
+def _labelled(entry: ProjectEntry) -> ProjectEntry:
+    """Projects saved before labels were stored get the label the report would show."""
+    if entry.risk_label or not entry.finding_counts:
+        return entry
+    return entry.model_copy(update={"risk_label": ReportDataComputer._compute_risk_label(entry.finding_counts)})
+
+
 @router.get("/projects", summary="Read-only. List registered projects.")
 def list_projects(ctx: Annotated[AppContext, Depends(get_ctx)]) -> list[ProjectEntry]:
-    return ctx.registry.list_projects()
+    return [_labelled(p) for p in ctx.registry.list_projects()]
 
 
 @router.post(
@@ -42,7 +50,7 @@ def create_project(body: ProjectCreate, ctx: Annotated[AppContext, Depends(get_c
 
 @router.get("/projects/{slug}", summary="Read-only. One project.")
 def get_project(project: Project) -> ProjectEntry:
-    return project
+    return _labelled(project)
 
 
 @router.delete(

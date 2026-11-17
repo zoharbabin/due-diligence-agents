@@ -57,3 +57,13 @@ export function runLabel(id: string): string {
   const d = new Date(y, mo - 1, day, h, mi, sec)
   return Number.isNaN(d.getTime()) ? id : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 }
+
+const AGENT_LABEL: Record<string, string> = { hr: 'HR / People', esg: 'ESG', producttech: 'Product & Tech' }
+
+/** "producttech" -> "Product & Tech". Same names as the Agents tab. */
+export function agentLabel(name: string): string {
+  const known = AGENT_LABEL[name]
+  if (known) return known
+  const text = name.replace(/_/g, ' ')
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}

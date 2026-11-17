@@ -1,6 +1,6 @@
 # Desktop App Plan
 
-Status: **in progress.** The views in the table below are built: Projects, Run, Report, Findings, Ask, Compare, Agents, Screening, History and Settings, plus in-app updates. For what ships today, read [the desktop app guide](../user-guide/desktop-app.md) and `desktop/README.md`, not this plan. The sections below are the original proposal and still describe the design intent. Release CI also writes the Homebrew cask and the winget manifests as Release assets. Every `desktop.yml` build installs the macOS DMG and the Windows setup file on a clean runner, starts the app, and checks that its service starts, writes the service log and stops when the app is killed (`desktop/scripts/smoke_installed.py`). A manual signed run of `desktop.yml` passes on both systems, and the macOS app and DMG are Developer ID signed, notarized and stapled (Gatekeeper accepts both on an Apple Silicon Mac). The first signed release is out (see `RELEASE.md`) and the cask is in the owner's tap. The winget manifests are submitted to winget-pkgs and wait for review. The manual `desktop-upgrade.yml` run installs one published release over the previous one on macOS and Windows and the app starts (the Windows user data file survives). Not done yet: the in-app update button from one build to the next on both systems (the installer swap is tested, the in-app flow is not), a run on a clean macOS user account, the clean-VM spikes (S1, S3, S6) and the items under Open items that need the owner. `desktop/e2e/live_model.py` is a manual end-to-end check against a real model provider.
+Status: **in progress.** The views in the table below are built: Projects, Run, Report, Findings, Ask, Compare, Agents, Screening, History and Settings, plus in-app updates. For what ships today, read [the desktop app guide](../user-guide/desktop-app.md) and `desktop/README.md`, not this plan. The sections below are the original proposal and still describe the design intent. Release CI also writes the Homebrew cask and the winget manifests as Release assets. Every `desktop.yml` build installs the macOS DMG and the Windows setup file on a clean runner, starts the app, and checks that its service starts, writes the service log and stops when the app is killed (`desktop/scripts/smoke_installed.py`). A manual signed run of `desktop.yml` passes on both systems, and the macOS app and DMG are Developer ID signed, notarized and stapled (Gatekeeper accepts both on an Apple Silicon Mac). The first signed release is out (see `RELEASE.md`) and the cask is in the owner's tap. The winget manifests are submitted to winget-pkgs and wait for review. The manual `desktop-upgrade.yml` run installs one published release over the previous one on macOS and Windows and the app starts (the Windows user data file survives). The in-app update button was run live on macOS, from one published build to the next. Not done yet: the same run on Windows (the installer swap is tested, the in-app flow is not), a run on a clean macOS user account, the clean-VM spikes (S1, S3, S6) and the items under Open items that need the owner. `desktop/e2e/live_model.py` is a manual end-to-end check against a real model provider.
 
 Original research: two rounds on 2026-11-15, against the code in `src/dd_agents/`, local measurements on an Apple Silicon Mac, and the public sources linked inline. Each claim is marked **verified** (checked here), **sourced** (from a doc, not re-tested), or **unverified** (needs a Phase 0 spike).
 
@@ -317,6 +317,22 @@ Data rooms are confidential. Treat this as a requirement.
 | Target compare is shallow | Low | Ship run-vs-run first. Domain compare in Phase 4. |
 | Rust skill gap | Low | Rust is small and isolated. Electron fallback keeps the same API contract. Rust is not installed on this Mac yet (`cargo` not found), so Phase 0 includes toolchain setup. |
 | External specialist plugins (`dd_agents.specialists`) | Low | Work with the embedded runtime. Document. |
+
+## Live test findings
+
+A hands-on pass on the installed macOS app and the Playwright suite found these. All are fixed and covered by a test.
+
+| Finding | Fix |
+|---------|-----|
+| The in-app update added bytecode files inside the signed bundle, which broke the macOS seal after the first launch. | Precompiled hash-based bytecode, `PYTHONDONTWRITEBYTECODE=1` for the sidecar, and a seal check in `smoke_installed.py`. The Tk sample scripts are skipped in `build_runtime.py`. |
+| The run panel showed internal agent names. | `agentLabel` in `desktop/ui/src/lib/format.ts`. |
+| Ask said it had no findings before the first question. | The chat status reads the finding count from the review (`api/routers/chat.py`). |
+| Projects saved before risk labels existed showed a different label than the report. | `_labelled()` in `api/routers/projects.py` uses `ReportDataComputer._compute_risk_label`. |
+| Ask answers showed raw markdown. | `desktop/ui/src/components/Markdown.tsx`. It builds elements only, with no HTML and no links. |
+| The `claude` CLI loaded hooks and CLAUDE.md files from the user's home and the data room. | `build_agent_options` sets `setting_sources=[]`. Provider env in `~/.claude/settings.json` no longer applies. Use the app's provider settings. |
+| Tabs could not be used with the keyboard. | Roving tabindex and arrow, Home and End keys in `Tabs` (`components/ui.tsx`). |
+
+Limits of the desktop automation: the macOS accessibility tree of the WebView can come back empty, and a click can land in another app if focus is lost. Repeatable UI checks run in Playwright against the real API (`desktop/ui/e2e/`).
 
 ## Phases (each ends with a check)
 

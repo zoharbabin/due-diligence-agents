@@ -29,6 +29,16 @@ class TestProjects:
         got = client.get("/api/projects/deal_one").json()
         assert got["path"] == str(data_room.resolve())
 
+    def test_project_saved_before_labels_existed_gets_the_report_label(
+        self, client: TestClient, registry_dir: Path, data_room: Path
+    ) -> None:
+        from dd_agents.persistence.project_registry import ProjectRegistryManager
+
+        _create(client, data_room)
+        ProjectRegistryManager(registry_dir).sync_project_from_run("deal_one", "run_1", 2, 11, {"P2": 11}, 10.0)
+        assert client.get("/api/projects/deal_one").json()["risk_label"] == "Medium"
+        assert client.get("/api/projects").json()[0]["risk_label"] == "Medium"
+
     def test_duplicate_is_409(self, client: TestClient, data_room: Path) -> None:
         _create(client, data_room)
         r = client.post("/api/projects", json={"name": "Deal One", "data_room": str(data_room)})

@@ -1,7 +1,10 @@
 import type { RunProgress } from '../lib/progress'
 import { percent } from '../lib/progress'
-import { formatDuration, formatUsd } from '../lib/format'
+import { agentLabel, formatDuration, formatUsd } from '../lib/format'
 import { Banner, Button, Card } from './ui'
+
+/** A time left of a few seconds is noise. Show it only when it helps. */
+const MIN_ETA_MS = 10_000
 
 export function RunPanel({ progress, onCancel, cancelling }: { progress: RunProgress; onCancel: () => void; cancelling: boolean }) {
   const pct = percent(progress)
@@ -13,7 +16,7 @@ export function RunPanel({ progress, onCancel, cancelling }: { progress: RunProg
           <h2 className="font-semibold text-slate-900">Review in progress</h2>
           <p className="text-sm text-slate-600" aria-live="polite">
             {progress.stepName || 'Starting…'}
-            {progress.etaMs ? ` · about ${formatDuration(progress.etaMs)} left` : ''}
+            {progress.etaMs && progress.etaMs >= MIN_ETA_MS ? ` · about ${formatDuration(progress.etaMs)} left` : ''}
           </p>
         </div>
         <Button variant="secondary" onClick={onCancel} busy={cancelling}>
@@ -37,9 +40,9 @@ export function RunPanel({ progress, onCancel, cancelling }: { progress: RunProg
         <ul className="space-y-1.5">
           {agents.map((a) => (
             <li key={a.name} className="flex items-center justify-between text-sm">
-              <span className="capitalize text-slate-700">{a.name.replace(/_/g, ' ')}</span>
+              <span className="text-slate-700">{agentLabel(a.name)}</span>
               <span className="text-slate-500">
-                {a.status === 'failed' ? 'Failed' : a.status === 'done' ? 'Done' : `${a.done}/${a.total || '?'}`}
+                {a.status === 'failed' ? 'Failed' : a.status === 'done' ? 'Done' : `${a.done}/${Math.max(a.total, a.done) || '?'}`}
               </span>
             </li>
           ))}

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import { createProject, open, room } from './helpers'
 
 test('first launch shows the empty state, and the token leaves the address bar', async ({ page }) => {
@@ -191,4 +191,49 @@ test('suggest setup: the draft is only loaded into the editor until it is saved'
   await page.reload()
   await page.getByRole('tab', { name: 'Settings' }).click()
   await expect(page.getByLabel('Deal configuration')).toHaveValue(/Suggested focus area/)
+})
+
+test('quick scan starts a run with quick_scan set', async ({ page }) => {
+  await createProject(page, room('quick-deal'))
+  const request = page.waitForRequest((r) => r.url().endsWith('/run') && r.method() === 'POST')
+  await page.getByRole('button', { name: 'Quick scan' }).click()
+  expect((await request).postDataJSON()).toMatchObject({ quick_scan: true })
+  await expect(page.getByText(/Latest results/)).toBeVisible({ timeout: 30_000 })
+})
+
+test('settings: an edit that breaks the config is blocked, a valid one saves', async ({ page }) => {
+  await createProject(page, room('settings-deal'))
+  await page.getByRole('tab', { name: 'Settings' }).click()
+  const editor = page.getByLabel('Deal configuration')
+  const original = await editor.inputValue()
+  await editor.fill('{ not json')
+  await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled()
+  await editor.fill(original.replace('Buyer Co', 'Buyer Renamed'))
+  await page.getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
+  await page.reload()
+  await page.getByRole('tab', { name: 'Settings' }).click()
+  await expect(page.getByLabel('Deal configuration')).toHaveValue(/Buyer Renamed/)
+})
+
+test('keyboard: the tabs work with the arrow keys', async ({ page }) => {
+  await createProject(page, room('keys-deal'))
+  await page.getByRole('tab', { name: 'Overview' }).focus()
+  await page.keyboard.press('ArrowRight')
+  await expect(page.getByRole('tab', { name: 'Findings' })).toBeFocused()
+  await expect(page.getByRole('tab', { name: 'Findings' })).toHaveAttribute('aria-selected', 'true')
+  await page.keyboard.press('End')
+  await expect(page.getByRole('tab', { name: 'Settings' })).toHaveAttribute('aria-selected', 'true')
+  await page.keyboard.press('ArrowRight')
+  await expect(page.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true')
+})
+
+test('a narrow window does not scroll sideways', async ({ page }) => {
+  await page.setViewportSize({ width: 700, height: 700 })
+  await createProject(page, room('narrow-deal'))
+  for (const name of ['Overview', 'Findings', 'Ask', 'Agents', 'Settings']) {
+    await page.getByRole('tab', { name }).click()
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+    expect(overflow, name).toBeLessThanOrEqual(0)
+  }
 })

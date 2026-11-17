@@ -47,6 +47,8 @@ Anthropic / Bedrock / Vertex, and the SDK speaks the **Anthropic Messages wire
 protocol**. Anything that answers that protocol works — so an Anthropic-compatible
 gateway lets you reach models from any vendor without changing dd-agents.
 
+The seam loads no Claude settings files (`setting_sources=[]`). Hooks, plugins and `CLAUDE.md` files from your home folder or the data room never reach a run. Set the provider in the environment or in the app, not in `~/.claude/settings.json`.
+
 ## Design rules (mechanical)
 
 - **Native providers** (Anthropic / Bedrock / Vertex): set the matching env vars above. Model family is Claude.

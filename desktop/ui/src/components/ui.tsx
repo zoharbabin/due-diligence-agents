@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react'
+import { useRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type KeyboardEvent, type ReactNode } from 'react'
 import type { Severity } from '../api/types'
 import { SEVERITY_LABEL } from '../lib/format'
 
@@ -134,15 +134,30 @@ export function Tabs<T extends string>({
   active: T
   onChange: (id: T) => void
 }) {
+  const refs = useRef<(HTMLButtonElement | null)[]>([])
+  // Roving tabindex: one Tab stop, then arrow keys, as in the WAI-ARIA tabs pattern.
+  function onKeyDown(e: KeyboardEvent<HTMLButtonElement>, index: number) {
+    const last = tabs.length - 1
+    const target = { ArrowRight: index === last ? 0 : index + 1, ArrowLeft: index === 0 ? last : index - 1, Home: 0, End: last }[e.key]
+    if (target === undefined) return
+    e.preventDefault()
+    refs.current[target]?.focus()
+    onChange(tabs[target]!.id)
+  }
   return (
     <div role="tablist" className="flex gap-1 border-b border-slate-200">
-      {tabs.map((t) => (
+      {tabs.map((t, i) => (
         <button
           key={t.id}
+          ref={(el) => {
+            refs.current[i] = el
+          }}
           role="tab"
           type="button"
           aria-selected={t.id === active}
+          tabIndex={t.id === active ? 0 : -1}
           onClick={() => onChange(t.id)}
+          onKeyDown={(e) => onKeyDown(e, i)}
           className={cx(
             '-mb-px border-b-2 px-4 py-2 text-sm font-medium',
             t.id === active ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-600 hover:text-slate-900',

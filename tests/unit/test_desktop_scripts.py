@@ -227,3 +227,34 @@ def test_installed_app_smoke_names_what_is_missing(tmp_path: Path) -> None:
     mod: Any = _load("smoke_installed")
     with pytest.raises(SystemExit, match="python"):
         mod.bundle_paths(tmp_path)
+
+
+def test_runtime_bytecode_is_built_into_the_bundle_and_never_checks_the_source(tmp_path: Path) -> None:
+    """A signed app must not change when it runs, so bytecode is made at build time, before signing."""
+    import sys
+
+    mod: Any = _load("build_runtime")
+    (tmp_path / "lib").mkdir()
+    (tmp_path / "lib" / "tool.py").write_text("VALUE = 1\n")
+    # Tk ships sample scripts that do not compile (a TabError on Windows). They are never run, so skip them.
+    (tmp_path / "tcl" / "tix").mkdir(parents=True)
+    (tmp_path / "tcl" / "tix" / "sample.py").write_text("if 1:\n        a = 1\n\tb = 2\n")
+    mod.compile_bytecode(tmp_path, Path(sys.executable))
+    pycs = list((tmp_path / "lib" / "__pycache__").glob("tool.*.pyc"))
+    assert len(pycs) == 1
+    flags = int.from_bytes(pycs[0].read_bytes()[4:8], "little")
+    assert flags == 0b01  # hash-based, source not checked: stays valid after a copy or an update
+
+
+def test_installed_app_smoke_fails_when_the_app_changes_its_own_bundle(tmp_path: Path) -> None:
+    import pytest
+
+    mod: Any = _load("smoke_installed")
+    (tmp_path / "python").mkdir()
+    (tmp_path / "python" / "a.py").write_text("x")
+    before = mod.snapshot(tmp_path)
+    mod.check_untouched(tmp_path, before)
+    (tmp_path / "python" / "__pycache__").mkdir()
+    (tmp_path / "python" / "__pycache__" / "a.pyc").write_bytes(b"x")
+    with pytest.raises(SystemExit, match="__pycache__"):
+        mod.check_untouched(tmp_path, before)

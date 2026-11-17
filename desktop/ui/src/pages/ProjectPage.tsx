@@ -172,7 +172,7 @@ export function ProjectPage() {
               <div className="flex items-center justify-between">
                 <h2 className="font-semibold text-slate-900">Latest results</h2>
                 <span className="text-sm text-slate-600">
-                  Risk: {riskLabel(p.risk_score)} ({Math.round(p.risk_score)})
+                  Risk: {p.risk_label || riskLabel(p.risk_score)} ({Math.round(p.risk_score)})
                 </span>
               </div>
               <div className="flex flex-wrap gap-2">
