@@ -1,6 +1,6 @@
 # Desktop App Plan
 
-Status: **in progress.** The views in the table below are built: Projects, Run, Report, Findings, Ask, Compare, Agents, Screening, History and Settings, plus in-app updates. For what ships today, read [the desktop app guide](../user-guide/desktop-app.md) and `desktop/README.md`, not this plan. The sections below are the original proposal and still describe the design intent. Release CI also writes the Homebrew cask and the winget manifests as Release assets. Every `desktop.yml` build installs the macOS DMG and the Windows setup file on a clean runner, starts the app, and checks that its service starts, writes the service log and stops when the app is killed (`desktop/scripts/smoke_installed.py`). A manual signed run of `desktop.yml` passes on both systems, and the macOS app and DMG are Developer ID signed, notarized and stapled (Gatekeeper accepts both on an Apple Silicon Mac). The first signed release is out (see `RELEASE.md`) and the cask is in the owner's tap. The winget manifests are submitted to winget-pkgs and wait for review. The manual `desktop-upgrade.yml` run installs one published release over the previous one on macOS and Windows and the app starts (the Windows user data file survives). The in-app update button was run live on macOS, from one published build to the next. Not done yet: the same run on Windows (the installer swap is tested, the in-app flow is not), a run on a clean macOS user account, the clean-VM spikes (S1, S3, S6) and the items under Open items that need the owner. `desktop/e2e/live_model.py` is a manual end-to-end check against a real model provider.
+Status: **in progress.** The views in the table below are built: Projects, Run, Report, Findings, Ask, Compare, Agents, Screening, History and Settings, plus in-app updates. For what ships today, read [the desktop app guide](../user-guide/desktop-app.md) and `desktop/README.md`, not this plan. The sections below are the original proposal and still describe the design intent. Release CI also writes the Homebrew cask and the winget manifests as Release assets. Every `desktop.yml` build installs the macOS DMG and the Windows setup file on a clean runner, starts the app, and checks that its service starts, writes the service log and stops when the app is killed (`desktop/scripts/smoke_installed.py`). A manual signed run of `desktop.yml` passes on both systems, and the macOS app and DMG are Developer ID signed, notarized and stapled (Gatekeeper accepts both on an Apple Silicon Mac). The first signed release is out (see `RELEASE.md`) and the cask is in the owner's tap. The winget manifests are submitted to winget-pkgs and wait for review. The manual `desktop-upgrade.yml` run installs one published release over the previous one on macOS and Windows and the app starts (the Windows user data file survives). The in-app update button was run live on macOS, from one published build to the next. Not done yet: the checks under Manual checks that need hardware (the Windows in-app update, a clean macOS user account, and spikes S3 and S6). `desktop/e2e/live_model.py` is a manual end-to-end check against a real model provider.
 
 Original research: two rounds on 2026-11-15, against the code in `src/dd_agents/`, local measurements on an Apple Silicon Mac, and the public sources linked inline. Each claim is marked **verified** (checked here), **sourced** (from a doc, not re-tested), or **unverified** (needs a Phase 0 spike).
 
@@ -351,12 +351,16 @@ Sizes: S under 1 week, M 2 to 3 weeks, L 4 or more.
 
 Repo layout (proposed): `desktop/` for Tauri and the UI, `src/dd_agents/api/` for the server, `.github/workflows/desktop.yml` triggered by the same version tag as `release.yml`.
 
-## Open items for the owner
+## Manual checks that need hardware
 
-1. **Secrets for this repo.** The values are in the owner's shell env on this Mac (`AZURE_*`, `MACOS_*`; **verified** by name only, values not read). CI needs them as GitHub secrets on this repo. Use a new Azure service principal for this repo.
-2. **Notarization test.** I can run a notarization of the signed runtime from this Mac if you allow me to use the API key stored in your keychain. Say yes or no.
-3. **Bundle ID.** Confirm `com.zoharbabin.due-diligence-agents`. It is permanent once users install.
-4. **OK to start Phase 0?** It changes no product behavior. The first code PRs are the sklearn and onnxruntime removals.
+CI cannot do these. Run each on a clean machine and report pass or fail.
+
+| Check | Steps | Pass when |
+|-------|-------|-----------|
+| Windows in-app update | Install an older release with its setup `.exe`. Open the app. Click **Update and restart**. | The app restarts on the new version. The banner is gone. `%LOCALAPPDATA%\com.zoharbabin.due-diligence-agents\logs\service.log` shows no errors. |
+| Clean macOS user account (S1) | Create a new standard user. Install from the DMG. Open the app. Add a data room, run a Quick scan. | Gatekeeper opens the app without a warning. The first-run download of `claude` works. The scan finishes. |
+| Folder permissions (S3) | On a clean macOS and Windows user, pick a data room in Documents, Desktop and an external drive. | The OS prompt names "Due Diligence Agents", not another process. After allowing, the scan reads every file. |
+| Clickable prototype (S6) | Show the app to 5 people who do deal reviews. Ask each to start a review and find the riskiest finding, without help. | Note where each person hesitates. Fix what 2 or more people hit. |
 
 ## Sources
 
