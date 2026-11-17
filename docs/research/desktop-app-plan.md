@@ -331,6 +331,7 @@ A hands-on pass on the installed macOS app and the Playwright suite found these.
 | Ask answers showed raw markdown. | `desktop/ui/src/components/Markdown.tsx`. It builds elements only, with no HTML and no links. |
 | The `claude` CLI loaded hooks and CLAUDE.md files from the user's home and the data room. | `build_agent_options` sets `setting_sources=[]`. Provider env in `~/.claude/settings.json` no longer applies. Use the app's provider settings. |
 | Tabs could not be used with the keyboard. | Roving tabindex and arrow, Home and End keys in `Tabs` (`components/ui.tsx`). |
+| Remove dropped a project with one click. The dialog plugin makes `window.confirm` async, so the check was always true in the app. | The question is part of the page (`ProjectPage.tsx`). Do not use `window.confirm` or `alert` in the UI. |
 
 Limits of the desktop automation: the macOS accessibility tree of the WebView can come back empty, and a click can land in another app if focus is lost. Repeatable UI checks run in Playwright against the real API (`desktop/ui/e2e/`).
 
