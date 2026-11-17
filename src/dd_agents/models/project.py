@@ -24,6 +24,7 @@ class ProjectEntry(BaseModel):
     buyer: str = Field(default="", description="Buyer company name")
     target: str = Field(default="", description="Target company name")
     risk_score: float = Field(default=0.0, ge=0.0, le=100.0, description="Overall risk score 0-100")
+    risk_label: str = Field(default="", description="Risk label as the report shows it. Empty before the first run")
     notes: str = Field(default="", description="Free-form notes about this deal")
     locked_by: int | None = Field(default=None, description="PID if currently running")
 

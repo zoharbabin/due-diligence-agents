@@ -18,6 +18,7 @@ export interface Project {
   buyer: string
   target: string
   risk_score: number
+  risk_label: string
 }
 
 export type RunStatus = 'idle' | 'running' | 'completed' | 'failed' | 'cancelled'

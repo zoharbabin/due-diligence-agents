@@ -115,3 +115,15 @@ def test_report_link_escape_is_blocked(client: TestClient, data_room: Path, tmp_
     (run / "report" / "dd_report.html").symlink_to(secret)
     _project(client, data_room)
     assert client.get(f"/api/projects/deal/runs/{RID}/report/html").status_code == 404
+
+
+def test_run_summary_labels_risk_the_way_the_report_does(tmp_path: Path) -> None:
+    """The app and the report must show one risk label. Eleven P2 findings are Medium in the report."""
+    from dd_agents.api.findings_io import summarize_run
+
+    merged = tmp_path / "findings" / "merged"
+    merged.mkdir(parents=True)
+    findings = [{"title": f"f{i}", "severity": "P2"} for i in range(11)]
+    (merged / "subject_a.json").write_text(json.dumps({"subject": "Subject A", "findings": findings}))
+    summary = summarize_run(tmp_path)
+    assert summary.risk_label == "Medium"

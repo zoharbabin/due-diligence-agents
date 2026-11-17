@@ -273,6 +273,7 @@ class RunManager:
                 total_findings=summary.total,
                 finding_counts=summary.by_severity,
                 risk_score=summary.risk_score,
+                risk_label=summary.risk_label,
             )
             self._registry.update_project(entry.slug, locked_by=None)
         else:
