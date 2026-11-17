@@ -99,6 +99,20 @@ def test_status_before_any_message(chat_client: TestClient, data_room: Path) -> 
     assert FakeEngine.created == []  # reading status never starts the engine
 
 
+def test_status_counts_the_findings_of_the_latest_review_before_any_question(
+    chat_client: TestClient, data_room: Path
+) -> None:
+    _room_with_run(data_room)
+    merged = data_room / "_dd" / "forensic-dd" / "runs" / "latest" / "findings" / "merged"
+    (merged / "subject_a.json").write_text(
+        json.dumps({"subject": "Subject A", "findings": [{"title": "a"}, {"title": "b"}]})
+    )
+    _project(chat_client, data_room)
+    body = chat_client.get("/api/projects/deal/chat").json()
+    assert body["active"] is False
+    assert body["finding_count"] == 2
+
+
 def test_not_ready_without_a_review(chat_client: TestClient, data_room: Path) -> None:
     _project(chat_client, data_room)
     assert chat_client.get("/api/projects/deal/chat").json()["ready"] is False
