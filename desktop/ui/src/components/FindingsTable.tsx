@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../api/client'
 import { SEVERITIES, type Finding, type FindingsPage, type Severity } from '../api/types'
 import { Banner, SeverityBadge, Spinner } from './ui'
+import { categoryLabel } from '../lib/format'
 
 const PAGE = 25
 
@@ -141,7 +142,7 @@ function FindingRow({ finding: f, open, onToggle }: { finding: Finding; open: bo
         <span className="flex-1">
           <span className="block text-sm font-medium text-slate-900">{f.title}</span>
           <span className="block text-xs text-slate-500">
-            {f.subject} · {f.category}
+            {f.subject} · {categoryLabel(f.category)}
           </span>
         </span>
       </button>

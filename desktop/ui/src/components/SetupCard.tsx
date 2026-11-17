@@ -3,6 +3,7 @@ import type { Doctor } from '../api/types'
 import { Button, Card } from './ui'
 import { CliDownload } from './CliDownload'
 import { KeyForm } from './KeyForm'
+import { providerLabel } from '../lib/format'
 
 /** Shown until the app can reach a model. */
 export function SetupCard({ doctor, onChange }: { doctor: Doctor; onChange: () => void }) {
@@ -17,7 +18,7 @@ export function SetupCard({ doctor, onChange }: { doctor: Doctor; onChange: () =
         <KeyForm onSaved={(r) => setConnected(r.ok)} />
       ) : (
         <p className="text-sm text-slate-600">
-          Provider: <strong>{doctor.provider}</strong>. Set one of {doctor.credential_env.join(', ')} before starting the app.
+          Provider: <strong>{providerLabel(doctor.provider)}</strong>. Set one of {doctor.credential_env.join(', ')} before starting the app.
         </p>
       )}
       {connected && <Button onClick={onChange}>Continue</Button>}

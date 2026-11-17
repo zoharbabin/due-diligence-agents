@@ -4,6 +4,7 @@ import type { Doctor } from '../api/types'
 import { Banner, Button, Card, Spinner } from '../components/ui'
 import { KeyForm } from '../components/KeyForm'
 import { testConnection, type ProbeResult } from '../lib/connection'
+import { providerLabel } from '../lib/format'
 import { isDesktop, saveProviderEnv } from '../lib/native'
 import { useLoad } from '../lib/useApi'
 
@@ -63,7 +64,7 @@ export function SettingsPage() {
           <Card className="space-y-3">
             <h2 className="font-semibold text-slate-900">Model connection</h2>
             <dl className="divide-y divide-slate-100">
-              <Row label="Provider">{d.provider}</Row>
+              <Row label="Provider">{providerLabel(d.provider)}</Row>
               {d.base_url && <Row label="Address">{d.base_url}</Row>}
               <Row label="Credential">{d.credential_present ? 'Set' : 'Missing'}</Row>
               <Row label="Claude engine">{d.cli.source ? ENGINE_SOURCE[d.cli.source] : 'Not installed'}</Row>

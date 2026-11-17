@@ -67,3 +67,21 @@ export function agentLabel(name: string): string {
   const text = name.replace(/_/g, ' ')
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
+
+/** "renewal_terms" -> "Renewal terms". Text without underscores is kept. */
+export function categoryLabel(category: string): string {
+  if (!category.includes('_')) return category
+  const text = category.replace(/_+/g, ' ').trim()
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
+const PROVIDER_LABEL: Record<string, string> = {
+  anthropic: 'Anthropic API',
+  bedrock: 'Amazon Bedrock',
+  vertex: 'Google Vertex AI',
+  gateway: 'Custom gateway',
+}
+
+export function providerLabel(provider: string): string {
+  return PROVIDER_LABEL[provider] ?? provider
+}
