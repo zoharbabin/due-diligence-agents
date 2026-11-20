@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from dd_agents.screening.sources import SOURCES, Source, SourceParseError, eu, ofac, uk
+from dd_agents.screening.sources import SOURCES, Source, SourceParseError, csl, eu, ofac, uk
 from dd_agents.screening.sources.base import birth_years, iso_date, iso_date_prefix, short_remarks
 
 if TYPE_CHECKING:
@@ -34,7 +34,7 @@ def _by_uid(entries: list[ListEntry]) -> dict[str, ListEntry]:
 
 class TestRegistry:
     def test_registry_ids(self) -> None:
-        assert set(SOURCES) == {"ofac_sdn", "uk", "eu"}
+        assert set(SOURCES) == {"ofac_sdn", "us_csl", "uk", "eu"}
 
     @pytest.mark.parametrize("source", list(SOURCES.values()), ids=list(SOURCES))
     def test_source_shape(self, source: Source) -> None:
@@ -44,7 +44,7 @@ class TestRegistry:
         assert source.source_id in SOURCES
 
     def test_module_constants_match_registry(self) -> None:
-        for module in (ofac, uk, eu):
+        for module in (ofac, csl, uk, eu):
             assert SOURCES[module.SOURCE_ID].url == module.URL
 
 
@@ -111,6 +111,59 @@ class TestOfac:
     def test_malformed_input_raises(self, raw: bytes) -> None:
         with pytest.raises(SourceParseError):
             ofac.parse(raw)
+
+
+# ---------------------------------------------------------------------------
+# US Consolidated Screening List
+# ---------------------------------------------------------------------------
+
+
+class TestCsl:
+    def test_sdn_records_left_out_and_date_from_kept_lists(self) -> None:
+        entries, published = csl.parse(_load("csl_sample.json"))
+        assert len(entries) == 4
+        assert "tst-sdn-0001" not in _by_uid(entries)
+        # the newest source_last_updated among the kept lists, not the SDN's
+        assert published == "2026-10-02"
+        assert all(e.source == "us_csl" for e in entries)
+
+    def test_entity_list_record(self) -> None:
+        entry = _by_uid(csl.parse(_load("csl_sample.json"))[0])["tst-el-0001"]
+        assert entry.name == "Example Microelectronics Co., Ltd."
+        assert entry.aliases == ["Example Micro"]
+        assert entry.kind == "unknown"  # BIS lists do not say whether a party is a person
+        assert entry.countries == ["TL", "EX"]
+        assert entry.programs == ["Entity List (EL)"]
+        assert entry.listed_on == "2024-05-09"
+        assert entry.remarks == "99 FR 12345"
+        assert entry.url.startswith("https://www.bis.gov/")
+
+    def test_military_end_user_unverified_and_sectoral(self) -> None:
+        by_uid = _by_uid(csl.parse(_load("csl_sample.json"))[0])
+        assert by_uid["tst-meu-0001"].programs == ["Military End User (MEU) List"]
+        assert by_uid["tst-meu-0001"].url == "https://www.bis.gov/regulations/ear/744#supplement-7-744"
+        assert by_uid["tst-uvl-0001"].programs == ["Unverified List (UVL)"]
+        assert by_uid["tst-uvl-0001"].countries == []
+        ssi = by_uid["tst-ssi-0001"]
+        assert ssi.kind == "organization"
+        assert ssi.programs == ["Sectoral Sanctions Identifications List (SSI)", "TESTPROG-EO"]
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            b"",
+            b"not json",
+            b"[]",
+            b'{"results": []}',
+            b'{"results": [{"source": "Entity List (EL) - Bureau of Industry and Security", "id": "1"}]}',
+            b'{"results": [{"source": "Specially Designated Nationals (SDN) - Treasury Department", '
+            b'"id": "1", "name": "X"}]}',
+        ],
+        ids=["empty", "not-json", "wrong-shape", "no-entries", "no-name", "sdn-only"],
+    )
+    def test_malformed_input_raises(self, raw: bytes) -> None:
+        with pytest.raises(SourceParseError):
+            csl.parse(raw)
 
 
 # ---------------------------------------------------------------------------

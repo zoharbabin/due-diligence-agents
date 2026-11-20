@@ -18,6 +18,7 @@ from dd_agents.screening.sources import SOURCES
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures" / "screening"
 RAW_BY_URL = {
     SOURCES["ofac_sdn"].url: (FIXTURES / "ofac_sdn_sample.xml").read_bytes(),
+    SOURCES["us_csl"].url: (FIXTURES / "csl_sample.json").read_bytes(),
     SOURCES["uk"].url: (FIXTURES / "uk_sample.xml").read_bytes(),
     SOURCES["eu"].url: (FIXTURES / "eu_sample.xml").read_bytes(),
 }
@@ -54,16 +55,22 @@ class TestUpdate:
         result = _invoke("update", "--json")
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)
-        assert [r["source"] for r in data["results"]] == ["ofac_sdn", "uk", "eu"]
+        assert [r["source"] for r in data["results"]] == ["ofac_sdn", "us_csl", "uk", "eu"]
         assert all(r["ok"] for r in data["results"])
-        assert {r["source"]: r["entries"] for r in data["results"]} == {"ofac_sdn": 5, "uk": 4, "eu": 3}
+        assert {r["source"]: r["entries"] for r in data["results"]} == {"ofac_sdn": 5, "us_csl": 4, "uk": 4, "eu": 3}
         assert {r["source"]: r["published"] for r in data["results"]} == {
             "ofac_sdn": "2026-11-13",
+            "us_csl": "2026-10-02",
             "uk": "2026-11-12",
             "eu": "2026-10-23",
         }
         assert data["screening_dir"] == str(screening_home)
-        assert sorted(p.name for p in (screening_home / "lists").iterdir()) == ["eu.json", "ofac_sdn.json", "uk.json"]
+        assert sorted(p.name for p in (screening_home / "lists").iterdir()) == [
+            "eu.json",
+            "ofac_sdn.json",
+            "uk.json",
+            "us_csl.json",
+        ]
 
     def test_source_option_limits_the_download(self, downloads: list[str]) -> None:
         result = _invoke("update", "--source", "uk", "--source", "eu", "--json")
@@ -138,6 +145,7 @@ class TestStatus:
         data = json.loads(result.output)
         assert [(r["source"], r["status"]) for r in data["sources"]] == [
             ("ofac_sdn", "missing"),
+            ("us_csl", "missing"),
             ("uk", "missing"),
             ("eu", "missing"),
         ]
@@ -148,7 +156,12 @@ class TestStatus:
         assert _invoke("update").exit_code == 0
         result = _invoke("status", "--json")
         rows = {r["source"]: r for r in json.loads(result.output)["sources"]}
-        assert {k: v["status"] for k, v in rows.items()} == {"ofac_sdn": "screened", "uk": "screened", "eu": "screened"}
+        assert {k: v["status"] for k, v in rows.items()} == {
+            "ofac_sdn": "screened",
+            "us_csl": "screened",
+            "uk": "screened",
+            "eu": "screened",
+        }
         assert rows["ofac_sdn"]["entry_count"] == 5
         assert rows["uk"]["list_date"] == "2026-11-12"
 
@@ -214,6 +227,7 @@ def _save_snapshot(source: str, entries: list[ListEntry]) -> None:
 
 def _fill_all_lists(extra: list[ListEntry] | None = None) -> None:
     _save_snapshot("ofac_sdn", extra or [])
+    _save_snapshot("us_csl", [])
     _save_snapshot("uk", [])
     _save_snapshot("eu", [])
 
@@ -240,7 +254,7 @@ class TestCheck:
         assert result.exit_code == 2, result.output
         data = json.loads(result.output)
         assert data["complete"] is False
-        assert len(data["gaps"]) == 3
+        assert len(data["gaps"]) == len(SOURCES)
 
     def test_type_is_required_choice(self, tmp_path: Path) -> None:
         result = _invoke("check", "X Y", "--type", "bogus", "--project-dir", str(tmp_path))

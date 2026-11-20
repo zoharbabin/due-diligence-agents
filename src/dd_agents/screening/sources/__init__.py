@@ -14,10 +14,10 @@ derivative works"). The UK and EU lists carry the UN designations.
 
 from __future__ import annotations
 
-from dd_agents.screening.sources import eu, ofac, uk
+from dd_agents.screening.sources import csl, eu, ofac, uk
 from dd_agents.screening.sources.base import Source, SourceParseError
 
-_MODULES = (ofac, uk, eu)
+_MODULES = (ofac, csl, uk, eu)
 
 SOURCES: dict[str, Source] = {
     module.SOURCE_ID: Source(source_id=module.SOURCE_ID, label=module.LABEL, url=module.URL, parse=module.parse)

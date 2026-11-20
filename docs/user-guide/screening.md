@@ -107,6 +107,7 @@ The age limit is `LIST_MAX_AGE_DAYS` in `src/dd_agents/screening/store.py`.
 | Id | List |
 |----|------|
 | `ofac_sdn` | OFAC SDN (US Treasury) |
+| `us_csl` | US Consolidated Screening List (trade.gov): BIS Entity List, Military End User and Unverified lists, Denied Persons, State ITAR debarments and nonproliferation sanctions, OFAC non-SDN lists. SDN records are left out; `ofac_sdn` has them |
 | `uk` | UK Sanctions List (FCDO) |
 | `eu` | EU consolidated financial sanctions list |
 
@@ -114,6 +115,7 @@ Not included:
 
 - **UN Security Council list, as its own list.** Its terms forbid derived indexes. The UK and EU lists carry the UN designations.
 - **US SAM.gov and HHS-OIG exclusions.** Add them yourself as a CSV (see below).
+- **US lists outside the CSL:** DoD Section 1260H, Section 889, the FCC Covered List and the UFLPA Entity List. Add them yourself as a CSV (see below).
 
 Downloaded lists go to `DD_SCREENING_DIR` (default `~/.dd-agents/screening`).
 
