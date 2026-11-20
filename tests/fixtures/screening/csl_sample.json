@@ -1,0 +1,77 @@
+{
+  "results": [
+    {
+      "source": "Specially Designated Nationals (SDN) - Treasury Department",
+      "id": "tst-sdn-0001",
+      "entity_number": 90001,
+      "type": "Individual",
+      "name": "Test Person ALPHA",
+      "alt_names": ["Tester ALFA"],
+      "programs": ["TESTPROG1"],
+      "addresses": [{"address": "1 Test Street", "city": "Testville", "state": null, "postal_code": null, "country": "TL"}],
+      "source_list_url": "https://sanctionslist.ofac.treas.gov/Home/SdnList",
+      "source_information_url": "https://ofac.treasury.gov/sanctions-list-service",
+      "remarks": "Synthetic record for unit tests."
+    },
+    {
+      "source": "Entity List (EL) - Bureau of Industry and Security",
+      "id": "tst-el-0001",
+      "name": "Example Microelectronics Co., Ltd.",
+      "alt_names": ["Example Micro", "Example Microelectronics Co., Ltd."],
+      "addresses": [
+        {"address": "2 Test Road", "city": "Testville", "state": "", "postal_code": "", "country": "TL"},
+        {"address": "3 Sample Avenue", "city": "Sampleton", "state": "", "postal_code": "", "country": "EX"}
+      ],
+      "federal_register_notice": "99 FR 12345",
+      "start_date": "2024-05-09",
+      "license_requirement": "For all items subject to the EAR.",
+      "remarks": "",
+      "source_list_url": "https://www.bis.gov/regulations/ear/744#supplement-4-744",
+      "source_information_url": "https://www.bis.gov/licensing/guidance-on-end-user-and-end-use-controls-and-us-person-controls"
+    },
+    {
+      "source": "Military End User (MEU) List - Bureau of Industry and Security",
+      "id": "tst-meu-0001",
+      "name": "Example Aero Institute",
+      "alt_names": null,
+      "addresses": [{"address": "4 Sample Avenue", "city": "Sampleton", "state": "", "postal_code": "", "country": "EX"}],
+      "federal_register_notice": "99 FR 23456",
+      "start_date": "2025-01-15",
+      "remarks": null,
+      "source_list_url": "https://www.bis.gov/regulations/ear/744#supplement-7-744",
+      "source_information_url": ""
+    },
+    {
+      "source": "Unverified List (UVL) - Bureau of Industry and Security",
+      "id": "tst-uvl-0001",
+      "name": "Sample Trading House",
+      "addresses": [],
+      "source_list_url": "https://www.bis.gov/regulations/ear/744#supplement-6-744",
+      "source_information_url": "https://www.bis.gov/unverified-list"
+    },
+    {
+      "source": "Sectoral Sanctions Identifications List (SSI) - Treasury Department",
+      "id": "tst-ssi-0001",
+      "entity_number": 90010,
+      "type": "Entity",
+      "name": "Example Energy JSC",
+      "alt_names": [],
+      "programs": ["TESTPROG-EO"],
+      "addresses": [{"address": "5 Test Quay", "city": "Testport", "state": null, "postal_code": "000000", "country": "TL"}],
+      "dates_of_birth": [],
+      "nationalities": [],
+      "citizenships": [],
+      "source_list_url": "https://sanctionslist.ofac.treas.gov/Home/ConsolidatedList",
+      "source_information_url": "https://ofac.treasury.gov/consolidated-sanctions-list-non-sdn-lists"
+    }
+  ],
+  "search_performed_at": "2026-11-20T17:15:00+00:00",
+  "sources_used": [
+    {"source": "Specially Designated Nationals (SDN) - Treasury Department", "source_last_updated": "2026-11-19T14:31:58+00:00"},
+    {"source": "Entity List (EL) - Bureau of Industry and Security", "source_last_updated": "2026-08-21T20:19:33+00:00"},
+    {"source": "Military End User (MEU) List - Bureau of Industry and Security", "source_last_updated": "2026-02-20T18:34:52+00:00"},
+    {"source": "Unverified List (UVL) - Bureau of Industry and Security", "source_last_updated": "2026-02-10T23:02:53+00:00"},
+    {"source": "Sectoral Sanctions Identifications List (SSI) - Treasury Department", "source_last_updated": "2026-10-02T14:20:52+00:00"}
+  ],
+  "total": 5
+}

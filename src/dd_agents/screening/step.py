@@ -66,6 +66,9 @@ NOT_COVERED: tuple[str, ...] = (
     "UN Security Council consolidated list, as its own list. It is not bundled because its terms forbid "
     "derived indexes. The UK and EU lists carry the UN designations.",
     "US SAM.gov exclusions and HHS-OIG exclusions, unless added as a user list under dd-config/screening/.",
+    "US lists outside the Consolidated Screening List: DoD Section 1260H Chinese military companies, Section 889 "
+    "covered telecommunications companies, the FCC Covered List and the UFLPA Entity List, unless added as a user "
+    "list under dd-config/screening/.",
     "Politically exposed persons, adverse media and beneficial ownership.",
     "Any list not named in the coverage table.",
 )

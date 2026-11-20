@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "screening"
 RAW_BY_URL = {
     SOURCES["ofac_sdn"].url: (FIXTURES / "ofac_sdn_sample.xml").read_bytes(),
+    SOURCES["us_csl"].url: (FIXTURES / "csl_sample.json").read_bytes(),
     SOURCES["uk"].url: (FIXTURES / "uk_sample.xml").read_bytes(),
     SOURCES["eu"].url: (FIXTURES / "eu_sample.xml").read_bytes(),
 }
@@ -67,6 +68,7 @@ class TestStatus:
         body = client.get("/api/screening").json()
         assert [(r["source"], r["status"]) for r in body["sources"]] == [
             ("ofac_sdn", "missing"),
+            ("us_csl", "missing"),
             ("uk", "missing"),
             ("eu", "missing"),
         ]
@@ -85,8 +87,13 @@ class TestUpdate:
         res = client.post("/api/screening/update", json={})
         assert res.status_code == 200
         results = res.json()["results"]
-        assert [(r["source"], r["ok"]) for r in results] == [("ofac_sdn", True), ("uk", True), ("eu", True)]
-        assert {r["source"]: r["entries"] for r in results} == {"ofac_sdn": 5, "uk": 4, "eu": 3}
+        assert [(r["source"], r["ok"]) for r in results] == [
+            ("ofac_sdn", True),
+            ("us_csl", True),
+            ("uk", True),
+            ("eu", True),
+        ]
+        assert {r["source"]: r["entries"] for r in results} == {"ofac_sdn": 5, "us_csl": 4, "uk": 4, "eu": 3}
         rows = client.get("/api/screening").json()["sources"]
         assert {r["status"] for r in rows} == {"screened"}
 

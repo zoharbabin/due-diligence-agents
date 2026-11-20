@@ -86,6 +86,7 @@ def _all_lists(*, person_year: int = 1970, org_name: str = COMPANY) -> None:
     )
     _save("uk", [ListEntry(source="uk", uid="22", name=org_name, kind="organization", programs=["UK-TEST"])])
     _save("eu", [ListEntry(source="eu", uid="33", name="Someone Else Entirely", kind="person")])
+    _save("us_csl", [])
 
 
 def _config(**screening: Any) -> DealConfig:
@@ -289,6 +290,7 @@ class TestFindings:
         _save("uk", [ListEntry(source="uk", uid="9", name=SUBJECT, kind="organization")])
         _save("ofac_sdn", [])
         _save("eu", [])
+        _save("us_csl", [])
         run_dir = _run(tmp_path, _config(people=False))
         folder = run_dir / "findings" / SCREENING_AGENT
         assert (folder / "imaginary_ventures_group.json").is_file()
@@ -299,6 +301,7 @@ class TestFindings:
         _save("uk", [ListEntry(source="uk", uid="9", name=COMPANY, kind="organization")])
         _save("ofac_sdn", [])
         _save("eu", [])
+        _save("us_csl", [])
         config = _config(people=False)
         config.target.subsidiaries = ["Fabricated Holdings Ltd."]
         run_dir = _run(tmp_path, config, subjects=[])
@@ -341,6 +344,7 @@ class TestCoverage:
         _save("ofac_sdn", [])
         _save("uk", [])
         _save("eu", [])
+        _save("us_csl", [])
         run_dir = _run(tmp_path, _config())
         assert not (run_dir / "findings" / SCREENING_AGENT).exists()
         cov = _read(run_dir / SCREENING_RUN_DIR / COVERAGE_FILE)
@@ -350,7 +354,7 @@ class TestCoverage:
         assert cov["targets_screened"]["person"] == 1
         assert cov["targets_screened"]["organization"] == 4
         assert cov["not_covered"] == list(NOT_COVERED)
-        assert {row["source"] for row in cov["coverage"]} == {"ofac_sdn", "uk", "eu"}
+        assert {row["source"] for row in cov["coverage"]} == {"ofac_sdn", "us_csl", "uk", "eu"}
 
     def test_missing_list_is_a_visible_gap(self, tmp_path: Path) -> None:
         _save("ofac_sdn", [])
@@ -364,6 +368,7 @@ class TestCoverage:
         _save("ofac_sdn", [], age_days=60)
         _save("uk", [])
         _save("eu", [])
+        _save("us_csl", [])
         cov = _read(_run(tmp_path, _config()) / SCREENING_RUN_DIR / COVERAGE_FILE)
         assert cov["complete"] is False
         assert any("ofac_sdn" in gap for gap in cov["gaps"])
@@ -627,6 +632,7 @@ class TestMerge:
         _save("uk", [ListEntry(source="uk", uid="9", name=COMPANY, kind="organization")])
         _save("ofac_sdn", [])
         _save("eu", [])
+        _save("us_csl", [])
         config = _config(people=False)
         config.target.subsidiaries = ["Fabricated Holdingz Limited"]
         run_dir = _run(tmp_path, config, subjects=[])

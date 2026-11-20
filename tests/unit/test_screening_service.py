@@ -60,6 +60,7 @@ def _write_user_list(project: Path, name: str = "watch", body: str | None = None
 
 def _all_sources_saved() -> None:
     _save("ofac_sdn", [_person()])
+    _save("us_csl", [])
     _save("uk", [_org("uk")])
     _save("eu", [ListEntry(source="eu", uid="3", name="Someone Else Entirely", kind="person")])
 
@@ -72,6 +73,7 @@ class TestCoverage:
         assert report.gaps == []
         assert {c.source: c.status for c in report.coverage} == {
             "ofac_sdn": "screened",
+            "us_csl": "screened",
             "uk": "screened",
             "eu": "screened",
         }

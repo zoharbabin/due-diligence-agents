@@ -6,6 +6,7 @@ import { Banner, Button, Card, Field, Spinner } from './ui'
 
 const LIST_LABEL: Record<string, string> = {
   ofac_sdn: 'US OFAC SDN list',
+  us_csl: 'US Consolidated Screening List (without the SDN)',
   uk: 'UK sanctions list',
   eu: 'EU consolidated list',
 }

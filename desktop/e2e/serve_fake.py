@@ -33,7 +33,12 @@ TOKEN = "e2e-token-0123456789"
 FAKE = Path(__file__).with_name("fake_pipeline.py")
 FIXTURES = Path(__file__).resolve().parents[2] / "tests" / "fixtures"
 LISTS = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "screening"
-SAMPLES = {"ofac_sdn": "ofac_sdn_sample.xml", "uk": "uk_sample.xml", "eu": "eu_sample.xml"}
+SAMPLES = {
+    "ofac_sdn": "ofac_sdn_sample.xml",
+    "us_csl": "csl_sample.json",
+    "uk": "uk_sample.xml",
+    "eu": "eu_sample.xml",
+}
 
 
 def fake_command(config_path: Path, options: RunOptions) -> tuple[list[str], dict[str, str]]:
