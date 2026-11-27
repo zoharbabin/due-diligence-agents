@@ -64,7 +64,7 @@ dependencies = [
 pdf = ["pypdfium2>=5.0", "pikepdf>=9.0"]
 # Page classifier (Rust, MIT). Finds pages with no text layer so only those go to OCR.
 # Optional: without it, a page-text length rule does the same job.
-pdf-fast = ["pdf-inspector>=1.26,<1.27"]
+pdf-fast = ["pdf-inspector>=1.26,<1.28"]
 # Rust Office-to-markdown converter. The PyPI name is firecrawl-anydoc (import name: anydoc).
 # The PyPI project named plain "anydoc" is a different, empty package. Optional: opt in with
 # extraction.office_backend = "anydoc". Without it, markitdown is used.
