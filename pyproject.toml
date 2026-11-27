@@ -80,7 +80,7 @@ dev = [
     "pytest-asyncio>=0.23",
     "pytest-cov>=5.0",
     "pytest-timeout>=2.3",
-    "ruff==0.17.5",
+    "ruff==0.17.6",
     "mypy==2.4.1",
     "pre-commit>=3.0",
     # API tests: the app extra plus httpx for the FastAPI TestClient.
